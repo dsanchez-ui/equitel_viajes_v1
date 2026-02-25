@@ -1,0 +1,60 @@
+
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Equitel - Gestión de Viajes</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                red: '#D71920', // Equitel Red
+                black: '#000000', // Equitel Black
+                dark: '#1a1a1a',
+                gray: '#f4f4f4'
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Force date/time inputs to use light theme for controls (dark icons) */
+      input[type="date"], input[type="time"] {
+        color-scheme: light;
+      }
+      
+      /* Additional safeguard for Webkit browsers to ensure the picker icon is dark and visible */
+      input[type="date"]::-webkit-calendar-picker-indicator,
+      input[type="time"]::-webkit-calendar-picker-indicator {
+          cursor: pointer;
+          filter: invert(0); /* Forces icon to be black if browser tries to make it white */
+          opacity: 0.6;
+          transition: opacity 0.2s;
+      }
+      
+      input[type="date"]::-webkit-calendar-picker-indicator:hover,
+      input[type="time"]::-webkit-calendar-picker-indicator:hover {
+          opacity: 1;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+  <body class="bg-gray-50 text-slate-800">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
