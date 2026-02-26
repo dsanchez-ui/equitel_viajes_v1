@@ -10,7 +10,7 @@
 const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec'; 
 
 // LINK DE ACCESO A LA PLATAFORMA (INTERFAZ VISUAL)
-const PLATFORM_URL = 'https://aistudio.google.com/apps/drive/19BXTKPwCakVCf_-twNMayZXTxVDt6IY-?showAssistant=true&showPreview=true&fullscreenApplet=true';
+const PLATFORM_URL = 'https://sistematiquetesequitel-302740316698.us-west1.run.app';
 
 // LOGO URL
 const EMAIL_LOGO_URL = 'https://drive.google.com/thumbnail?id=1hA1i-1mG4DbBmzG1pFWafoDrCWwijRjq&sz=w1000';
@@ -745,18 +745,32 @@ function getStandardSubject(data) {
 
 function sendEmailRich(to, subject, htmlBody, cc) {
     try {
+        const filterEmails = (str) => (str || "").split(',').map(e=>e.trim()).filter(e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).join(',');
+        
+        const ccAddress = (cc === undefined) ? ADMIN_EMAIL : cc;
+        let validTo = filterEmails(to);
+        let validCc = filterEmails(ccAddress);
+        
+        // If TO is empty but CC exists, move CC to TO to prevent MailApp crash
+        if (!validTo && validCc) {
+            validTo = validCc;
+            validCc = '';
+        }
+        
+        if (!validTo) {
+            console.error("No valid recipients for email: " + subject);
+            return;
+        }
+
         const options = {
-            to: to,
+            to: validTo,
             subject: subject,
-            htmlBody: htmlBody
+            htmlBody: htmlBody,
+            body: "Este correo contiene elementos ricos en HTML. Por favor use un cliente compatible.\n\n" + (htmlBody ? htmlBody.replace(/<[^>]+>/g, ' ') : '')
         };
         
-        // Default to ADMIN_EMAIL if cc is undefined. 
-        // If null, empty string or specific email passed, respect that logic.
-        const ccAddress = (cc === undefined) ? ADMIN_EMAIL : cc;
-        
-        if (ccAddress) {
-            options.cc = ccAddress;
+        if (validCc) {
+            options.cc = validCc;
         }
         
         MailApp.sendEmail(options);
@@ -1658,7 +1672,7 @@ function sendRequestEmailWithHtml(data, requestId, htmlTemplate) {
         
         try { 
             // Send to Admin ONLY (No CC to user to avoid leaking buttons)
-            MailApp.sendEmail({ to: ADMIN_EMAIL, subject: adminSubject, htmlBody: adminHtml }); 
+            sendEmailRich(ADMIN_EMAIL, adminSubject, adminHtml, null);
         } catch (e) { console.error("Error sending admin mod email: " + e); }
 
 
@@ -1676,7 +1690,7 @@ function sendRequestEmailWithHtml(data, requestId, htmlTemplate) {
         const ccList = getCCList(data);
 
         try {
-            MailApp.sendEmail({ to: data.requesterEmail, cc: ccList, subject: userSubject, htmlBody: userHtml });
+            sendEmailRich(data.requesterEmail, userSubject, userHtml, ccList);
         } catch (e) { console.error("Error sending user mod email: " + e); }
 
     } else {
@@ -1692,7 +1706,7 @@ function sendRequestEmailWithHtml(data, requestId, htmlTemplate) {
         const ccEmails = [data.requesterEmail, getCCList(data)].filter(e => e).join(',');
         
         try { 
-            MailApp.sendEmail({ to: ADMIN_EMAIL, cc: ccEmails, subject: subject, htmlBody: finalHtml }); 
+            sendEmailRich(ADMIN_EMAIL, subject, finalHtml, ccEmails);
         } catch (e) { console.error("Error sending standard email: " + e); }
     }
 }
@@ -1709,25 +1723,19 @@ function sendNewRequestNotification(data, requestId) {
 }
 
 function sendOptionsToRequester(to, req, opts) {
-   const html = HtmlTemplates.optionsAvailable(req, opts, PLATFORM_URL);
-   try { MailApp.sendEmail({ to: to, cc: getCCList(req), subject: getStandardSubject(req), htmlBody: html }); } catch(e) {}
+   try { sendEmailRich(to, getStandardSubject(req), html, getCCList(req)); } catch(e) {}
 }
 
 // NEW FUNCTION
 function sendSelectionNotificationToAdmin(req) {
     const html = HtmlTemplates.userSelectionNotification(req);
     try { 
-        MailApp.sendEmail({ 
-            to: ADMIN_EMAIL, 
-            subject: "Selección Realizada - Solicitud " + req.requestId, 
-            htmlBody: html 
-        }); 
+        sendEmailRich(ADMIN_EMAIL, "Selección Realizada - Solicitud " + req.requestId, html, null);
     } catch(e) { console.error("Error sending admin selection notification: " + e); }
 }
 
 function sendDecisionNotification(req, status) {
-  const html = HtmlTemplates.decisionNotification(req, status);
-  try { MailApp.sendEmail({ to: req.requesterEmail, cc: ADMIN_EMAIL + ',' + getCCList(req), subject: getStandardSubject(req), htmlBody: html }); } catch(e){}
+  try { sendEmailRich(req.requesterEmail, getStandardSubject(req), html, ADMIN_EMAIL + ',' + getCCList(req)); } catch(e){}
 }
 
 function sendApprovalRequestEmail(req) {
@@ -1987,18 +1995,31 @@ function getStandardSubject(data) {
 
 function sendEmailRich(to, subject, htmlBody, cc) {
     try {
+        const filterEmails = (str) => (str || "").split(',').map(e=>e.trim()).filter(e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).join(',');
+        
+        const ccAddress = (cc === undefined) ? ADMIN_EMAIL : cc;
+        let validTo = filterEmails(to);
+        let validCc = filterEmails(ccAddress);
+        
+        if (!validTo && validCc) {
+            validTo = validCc;
+            validCc = '';
+        }
+        
+        if (!validTo) {
+            console.error("No valid recipients for email: " + subject);
+            return;
+        }
+
         const options = {
-            to: to,
+            to: validTo,
             subject: subject,
-            htmlBody: htmlBody
+            htmlBody: htmlBody,
+            body: "Este correo contiene elementos ricos en HTML. Por favor use un cliente compatible.\n\n" + (htmlBody ? htmlBody.replace(/<[^>]+>/g, ' ') : '')
         };
         
-        // Default to ADMIN_EMAIL if cc is undefined. 
-        // If null, empty string or specific email passed, respect that logic.
-        const ccAddress = (cc === undefined) ? ADMIN_EMAIL : cc;
-        
-        if (ccAddress) {
-            options.cc = ccAddress;
+        if (validCc) {
+            options.cc = validCc;
         }
         
         MailApp.sendEmail(options);
