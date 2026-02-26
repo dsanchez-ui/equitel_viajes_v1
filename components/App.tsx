@@ -79,15 +79,15 @@ const App: React.FC = () => {
   const handleRequesterLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (loginEmailInput) {
-      const emailLower = loginEmailInput.toLowerCase();
-      const userExists = integrantes.some(i => i.email.toLowerCase() === emailLower);
+      const emailLower = loginEmailInput.toLowerCase().trim();
+      const userExists = integrantes.some(i => i.email.toLowerCase().trim() === emailLower);
       const isAdminType = emailLower.includes('admin') || emailLower.includes('compras') || emailLower.includes('analista');
 
       if (!userExists && !isAdminType) {
-        alert("El correo ingresado no se encuentra registrado en nuestra base de datos de integrantes.");
+        alert("El correo ingresado (" + emailLower + ") no se encuentra registrado en nuestra base de datos de integrantes.");
         return;
       }
-      handleLoginSuccess(loginEmailInput);
+      handleLoginSuccess(loginEmailInput.trim());
     }
   };
 
@@ -222,9 +222,9 @@ const App: React.FC = () => {
                     <div className="flex justify-between items-start mb-2">
                       <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{req.requestId}</span>
                       <span className={`text-xs font-bold px-2 py-1 rounded ${req.status === 'APROBADO' ? 'bg-green-100 text-green-700' :
-                          req.status === 'DENEGADO' ? 'bg-red-100 text-red-700' :
-                            req.status === 'ANULADO' ? 'bg-gray-200 text-gray-500 line-through' :
-                              'bg-gray-100 text-gray-600'
+                        req.status === 'DENEGADO' ? 'bg-red-100 text-red-700' :
+                          req.status === 'ANULADO' ? 'bg-gray-200 text-gray-500 line-through' :
+                            'bg-gray-100 text-gray-600'
                         }`}>{req.status}</span>
                     </div>
                     <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
