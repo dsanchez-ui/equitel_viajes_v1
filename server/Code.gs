@@ -25,6 +25,7 @@ const SHEET_NAME_REQUESTS = 'Nueva Base Solicitudes';
 const SHEET_NAME_MASTERS = 'MAESTROS';
 const SHEET_NAME_RELATIONS = 'CDS vs UDEN';
 const SHEET_NAME_INTEGRANTES = 'INTEGRANTES';
+const SHEET_NAME_CITIES = 'CIUDADES DEL MUNDO';
 
 // DRIVE CONFIGURATION
 const ROOT_DRIVE_FOLDER_ID = '1uaett_yH1qZcS-rVr_sUh73mODvX02im';
@@ -198,6 +199,7 @@ function dispatch(action, payload) {
       case 'getCurrentUser': result = currentUserEmail; break;
       case 'getCostCenterData': result = getCostCenterData(); break;
       case 'getIntegrantesData': result = getIntegrantesData(); break;
+      case 'getCitiesList': result = getCitiesList(); break;
       case 'getMyRequests': result = getRequestsByEmail(currentUserEmail); break;
       case 'getAllRequests': 
         if(!isUserAnalyst(currentUserEmail)) {
@@ -1227,6 +1229,21 @@ function getAllRequests() {
   });
   
   return Array.from(uniqueRequests.values()).map(mapRowToRequest).reverse();
+}
+
+function getCitiesList() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_CITIES);
+  if (!sheet) return [];
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+  
+  // Column A: COUNTRY, Column B: CITY
+  const data = sheet.getRange(2, 1, lastRow - 1, 2).getValues();
+  return data.map(row => ({ 
+    country: String(row[0]).trim().toUpperCase(), 
+    city: String(row[1]).trim().toUpperCase() 
+  })).filter(i => i.city);
 }
 
 function getCostCenterData() {

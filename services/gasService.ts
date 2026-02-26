@@ -1,9 +1,9 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster } from '../types';
 import { API_BASE_URL } from '../constants';
 
 class GasService {
-  
+
   /**
    * Universal Bridge using HTTP FETCH.
    */
@@ -16,10 +16,10 @@ class GasService {
     try {
       const response = await fetch(API_BASE_URL, {
         method: 'POST',
-        mode: 'cors', 
+        mode: 'cors',
         redirect: 'follow',
         headers: {
-          'Content-Type': 'text/plain;charset=utf-8', 
+          'Content-Type': 'text/plain;charset=utf-8',
         },
         body: JSON.stringify({
           action,
@@ -32,20 +32,20 @@ class GasService {
       }
 
       const textResult = await response.text();
-      
+
       if (!textResult) {
-          return { success: true, data: null };
+        return { success: true, data: null };
       }
 
       let result;
       try {
-          result = JSON.parse(textResult);
+        result = JSON.parse(textResult);
       } catch (e) {
-          if (textResult.trim().startsWith('<')) {
-              throw new Error("El servidor devolvió HTML en lugar de JSON (Posible error de script o acceso).");
-          }
-          console.error("Invalid JSON response:", textResult);
-          throw new Error("El servidor devolvió una respuesta inválida.");
+        if (textResult.trim().startsWith('<')) {
+          throw new Error("El servidor devolvió HTML en lugar de JSON (Posible error de script o acceso).");
+        }
+        console.error("Invalid JSON response:", textResult);
+        throw new Error("El servidor devolvió una respuesta inválida.");
       }
 
       return result;
@@ -55,13 +55,13 @@ class GasService {
       const isNetworkError = msg.includes('Failed to fetch') || msg.includes('NetworkError');
 
       if ((action === 'getCurrentUser' || action === 'getIntegrantesData') && isNetworkError) {
-          console.warn(`[API Info] Connection check failed for ${action}: Server unreachable or offline.`);
+        console.warn(`[API Info] Connection check failed for ${action}: Server unreachable or offline.`);
       } else {
-          console.error(`[API Error] ${action}:`, error);
+        console.error(`[API Error] ${action}:`, error);
       }
-      
+
       if (isNetworkError) {
-          msg = 'No se pudo conectar con el servidor. Verifique su conexión o la URL del script.';
+        msg = 'No se pudo conectar con el servidor. Verifique su conexión o la URL del script.';
       }
       return { success: false, error: msg };
     }
@@ -92,7 +92,7 @@ class GasService {
     const response = await this.runGas('updateRequest', { id, status, payload });
     if (!response.success) throw new Error(response.error);
   }
-  
+
   async getCostCenterData(): Promise<CostCenterMaster[]> {
     const response = await this.runGas('getCostCenterData');
     return response.data || [];
@@ -100,6 +100,11 @@ class GasService {
 
   async getIntegrantesData(): Promise<Integrant[]> {
     const response = await this.runGas('getIntegrantesData');
+    return response.data || [];
+  }
+
+  async getCitiesList(): Promise<CityMaster[]> {
+    const response = await this.runGas('getCitiesList');
     return response.data || [];
   }
 
@@ -136,22 +141,22 @@ class GasService {
   }
 
   async requestModification(requestId: string, modifiedRequest: Partial<TravelRequest>, changeReason: string, emailHtml?: string): Promise<void> {
-     const response = await this.runGas('requestModification', { requestId, modifiedRequest, changeReason, emailHtml });
-     if (!response.success) throw new Error(response.error);
+    const response = await this.runGas('requestModification', { requestId, modifiedRequest, changeReason, emailHtml });
+    if (!response.success) throw new Error(response.error);
   }
 
   // --- ADMIN SECURITY ---
-  
+
   async verifyAdminPin(pin: string): Promise<boolean> {
-     const response = await this.runGas('verifyAdminPin', { pin });
-     if (!response.success) throw new Error(response.error);
-     return response.data === true;
+    const response = await this.runGas('verifyAdminPin', { pin });
+    if (!response.success) throw new Error(response.error);
+    return response.data === true;
   }
 
   async updateAdminPin(newPin: string): Promise<boolean> {
-     const response = await this.runGas('updateAdminPin', { newPin });
-     if (!response.success) throw new Error(response.error);
-     return response.data === true;
+    const response = await this.runGas('updateAdminPin', { newPin });
+    if (!response.success) throw new Error(response.error);
+    return response.data === true;
   }
 }
 

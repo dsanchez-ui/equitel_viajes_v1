@@ -2,14 +2,14 @@
 export enum UserRole {
   REQUESTER = 'REQUESTER',
   ANALYST = 'ANALYST',
-  APPROVER = 'APPROVER' 
+  APPROVER = 'APPROVER'
 }
 
 export enum RequestStatus {
-  PENDING_OPTIONS = 'PENDIENTE_OPCIONES', 
-  PENDING_SELECTION = 'PENDIENTE_SELECCION', 
-  PENDING_CONFIRMACION_COSTO = 'PENDIENTE_CONFIRMACION_COSTO', 
-  PENDING_APPROVAL = 'PENDIENTE_APROBACION', 
+  PENDING_OPTIONS = 'PENDIENTE_OPCIONES',
+  PENDING_SELECTION = 'PENDIENTE_SELECCION',
+  PENDING_CONFIRMACION_COSTO = 'PENDIENTE_CONFIRMACION_COSTO',
+  PENDING_APPROVAL = 'PENDIENTE_APROBACION',
   PENDING_CHANGE_APPROVAL = 'PENDIENTE_ANALISIS_CAMBIO',
   APPROVED = 'APROBADO',
   RESERVED = 'RESERVADO', // New Status: Tiquetes Comprados (Internal)
@@ -21,7 +21,7 @@ export enum RequestStatus {
 export interface Passenger {
   name: string;
   idNumber: string;
-  email?: string; 
+  email?: string;
 }
 
 export interface Integrant {
@@ -41,7 +41,7 @@ export interface FlightDetails {
 
 // Updated Option interface for Image-based workflow
 export interface Option {
-  id: string; 
+  id: string;
   type: 'FLIGHT' | 'HOTEL';
   url: string;
   driveId: string;
@@ -63,10 +63,10 @@ export interface SupportData {
 }
 
 export interface TravelRequest {
-  requestId: string; 
+  requestId: string;
   timestamp: string;
   requesterEmail: string;
-  
+
   // Linked Request Fields
   relatedRequestId?: string;
   requestType?: 'ORIGINAL' | 'MODIFICACION';
@@ -75,59 +75,59 @@ export interface TravelRequest {
   company: string;
   businessUnit: string;
   site: string;
-  costCenter: string; 
-  costCenterName?: string; 
-  variousCostCenters?: string; 
+  costCenter: string;
+  costCenterName?: string;
+  variousCostCenters?: string;
   workOrder?: string;
-  
+
   // Trip Info
   isInternational: boolean;
   origin: string;
   destination: string;
   departureDate: string;
-  returnDate?: string; 
+  returnDate?: string;
   departureTimePreference: string;
-  returnTimePreference?: string; 
-  
+  returnTimePreference?: string;
+
   // Passengers
   passengers: Passenger[];
-  
+
   // Hotel
   requiresHotel: boolean;
   hotelName?: string;
   nights?: number;
-  
+
   // System/Process Fields
-  status: RequestStatus; 
+  status: RequestStatus;
   policyViolation: boolean;
   approverName?: string;
-  approverEmail?: string; 
-  
+  approverEmail?: string;
+
   // New workflow fields
-  analystOptions?: Option[]; 
+  analystOptions?: Option[];
   selectionDetails?: string; // User written selection
   finalCostTickets?: number; // Entered by Admin
   finalCostHotel?: number; // Entered by Admin
   totalCost?: number; // Sum
-  
+
   // Reservation Info (New)
   reservationNumber?: string;
   reservationUrl?: string;
 
-  comments?: string; 
-  
+  comments?: string;
+
   // International Workflow Specifics
-  approvalStatusCDS?: string; 
-  approvalStatusCEO?: string; 
+  approvalStatusCDS?: string;
+  approvalStatusCEO?: string;
   approvalStatusArea?: string; // New field for traceability
-  
+
   // Supports (Post-Approval)
   supportData?: SupportData;
 
   // Modification Workflow
-  changeReason?: string;      
+  changeReason?: string;
   hasChangeFlag?: boolean;
-  
+
   // Metadata for email banners
   parentWasReserved?: boolean;
   parentTimestamp?: string;
@@ -138,6 +138,11 @@ export interface CostCenterMaster {
   code: string;
   name: string;
   businessUnit: string;
+}
+
+export interface CityMaster {
+  city: string;
+  country: string;
 }
 
 export interface ApiResponse<T> {

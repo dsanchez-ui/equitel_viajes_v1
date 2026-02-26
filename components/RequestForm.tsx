@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant } from '../types';
+import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster } from '../types';
 import { COMPANIES, SITES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 import { generateTravelRequestEmail } from '../utils/EmailGenerator';
@@ -51,6 +51,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const [availableBusinessUnits, setAvailableBusinessUnits] = useState<string[]>([]);
   const [filteredCostCenters, setFilteredCostCenters] = useState<CostCenterMaster[]>([]);
 
+  // Cities Data
+  const [cities, setCities] = useState<CityMaster[]>([]);
+  const [isCitiesLoading, setIsCitiesLoading] = useState(false);
+
   const [variousCCList, setVariousCCList] = useState<string[]>(
     initialData?.variousCostCenters ? initialData.variousCostCenters.split(',').map(s => s.split(' - ')[0].trim()) : []
   );
@@ -79,22 +83,30 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   useEffect(() => {
     const fetchMasters = async () => {
       try {
-        const data = await gasService.getCostCenterData();
-        setMasterData(data);
+        setIsCitiesLoading(true);
+        const [ccData, cityData] = await Promise.all([
+          gasService.getCostCenterData(),
+          gasService.getCitiesList()
+        ]);
 
-        const uniqueUnits = Array.from(new Set(data.map(item => item.businessUnit)))
+        setMasterData(ccData);
+        setCities(cityData);
+
+        const uniqueUnits = Array.from(new Set(ccData.map(item => item.businessUnit)))
           .filter(u => u && u !== 'NA')
           .sort();
         setAvailableBusinessUnits(uniqueUnits);
 
         // Pre-filter if modification
         if (initialData?.businessUnit) {
-          const filtered = data.filter(item => item.businessUnit === initialData.businessUnit);
+          const filtered = ccData.filter(item => item.businessUnit === initialData.businessUnit);
           const variosOption = { code: 'VARIOS', name: 'Múltiples Centros de Costo', businessUnit: initialData.businessUnit };
           setFilteredCostCenters([...filtered, variosOption]);
         }
       } catch (err) {
         console.error("Error loading masters:", err);
+      } finally {
+        setIsCitiesLoading(false);
       }
     };
     fetchMasters();
@@ -120,6 +132,18 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       setManualNights(false);
     }
   }, [tripType]);
+
+  // AUTO-INTERNATIONAL LOGIC
+  useEffect(() => {
+    const originCity = cities.find(c => `${c.city} (${c.country})` === formData.origin);
+    const destCity = cities.find(c => `${c.city} (${c.country})` === formData.destination);
+
+    if (originCity && destCity) {
+      // It's international if ANY of the cities is NOT in COLOMBIA
+      const autoIsInternational = originCity.country !== 'COLOMBIA' || destCity.country !== 'COLOMBIA';
+      setIsInternational(autoIsInternational);
+    }
+  }, [formData.origin, formData.destination, cities]);
 
   // POLICY VALIDATION LOGIC
   useEffect(() => {
@@ -526,10 +550,11 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                   type="checkbox"
                   id="isInternational"
                   checked={isInternational}
-                  onChange={(e) => setIsInternational(e.target.checked)}
-                  className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded"
+                  readOnly
+                  disabled
+                  className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded bg-gray-100 cursor-not-allowed"
                 />
-                <label htmlFor="isInternational" className="text-sm font-bold text-blue-900">¿Es viaje internacional?</label>
+                <label htmlFor="isInternational" className="text-sm font-bold text-blue-900">¿Es viaje internacional? (Auto)</label>
               </div>
               <div className="h-6 w-px bg-gray-300 mx-2"></div>
               <div className="flex bg-gray-200 p-1 rounded-lg">
@@ -542,12 +567,34 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700">Ciudad Origen *</label>
-              <input type="text" name="origin" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 uppercase text-gray-900" value={formData.origin} onChange={handleInputChange} />
+              <input
+                list="cities-list"
+                name="origin"
+                required
+                placeholder={isCitiesLoading ? "Cargando ciudades..." : "Escriba y seleccione ciudad..."}
+                className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 uppercase text-gray-900"
+                value={formData.origin}
+                onChange={handleInputChange}
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Ciudad Destino *</label>
-              <input type="text" name="destination" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 uppercase text-gray-900" value={formData.destination} onChange={handleInputChange} />
+              <input
+                list="cities-list"
+                name="destination"
+                required
+                placeholder={isCitiesLoading ? "Cargando ciudades..." : "Escriba y seleccione ciudad..."}
+                className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 uppercase text-gray-900"
+                value={formData.destination}
+                onChange={handleInputChange}
+              />
             </div>
+
+            <datalist id="cities-list">
+              {cities.map((c, i) => (
+                <option key={i} value={`${c.city} (${c.country})`} />
+              ))}
+            </datalist>
             <div>
               <label className="block text-sm font-medium text-gray-700">Fecha Ida *</label>
               <input type="date" name="departureDate" required min={new Date().toISOString().split('T')[0]} style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureDate} onChange={handleInputChange} onClick={handleOpenPicker} />
