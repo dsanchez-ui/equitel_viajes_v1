@@ -279,13 +279,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
                                   VER
                                 </button>
 
-                                {/* OPTION UPLOAD */}
-                                {req.status === RequestStatus.PENDING_OPTIONS && (
+                                {/* OPTION UPLOAD & CORRECTION */}
+                                {(req.status === RequestStatus.PENDING_OPTIONS || req.status === RequestStatus.PENDING_SELECTION) && (
                                   <button
                                     onClick={() => setSelectedRequestForOptions(req)}
-                                    className="text-brand-red hover:text-red-900 bg-red-50 px-3 py-1 rounded border border-red-100 text-xs"
+                                    className="text-brand-red hover:text-red-900 bg-red-50 px-3 py-1 rounded border border-red-100 text-xs font-medium"
                                   >
-                                    Cargar Opciones
+                                    {req.status === RequestStatus.PENDING_SELECTION ? 'Editar Opciones' : 'Cargar Opciones'}
                                   </button>
                                 )}
 

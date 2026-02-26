@@ -135,8 +135,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   // AUTO-INTERNATIONAL LOGIC
   useEffect(() => {
-    const originCity = cities.find(c => `${c.city} (${c.country})` === formData.origin);
-    const destCity = cities.find(c => `${c.city} (${c.country})` === formData.destination);
+    const originCity = cities.find(c => `${c.city}, ${c.country}` === formData.origin);
+    const destCity = cities.find(c => `${c.city}, ${c.country}` === formData.destination);
 
     if (originCity && destCity) {
       // It's international if ANY of the cities is NOT in COLOMBIA
@@ -171,7 +171,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
     // Force Uppercase for Origin, Destination AND Hotel Name
     if (name === 'origin' || name === 'destination' || name === 'hotelName') {
-      finalValue = value.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9\s]/g, "");
+      // Allow letters, numbers, spaces, and commas for city/country
+      finalValue = value.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Z0-9\s,]/g, "");
     }
 
     if (name === 'businessUnit') {
@@ -290,6 +291,20 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // STRICT CITY VALIDATION
+    const validCityOptions = cities.map(c => `${c.city}, ${c.country}`);
+    const isOriginValid = validCityOptions.includes(formData.origin || '');
+    const isDestValid = validCityOptions.includes(formData.destination || '');
+
+    if (!isOriginValid) {
+      alert(`La ciudad de origen "${formData.origin}" no es válida. Debe seleccionarla de la lista.`);
+      return;
+    }
+    if (!isDestValid) {
+      alert(`La ciudad de destino "${formData.destination}" no es válida. Debe seleccionarla de la lista.`);
+      return;
+    }
 
     if (formData.costCenter === 'VARIOS' && variousCCList.length === 0) {
       alert('Debe agregar al menos un centro de costos en la lista de VARIOS.');
@@ -592,7 +607,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
             <datalist id="cities-list">
               {cities.map((c, i) => (
-                <option key={i} value={`${c.city} (${c.country})`} />
+                <option key={i} value={`${c.city}, ${c.country}`} />
               ))}
             </datalist>
             <div>
