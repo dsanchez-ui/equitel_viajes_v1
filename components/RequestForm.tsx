@@ -443,11 +443,15 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                       <button type="button" onClick={handleAddVariousCC} className="bg-brand-red text-white text-xs px-3 py-1 rounded font-bold">Agregar</button>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {variousCCList.map((cc, idx) => (
-                        <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-300">
-                          {cc} <button type="button" onClick={() => handleRemoveVariousCC(cc)} className="ml-1 text-gray-500 hover:text-red-500">x</button>
-                        </span>
-                      ))}
+                      {variousCCList.map((cc, idx) => {
+                        const ccObj = filteredCostCenters.find(c => c.code === cc);
+                        return (
+                          <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-300">
+                            {cc}{ccObj ? ` - ${ccObj.name}` : ''}
+                            <button type="button" onClick={() => handleRemoveVariousCC(cc)} className="ml-1 text-gray-500 hover:text-red-500 font-bold">✕</button>
+                          </span>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

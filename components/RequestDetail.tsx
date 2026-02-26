@@ -261,9 +261,15 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                             </div>
                                             <div className="flex justify-between border-b border-gray-50 pb-1">
                                                 <span className="text-gray-500 text-xs">Centro de Costos</span>
-                                                <div className="text-right">
-                                                    <span className="font-medium block">{request.costCenter}</span>
-                                                    {request.costCenterName && <span className="text-[10px] text-gray-400 block max-w-[150px] ml-auto">{request.costCenterName}</span>}
+                                                <div className="text-right max-w-[70%]">
+                                                    {request.costCenter === 'VARIOS' ? (
+                                                        <span className="font-medium text-xs block">{request.costCenterName || request.variousCostCenters}</span>
+                                                    ) : (
+                                                        <>
+                                                            <span className="font-medium block">{request.costCenter}</span>
+                                                            {request.costCenterName && <span className="text-[10px] text-gray-400 block ml-auto">{request.costCenterName}</span>}
+                                                        </>
+                                                    )}
                                                 </div>
                                             </div>
                                             {request.workOrder && (

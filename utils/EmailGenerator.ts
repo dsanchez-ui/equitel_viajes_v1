@@ -21,7 +21,7 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
 
   // Cost Center Display
   const ccDisplay = data.costCenter === 'VARIOS'
-    ? `VARIOS (${data.variousCostCenters})`
+    ? `VARIOS (${data.costCenterName || data.variousCostCenters})`
     : `${data.costCenter} - ${data.costCenterName || ''}`;
 
   // Approver Display

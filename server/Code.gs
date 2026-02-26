@@ -785,8 +785,8 @@ const HtmlTemplates = {
     _getFullSummary: function(data) {
         let ccDisplay = '';
         if (data.costCenter === 'VARIOS' && data.variousCostCenters) {
-            const ccList = data.variousCostCenters.split(',').map(cc => `<li style="margin-bottom: 2px;">${cc.trim()}</li>`).join('');
-            ccDisplay = `VARIOS<ul style="margin: 4px 0 0; padding-left: 16px; font-size: 12px; color: #4b5563;">${ccList}</ul>`;
+            // Priority to variousCostCenters string which now contains names from createNewRequest/frontend
+            ccDisplay = `VARIOS (${data.variousCostCenters})`;
         } else {
             ccDisplay = `${data.costCenter}${data.costCenterName ? ' - ' + data.costCenterName : ''}`;
         }
@@ -1337,9 +1337,14 @@ function createNewRequest(data, emailHtml) {
   const id = `SOL-${nextIdNum.toString().padStart(6, '0')}`; 
 
   // --- RESOLVE COST CENTER NAME ---
-  const costCenters = getCostCenterData();
-  const ccObj = costCenters.find(c => c.code === data.costCenter);
-  const costCenterName = ccObj ? ccObj.name : '';
+  let costCenterName = '';
+  if (data.costCenter === 'VARIOS' && data.variousCostCenters) {
+      costCenterName = data.variousCostCenters;
+  } else {
+      const costCenters = getCostCenterData();
+      const ccObj = costCenters.find(c => c.code === data.costCenter);
+      costCenterName = ccObj ? ccObj.name : '';
+  }
 
   // --- RESOLVE APPROVER ---
   let approverEmail = ADMIN_EMAIL; 
