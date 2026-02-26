@@ -14,7 +14,7 @@ export const SHEET_NAMES = {
   MASTERS: 'MAESTROS'
 };
 
-export const APP_VERSION = '1.2';
+export const APP_VERSION = '1.3';
 
 // Application Colors
 export const COLORS = {

@@ -210,9 +210,28 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   const handleAddVariousCC = () => {
     if (!variousCCInput.trim()) return;
-    let code = variousCCInput.trim();
-    if (/^\d+$/.test(code)) code = code.padStart(4, '0');
-    if (!variousCCList.includes(code)) setVariousCCList([...variousCCList, code]);
+    const input = variousCCInput.trim();
+
+    // Attempt to find a match in the allowed cost centers for the business unit
+    // We try original input and unpadded version if input starts with '0'
+    let match = filteredCostCenters.find(c => c.code === input);
+
+    if (!match && input.startsWith('0')) {
+      const unpadded = input.replace(/^0+/, '');
+      match = filteredCostCenters.find(c => c.code === unpadded);
+    }
+
+    if (!match) {
+      alert(`El centro de costos '${input}' no es válido para la unidad de negocio '${formData.businessUnit}'`);
+      return;
+    }
+
+    // Always store the code as it exists in the database
+    const codeToStore = match.code;
+
+    if (!variousCCList.includes(codeToStore)) {
+      setVariousCCList([...variousCCList, codeToStore]);
+    }
     setVariousCCInput('');
   };
 
