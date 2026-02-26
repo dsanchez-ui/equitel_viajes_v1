@@ -1728,7 +1728,11 @@ function sendNewRequestNotification(data, requestId) {
 }
 
 function sendOptionsToRequester(to, req, opts) {
-   try { sendEmailRich(to, getStandardSubject(req), html, getCCList(req)); } catch(e) {}
+   const link = PLATFORM_URL;
+   const html = HtmlTemplates.optionsAvailable(req, opts, link);
+   try { sendEmailRich(to, getStandardSubject(req), html, getCCList(req)); } catch(e) {
+       console.error("Error sending options to requester: " + e);
+   }
 }
 
 // NEW FUNCTION
@@ -1740,7 +1744,10 @@ function sendSelectionNotificationToAdmin(req) {
 }
 
 function sendDecisionNotification(req, status) {
-  try { sendEmailRich(req.requesterEmail, getStandardSubject(req), html, ADMIN_EMAIL + ',' + getCCList(req)); } catch(e){}
+  const html = HtmlTemplates.decisionNotification(req, status);
+  try { sendEmailRich(req.requesterEmail, getStandardSubject(req), html, ADMIN_EMAIL + ',' + getCCList(req)); } catch(e){
+      console.error("Error sending decision notification: " + e);
+  }
 }
 
 function sendApprovalRequestEmail(req) {
