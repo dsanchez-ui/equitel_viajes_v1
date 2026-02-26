@@ -14,6 +14,8 @@ export const SHEET_NAMES = {
   MASTERS: 'MAESTROS'
 };
 
+export const APP_VERSION = '1.0';
+
 // Application Colors
 export const COLORS = {
   primary: '#D71920', // Equitel Red

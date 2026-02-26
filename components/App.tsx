@@ -7,7 +7,7 @@ import { RequestDetail } from './components/RequestDetail';
 import { PinEntryModal } from './components/PinEntryModal';
 import { gasService } from './services/gasService';
 import { TravelRequest, UserRole, Integrant } from './types';
-import { LOGO_URL } from './constants';
+import { LOGO_URL, APP_VERSION } from './constants';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -281,6 +281,9 @@ const App: React.FC = () => {
           isAdmin={role === UserRole.ANALYST}
         />
       )}
+      <div className="fixed bottom-2 left-4 text-xs text-gray-400 font-mono font-bold z-[9999] pointer-events-none drop-shadow-sm">
+        v{APP_VERSION}
+      </div>
     </Layout>
   );
 };
