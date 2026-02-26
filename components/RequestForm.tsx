@@ -535,7 +535,18 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               <>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Fecha Vuelta *</label>
-                  <input type="date" name="returnDate" required min={new Date().toISOString().split('T')[0]} style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.returnDate} onChange={handleInputChange} onClick={handleOpenPicker} />
+                  <input
+                    type="date"
+                    name="returnDate"
+                    required
+                    disabled={!formData.departureDate}
+                    min={formData.departureDate || new Date().toISOString().split('T')[0]}
+                    style={{ colorScheme: 'light' }}
+                    className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 ${!formData.departureDate ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer animate-pulse-subtle'}`}
+                    value={formData.returnDate}
+                    onChange={handleInputChange}
+                    onClick={handleOpenPicker}
+                  />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Hora Llegada Vuelo Vuelta (Pref.)</label>
