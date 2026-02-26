@@ -121,6 +121,12 @@ class GasService {
     return response.data; // Returns Option object with URL
   }
 
+  async deleteOptionFile(fileId: string): Promise<boolean> {
+    const response = await this.runGas('deleteDriveFile', { fileId });
+    if (!response.success) throw new Error(response.error);
+    return response.data === true;
+  }
+
   async closeRequest(requestId: string): Promise<void> {
     const response = await this.runGas('closeRequest', { requestId });
     if (!response.success) throw new Error(response.error);

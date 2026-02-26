@@ -172,7 +172,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'deleteDriveFile'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -227,6 +227,9 @@ function dispatch(action, payload) {
 
       // NEW: RESERVATION LOGIC
       case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.fileData, payload.fileName); break;
+
+      // NEW: DRIVE DELETION
+      case 'deleteDriveFile': result = deleteDriveFile(payload.fileId); break;
 
       default: return { success: false, error: 'Acción desconocida: ' + action };
     }
@@ -1535,6 +1538,18 @@ function uploadOptionImage(requestId, fileData, fileName, type, optionLetter) {
         driveId: file.getId(),
         name: newName
     };
+}
+
+function deleteDriveFile(fileId) {
+  if (!fileId) return false;
+  try {
+    const file = DriveApp.getFileById(fileId);
+    file.setTrashed(true); // Safer than permanent delete for corporate environments
+    return true;
+  } catch (e) {
+    console.error("Error deleting file: " + e.toString());
+    return false;
+  }
 }
 
 function updateRequestStatus(id, status, payload) {
