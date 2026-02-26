@@ -30,7 +30,7 @@ const SHEET_NAME_INTEGRANTES = 'INTEGRANTES';
 const ROOT_DRIVE_FOLDER_ID = '1uaett_yH1qZcS-rVr_sUh73mODvX02im';
 
 // ADMIN EMAIL CONFIGURATION
-const ADMIN_EMAIL = 'dsanchez@equitel.com.co';
+const ADMIN_EMAIL = 'apcompras@equitel.com.co';
 
 // EXTRA APPROVERS FOR INTERNATIONAL TRIPS
 const CEO_EMAIL = 'misaza@equitel.com.co';

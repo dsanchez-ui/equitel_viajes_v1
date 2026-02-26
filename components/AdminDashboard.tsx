@@ -14,7 +14,7 @@ interface AdminDashboardProps {
   requests: TravelRequest[];
   onRefresh: () => void;
   isLoading: boolean;
-  onViewRequest: (req: TravelRequest) => void; 
+  onViewRequest: (req: TravelRequest) => void;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefresh, isLoading, onViewRequest }) => {
@@ -39,7 +39,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
     title: '',
     message: '',
     type: 'ALERT',
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   const closeDialog = () => setDialog({ ...dialog, isOpen: false });
@@ -65,12 +65,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
 
   const confirmFinalize = (req: TravelRequest) => {
     setDialog({
-        isOpen: true,
-        title: 'Finalizar Solicitud',
-        message: `¿Está seguro de cerrar la solicitud ${req.requestId}?\n\nEsto indicará que el proceso ha concluido (facturas cargadas).`,
-        type: 'CONFIRM',
-        onConfirm: () => executeFinalize(req),
-        onCancel: closeDialog
+      isOpen: true,
+      title: 'Finalizar Solicitud',
+      message: `¿Está seguro de cerrar la solicitud ${req.requestId}?\n\nEsto indicará que el proceso ha concluido (facturas cargadas).`,
+      type: 'CONFIRM',
+      onConfirm: () => executeFinalize(req),
+      onCancel: closeDialog
     });
   };
 
@@ -78,52 +78,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
     closeDialog();
     setProcessingId(req.requestId);
     try {
-        await gasService.closeRequest(req.requestId);
-        
-        setDialog({
-            isOpen: true,
-            title: 'Proceso Completado',
-            message: `La solicitud ${req.requestId} ha sido finalizada correctamente.`,
-            type: 'SUCCESS',
-            onConfirm: () => {
-                closeDialog();
-                onRefresh();
-            }
-        });
+      await gasService.closeRequest(req.requestId);
+
+      setDialog({
+        isOpen: true,
+        title: 'Proceso Completado',
+        message: `La solicitud ${req.requestId} ha sido finalizada correctamente.`,
+        type: 'SUCCESS',
+        onConfirm: () => {
+          closeDialog();
+          onRefresh();
+        }
+      });
     } catch (e) {
-        setDialog({
-            isOpen: true,
-            title: 'Error',
-            message: "Error finalizando solicitud: " + e,
-            type: 'ALERT',
-            onConfirm: closeDialog
-        });
+      setDialog({
+        isOpen: true,
+        title: 'Error',
+        message: "Error finalizando solicitud: " + e,
+        type: 'ALERT',
+        onConfirm: closeDialog
+      });
     } finally {
-        setProcessingId(null);
+      setProcessingId(null);
     }
   };
 
   const handlePinChangeSubmit = async (newPin: string) => {
     try {
-        await gasService.updateAdminPin(newPin);
-        setShowPinChangeModal(false);
-        setDialog({
-            isOpen: true,
-            title: 'Seguridad Actualizada',
-            message: 'El PIN de administrador ha sido actualizado correctamente.',
-            type: 'SUCCESS',
-            onConfirm: closeDialog
-        });
-        return true;
+      await gasService.updateAdminPin(newPin);
+      setShowPinChangeModal(false);
+      setDialog({
+        isOpen: true,
+        title: 'Seguridad Actualizada',
+        message: 'El PIN de administrador ha sido actualizado correctamente.',
+        type: 'SUCCESS',
+        onConfirm: closeDialog
+      });
+      return true;
     } catch (e) {
-        alert("Error actualizando PIN: " + e);
-        return false;
+      alert("Error actualizando PIN: " + e);
+      return false;
     }
   };
 
   return (
     <div className="space-y-6">
-      <ConfirmationDialog 
+      <ConfirmationDialog
         isOpen={dialog.isOpen}
         title={dialog.title}
         message={dialog.message}
@@ -131,15 +131,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
         onConfirm={dialog.onConfirm}
         onCancel={dialog.onCancel}
       />
-      
+
       {showPinChangeModal && (
-          <PinEntryModal 
-            isOpen={showPinChangeModal}
-            title="Cambiar PIN de Acceso"
-            onClose={() => setShowPinChangeModal(false)}
-            onSubmit={handlePinChangeSubmit}
-            onChangeMode={true}
-          />
+        <PinEntryModal
+          isOpen={showPinChangeModal}
+          title="Cambiar PIN de Acceso"
+          onClose={() => setShowPinChangeModal(false)}
+          onSubmit={handlePinChangeSubmit}
+          onChangeMode={true}
+        />
       )}
 
       <div className="sm:flex sm:items-center justify-between">
@@ -172,9 +172,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
           <button
             key={s}
             onClick={() => setFilter(s)}
-            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
-              filter === s ? 'bg-brand-red text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-            }`}
+            className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${filter === s ? 'bg-brand-red text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+              }`}
           >
             {s.replace(/_/g, ' ')}
           </button>
@@ -188,12 +187,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
               <table className="min-w-full divide-y divide-gray-300">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">ID</th>
-                    <th className="px-3 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Solicitante</th>
-                    <th className="px-3 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Ruta</th>
-                    <th className="px-3 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Fechas</th>
-                    <th className="px-3 py-3.5 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Estado</th>
-                    <th className="relative py-3.5 pl-3 pr-4 sm:pr-6">
+                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">ID</th>
+                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">Solicitante</th>
+                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">Ruta</th>
+                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">Fechas</th>
+                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">Estado</th>
+                    <th className="relative py-3 pl-2 pr-2">
                       <span className="sr-only">Acciones</span>
                     </th>
                   </tr>
@@ -203,8 +202,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
                     <tr>
                       <td colSpan={6} className="px-3 py-16 text-center">
                         <div className="flex flex-col items-center justify-center">
-                            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-red mx-auto mb-3"></div>
-                            <p className="text-gray-400 text-sm">Cargando solicitudes...</p>
+                          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-brand-red mx-auto mb-3"></div>
+                          <p className="text-gray-400 text-sm">Cargando solicitudes...</p>
                         </div>
                       </td>
                     </tr>
@@ -216,105 +215,106 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
                         const anticipationDays = getDaysDiff(req.timestamp, req.departureDate);
                         const remainingDays = getDaysDiff(new Date(), req.departureDate);
                         const isAbandoned = remainingDays < 0 && !['RESERVADO', 'PROCESADO', 'PENDIENTE_ANALISIS_CAMBIO'].includes(req.status);
-                        
+
                         return (
-                        <tr key={req.requestId} className={isAbandoned ? 'opacity-60 grayscale bg-gray-50' : ''}>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm font-bold text-gray-900">
-                            {req.requestId}
-                            {req.relatedRequestId && (
-                                <div className="text-xs font-normal text-blue-600 mt-1">
-                                    Vinculada a {req.relatedRequestId}
+                          <tr key={req.requestId} className={isAbandoned ? 'opacity-60 grayscale bg-gray-50' : ''}>
+                            <td className="whitespace-nowrap px-2 py-3 text-sm font-bold text-gray-900">
+                              {req.requestId}
+                              {req.relatedRequestId && (
+                                <div className="text-[10px] font-normal text-blue-600 mt-0.5">
+                                  Vinc. {req.relatedRequestId}
                                 </div>
-                            )}
-                            <div className="flex gap-1 mt-1">
+                              )}
+                              <div className="flex gap-1 mt-1">
                                 {isAbandoned && !['ANULADO', 'DENEGADO'].includes(req.status) && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-800" title="Fecha de vuelo pasada sin reserva">
-                                        ABANDONADA
-                                    </span>
+                                  <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-gray-200 text-gray-800" title="Fecha de vuelo pasada sin reserva">
+                                    ABAND.
+                                  </span>
                                 )}
                                 {req.isInternational && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800" title="Viaje Internacional">
-                                        INTL
-                                    </span>
+                                  <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-blue-100 text-blue-800" title="Viaje Internacional">
+                                    INTL
+                                  </span>
                                 )}
                                 {isHighCost && (
-                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800" title="Costo Excede Tope (> 1.2M)">
-                                        $$$
-                                    </span>
+                                  <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-red-100 text-red-800" title="Costo Excede Tope (> 1.2M)">
+                                    $$$
+                                  </span>
                                 )}
-                            </div>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            {req.requesterEmail}<br/>
-                            <span className="text-xs text-gray-400">{req.company} / {req.site} - {req.costCenter}</span>
-                            {req.workOrder && <div className="text-xs text-gray-500 mt-1">OT: {req.workOrder}</div>}
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-900">
-                            <div className="flex items-center gap-1 font-medium">
+                              </div>
+                            </td>
+                            <td className="px-2 py-3 text-xs text-gray-500">
+                              <div className="font-medium text-gray-700 truncate max-w-[120px]" title={req.requesterEmail}>{req.requesterEmail.split('@')[0]}</div>
+                              <div className="text-[10px] text-gray-400 leading-tight">{req.company} / {req.site}</div>
+                              <div className="text-[10px] text-gray-400">{req.costCenter}</div>
+                              {req.workOrder && <div className="text-[9px] text-gray-500 mt-0.5">OT: {req.workOrder}</div>}
+                            </td>
+                            <td className="px-2 py-3 text-xs text-gray-900">
+                              <div className="flex items-center gap-1 font-semibold">
                                 <span>{req.origin}</span>
-                                <span className="text-gray-400 text-lg mx-1">➝</span>
+                                <span className="text-gray-400 mx-0.5">➝</span>
                                 <span>{req.destination}</span>
-                            </div>
-                            <div className="text-xs text-gray-500">{req.passengers.length} Pasajero(s)</div>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                            {formatToDDMMYYYY(req.departureDate)}<br/>
-                            {req.returnDate ? formatToDDMMYYYY(req.returnDate) : <span className="text-xs italic text-gray-400">Solo Ida</span>}
-                            <div className="mt-1 text-[10px] text-gray-400">
-                                Antelación: {anticipationDays}d | {remainingDays < 0 ? <span className="italic">Sol. Antigua</span> : `Faltan: ${remainingDays}d`}
-                            </div>
-                          </td>
-                          <td className="whitespace-nowrap px-3 py-4 text-sm">
-                            <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${getStatusBadge(req.status)}`}>
-                              {req.status}
-                            </span>
-                          </td>
-                          <td className="relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-6">
-                            <div className="flex justify-end gap-2 items-center">
-                              {/* VIEW DETAIL BUTTON */}
-                              <button
-                                onClick={() => onViewRequest(req)}
-                                className="text-gray-500 hover:text-gray-700 text-xs font-bold border border-gray-300 rounded px-2 py-1 bg-gray-50 hover:bg-gray-100"
-                                title="Ver Detalle Completo"
-                              >
-                                VER
-                              </button>
-
-                              {/* OPTION UPLOAD */}
-                              {req.status === RequestStatus.PENDING_OPTIONS && (
-                                <button 
-                                  onClick={() => setSelectedRequestForOptions(req)}
-                                  className="text-brand-red hover:text-red-900 bg-red-50 px-3 py-1 rounded border border-red-100 text-xs"
+                              </div>
+                              <div className="text-[10px] text-gray-500">{req.passengers.length} Pasajero(s)</div>
+                            </td>
+                            <td className="px-2 py-3 text-[11px] text-gray-500">
+                              <strong>{formatToDDMMYYYY(req.departureDate)}</strong><br />
+                              {req.returnDate ? formatToDDMMYYYY(req.returnDate) : <span className="italic text-gray-400">Solo Ida</span>}
+                              <div className="mt-0.5 text-[9px] text-gray-400">
+                                {remainingDays < 0 ? <span className="italic">Antigua</span> : `Faltan: ${remainingDays}d`}
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap px-2 py-3 text-sm">
+                              <span className={`inline-flex rounded-full px-1.5 text-[10px] font-bold leading-4 ${getStatusBadge(req.status)}`}>
+                                {req.status.replace(/PENDIENTE_/g, 'P. ')}
+                              </span>
+                            </td>
+                            <td className="relative px-2 py-3 text-right text-sm font-medium">
+                              <div className="flex justify-end gap-1 items-center">
+                                {/* VIEW DETAIL BUTTON */}
+                                <button
+                                  onClick={() => onViewRequest(req)}
+                                  className="text-gray-500 hover:text-gray-700 text-xs font-bold border border-gray-300 rounded px-2 py-1 bg-gray-50 hover:bg-gray-100"
+                                  title="Ver Detalle Completo"
                                 >
-                                  Cargar Opciones
+                                  VER
                                 </button>
-                              )}
 
-                              {/* COST CONFIRMATION (New Step) */}
-                              {req.status === RequestStatus.PENDING_CONFIRMACION_COSTO && (
-                                <button 
-                                  onClick={() => setSelectedRequestForCosts(req)}
-                                  className="text-purple-700 hover:text-purple-900 bg-purple-50 px-3 py-1 rounded border border-purple-100 text-xs font-bold"
-                                >
-                                  Confirmar Costos
-                                </button>
-                              )}
-
-                              {/* REGISTER RESERVATION */}
-                              {req.status === RequestStatus.APPROVED && (
-                                  <button 
-                                      onClick={() => setSelectedRequestForReservation(req)}
-                                      className="text-yellow-700 hover:text-yellow-900 bg-yellow-50 px-3 py-1 rounded border border-yellow-200 text-xs font-bold"
+                                {/* OPTION UPLOAD */}
+                                {req.status === RequestStatus.PENDING_OPTIONS && (
+                                  <button
+                                    onClick={() => setSelectedRequestForOptions(req)}
+                                    className="text-brand-red hover:text-red-900 bg-red-50 px-3 py-1 rounded border border-red-100 text-xs"
                                   >
-                                      Registrar Reserva
+                                    Cargar Opciones
                                   </button>
-                              )}
-                              
-                              {/* SUPPORTS LOGIC (Now for RESERVED and PROCESSED) */}
-                              {(req.status === RequestStatus.RESERVED || req.status === RequestStatus.PROCESSED) && (
-                                <>
+                                )}
+
+                                {/* COST CONFIRMATION (New Step) */}
+                                {req.status === RequestStatus.PENDING_CONFIRMACION_COSTO && (
+                                  <button
+                                    onClick={() => setSelectedRequestForCosts(req)}
+                                    className="text-purple-700 hover:text-purple-900 bg-purple-50 px-3 py-1 rounded border border-purple-100 text-xs font-bold"
+                                  >
+                                    Confirmar Costos
+                                  </button>
+                                )}
+
+                                {/* REGISTER RESERVATION */}
+                                {req.status === RequestStatus.APPROVED && (
+                                  <button
+                                    onClick={() => setSelectedRequestForReservation(req)}
+                                    className="text-yellow-700 hover:text-yellow-900 bg-yellow-50 px-3 py-1 rounded border border-yellow-200 text-xs font-bold"
+                                  >
+                                    Registrar Reserva
+                                  </button>
+                                )}
+
+                                {/* SUPPORTS LOGIC (Now for RESERVED and PROCESSED) */}
+                                {(req.status === RequestStatus.RESERVED || req.status === RequestStatus.PROCESSED) && (
+                                  <>
                                     {/* Upload/View Button */}
-                                    <button 
+                                    <button
                                       onClick={() => setSelectedRequestForSupports(req)}
                                       className={`text-xs font-bold px-2 py-1 rounded border ${req.status === RequestStatus.RESERVED ? 'text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100' : 'text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                                     >
@@ -323,19 +323,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
 
                                     {/* Finalize Button (Only if Reserved and has at least one file) */}
                                     {req.status === RequestStatus.RESERVED && req.supportData && req.supportData.files.length > 0 && (
-                                        <button 
-                                            onClick={() => confirmFinalize(req)}
-                                            disabled={processingId === req.requestId}
-                                            className="text-xs font-bold px-2 py-1 rounded border text-green-700 border-green-200 bg-green-50 hover:bg-green-100 disabled:opacity-50"
-                                        >
-                                            {processingId === req.requestId ? '...' : 'Finalizar'}
-                                        </button>
+                                      <button
+                                        onClick={() => confirmFinalize(req)}
+                                        disabled={processingId === req.requestId}
+                                        className="text-xs font-bold px-2 py-1 rounded border text-green-700 border-green-200 bg-green-50 hover:bg-green-100 disabled:opacity-50"
+                                      >
+                                        {processingId === req.requestId ? '...' : 'Finalizar'}
+                                      </button>
                                     )}
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         );
                       })}
                       {filteredRequests.length === 0 && (
@@ -366,25 +366,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
       )}
 
       {selectedRequestForReservation && (
-          <ReservationModal 
-              request={selectedRequestForReservation}
-              onClose={() => setSelectedRequestForReservation(null)}
-              onSuccess={() => {
-                  setSelectedRequestForReservation(null);
-                  onRefresh();
-              }}
-          />
+        <ReservationModal
+          request={selectedRequestForReservation}
+          onClose={() => setSelectedRequestForReservation(null)}
+          onSuccess={() => {
+            setSelectedRequestForReservation(null);
+            onRefresh();
+          }}
+        />
       )}
 
       {selectedRequestForCosts && (
-          <CostConfirmationModal 
-              request={selectedRequestForCosts}
-              onClose={() => setSelectedRequestForCosts(null)}
-              onSuccess={() => {
-                  setSelectedRequestForCosts(null);
-                  onRefresh();
-              }}
-          />
+        <CostConfirmationModal
+          request={selectedRequestForCosts}
+          onClose={() => setSelectedRequestForCosts(null)}
+          onSuccess={() => {
+            setSelectedRequestForCosts(null);
+            onRefresh();
+          }}
+        />
       )}
 
       {selectedRequestForSupports && (
