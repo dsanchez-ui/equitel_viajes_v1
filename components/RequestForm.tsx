@@ -256,9 +256,26 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       alert('Para vuelos de ida y regreso, la fecha de retorno es obligatoria.');
       return;
     }
-    if (requiresHotel && numberOfNights <= 0) {
-      alert('El número de noches de hospedaje debe ser mayor a 0.');
-      return;
+    if (requiresHotel) {
+      if (numberOfNights <= 0) {
+        alert('El número de noches de hospedaje debe ser mayor a 0.');
+        return;
+      }
+
+      if (tripType === 'ROUND_TRIP' && formData.departureDate && formData.returnDate) {
+        const d1 = new Date(formData.departureDate); d1.setHours(0, 0, 0, 0);
+        const d2 = new Date(formData.returnDate); d2.setHours(0, 0, 0, 0);
+        const tripDays = Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        if (numberOfNights > tripDays) {
+          alert(`El número de noches (${numberOfNights}) no puede ser mayor a los días del viaje (${tripDays} días).`);
+          return;
+        }
+      } else if (tripType === 'ONE_WAY') {
+        if (numberOfNights > 100) {
+          alert('Para viajes de solo ida, el máximo permitido de hospedaje es 100 noches.');
+          return;
+        }
+      }
     }
     if (isModification && !changeReason.trim()) {
       alert('Por favor describa el motivo del cambio en la sección final.');
