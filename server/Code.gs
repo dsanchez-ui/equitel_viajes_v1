@@ -785,8 +785,8 @@ const HtmlTemplates = {
     _getFullSummary: function(data) {
         let ccDisplay = '';
         if (data.costCenter === 'VARIOS' && data.variousCostCenters) {
-            // Priority to variousCostCenters string which now contains names from createNewRequest/frontend
-            ccDisplay = `VARIOS (${data.variousCostCenters})`;
+            const listItems = data.variousCostCenters.split(',').map(cc => `<li style="margin-bottom: 3px;">${cc.trim()}</li>`).join('');
+            ccDisplay = `VARIOS:<ul style="margin: 5px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.4; color: #374151;">${listItems}</ul>`;
         } else {
             ccDisplay = `${data.costCenter}${data.costCenterName ? ' - ' + data.costCenterName : ''}`;
         }
