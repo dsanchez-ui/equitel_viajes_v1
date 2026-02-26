@@ -187,12 +187,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
               <table className="min-w-full divide-y divide-gray-300">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">ID</th>
-                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">Solicitante</th>
-                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">Ruta</th>
-                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">Fechas</th>
-                    <th className="px-2 py-3 text-left text-[10px] font-bold uppercase tracking-wide text-gray-500">Estado</th>
-                    <th className="relative py-3 pl-2 pr-2">
+                    <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">ID</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Solicitante</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Ruta</th>
+                    <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Fechas</th>
+                    <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500 pr-2">Estado</th>
+                    <th className="relative py-3 pl-1 pr-4 sm:pr-6 text-right">
                       <span className="sr-only">Acciones</span>
                     </th>
                   </tr>
@@ -218,58 +218,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
 
                         return (
                           <tr key={req.requestId} className={isAbandoned ? 'opacity-60 grayscale bg-gray-50' : ''}>
-                            <td className="whitespace-nowrap px-2 py-3 text-sm font-bold text-gray-900">
+                            <td className="whitespace-nowrap px-3 py-4 text-sm font-bold text-gray-900">
                               {req.requestId}
                               {req.relatedRequestId && (
-                                <div className="text-[10px] font-normal text-blue-600 mt-0.5">
-                                  Vinc. {req.relatedRequestId}
+                                <div className="text-xs font-normal text-blue-600 mt-1">
+                                  Vinculada a {req.relatedRequestId}
                                 </div>
                               )}
                               <div className="flex gap-1 mt-1">
                                 {isAbandoned && !['ANULADO', 'DENEGADO'].includes(req.status) && (
-                                  <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-gray-200 text-gray-800" title="Fecha de vuelo pasada sin reserva">
-                                    ABAND.
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-800" title="Fecha de vuelo pasada sin reserva">
+                                    ABANDONADA
                                   </span>
                                 )}
                                 {req.isInternational && (
-                                  <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-blue-100 text-blue-800" title="Viaje Internacional">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800" title="Viaje Internacional">
                                     INTL
                                   </span>
                                 )}
                                 {isHighCost && (
-                                  <span className="inline-flex items-center px-1 py-0.5 rounded text-[9px] font-medium bg-red-100 text-red-800" title="Costo Excede Tope (> 1.2M)">
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800" title="Costo Excede Tope (> 1.2M)">
                                     $$$
                                   </span>
                                 )}
                               </div>
                             </td>
-                            <td className="px-2 py-3 text-xs text-gray-500">
-                              <div className="font-medium text-gray-700 truncate max-w-[120px]" title={req.requesterEmail}>{req.requesterEmail.split('@')[0]}</div>
-                              <div className="text-[10px] text-gray-400 leading-tight">{req.company} / {req.site}</div>
-                              <div className="text-[10px] text-gray-400">{req.costCenter}</div>
-                              {req.workOrder && <div className="text-[9px] text-gray-500 mt-0.5">OT: {req.workOrder}</div>}
+                            <td className="px-3 py-4 text-sm text-gray-500">
+                              <div className="font-medium text-gray-700">{req.requesterEmail}</div>
+                              <div className="text-xs text-gray-400">{req.company} / {req.site} - {req.costCenter}</div>
+                              {req.workOrder && <div className="text-xs text-gray-500 mt-1">OT: {req.workOrder}</div>}
                             </td>
-                            <td className="px-2 py-3 text-xs text-gray-900">
-                              <div className="flex items-center gap-1 font-semibold">
+                            <td className="px-3 py-4 text-sm text-gray-900">
+                              <div className="flex items-center gap-1 font-medium">
                                 <span>{req.origin}</span>
-                                <span className="text-gray-400 mx-0.5">➝</span>
+                                <span className="text-gray-400 mx-1">➝</span>
                                 <span>{req.destination}</span>
                               </div>
-                              <div className="text-[10px] text-gray-500">{req.passengers.length} Pasajero(s)</div>
+                              <div className="text-xs text-gray-500">{req.passengers.length} Pasajero(s)</div>
                             </td>
-                            <td className="px-2 py-3 text-[11px] text-gray-500">
+                            <td className="px-3 py-4 text-sm text-gray-500">
                               <strong>{formatToDDMMYYYY(req.departureDate)}</strong><br />
                               {req.returnDate ? formatToDDMMYYYY(req.returnDate) : <span className="italic text-gray-400">Solo Ida</span>}
-                              <div className="mt-0.5 text-[9px] text-gray-400">
-                                {remainingDays < 0 ? <span className="italic">Antigua</span> : `Faltan: ${remainingDays}d`}
+                              <div className="mt-1 text-[10px] text-gray-400">
+                                {remainingDays < 0 ? <span className="italic">Sol. Antigua</span> : `Faltan: ${remainingDays}d`}
                               </div>
                             </td>
-                            <td className="whitespace-nowrap px-2 py-3 text-sm">
-                              <span className={`inline-flex rounded-full px-1.5 text-[10px] font-bold leading-4 ${getStatusBadge(req.status)}`}>
-                                {req.status.replace(/PENDIENTE_/g, 'P. ')}
+                            <td className="whitespace-nowrap px-3 py-4 text-right pr-2">
+                              <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${getStatusBadge(req.status)}`}>
+                                {req.status}
                               </span>
                             </td>
-                            <td className="relative px-2 py-3 text-right text-sm font-medium">
+                            <td className="relative whitespace-nowrap py-4 pl-1 pr-4 text-right text-sm font-medium sm:pr-6">
                               <div className="flex justify-end gap-1 items-center">
                                 {/* VIEW DETAIL BUTTON */}
                                 <button
