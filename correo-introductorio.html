@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentación - Equitel Viajes v2</title>
+  <style>
+    body { font-family: Helvetica, Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; color: #333; }
+    .container { max-width: 680px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+
+    /* HEADER */
+    .header { background-color: #D71920; color: #ffffff; padding: 40px 30px 30px; text-align: center; }
+    .header img { max-width: 160px; margin-bottom: 18px; }
+    .header h1 { margin: 0; font-size: 22px; text-transform: uppercase; letter-spacing: 2px; font-weight: 800; }
+    .header .subtitle { margin-top: 8px; font-size: 13px; opacity: 0.9; letter-spacing: 0.5px; }
+
+    /* CONTENT */
+    .content { padding: 35px 30px; }
+    .greeting { font-size: 15px; color: #374151; line-height: 1.7; margin-bottom: 25px; }
+    .greeting strong { color: #D71920; }
+
+    /* SECTION TITLES */
+    .section-number {
+      display: inline-block;
+      background-color: #D71920;
+      color: #fff;
+      width: 28px; height: 28px;
+      line-height: 28px;
+      text-align: center;
+      border-radius: 50%;
+      font-size: 13px;
+      font-weight: bold;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+    .section-title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #111827;
+      border-bottom: 2px solid #D71920;
+      padding-bottom: 8px;
+      margin-bottom: 15px;
+      margin-top: 30px;
+    }
+
+    /* INFO BOXES */
+    .info-box {
+      background-color: #fef2f2;
+      border: 1px solid #fecaca;
+      border-left: 4px solid #D71920;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #991b1b;
+      line-height: 1.5;
+    }
+    .info-box strong { display: block; margin-bottom: 3px; font-size: 12px; text-transform: uppercase; }
+
+    .blue-box {
+      background-color: #eff6ff;
+      border: 1px solid #dbeafe;
+      border-left: 4px solid #2563eb;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #1e3a8a;
+      line-height: 1.5;
+    }
+    .blue-box strong { display: block; margin-bottom: 3px; font-size: 12px; text-transform: uppercase; }
+
+    .green-box {
+      background-color: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-left: 4px solid #16a34a;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #14532d;
+      line-height: 1.5;
+    }
+    .green-box strong { display: block; margin-bottom: 3px; font-size: 12px; text-transform: uppercase; }
+
+    .amber-box {
+      background-color: #fffbeb;
+      border: 1px solid #fef08a;
+      border-left: 4px solid #f59e0b;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #92400e;
+      line-height: 1.5;
+    }
+    .amber-box strong { display: block; margin-bottom: 3px; font-size: 12px; text-transform: uppercase; }
+
+    .purple-box {
+      background-color: #faf5ff;
+      border: 1px solid #e9d5ff;
+      border-left: 4px solid #9333ea;
+      border-radius: 6px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: #581c87;
+      line-height: 1.5;
+    }
+    .purple-box strong { display: block; margin-bottom: 3px; font-size: 12px; text-transform: uppercase; }
+
+    /* DESCRIPTION TEXT */
+    .desc { font-size: 13px; color: #4b5563; line-height: 1.7; margin-bottom: 10px; }
+    .desc strong { color: #111827; }
+
+    /* SUBSECTION */
+    .subsection {
+      font-size: 13px;
+      font-weight: bold;
+      color: #374151;
+      margin-top: 18px;
+      margin-bottom: 8px;
+      padding-left: 4px;
+      border-left: 3px solid #D71920;
+      padding-left: 10px;
+    }
+
+    /* LISTS */
+    ul.feature-list {
+      padding-left: 20px;
+      margin: 8px 0 15px;
+    }
+    ul.feature-list li {
+      font-size: 13px;
+      color: #4b5563;
+      line-height: 1.7;
+      margin-bottom: 4px;
+    }
+    ul.feature-list li strong { color: #111827; }
+
+    /* TABLE */
+    .status-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 20px;
+      font-size: 12px;
+    }
+    .status-table th {
+      background-color: #111827;
+      color: #ffffff;
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .status-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: top;
+      color: #374151;
+      line-height: 1.5;
+    }
+    .status-table tr:nth-child(even) td { background-color: #f9fafb; }
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: bold;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    /* DATA TABLE */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 20px;
+      font-size: 13px;
+    }
+    .data-table td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .data-table td:first-child {
+      color: #6b7280;
+      width: 55%;
+    }
+    .data-table td:last-child {
+      color: #111827;
+      font-weight: bold;
+      text-align: right;
+    }
+    .data-table tr:nth-child(even) td { background-color: #f9fafb; }
+
+    /* ROUTE BOX */
+    .route-box {
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 15px 0;
+      text-align: center;
+    }
+    .route-box table { width: 100%; }
+    .route-label { font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+    .route-city { font-size: 22px; font-weight: bold; color: #111827; }
+    .route-arrow { color: #D71920; font-size: 24px; vertical-align: middle; }
+
+    /* EMAIL CARD */
+    .email-card {
+      display: table;
+      width: 100%;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .email-icon {
+      display: table-cell;
+      width: 44px;
+      vertical-align: middle;
+      text-align: center;
+      font-size: 18px;
+    }
+    .email-body {
+      display: table-cell;
+      padding: 10px 14px;
+      vertical-align: middle;
+    }
+    .email-title { font-size: 13px; font-weight: bold; color: #111827; }
+    .email-desc { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+    /* DIVIDER */
+    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 30px 0; }
+
+    /* FOOTER */
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #9ca3af;
+      padding: 20px 30px 25px;
+      background-color: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+    }
+    .footer a { color: #D71920; text-decoration: none; }
+    .footer .contact { margin-top: 8px; font-size: 12px; color: #6b7280; }
+
+    /* BADGES INLINE */
+    .badge-intl { background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+    .badge-cost { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+    .badge-warn { background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+
+    /* CTA BUTTON */
+    .cta-button {
+      display: inline-block;
+      background-color: #D71920;
+      color: #ffffff !important;
+      text-decoration: none;
+      padding: 14px 36px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 20px 0;
+    }
+
+    /* STEP FLOW */
+    .step-flow { margin: 15px 0; }
+    .step-item {
+      display: table;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    .step-num {
+      display: table-cell;
+      width: 32px;
+      vertical-align: top;
+      padding-top: 2px;
+    }
+    .step-num span {
+      display: inline-block;
+      background-color: #D71920;
+      color: #fff;
+      width: 24px; height: 24px;
+      line-height: 24px;
+      text-align: center;
+      border-radius: 50%;
+      font-size: 11px;
+      font-weight: bold;
+    }
+    .step-text {
+      display: table-cell;
+      font-size: 13px;
+      color: #4b5563;
+      line-height: 1.6;
+      padding-left: 8px;
+      vertical-align: top;
+    }
+    .step-text strong { color: #111827; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- ==================== HEADER ==================== -->
+  <div class="header">
+    <img src="https://drive.google.com/thumbnail?id=1hA1i-1mG4DbBmzG1pFWafoDrCWwijRjq&sz=w1000" alt="Equitel Logo">
+    <h1>Equitel Viajes v2</h1>
+    <div class="subtitle">Portal de Gesti&oacute;n de Viajes Corporativos &mdash; Gu&iacute;a Introductoria</div>
+  </div>
+
+  <!-- ==================== CONTENT ==================== -->
+  <div class="content">
+
+    <!-- SALUDO -->
+    <div class="greeting">
+      Estimado equipo,<br><br>
+      Nos complace presentarles <strong>Equitel Viajes v2</strong>, nuestra plataforma digital para la gesti&oacute;n integral de viajes corporativos. En este correo encontrar&aacute;n todo lo que necesitan saber para utilizarla de manera eficiente.
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 1. ACCESO -->
+    <!-- ========================================== -->
+    <div class="section-title">
+      <span class="section-number">1</span> Acceso a la Plataforma
+    </div>
+
+    <div class="desc">
+      Para ingresar solo necesitan su <strong>correo corporativo</strong>. No se requiere contrase&ntilde;a adicional. El sistema los identificar&aacute; autom&aacute;ticamente seg&uacute;n su rol:
+    </div>
+
+    <div class="blue-box">
+      <strong>Solicitante</strong>
+      Colaboradores que crean y dan seguimiento a sus solicitudes de viaje. Es el rol predeterminado para todos los empleados.
+    </div>
+    <div class="info-box">
+      <strong>Analista / Administrador</strong>
+      Equipo de gesti&oacute;n de viajes con acceso completo al flujo de trabajo. Requiere un <strong>PIN de 8 d&iacute;gitos</strong> para ingresar.
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 2. PANEL PRINCIPAL -->
+    <!-- ========================================== -->
+    <div class="section-title">
+      <span class="section-number">2</span> Panel Principal &mdash; &ldquo;Mis Solicitudes&rdquo;
+    </div>
+
+    <div class="desc">
+      Una vez dentro, ver&aacute;n su <strong>tablero de solicitudes</strong> con tarjetas visuales. Cada tarjeta muestra de un vistazo:
+    </div>
+
+    <ul class="feature-list">
+      <li><strong>ID de solicitud</strong> &mdash; C&oacute;digo &uacute;nico de seguimiento.</li>
+      <li><strong>Estado actual</strong> &mdash; Con colores distintivos para cada fase del proceso.</li>
+      <li><strong>Ruta</strong> &mdash; Origen &#10142; Destino.</li>
+      <li><strong>Fecha de salida</strong> y <strong>d&iacute;as de anticipaci&oacute;n</strong>.</li>
+      <li><strong>Cantidad de pasajeros</strong>.</li>
+      <li><strong>Etiquetas especiales:</strong></li>
+    </ul>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:15px;">
+      <tr>
+        <td width="33%" style="padding:4px;">
+          <span class="badge-intl">INTL</span>
+          <span style="font-size:11px; color:#6b7280;"> Viaje internacional</span>
+        </td>
+        <td width="33%" style="padding:4px;">
+          <span class="badge-cost">$$$</span>
+          <span style="font-size:11px; color:#6b7280;"> Costo &gt; $1.200.000</span>
+        </td>
+        <td width="34%" style="padding:4px;">
+          <span class="badge-warn">ABANDONADA</span>
+          <span style="font-size:11px; color:#6b7280;"> Fecha vencida</span>
+        </td>
+      </tr>
+    </table>
+
+    <div class="green-box">
+      <strong>Actualizaci&oacute;n autom&aacute;tica</strong>
+      El tablero se refresca cada 15 segundos. Siempre ver&aacute;n la informaci&oacute;n m&aacute;s reciente sin necesidad de recargar la p&aacute;gina.
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 3. CREAR SOLICITUD -->
+    <!-- ========================================== -->
+    <div class="section-title">
+      <span class="section-number">3</span> Crear una Nueva Solicitud de Viaje
+    </div>
+
+    <div class="desc">
+      Al hacer clic en <strong>&ldquo;+ Nueva Solicitud&rdquo;</strong> se abre un formulario con las siguientes secciones:
+    </div>
+
+    <!-- 3a. Info Corporativa -->
+    <div class="subsection">a) Informaci&oacute;n Corporativa</div>
+    <ul class="feature-list">
+      <li><strong>Empresa:</strong> Cummins, Equitel, Ingenerг&iacute;a o LAP</li>
+      <li><strong>Sede:</strong> Mosquera, Pereira, Barranquilla, Medell&iacute;n, Yumbo, Bogot&aacute;, Cali</li>
+      <li><strong>Unidad de Negocio</strong></li>
+      <li><strong>Orden de Trabajo</strong> (opcional)</li>
+      <li><strong>Centro de Costos</strong> &mdash; con opci&oacute;n <em>&ldquo;VARIOS&rdquo;</em> para cargos m&uacute;ltiples</li>
+    </ul>
+
+    <!-- 3b. Pasajeros -->
+    <div class="subsection">b) Pasajeros (m&aacute;x. 5)</div>
+    <div class="blue-box">
+      <strong>B&uacute;squeda autom&aacute;tica</strong>
+      Al ingresar el <strong>n&uacute;mero de c&eacute;dula</strong>, el sistema busca autom&aacute;ticamente el nombre del colaborador en la base de datos corporativa (INTEGRANTES). Tambi&eacute;n pueden agregar un correo de contacto por pasajero.
+    </div>
+
+    <!-- 3c. Itinerario -->
+    <div class="subsection">c) Itinerario de Viaje</div>
+
+    <div class="route-box">
+      <table>
+        <tr>
+          <td width="40%" align="left">
+            <div class="route-label">ORIGEN</div>
+            <div class="route-city">BOG</div>
+          </td>
+          <td width="20%" align="center"><span class="route-arrow">&#10142;</span></td>
+          <td width="40%" align="right">
+            <div class="route-label">DESTINO</div>
+            <div class="route-city">MDE</div>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <ul class="feature-list">
+      <li><strong>Tipo de viaje:</strong> Ida y Vuelta o Solo Ida</li>
+      <li><strong>Ciudad de origen</strong> y <strong>destino</strong></li>
+      <li><strong>Fecha y hora preferida</strong> de salida y regreso</li>
+    </ul>
+
+    <!-- 3d. Hospedaje -->
+    <div class="subsection">d) Hospedaje</div>
+    <ul class="feature-list">
+      <li>Marquen la casilla <strong>&ldquo;Requiere Hospedaje&rdquo;</strong> si necesitan hotel.</li>
+      <li>Indiquen el <strong>nombre del hotel</strong> (si tienen preferencia).</li>
+      <li>Las <strong>noches se calculan autom&aacute;ticamente</strong> en viajes de ida y vuelta.</li>
+    </ul>
+
+    <!-- 3e. Observaciones -->
+    <div class="subsection">e) Observaciones</div>
+    <div class="desc">
+      Campo libre para notas adicionales relevantes al viaje.
+    </div>
+
+    <!-- Alerta pol&iacute;ticas -->
+    <div class="amber-box">
+      <strong>Validaci&oacute;n de Pol&iacute;ticas</strong>
+      El sistema detecta autom&aacute;ticamente si el viaje cumple con las pol&iacute;ticas de anticipaci&oacute;n:<br>
+      &bull; <strong>Viajes nacionales:</strong> m&iacute;nimo 8 d&iacute;as de anticipaci&oacute;n<br>
+      &bull; <strong>Viajes internacionales:</strong> m&iacute;nimo 30 d&iacute;as de anticipaci&oacute;n<br><br>
+      Si hay incumplimiento, se muestra una alerta visual y se notifica a los aprobadores.
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 4. CICLO DE VIDA -->
+    <!-- ========================================== -->
+    <div class="section-title">
+      <span class="section-number">4</span> Ciclo de Vida de una Solicitud
+    </div>
+
+    <div class="desc">
+      Cada solicitud atraviesa las siguientes etapas. Recibir&aacute;n <strong>notificaciones por correo electr&oacute;nico</strong> en cada transici&oacute;n:
+    </div>
+
+    <table class="status-table">
+      <thead>
+        <tr>
+          <th width="28%">Etapa</th>
+          <th width="42%">Qu&eacute; sucede</th>
+          <th width="30%">Qui&eacute;n act&uacute;a</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="status-badge" style="background:#fef3c7; color:#92400e;">Pendiente Opciones</span></td>
+          <td>Se cre&oacute; la solicitud. El analista busca opciones de vuelo y hotel.</td>
+          <td>Analista de viajes</td>
+        </tr>
+        <tr>
+          <td><span class="status-badge" style="background:#dbeafe; color:#1e40af;">Pendiente Selecci&oacute;n</span></td>
+          <td>Recibir&aacute;n un <strong>correo con im&aacute;genes</strong> de las opciones (Opci&oacute;n A, B, C&hellip;). Deben ingresar al portal y describir cu&aacute;l prefieren.</td>
+          <td><strong>Usted</strong> (solicitante)</td>
+        </tr>
+        <tr>
+          <td><span class="status-badge" style="background:#f3e8ff; color:#7c3aed;">Confirmaci&oacute;n Costo</span></td>
+          <td>El analista ingresa los costos finales de tiquetes y hotel.</td>
+          <td>Analista de viajes</td>
+        </tr>
+        <tr>
+          <td><span class="status-badge" style="background:#ffedd5; color:#c2410c;">Pendiente Aprobaci&oacute;n</span></td>
+          <td>Su jefe directo (y CEO/Director si aplica) recibe el correo de aprobaci&oacute;n.</td>
+          <td>Aprobador(es)</td>
+        </tr>
+        <tr>
+          <td><span class="status-badge" style="background:#dcfce7; color:#166534;">Aprobado</span></td>
+          <td>El viaje fue autorizado. Se procede a comprar los tiquetes.</td>
+          <td>Analista de viajes</td>
+        </tr>
+        <tr>
+          <td><span class="status-badge" style="background:#e0e7ff; color:#3730a3;">Reservado</span></td>
+          <td>Tiquetes comprados. Recibir&aacute;n el <strong>n&uacute;mero de reserva (PNR)</strong> y archivo de confirmaci&oacute;n.</td>
+          <td>Usted recibe confirmaci&oacute;n</td>
+        </tr>
+        <tr>
+          <td><span class="status-badge" style="background:#f3f4f6; color:#374151;">Procesado</span></td>
+          <td>Se cargan soportes (facturas, recibos) y se cierra la solicitud.</td>
+          <td>Analista / Usted</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="info-box">
+      <strong>Estados adicionales</strong>
+      &bull; <strong>Denegado:</strong> La solicitud fue rechazada por el aprobador.<br>
+      &bull; <strong>Anulado:</strong> La solicitud fue cancelada por el usuario o el administrador.
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 5. CORREOS ELECTR&Oacute;NICOS -->
+    <!-- ========================================== -->
+    <div class="section-title">
+      <span class="section-number">5</span> Correos Electr&oacute;nicos que Recibir&aacute;n
+    </div>
+
+    <div class="desc">
+      A lo largo del proceso, el sistema env&iacute;a correos automatizados con la marca Equitel:
+    </div>
+
+    <div class="email-card">
+      <div class="email-icon" style="background-color:#fef2f2;">&#9992;&#65039;</div>
+      <div class="email-body">
+        <div class="email-title">Nueva Solicitud de Viaje</div>
+        <div class="email-desc">Dirigido a aprobadores con toda la informaci&oacute;n del viaje, alertas y botones de acci&oacute;n.</div>
+      </div>
+    </div>
+
+    <div class="email-card">
+      <div class="email-icon" style="background-color:#eff6ff;">&#128444;&#65039;</div>
+      <div class="email-body">
+        <div class="email-title">Opciones de Viaje</div>
+        <div class="email-desc">Im&aacute;genes de vuelos y hoteles disponibles (Opci&oacute;n A, B, C&hellip;) para que usted elija.</div>
+      </div>
+    </div>
+
+    <div class="email-card">
+      <div class="email-icon" style="background-color:#f0fdf4;">&#9989;</div>
+      <div class="email-body">
+        <div class="email-title">Aprobaci&oacute;n / Rechazo</div>
+        <div class="email-desc">Notificaci&oacute;n del resultado de la aprobaci&oacute;n de su viaje.</div>
+      </div>
+    </div>
+
+    <div class="email-card">
+      <div class="email-icon" style="background-color:#faf5ff;">&#127915;</div>
+      <div class="email-body">
+        <div class="email-title">Confirmaci&oacute;n de Reserva</div>
+        <div class="email-desc">N&uacute;mero de reserva (PNR) y archivo adjunto de la confirmaci&oacute;n del tiquete.</div>
+      </div>
+    </div>
+
+    <div class="email-card">
+      <div class="email-icon" style="background-color:#fffbeb;">&#128221;</div>
+      <div class="email-body">
+        <div class="email-title">Solicitud de Modificaci&oacute;n</div>
+        <div class="email-desc">Si solicita cambios despu&eacute;s de la reserva, incluye advertencia de costos adicionales.</div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 6. MODIFICACIONES -->
+    <!-- ========================================== -->
+    <div class="section-title">
+      <span class="section-number">6</span> Solicitar Modificaciones
+    </div>
+
+    <div class="desc">
+      Si necesitan cambiar un viaje ya solicitado o reservado, sigan estos pasos:
+    </div>
+
+    <div class="step-flow">
+      <div class="step-item">
+        <div class="step-num"><span>1</span></div>
+        <div class="step-text">Abran el detalle de la solicitud y hagan clic en <strong>&ldquo;Solicitar Modificaci&oacute;n&rdquo;</strong>.</div>
+      </div>
+      <div class="step-item">
+        <div class="step-num"><span>2</span></div>
+        <div class="step-text">Editen los datos del itinerario (fechas, ciudades, pasajeros, etc.).</div>
+      </div>
+      <div class="step-item">
+        <div class="step-num"><span>3</span></div>
+        <div class="step-text">Describan el <strong>motivo del cambio</strong> en el campo de justificaci&oacute;n.</div>
+      </div>
+      <div class="step-item">
+        <div class="step-num"><span>4</span></div>
+        <div class="step-text">Opcionalmente, usen el bot&oacute;n <strong>&ldquo;Mejorar con Gemini&rdquo;</strong> para que la inteligencia artificial redacte la justificaci&oacute;n de manera profesional.</div>
+      </div>
+      <div class="step-item">
+        <div class="step-num"><span>5</span></div>
+        <div class="step-text">Al enviar, se crea una <strong>solicitud hija</strong> vinculada a la original. Ambas quedan visibles en su historial.</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <strong>Importante: Cambios en viajes reservados</strong>
+      Si el viaje ya estaba en estado <strong>RESERVADO</strong> (tiquetes comprados), se les advertir&aacute; que la modificaci&oacute;n puede generar <strong>costos adicionales</strong> por penalidades de aerol&iacute;nea u hotel.
+    </div>
+
+    <!-- ========================================== -->
+    <!-- 7. DETALLE Y SOPORTES -->
+    <!-- ========================================== -->
+    <div class="section-title">
+      <span class="section-number">7</span> Consultar Detalle y Soportes
+    </div>
+
+    <div class="desc">
+      Desde cualquier tarjeta de solicitud pueden:
+    </div>
+
+    <ul class="feature-list">
+      <li><strong>Ver el detalle completo:</strong> ruta, fechas, pasajeros, costos y estado de aprobaci&oacute;n.</li>
+      <li><strong>Descargar el archivo de reserva</strong> cuando el viaje ya fue comprado.</li>
+      <li><strong>Cargar documentos soporte</strong> (facturas, recibos, confirmaciones) &mdash; m&aacute;ximo 10 MB por archivo.</li>
+    </ul>
+
+    <!-- ========================================== -->
+    <!-- 8. DATOS IMPORTANTES -->
+    <!-- ========================================== -->
+    <div class="section-title">
+      <span class="section-number">8</span> Datos Importantes
+    </div>
+
+    <table class="data-table">
+      <tr>
+        <td>Empresas disponibles</td>
+        <td>Cummins, Equitel, Ingenerg&iacute;a, LAP</td>
+      </tr>
+      <tr>
+        <td>M&aacute;ximo de pasajeros por solicitud</td>
+        <td>5</td>
+      </tr>
+      <tr>
+        <td>Umbral de alto costo (requiere CEO + Director)</td>
+        <td>$1.200.000 COP</td>
+      </tr>
+      <tr>
+        <td>Anticipaci&oacute;n m&iacute;nima &mdash; Viajes nacionales</td>
+        <td>8 d&iacute;as</td>
+      </tr>
+      <tr>
+        <td>Anticipaci&oacute;n m&iacute;nima &mdash; Viajes internacionales</td>
+        <td>30 d&iacute;as</td>
+      </tr>
+      <tr>
+        <td>Tama&ntilde;o m&aacute;ximo de archivos</td>
+        <td>10 MB</td>
+      </tr>
+    </table>
+
+    <!-- ========================================== -->
+    <!-- CIERRE -->
+    <!-- ========================================== -->
+
+    <hr class="divider">
+
+    <div style="text-align:center; margin: 25px 0;">
+      <div class="desc" style="margin-bottom:20px;">
+        Quedamos atentos a sus comentarios. Esperamos que esta herramienta facilite y agilice significativamente la gesti&oacute;n de sus viajes corporativos.
+      </div>
+      <div style="font-size:14px; font-weight:bold; color:#111827;">
+        Cordialmente,<br>
+        Equipo de Gesti&oacute;n de Viajes<br>
+        <span style="color:#D71920; font-weight:800;">Equitel S.A.S.</span>
+      </div>
+    </div>
+
+  </div>
+  <!-- END CONTENT -->
+
+  <!-- ==================== FOOTER ==================== -->
+  <div class="footer">
+    &copy; 2026 Organizaci&oacute;n Equitel. Gesti&oacute;n de Viajes Corporativos.<br>
+    <div class="contact">
+      Soporte: <a href="mailto:dsanchez@equitel.com.co">dsanchez@equitel.com.co</a>
+    </div>
+    <div style="margin-top:6px; font-size:10px; color:#d1d5db;">
+      Este es un mensaje informativo. Por favor no responder a este correo.
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
