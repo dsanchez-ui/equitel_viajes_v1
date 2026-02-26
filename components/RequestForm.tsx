@@ -256,6 +256,12 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       alert('Para vuelos de ida y regreso, la fecha de retorno es obligatoria.');
       return;
     }
+    if (tripType === 'ROUND_TRIP' && formData.departureDate && formData.returnDate) {
+      if (new Date(formData.returnDate) < new Date(formData.departureDate)) {
+        alert('La fecha de regreso no puede ser anterior a la fecha de ida.');
+        return;
+      }
+    }
     if (requiresHotel) {
       if (numberOfNights <= 0) {
         alert('El número de noches de hospedaje debe ser mayor a 0.');
