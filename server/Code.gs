@@ -1997,6 +1997,7 @@ function sendPendingApprovalReminders() {
   
   // Contadores para log
   let remindersSent = 0;
+  const today = Utilities.formatDate(now, "America/Bogota", "yyyy-MM-dd");
 
   // Empezar desde fila 2 (índice 1)
   for (let i = 1; i < data.length; i++) {
@@ -2005,6 +2006,11 @@ function sendPendingApprovalReminders() {
 
     if (status === 'PENDIENTE_APROBACION') {
       const request = mapRowToRequest(row); // Reutilizamos el mapper existente
+      
+      // SKIP IF FLIGHT DATE PASSED (v2.1)
+      if (request.departureDate && request.departureDate < today) {
+          continue;
+      }
       let recipients = [];
 
       const isAreaApproved = String(row[areaApproveIdx]).startsWith("Sí");
