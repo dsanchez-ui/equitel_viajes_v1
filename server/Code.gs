@@ -1961,28 +1961,9 @@ function mapRowToRequest(row) {
  * Revisa solicitudes PENDIENTE_APROBACION y envía recordatorios solo a quienes faltan.
  */
 function sendPendingApprovalReminders() {
-  // Time check (Bogotá GMT-5)
-  const now = new Date();
-  const dayOfWeek = parseInt(Utilities.formatDate(now, "America/Bogota", "u")); // 1 (Monday) - 7 (Sunday)
-  const hour = parseInt(Utilities.formatDate(now, "America/Bogota", "H")); // 0-23
-  
-  let isWorkingHour = false;
-  if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-      // Monday to Friday: 7:00 AM to 5:00 PM (17:00)
-      if (hour >= 7 && hour < 17) {
-          isWorkingHour = true;
-      }
-  } else if (dayOfWeek === 6) {
-      // Saturday: 8:00 AM to 12:00 PM (12:00)
-      if (hour >= 8 && hour < 12) {
-          isWorkingHour = true;
-      }
-  }
+  if (!isWorkingHour()) return;
 
-  if (!isWorkingHour) {
-      console.log("Fuera de horario laboral. No se enviarán recordatorios.");
-      return;
-  }
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -2130,6 +2111,8 @@ function sendEmailRich(to, subject, htmlBody, cc) {
  * Should be triggered every 2 hours manually via Triggers.
  */
 function processAdminReminders() {
+    if (!isWorkingHour()) return;
+    
     console.log("Starting Admin Reminders process...");
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
