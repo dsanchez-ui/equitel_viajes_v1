@@ -905,6 +905,54 @@ const HtmlTemplates = {
         </body>
         </html>`;
     },
+    
+    // ADMIN REMINDERS SUMMARY (v1.9)
+    adminReminderSummary: function(pendingOptionsRows, approvedRows) {
+        let content = `<p style="color: #4b5563; margin-bottom: 20px;">Este es un recordatorio automático de las solicitudes que requieren su acción inmediata.</p>`;
+        
+        const renderTable = (title, items, color) => {
+            if (items.length === 0) return '';
+            let html = `
+                <div style="margin-bottom: 30px;">
+                    <h3 style="color: ${color}; border-bottom: 2px solid ${color}; padding-bottom: 5px; margin-bottom: 15px;">${title} (${items.length})</h3>
+                    <table width="100%" cellpadding="8" cellspacing="0" style="font-size: 13px; border: 1px solid #e5e7eb; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f9fafb;">
+                                <th align="left" style="border-bottom: 1px solid #e5e7eb;">ID</th>
+                                <th align="left" style="border-bottom: 1px solid #e5e7eb;">Solicitante</th>
+                                <th align="left" style="border-bottom: 1px solid #e5e7eb;">Ruta</th>
+                                <th align="right" style="border-bottom: 1px solid #e5e7eb;">Fecha Vuelo</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            items.forEach(item => {
+                html += `
+                    <tr>
+                        <td style="border-bottom: 1px solid #f3f4f6;"><strong>${item.requestId}</strong></td>
+                        <td style="border-bottom: 1px solid #f3f4f6;">${item.requesterEmail}</td>
+                        <td style="border-bottom: 1px solid #f3f4f6;">${item.origin} ➝ ${item.destination}</td>
+                        <td align="right" style="border-bottom: 1px solid #f3f4f6;">${item.departureDate}</td>
+                    </tr>
+                `;
+            });
+            
+            html += `</tbody></table></div>`;
+            return html;
+        };
+
+        content += renderTable('📥 SOLICITUDES PENDIENTES DE COTIZAR', pendingOptionsRows, '#D71920');
+        content += renderTable('✅ SOLICITUDES APROBADAS (POR RESERVAR)', approvedRows, '#059669');
+
+        content += `
+            <div style="text-align: center; margin-top: 30px;">
+                <a href="${PLATFORM_URL}" style="background-color: #111827; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: bold; display: inline-block;">IR AL PANEL DE ADMINISTRACIÓN</a>
+            </div>
+        `;
+
+        return this.layout('RESUMEN DE PENDIENTES', content, '#374151', 'RECORDATORIO ADMINISTRATIVO');
+    },
 
     // FALLBACK NEW REQUEST (Used if frontend HTML not passed for some reason)
     newRequest: function(data, requestId, link) {
@@ -2068,5 +2116,37 @@ function sendEmailRich(to, subject, htmlBody, cc) {
         MailApp.sendEmail(options);
     } catch(e) {
         console.error("Error sending email to " + to + ": " + e);
+    }
+}
+
+/**
+ * PERIODIC TASK: Send reminders to Admin for pending actions (v1.9)
+ * Should be triggered every 2 hours manually via Triggers.
+ */
+function processAdminReminders() {
+    console.log("Starting Admin Reminders process...");
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    if (!sheet) return;
+
+    const dataRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+    const requests = dataRows.map(mapRowToRequest);
+
+    const pendingOptions = requests.filter(r => r.status === 'PENDIENTE_OPCIONES');
+    const approved = requests.filter(r => r.status === 'APROBADO' || r.status === 'RESERVADO_PARCIAL'); // Including partially reserved just in case
+
+    if (pendingOptions.length === 0 && approved.length === 0) {
+        console.log("No pending tasks for admin. Skipping email.");
+        return;
+    }
+
+    const html = HtmlTemplates.adminReminderSummary(pendingOptions, approved);
+    const subject = `⚠️ RECORDATORIO: ${pendingOptions.length + approved.length} Solicitudes Pendientes de Acción`;
+
+    try {
+        sendEmailRich(ADMIN_EMAIL, subject, html, null);
+        console.log("Admin reminder email sent successfully.");
+    } catch (e) {
+        console.error("Error sending admin reminders: " + e.toString());
     }
 }
