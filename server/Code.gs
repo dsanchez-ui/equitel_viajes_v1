@@ -1964,8 +1964,6 @@ function sendPendingApprovalReminders() {
   if (!isWorkingHour()) return;
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const data = sheet.getDataRange().getValues();
   // Asumimos fila 1 headers, datos desde fila 2
@@ -1978,7 +1976,7 @@ function sendPendingApprovalReminders() {
   
   // Contadores para log
   let remindersSent = 0;
-  const today = Utilities.formatDate(now, "America/Bogota", "yyyy-MM-dd");
+  const today = Utilities.formatDate(new Date(), "America/Bogota", "yyyy-MM-dd");
 
   // Empezar desde fila 2 (índice 1)
   for (let i = 1; i < data.length; i++) {
@@ -2141,4 +2139,28 @@ function processAdminReminders() {
     } catch (e) {
         console.error("Error sending admin reminders: " + e.toString());
     }
+}
+
+/**
+ * Helper to check if current time is within Equitel working hours (Bogota GMT-5) (v2.2)
+ * Mon-Fri: 7:00 - 17:00
+ * Sat: 8:00 - 12:00
+ */
+function isWorkingHour() {
+    const now = new Date();
+    const timeZone = "America/Bogota";
+    const dayOfWeek = parseInt(Utilities.formatDate(now, timeZone, "u")); // 1=Mon, 7=Sun
+    const hour = parseInt(Utilities.formatDate(now, timeZone, "H")); // 0-23
+
+    let working = false;
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+        if (hour >= 7 && hour < 17) working = true;
+    } else if (dayOfWeek === 6) {
+        if (hour >= 8 && hour < 12) working = true;
+    }
+
+    if (!working) {
+        console.log("Outside working hours. Operation skipped.");
+    }
+    return working;
 }
