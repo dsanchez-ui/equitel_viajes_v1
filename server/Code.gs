@@ -2131,9 +2131,12 @@ function processAdminReminders() {
 
     const dataRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
     const requests = dataRows.map(mapRowToRequest);
+    
+    const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
 
-    const pendingOptions = requests.filter(r => r.status === 'PENDIENTE_OPCIONES');
-    const approved = requests.filter(r => r.status === 'APROBADO' || r.status === 'RESERVADO_PARCIAL'); // Including partially reserved just in case
+    // Filter by status AND ensure the flight hasn't happened yet (not abandoned)
+    const pendingOptions = requests.filter(r => r.status === 'PENDIENTE_OPCIONES' && r.departureDate >= today);
+    const approved = requests.filter(r => (r.status === 'APROBADO' || r.status === 'RESERVADO_PARCIAL') && r.departureDate >= today);
 
     if (pendingOptions.length === 0 && approved.length === 0) {
         console.log("No pending tasks for admin. Skipping email.");
