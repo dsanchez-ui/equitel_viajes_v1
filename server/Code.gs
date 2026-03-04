@@ -907,7 +907,7 @@ const HtmlTemplates = {
     },
     
     // ADMIN REMINDERS SUMMARY (v1.9)
-    adminReminderSummary: function(pendingOptionsRows, approvedRows) {
+    adminReminderSummary: function(pendingOptionsRows, pendingCostRows, approvedRows) {
         let content = `<p style="color: #4b5563; margin-bottom: 20px;">Este es un recordatorio automático de las solicitudes que requieren su acción inmediata.</p>`;
         
         const renderTable = (title, items, color) => {
@@ -943,6 +943,7 @@ const HtmlTemplates = {
         };
 
         content += renderTable('📥 SOLICITUDES PENDIENTES DE COTIZAR', pendingOptionsRows, '#D71920');
+        content += renderTable('💰 PENDIENTES DE CONFIRMAR COSTOS', pendingCostRows, '#7c3aed'); // Violet for cost confirmation
         content += renderTable('✅ SOLICITUDES APROBADAS (POR RESERVAR)', approvedRows, '#059669');
 
         content += `
@@ -2123,15 +2124,17 @@ function processAdminReminders() {
 
     // Filter by status AND ensure the flight hasn't happened yet (not abandoned)
     const pendingOptions = requests.filter(r => r.status === 'PENDIENTE_OPCIONES' && r.departureDate >= today);
+    const pendingCost = requests.filter(r => r.status === 'PENDIENTE_CONFIRMACION_COSTO' && r.departureDate >= today);
     const approved = requests.filter(r => (r.status === 'APROBADO' || r.status === 'RESERVADO_PARCIAL') && r.departureDate >= today);
 
-    if (pendingOptions.length === 0 && approved.length === 0) {
+    if (pendingOptions.length === 0 && pendingCost.length === 0 && approved.length === 0) {
         console.log("No pending tasks for admin. Skipping email.");
         return;
     }
 
-    const html = HtmlTemplates.adminReminderSummary(pendingOptions, approved);
-    const subject = `⚠️ RECORDATORIO: ${pendingOptions.length + approved.length} Solicitudes Pendientes de Acción`;
+    const html = HtmlTemplates.adminReminderSummary(pendingOptions, pendingCost, approved);
+    const totalCount = pendingOptions.length + pendingCost.length + approved.length;
+    const subject = `⚠️ RECORDATORIO: ${totalCount} Solicitudes Pendientes de Acción`;
 
     try {
         sendEmailRich(ADMIN_EMAIL, subject, html, null);
