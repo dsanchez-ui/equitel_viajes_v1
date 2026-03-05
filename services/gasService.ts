@@ -153,6 +153,11 @@ class GasService {
 
   // --- ADMIN SECURITY ---
 
+  async cancelRequest(requestId: string, reason: string): Promise<void> {
+    const response = await this.runGas('anularSolicitud', { requestId, reason });
+    if (!response.success) throw new Error(response.error);
+  }
+
   async verifyAdminPin(pin: string): Promise<boolean> {
     const response = await this.runGas('verifyAdminPin', { pin });
     if (!response.success) throw new Error(response.error);

@@ -231,6 +231,8 @@ function dispatch(action, payload) {
       // NEW: DRIVE DELETION
       case 'deleteDriveFile': result = deleteDriveFile(payload.fileId); break;
 
+      case 'anularSolicitud': result = anularSolicitud(payload.requestId, payload.reason); break;
+
       default: return { success: false, error: 'Acción desconocida: ' + action };
     }
     
@@ -2166,4 +2168,52 @@ function isWorkingHour() {
         console.log("Outside working hours. Operation skipped.");
     }
     return working;
+}
+
+/**
+ * MANUAL CANCELLATION (v2.4)
+ * Updates status to ANULADO and records the reason in observations.
+ */
+function anularSolicitud(requestId, reason) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+  const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
+  const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+  const emailIdx = HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO");
+  
+  const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
+  const rowIndex = ids.map(String).indexOf(String(requestId));
+  
+  if (rowIndex === -1) throw new Error("ID no encontrado");
+  const rowNumber = rowIndex + 2;
+  
+  // Update Status
+  sheet.getRange(rowNumber, statusIdx + 1).setValue('ANULADO');
+  
+  // Append Reason to Observations
+  const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
+  const newNote = `[ANULACIÓN MANUAL]: ${reason}`;
+  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + newNote);
+  
+  // Send notification to user
+  const userEmail = sheet.getRange(rowNumber, emailIdx + 1).getValue();
+  
+  try {
+    const subject = `🚫 Solicitud de Viaje ${requestId} - ANULADA`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; color: #374151;">
+        <h2 style="color: #D71920;">Solicitud Anulada</h2>
+        <p>Le informamos que su solicitud de viaje <strong>${requestId}</strong> ha sido anulada por el administrador.</p>
+        <p><strong>Motivo:</strong> ${reason}</p>
+        <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p style="font-size: 12px; color: #6b7280;">Este es un mensaje automático del Sistema de Tiquetes Equitel.</p>
+      </div>
+    `;
+    sendEmailRich(userEmail, subject, html, null);
+  } catch (e) {
+    console.error("Error enviando email de anulación: " + e);
+  }
+  
+  return true;
 }
