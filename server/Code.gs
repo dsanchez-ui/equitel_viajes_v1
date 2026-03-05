@@ -702,9 +702,8 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     const fileUrl = `https://drive.google.com/file/d/${file.getId()}/view?usp=sharing`;
 
-    // 2. Build descriptive folder name: Sol 019 - TC 5038 - MAR 26
+    // 2. Build descriptive folder name: SOL-000019 - TC 5038 - MAR 26
     const MONTH_NAMES_ES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
-    const shortId = requestId.replace(/\D/g, '').replace(/^0+/, '').padStart(3, '0'); // SOL-000019 → 019
     
     let tcShort = '';
     if (creditCard) {
@@ -724,7 +723,7 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
         }
     }
     
-    let newFolderName = `Sol ${shortId}`;
+    let newFolderName = requestId;
     if (tcShort) newFolderName += ` - ${tcShort}`;
     if (monthYear) newFolderName += ` - ${monthYear}`;
     folder.setName(newFolderName);
