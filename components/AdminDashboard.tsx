@@ -239,12 +239,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
               <table className="min-w-full divide-y divide-gray-300">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">ID</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Solicitante</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Ruta</th>
-                    <th className="px-3 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Fechas</th>
-                    <th className="px-3 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500 pr-2">Estado</th>
-                    <th className="relative py-3 pl-1 pr-4 sm:pr-6 text-right">
+                    <th className="px-2 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">ID</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Solicitante</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Ruta</th>
+                    <th className="px-1 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500">Fechas</th>
+                    <th className="px-1 py-3 text-right text-xs font-medium uppercase tracking-wide text-gray-500">Estado</th>
+                    <th className="relative py-3 pl-1 pr-2 text-right">
                       <span className="sr-only">Acciones</span>
                     </th>
                   </tr>
@@ -295,12 +295,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
                                 )}
                               </div>
                             </td>
-                            <td className="px-3 py-4 text-sm text-gray-500">
+                            <td className="px-2 py-3 text-sm text-gray-500">
                               <div className="font-medium text-gray-700">{req.requesterEmail}</div>
                               <div className="text-xs text-gray-400">{req.company} / {req.site} - {req.costCenter}</div>
                               {req.workOrder && <div className="text-xs text-gray-500 mt-1">OT: {req.workOrder}</div>}
                             </td>
-                            <td className="px-3 py-4 text-sm text-gray-900">
+                            <td className="px-2 py-3 text-sm text-gray-900">
                               <div className="flex items-center gap-1 font-medium">
                                 <span>{req.origin}</span>
                                 <span className="text-gray-400 mx-1">➝</span>
@@ -308,20 +308,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
                               </div>
                               <div className="text-xs text-gray-500">{req.passengers.length} Pasajero(s)</div>
                             </td>
-                            <td className="px-3 py-4 text-sm text-gray-500">
+                            <td className="px-1 py-3 text-sm text-gray-500">
                               <strong>{formatToDDMMYYYY(req.departureDate)}</strong><br />
                               {req.returnDate ? formatToDDMMYYYY(req.returnDate) : <span className="italic text-gray-400">Solo Ida</span>}
                               <div className="mt-1 text-[10px] text-gray-400">
                                 {remainingDays < 0 ? <span className="italic">Sol. Antigua</span> : `Faltan: ${remainingDays}d`}
                               </div>
                             </td>
-                            <td className="whitespace-nowrap px-3 py-4 text-right pr-2">
+                            <td className="whitespace-nowrap px-1 py-3 text-right">
                               <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${getStatusBadge(req.status)}`}>
                                 {req.status}
                               </span>
                             </td>
-                            <td className="relative whitespace-nowrap py-4 pl-1 pr-4 text-right text-sm font-medium sm:pr-6">
-                              <div className="flex justify-end gap-1 items-center">
+                            <td className="relative whitespace-nowrap py-3 pl-1 pr-2 text-right text-sm font-medium">
+                              <div className="flex justify-end gap-1 items-center flex-wrap">
                                 {/* VIEW DETAIL BUTTON */}
                                 <button
                                   onClick={() => onViewRequest(req)}
