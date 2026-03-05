@@ -1026,12 +1026,18 @@ const HtmlTemplates = {
         const flightOptions = options.filter(o => o.type === 'FLIGHT');
         const hotelOptions = options.filter(o => o.type === 'HOTEL');
 
-        const renderImages = (opts) => opts.map(opt => `
+        const renderImages = (opts) => opts.map(opt => {
+            const directionTag = opt.direction ? 
+                `<span style="background-color: ${opt.direction === 'VUELTA' ? '#10B981' : '#FBBF24'}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 10px; vertical-align: middle;">${opt.direction}</span>` 
+                : '';
+            
+            return `
             <div style="margin-bottom: 15px; border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
-                <div style="font-weight:bold; color:#D71920; margin-bottom:5px;">Opción ${opt.id}</div>
+                <div style="font-weight:bold; color:#D71920; margin-bottom:5px;">Opción ${opt.id} ${directionTag}</div>
                 <img src="${opt.url}" alt="${opt.name}" style="max-width: 100%; height: auto; display: block; border-radius: 4px;" />
             </div>
-        `).join('');
+            `;
+        }).join('');
 
         let content = `<p style="margin-bottom: 20px; color: #4b5563;">Se han cargado las opciones de viaje para su solicitud <strong>${request.requestId}</strong>. Por favor revise las imágenes a continuación e ingrese al aplicativo para confirmar su elección.</p>`;
 
