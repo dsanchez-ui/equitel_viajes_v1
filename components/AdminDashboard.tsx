@@ -308,7 +308,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
                               </div>
                               <div className="text-xs text-gray-500">{req.passengers.length} Pasajero(s)</div>
                             </td>
-                            <td className="px-1 py-3 text-sm text-gray-500">
+                            <td className="whitespace-nowrap px-1 py-3 text-sm text-gray-500">
                               <strong>{formatToDDMMYYYY(req.departureDate)}</strong><br />
                               {req.returnDate ? formatToDDMMYYYY(req.returnDate) : <span className="italic text-gray-400">Solo Ida</span>}
                               <div className="mt-1 text-[10px] text-gray-400">
