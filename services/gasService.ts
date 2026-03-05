@@ -108,6 +108,11 @@ class GasService {
     return response.data || [];
   }
 
+  async getCreditCards(): Promise<{ value: string, label: string }[]> {
+    const response = await this.runGas('getCreditCards');
+    return response.data || [];
+  }
+
   async uploadSupportFile(requestId: string, fileData: string, fileName: string, mimeType: string): Promise<SupportData> {
     const response = await this.runGas('uploadSupportFile', { requestId, fileData, fileName, mimeType });
     if (!response.success) throw new Error(response.error);
@@ -133,8 +138,8 @@ class GasService {
   }
 
   // --- RESERVATION ---
-  async registerReservation(requestId: string, reservationNumber: string, fileData: string, fileName: string): Promise<void> {
-    const response = await this.runGas('registerReservation', { requestId, reservationNumber, fileData, fileName });
+  async registerReservation(requestId: string, reservationNumber: string, fileData: string, fileName: string, creditCard: string): Promise<void> {
+    const response = await this.runGas('registerReservation', { requestId, reservationNumber, fileData, fileName, creditCard });
     if (!response.success) throw new Error(response.error);
   }
 

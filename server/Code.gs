@@ -172,7 +172,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'deleteDriveFile'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'deleteDriveFile', 'anularSolicitud'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -200,6 +200,7 @@ function dispatch(action, payload) {
       case 'getCostCenterData': result = getCostCenterData(); break;
       case 'getIntegrantesData': result = getIntegrantesData(); break;
       case 'getCitiesList': result = getCitiesList(); break;
+      case 'getCreditCards': result = getCreditCards(); break;
       case 'getMyRequests': result = getRequestsByEmail(currentUserEmail); break;
       case 'getAllRequests': 
         if(!isUserAnalyst(currentUserEmail)) {
@@ -226,7 +227,7 @@ function dispatch(action, payload) {
       case 'updateAdminPin': result = updateAdminPin(payload.newPin); break;
 
       // NEW: RESERVATION LOGIC
-      case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.fileData, payload.fileName); break;
+      case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.fileData, payload.fileName, payload.creditCard); break;
 
       // NEW: DRIVE DELETION
       case 'deleteDriveFile': result = deleteDriveFile(payload.fileId); break;
@@ -661,7 +662,7 @@ function processApprovalFromEmail(e) {
 
 // --- NEW RESERVATION FUNCTION ---
 
-function registerReservation(requestId, reservationNumber, fileData, fileName) {
+function registerReservation(requestId, reservationNumber, fileData, fileName, creditCard) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
     
@@ -669,6 +670,8 @@ function registerReservation(requestId, reservationNumber, fileData, fileName) {
     const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
     const resNoIdx = HEADERS_REQUESTS.indexOf("No RESERVA");
     const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
+    const creditCardIdx = HEADERS_REQUESTS.indexOf("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA");
+    const departureDateIdx = HEADERS_REQUESTS.indexOf("FECHA IDA");
     
     const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
     const rowIndex = ids.map(String).indexOf(String(requestId));
@@ -678,55 +681,82 @@ function registerReservation(requestId, reservationNumber, fileData, fileName) {
     // 1. Handle File Upload
     // Find existing folder by name (Request ID) or create new (should exist)
     const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-    const folders = root.getFoldersByName(requestId);
     let folder;
-    if (folders.hasNext()) {
-        folder = folders.next();
-    } else {
+    // Search all subfolders for one that starts with the requestId
+    const allFolders = root.getFolders();
+    while (allFolders.hasNext()) {
+        const f = allFolders.next();
+        if (f.getName().indexOf(requestId) === 0) {
+            folder = f;
+            break;
+        }
+    }
+    if (!folder) {
         folder = root.createFolder(requestId);
     }
 
     // Create file
-    const blob = Utilities.newBlob(Utilities.base64Decode(fileData), MimeType.PDF, fileName); // Default PDF or detect
+    const blob = Utilities.newBlob(Utilities.base64Decode(fileData), MimeType.PDF, fileName);
     blob.setName(`Reserva_${reservationNumber}_${requestId}`);
     const file = folder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     const fileUrl = `https://drive.google.com/file/d/${file.getId()}/view?usp=sharing`;
 
-    // 2. Rename Folder
-    const newFolderName = `${requestId} - Reserva ${reservationNumber}`;
+    // 2. Build descriptive folder name: Sol 019 - TC 5038 - MAR 26
+    const MONTH_NAMES_ES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+    const shortId = requestId.replace(/\D/g, '').replace(/^0+/, '').padStart(3, '0'); // SOL-000019 → 019
+    
+    let tcShort = '';
+    if (creditCard) {
+        // Extract TC number: "TC-5038 CUMMINS" → "TC 5038"
+        const match = String(creditCard).match(/TC[- ]?(\d+)/i);
+        tcShort = match ? `TC ${match[1]}` : String(creditCard).split(' ')[0];
+    }
+    
+    const depDate = sheet.getRange(rowNumber, departureDateIdx + 1).getValue();
+    let monthYear = '';
+    if (depDate instanceof Date) {
+        monthYear = `${MONTH_NAMES_ES[depDate.getMonth()]} ${String(depDate.getFullYear()).slice(-2)}`;
+    } else {
+        const d = new Date(depDate);
+        if (!isNaN(d.getTime())) {
+            monthYear = `${MONTH_NAMES_ES[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`;
+        }
+    }
+    
+    let newFolderName = `Sol ${shortId}`;
+    if (tcShort) newFolderName += ` - ${tcShort}`;
+    if (monthYear) newFolderName += ` - ${monthYear}`;
     folder.setName(newFolderName);
 
     // 3. Update Sheets
     sheet.getRange(rowNumber, resNoIdx + 1).setValue(reservationNumber);
     sheet.getRange(rowNumber, statusIdx + 1).setValue('RESERVADO');
+    if (creditCard && creditCardIdx > -1) {
+        sheet.getRange(rowNumber, creditCardIdx + 1).setValue(creditCard);
+    }
 
-    // 4. Update JSON Support Data (Optional but good for record keeping)
-    // We reuse "SOPORTES (JSON)" or better yet, store the URL in support data to show in UI
+    // 4. Update JSON Support Data
     const supportIdx = HEADERS_REQUESTS.indexOf("SOPORTES (JSON)");
     const jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
     let supportData = jsonStr ? JSON.parse(jsonStr) : { folderId: folder.getId(), folderUrl: folder.getUrl(), files: [] };
     
-    // Add special reservation file
     supportData.files.push({ 
         id: file.getId(), 
         name: `Reserva ${reservationNumber}`, 
         url: fileUrl, 
         mimeType: 'application/pdf', 
         date: new Date().toISOString(),
-        isReservation: true // Tag it
+        isReservation: true
     });
     sheet.getRange(rowNumber, supportIdx + 1).setValue(JSON.stringify(supportData));
 
     // 5. Send Email
     const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
-    // Inject reservation data manually since mapRowToRequest might not catch it immediately before flush
     fullReq.reservationNumber = reservationNumber;
     fullReq.reservationUrl = fileUrl;
 
     const html = HtmlTemplates.reservationConfirmed(fullReq);
-    
-    // IMPORTANT: Use the standard subject so it threads correctly in Gmail
     const subject = getStandardSubject(fullReq); 
 
     try {
@@ -739,6 +769,26 @@ function registerReservation(requestId, reservationNumber, fileData, fileName) {
     } catch(e) { console.error("Error sending reservation email: " + e); }
 
     return true;
+}
+
+/**
+ * Get credit card options from MISC sheet (v2.5)
+ */
+function getCreditCards() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('MISC');
+    if (!sheet) return [];
+    
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 3) return []; // Header row is row 2 (TARJETA | EMPRESA), data starts at row 3
+    
+    const data = sheet.getRange(3, 1, lastRow - 2, 2).getValues();
+    return data
+        .filter(row => row[0] && String(row[0]).trim() !== '')
+        .map(row => ({
+            value: String(row[0]).trim(),
+            label: `${String(row[0]).trim()} (${String(row[1]).trim()})`
+        }));
 }
 
 // --- EMAIL HELPERS & TEMPLATES ---
