@@ -13,6 +13,7 @@ interface OptionUploadModalProps {
 export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadModalProps) => {
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [flightDirection, setFlightDirection] = useState<'IDA' | 'VUELTA'>('IDA');
 
     // State for Options (Images)
     const [options, setOptions] = useState<Option[]>(request.analystOptions || []);
@@ -54,7 +55,8 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                     base64String,
                     file.name,
                     type,
-                    nextLetter
+                    nextLetter,
+                    type === 'FLIGHT' ? flightDirection : undefined
                 );
                 setOptions(prev => [...prev, newOption]);
             } catch (err) {
@@ -226,6 +228,23 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                     title="Haga clic aquí y presione Ctrl+V para pegar"
                                 >
                                     <h4 className="text-sm font-bold text-blue-800 mb-2">✈️ Agregar Opción Vuelo</h4>
+
+                                    {/* Direction Toggle */}
+                                    <div className="flex justify-center gap-2 mb-3">
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setFlightDirection('IDA'); }}
+                                            className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${flightDirection === 'IDA' ? 'bg-amber-400 text-white shadow-sm scale-105' : 'bg-white text-gray-400 border border-gray-200'}`}
+                                        >
+                                            IDA (Amarillo)
+                                        </button>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setFlightDirection('VUELTA'); }}
+                                            className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${flightDirection === 'VUELTA' ? 'bg-green-500 text-white shadow-sm scale-105' : 'bg-white text-gray-400 border border-gray-200'}`}
+                                        >
+                                            VUELTA (Verde)
+                                        </button>
+                                    </div>
+
                                     <p className="text-xs text-blue-600 mb-1">Suba capturas o pegue recortes (Ctrl+V) aquí.</p>
                                     <p className="text-[10px] text-blue-400 mb-3 italic">(Siguiente letra: {String.fromCharCode(65 + flightCount)})</p>
 
@@ -291,9 +310,21 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {options.map((opt, idx) => (
-                                        <div key={idx} className="bg-white p-2 rounded shadow relative group">
-                                            <div className="absolute top-2 left-2 bg-black bg-opacity-70 text-white text-xs px-2 py-1 rounded">
-                                                {opt.type === 'FLIGHT' ? '✈️ Vuelo' : '🏨 Hotel'} - {opt.id}
+                                        <div
+                                            key={idx}
+                                            className={`p-2 rounded shadow relative group border-2 ${opt.type === 'HOTEL' ? 'bg-white border-transparent' :
+                                                opt.direction === 'VUELTA' ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
+                                                }`}
+                                        >
+                                            <div className="absolute top-2 left-2 flex gap-1">
+                                                <div className="bg-black bg-opacity-70 text-white text-[10px] px-2 py-1 rounded">
+                                                    {opt.type === 'FLIGHT' ? '✈️ Vuelo' : '🏨 Hotel'} - {opt.id}
+                                                </div>
+                                                {opt.type === 'FLIGHT' && (
+                                                    <div className={`text-white text-[10px] px-2 py-1 rounded font-bold ${opt.direction === 'VUELTA' ? 'bg-green-600' : 'bg-amber-500'}`}>
+                                                        {opt.direction === 'VUELTA' ? 'VUELTA' : 'IDA'}
+                                                    </div>
+                                                )}
                                             </div>
                                             <button
                                                 onClick={() => removeOption(idx)}
@@ -304,7 +335,7 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                                 {deletingId === opt.id ? '...' : '✕'}
                                             </button>
                                             {/* Use constructed thumbnail URL for reliability */}
-                                            <img src={getThumbnailUrl(opt.driveId)} alt={`Opción ${opt.id}`} className="w-full h-40 object-cover rounded mb-2 border" />
+                                            <img src={getThumbnailUrl(opt.driveId)} alt={`Opción ${opt.id}`} className="w-full h-40 object-cover rounded mb-2 border border-white" />
                                             <p className="text-xs text-gray-500 truncate" title={opt.name}>{opt.name}</p>
                                         </div>
                                     ))}

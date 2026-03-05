@@ -120,8 +120,8 @@ class GasService {
   }
 
   // --- OPTION IMAGES UPLOAD ---
-  async uploadOptionImage(requestId: string, fileData: string, fileName: string, type: 'FLIGHT' | 'HOTEL', optionLetter: string): Promise<Option> {
-    const response = await this.runGas('uploadOptionImage', { requestId, fileData, fileName, type, optionLetter });
+  async uploadOptionImage(requestId: string, fileData: string, fileName: string, type: 'FLIGHT' | 'HOTEL', optionLetter: string, direction?: 'IDA' | 'VUELTA'): Promise<Option> {
+    const response = await this.runGas('uploadOptionImage', { requestId, fileData, fileName, type, optionLetter, direction });
     if (!response.success) throw new Error(response.error);
     return response.data; // Returns Option object with URL
   }

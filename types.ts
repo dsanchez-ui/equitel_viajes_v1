@@ -46,6 +46,7 @@ export interface Option {
   url: string;
   driveId: string;
   name: string;
+  direction?: 'IDA' | 'VUELTA';
 }
 
 export interface SupportFile {

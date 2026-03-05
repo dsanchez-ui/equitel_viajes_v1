@@ -369,12 +369,34 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                 {/* --- SECTION 3: OPTIONS GALLERY (For Selection Phase) --- */}
                                 {flightOptions.length > 0 && (
                                     <div className="border-t pt-4">
-                                        <h4 className="text-sm font-bold text-gray-700 uppercase mb-3">✈️ Opciones de Vuelo</h4>
+                                        <h4 className="text-sm font-bold text-gray-700 uppercase mb-3 flex items-center justify-between">
+                                            <span>✈️ Opciones de Vuelo</span>
+                                            <div className="flex gap-3 text-[10px] lowercase font-normal italic">
+                                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400"></span> ida</span>
+                                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500"></span> vuelta</span>
+                                            </div>
+                                        </h4>
+
+                                        <div className="bg-gray-50 p-3 rounded-md mb-4 border border-gray-100 text-xs text-gray-600">
+                                            <p>Nota: Las opciones resaltadas en <strong className="text-amber-600">amarillo</strong> corresponden a los vuelos de <strong>IDA</strong> y las resaltadas en <strong className="text-green-600">verde</strong> a los vuelos de <strong>VUELTA</strong>.</p>
+                                        </div>
+
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             {flightOptions.map((opt, i) => (
-                                                <div key={i} className="border border-gray-200 p-3 rounded-lg shadow-sm bg-white">
-                                                    <div className="font-bold text-brand-red mb-2 text-lg">Opción {opt.id}</div>
-                                                    <div className="bg-gray-100 rounded mb-2 overflow-hidden border border-gray-100 relative group">
+                                                <div
+                                                    key={i}
+                                                    className={`border-2 p-3 rounded-lg shadow-sm transition-all ${opt.direction === 'VUELTA' ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
+                                                        }`}
+                                                >
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <div className={`font-bold text-lg ${opt.direction === 'VUELTA' ? 'text-green-700' : 'text-amber-700'}`}>
+                                                            Opción {opt.id}
+                                                        </div>
+                                                        <div className={`px-2 py-0.5 rounded text-[10px] font-bold text-white ${opt.direction === 'VUELTA' ? 'bg-green-600' : 'bg-amber-500'}`}>
+                                                            {opt.direction === 'VUELTA' ? 'VUELTA' : 'IDA'}
+                                                        </div>
+                                                    </div>
+                                                    <div className="bg-white rounded mb-2 overflow-hidden border border-white relative group">
                                                         {/* Use constructed thumbnail URL for reliability */}
                                                         <img
                                                             src={getThumbnailUrl(opt.driveId)}

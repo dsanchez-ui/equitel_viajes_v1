@@ -213,8 +213,8 @@ function dispatch(action, payload) {
       case 'updateRequest': result = updateRequestStatus(payload.id, payload.status, payload.payload); break;
       case 'uploadSupportFile': result = uploadSupportFile(payload.requestId, payload.fileData, payload.fileName, payload.mimeType); break;
       
-      // NEW: UPLOAD OPTION IMAGE
-      case 'uploadOptionImage': result = uploadOptionImage(payload.requestId, payload.fileData, payload.fileName, payload.type, payload.optionLetter); break;
+      // NEW: UPLOAD OPTION IMAGE (UPDATED v2.7)
+      case 'uploadOptionImage': result = uploadOptionImage(payload.requestId, payload.fileData, payload.fileName, payload.type, payload.optionLetter, payload.direction); break;
 
       case 'closeRequest': 
         updateRequestStatus(payload.requestId, 'PROCESADO');
@@ -1610,8 +1610,8 @@ function createNewRequest(data, emailHtml) {
   return id;
 }
 
-// NEW FUNCTION: Upload Option Image
-function uploadOptionImage(requestId, fileData, fileName, type, optionLetter) {
+// NEW FUNCTION: Upload Option Image (v2.7)
+function uploadOptionImage(requestId, fileData, fileName, type, optionLetter, direction) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
     const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
@@ -1642,6 +1642,7 @@ function uploadOptionImage(requestId, fileData, fileName, type, optionLetter) {
     return {
         id: optionLetter,
         type: type,
+        direction: direction || null,
         url: publicUrl,
         driveId: file.getId(),
         name: newName
