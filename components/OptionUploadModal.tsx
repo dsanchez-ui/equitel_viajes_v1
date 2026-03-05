@@ -237,12 +237,14 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                         >
                                             IDA (Amarillo)
                                         </button>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); setFlightDirection('VUELTA'); }}
-                                            className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${flightDirection === 'VUELTA' ? 'bg-green-500 text-white shadow-sm scale-105' : 'bg-white text-gray-400 border border-gray-200'}`}
-                                        >
-                                            VUELTA (Verde)
-                                        </button>
+                                        {request.returnDate && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setFlightDirection('VUELTA'); }}
+                                                className={`px-3 py-1 rounded-full text-[10px] font-bold transition-all ${flightDirection === 'VUELTA' ? 'bg-green-500 text-white shadow-sm scale-105' : 'bg-white text-gray-400 border border-gray-200'}`}
+                                            >
+                                                VUELTA (Verde)
+                                            </button>
+                                        )}
                                     </div>
 
                                     <p className="text-xs text-blue-600 mb-1">Suba capturas o pegue recortes (Ctrl+V) aquí.</p>
@@ -265,33 +267,35 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                     </button>
                                 </div>
 
-                                {/* HOTEL DROPZONE */}
-                                <div
-                                    tabIndex={0}
-                                    onPaste={(e) => handlePaste(e, 'HOTEL')}
-                                    className="bg-green-50 p-4 rounded-lg border-2 border-dashed border-green-200 text-center outline-none focus:ring-2 focus:ring-green-400 focus:bg-green-100 transition-colors cursor-pointer group relative"
-                                    title="Haga clic aquí y presione Ctrl+V para pegar"
-                                >
-                                    <h4 className="text-sm font-bold text-green-800 mb-2">🏨 Agregar Opción Hotel</h4>
-                                    <p className="text-xs text-green-600 mb-1">Suba capturas o pegue recortes (Ctrl+V) aquí.</p>
-                                    <p className="text-[10px] text-green-400 mb-3 italic">(Siguiente letra: {String.fromCharCode(65 + hotelCount)})</p>
-
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        className="hidden"
-                                        ref={hotelInputRef}
-                                        onChange={(e) => handleFileUpload(e, 'HOTEL')}
-                                        disabled={uploading}
-                                    />
-                                    <button
-                                        onClick={() => hotelInputRef.current?.click()}
-                                        disabled={uploading}
-                                        className="bg-green-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-green-700 disabled:opacity-50 z-10 relative"
+                                {/* HOTEL DROPZONE - RESTRICTED */}
+                                {request.requiresHotel && (
+                                    <div
+                                        tabIndex={0}
+                                        onPaste={(e) => handlePaste(e, 'HOTEL')}
+                                        className="bg-green-50 p-4 rounded-lg border-2 border-dashed border-green-200 text-center outline-none focus:ring-2 focus:ring-green-400 focus:bg-green-100 transition-colors cursor-pointer group relative"
+                                        title="Haga clic aquí y presione Ctrl+V para pegar"
                                     >
-                                        {uploading ? 'Procesando...' : 'Seleccionar Imagen'}
-                                    </button>
-                                </div>
+                                        <h4 className="text-sm font-bold text-green-800 mb-2">🏨 Agregar Opción Hotel</h4>
+                                        <p className="text-xs text-green-600 mb-1">Suba capturas o pegue recortes (Ctrl+V) aquí.</p>
+                                        <p className="text-[10px] text-green-400 mb-3 italic">(Siguiente letra: {String.fromCharCode(65 + hotelCount)})</p>
+
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            ref={hotelInputRef}
+                                            onChange={(e) => handleFileUpload(e, 'HOTEL')}
+                                            disabled={uploading}
+                                        />
+                                        <button
+                                            onClick={() => hotelInputRef.current?.click()}
+                                            disabled={uploading}
+                                            className="bg-green-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-green-700 disabled:opacity-50 z-10 relative"
+                                        >
+                                            {uploading ? 'Procesando...' : 'Seleccionar Imagen'}
+                                        </button>
+                                    </div>
+                                )}
 
                                 <div className="bg-gray-50 p-3 rounded border text-xs text-gray-500">
                                     <p><strong>Tip:</strong> Puede usar <kbd className="bg-gray-200 px-1 rounded">Win</kbd>+<kbd className="bg-gray-200 px-1 rounded">Shift</kbd>+<kbd className="bg-gray-200 px-1 rounded">S</kbd> para recortar pantalla, luego haga clic en el recuadro deseado y presione <kbd className="bg-gray-200 px-1 rounded">Ctrl</kbd>+<kbd className="bg-gray-200 px-1 rounded">V</kbd>.</p>
