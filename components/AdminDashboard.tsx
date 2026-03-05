@@ -146,6 +146,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
     }
   };
 
+  const handleGenerateReport = async (req: TravelRequest) => {
+    setProcessingId(req.requestId);
+    try {
+      const pdfUrl = await gasService.generateReport(req.requestId);
+      setDialog({
+        isOpen: true,
+        title: 'Reporte Generado',
+        message: `El reporte PDF de ${req.requestId} ha sido guardado en la carpeta de Drive.`,
+        type: 'SUCCESS',
+        onConfirm: () => {
+          closeDialog();
+          if (pdfUrl) window.open(pdfUrl, '_blank');
+        }
+      });
+    } catch (e) {
+      setDialog({
+        isOpen: true,
+        title: 'Error',
+        message: 'Error generando reporte: ' + e,
+        type: 'ALERT',
+        onConfirm: closeDialog
+      });
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <ConfirmationDialog
@@ -356,6 +383,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
                                       className={`text-xs font-bold px-2 py-1 rounded border ${req.status === RequestStatus.RESERVED ? 'text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100' : 'text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                                     >
                                       {req.status === RequestStatus.RESERVED ? (req.supportData?.files?.length ? 'Cargar Facturas (+)' : 'Cargar Facturas') : 'Ver Soportes'}
+                                    </button>
+
+                                    {/* Export Report Button */}
+                                    <button
+                                      onClick={() => handleGenerateReport(req)}
+                                      disabled={processingId === req.requestId}
+                                      className="text-xs font-bold px-2 py-1 rounded border text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50"
+                                      title="Exportar Reporte PDF a Drive"
+                                    >
+                                      {processingId === req.requestId ? '...' : '📄 Reporte'}
                                     </button>
 
                                     {/* Finalize Button (Only if Reserved and has at least one file) */}

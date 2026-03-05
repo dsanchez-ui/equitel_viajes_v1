@@ -163,6 +163,18 @@ class GasService {
     if (!response.success) throw new Error(response.error);
   }
 
+  async generateReport(requestId: string): Promise<string> {
+    const response = await this.runGas('generateReport', { requestId });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
+  async createReportTemplate(): Promise<string> {
+    const response = await this.runGas('createReportTemplate');
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
   async verifyAdminPin(pin: string): Promise<boolean> {
     const response = await this.runGas('verifyAdminPin', { pin });
     if (!response.success) throw new Error(response.error);

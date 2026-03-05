@@ -115,6 +115,7 @@ export interface TravelRequest {
   reservationUrl?: string;
 
   comments?: string;
+  creditCard?: string;
 
   // International Workflow Specifics
   approvalStatusCDS?: string;

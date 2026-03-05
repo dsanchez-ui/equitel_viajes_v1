@@ -172,7 +172,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'deleteDriveFile', 'anularSolicitud'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'deleteDriveFile', 'anularSolicitud', 'generateReport', 'createReportTemplate'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -216,7 +216,11 @@ function dispatch(action, payload) {
       // NEW: UPLOAD OPTION IMAGE
       case 'uploadOptionImage': result = uploadOptionImage(payload.requestId, payload.fileData, payload.fileName, payload.type, payload.optionLetter); break;
 
-      case 'closeRequest': result = updateRequestStatus(payload.requestId, 'PROCESADO'); break;
+      case 'closeRequest': 
+        updateRequestStatus(payload.requestId, 'PROCESADO');
+        try { generateSupportReport(payload.requestId); } catch(e) { console.error('Auto-report failed: ' + e); }
+        result = true;
+        break;
       case 'enhanceChangeText': result = enhanceTextWithGemini(payload.currentRequest, payload.userDraft); break;
       
       // REFACTORED MODIFICATION LOGIC
@@ -233,6 +237,10 @@ function dispatch(action, payload) {
       case 'deleteDriveFile': result = deleteDriveFile(payload.fileId); break;
 
       case 'anularSolicitud': result = anularSolicitud(payload.requestId, payload.reason); break;
+
+      // REPORT GENERATION (v2.6)
+      case 'generateReport': result = generateSupportReport(payload.requestId); break;
+      case 'createReportTemplate': result = createReportTemplate(); break;
 
       default: return { success: false, error: 'Acción desconocida: ' + action };
     }
@@ -2000,9 +2008,11 @@ function mapRowToRequest(row) {
     // For Reservation URL, we don't have a direct column, but we can try to extract it from supportData if marked
     reservationUrl: supportData?.files?.find(f => f.isReservation)?.url,
 
-    // METADATA FOR BANNERS
     parentWasReserved: get("ES_CAMBIO_CON_COSTO") === "SI",
-    parentTimestamp: String(get("FECHA_SOLICITUD_PADRE"))
+    parentTimestamp: String(get("FECHA_SOLICITUD_PADRE")),
+    
+    // CREDIT CARD (v2.5+)
+    creditCard: String(get("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA"))
   };
 }
 
@@ -2217,6 +2227,356 @@ function isWorkingHour() {
         console.log("Outside working hours. Operation skipped.");
     }
     return working;
+}
+
+// --- REPORT GENERATION (v2.6) ---
+
+/**
+ * Creates a Google Doc template for reports. Run ONCE via setup.
+ * Stores the template ID in Script Properties.
+ */
+function createReportTemplate() {
+    const doc = DocumentApp.create('PLANTILLA_REPORTE_SOLICITUD_VIAJE');
+    const body = doc.getBody();
+    
+    // Clear default content
+    body.clear();
+    
+    // --- HEADER ---
+    body.appendParagraph('SOPORTE DE SOLICITUD DE VIAJE')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING1)
+        .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 16, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#D71920'});
+    
+    body.appendParagraph('Sistema de Tiquetes Equitel')
+        .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 10, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#6b7280', [DocumentApp.Attribute.ITALIC]: true});
+    
+    body.appendHorizontalRule();
+    
+    // --- IDENTIFICATION ---
+    body.appendParagraph('IDENTIFICACIÓN')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    const idTable = body.appendTable([
+        ['ID Solicitud', '{{SOLICITUD_ID}}'],
+        ['Estado', '{{ESTADO}}'],
+        ['Fecha Solicitud', '{{FECHA_SOLICITUD}}'],
+        ['Tipo', '{{TIPO_SOLICITUD}}'],
+        ['Solicitud Vinculada', '{{SOLICITUD_PADRE}}'],
+        ['Solicitante', '{{SOLICITANTE}}']
+    ]);
+    formatTable(idTable);
+    
+    // --- TRIP INFO ---
+    body.appendParagraph('INFORMACIÓN DEL VIAJE')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    const tripTable = body.appendTable([
+        ['Origen', '{{ORIGEN}}'],
+        ['Destino', '{{DESTINO}}'],
+        ['Fecha Ida', '{{FECHA_IDA}}'],
+        ['Hora Preferida (Ida)', '{{HORA_IDA}}'],
+        ['Fecha Regreso', '{{FECHA_VUELTA}}'],
+        ['Hora Preferida (Vuelta)', '{{HORA_VUELTA}}'],
+        ['Internacional', '{{ES_INTERNACIONAL}}'],
+        ['Violación de Política', '{{VIOLACION_POLITICA}}']
+    ]);
+    formatTable(tripTable);
+    
+    // --- CORPORATE ---
+    body.appendParagraph('INFORMACIÓN CORPORATIVA')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    const corpTable = body.appendTable([
+        ['Empresa', '{{EMPRESA}}'],
+        ['Sede', '{{SEDE}}'],
+        ['Unidad de Negocio', '{{UNIDAD_NEGOCIO}}'],
+        ['Centro de Costos', '{{CENTRO_COSTOS}}'],
+        ['Nombre Centro de Costos', '{{NOMBRE_CC}}'],
+        ['Orden de Trabajo', '{{ORDEN_TRABAJO}}']
+    ]);
+    formatTable(corpTable);
+    
+    // --- PASSENGERS ---
+    body.appendParagraph('PASAJEROS')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    body.appendParagraph('{{PASAJEROS_DETALLE}}')
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 10});
+    
+    // --- HOTEL ---
+    body.appendParagraph('HOSPEDAJE')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    const hotelTable = body.appendTable([
+        ['Requiere Hospedaje', '{{REQUIERE_HOTEL}}'],
+        ['Hotel Sugerido', '{{HOTEL_NOMBRE}}'],
+        ['Noches', '{{NOCHES}}']
+    ]);
+    formatTable(hotelTable);
+    
+    // --- SELECTION & COSTS ---
+    body.appendParagraph('SELECCIÓN Y COSTOS')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    const costTable = body.appendTable([
+        ['Selección del Usuario', '{{SELECCION_TEXTO}}'],
+        ['Costo Tiquetes', '{{COSTO_TIQUETES}}'],
+        ['Costo Hotel', '{{COSTO_HOTEL}}'],
+        ['Costo Total', '{{COSTO_TOTAL}}']
+    ]);
+    formatTable(costTable);
+    
+    // --- RESERVATION & CREDIT CARD ---
+    body.appendParagraph('RESERVA Y MEDIO DE PAGO')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    const resTable = body.appendTable([
+        ['Número de Reserva (PNR)', '{{NUMERO_RESERVA}}'],
+        ['Tarjeta de Crédito', '{{TARJETA_CREDITO}}']
+    ]);
+    formatTable(resTable);
+    
+    // --- APPROVALS ---
+    body.appendParagraph('ESTADO DE APROBACIONES')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    const appTable = body.appendTable([
+        ['Aprobador de Área', '{{APROBADOR_AREA}}'],
+        ['Estado Aprobación Área', '{{ESTADO_AREA}}'],
+        ['Estado Aprobación CDS', '{{ESTADO_CDS}}'],
+        ['Estado Aprobación CEO', '{{ESTADO_CEO}}']
+    ]);
+    formatTable(appTable);
+    
+    // --- OBSERVATIONS ---
+    body.appendParagraph('OBSERVACIONES')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    body.appendParagraph('{{OBSERVACIONES}}')
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 10, [DocumentApp.Attribute.ITALIC]: true});
+    
+    // --- LINK ---
+    body.appendHorizontalRule();
+    body.appendParagraph('ENLACE A CARPETA DE SOPORTES')
+        .setHeading(DocumentApp.ParagraphHeading.HEADING2)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 12, [DocumentApp.Attribute.BOLD]: true, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#111827'});
+    
+    body.appendParagraph('{{LINK_CARPETA}}')
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 10, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#2563eb'});
+    
+    // --- FOOTER ---
+    body.appendHorizontalRule();
+    body.appendParagraph('Documento generado automáticamente por el Sistema de Tiquetes Equitel.')
+        .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 8, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#9ca3af', [DocumentApp.Attribute.ITALIC]: true});
+    body.appendParagraph('Fecha de generación: {{FECHA_GENERACION}}')
+        .setAlignment(DocumentApp.HorizontalAlignment.CENTER)
+        .setAttributes({[DocumentApp.Attribute.FONT_SIZE]: 8, [DocumentApp.Attribute.FOREGROUND_COLOR]: '#9ca3af'});
+    
+    doc.saveAndClose();
+    
+    // Move template to root folder and save ID
+    const file = DriveApp.getFileById(doc.getId());
+    DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID).addFile(file);
+    
+    // Store template ID in Script Properties
+    PropertiesService.getScriptProperties().setProperty('REPORT_TEMPLATE_ID', doc.getId());
+    
+    console.log('Report template created: ' + doc.getId());
+    return doc.getId();
+}
+
+/** Helper: format table styling */
+function formatTable(table) {
+    table.setBorderColor('#e5e7eb');
+    for (let r = 0; r < table.getNumRows(); r++) {
+        const row = table.getRow(r);
+        // Label cell (left)
+        row.getCell(0)
+            .setWidth(180)
+            .setBackgroundColor('#f9fafb')
+            .editAsText()
+            .setFontSize(9)
+            .setBold(true)
+            .setForegroundColor('#374151');
+        // Value cell (right)
+        row.getCell(1)
+            .editAsText()
+            .setFontSize(10)
+            .setBold(false)
+            .setForegroundColor('#111827');
+    }
+}
+
+/**
+ * Generates a PDF support report for a request and saves it to the Drive folder.
+ * Returns the URL of the generated PDF.
+ */
+function generateSupportReport(requestId) {
+    // 1. Get template ID
+    const templateId = PropertiesService.getScriptProperties().getProperty('REPORT_TEMPLATE_ID');
+    if (!templateId) throw new Error('Plantilla de reporte no configurada. Ejecute createReportTemplate() primero.');
+    
+    // 2. Get request data
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+    const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
+    const rowIndex = ids.map(String).indexOf(String(requestId));
+    if (rowIndex === -1) throw new Error("Solicitud no encontrada: " + requestId);
+    const rowNumber = rowIndex + 2;
+    
+    const row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const req = mapRowToRequest(row);
+    
+    // 3. Copy template
+    const template = DriveApp.getFileById(templateId);
+    const copy = template.makeCopy(`Reporte_${requestId}_TEMP`);
+    const doc = DocumentApp.openById(copy.getId());
+    const body = doc.getBody();
+    
+    // 4. Format helpers
+    const formatApproval = (s) => {
+        if (!s) return 'N/A';
+        if (String(s).startsWith('Sí')) return '✅ APROBADO';
+        if (String(s).startsWith('No')) return '❌ DENEGADO';
+        return '⏳ PENDIENTE';
+    };
+    
+    const formatCurrency = (v) => {
+        const num = Number(v) || 0;
+        return '$' + num.toLocaleString('es-CO');
+    };
+    
+    const formatDateDisplay = (d) => {
+        if (!d) return 'N/A';
+        const parts = String(d).split('-');
+        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        return String(d);
+    };
+    
+    // 5. Build passengers detail text
+    let passengersText = '';
+    req.passengers.forEach((p, i) => {
+        passengersText += `${i+1}. ${p.name} — CC: ${p.idNumber}`;
+        if (p.email) passengersText += ` — ${p.email}`;
+        passengersText += '\n';
+    });
+    if (!passengersText) passengersText = 'Sin pasajeros registrados';
+    
+    // 6. Get folder URL
+    let folderUrl = 'No disponible';
+    if (req.supportData && req.supportData.folderUrl) {
+        folderUrl = req.supportData.folderUrl;
+    } else {
+        // Try to find folder in Drive
+        const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+        const allFolders = root.getFolders();
+        while (allFolders.hasNext()) {
+            const f = allFolders.next();
+            if (f.getName().indexOf(requestId) === 0) {
+                folderUrl = f.getUrl();
+                break;
+            }
+        }
+    }
+    
+    // 7. Replace ALL placeholders
+    body.replaceText('\\{\\{SOLICITUD_ID\\}\\}', requestId);
+    body.replaceText('\\{\\{ESTADO\\}\\}', req.status || 'N/A');
+    body.replaceText('\\{\\{FECHA_SOLICITUD\\}\\}', String(req.timestamp || 'N/A'));
+    body.replaceText('\\{\\{TIPO_SOLICITUD\\}\\}', req.requestType || 'ORIGINAL');
+    body.replaceText('\\{\\{SOLICITUD_PADRE\\}\\}', req.relatedRequestId || 'N/A');
+    body.replaceText('\\{\\{SOLICITANTE\\}\\}', req.requesterEmail || 'N/A');
+    
+    body.replaceText('\\{\\{ORIGEN\\}\\}', req.origin || 'N/A');
+    body.replaceText('\\{\\{DESTINO\\}\\}', req.destination || 'N/A');
+    body.replaceText('\\{\\{FECHA_IDA\\}\\}', formatDateDisplay(req.departureDate));
+    body.replaceText('\\{\\{HORA_IDA\\}\\}', req.departureTimePreference || 'N/A');
+    body.replaceText('\\{\\{FECHA_VUELTA\\}\\}', req.returnDate ? formatDateDisplay(req.returnDate) : 'Solo Ida');
+    body.replaceText('\\{\\{HORA_VUELTA\\}\\}', req.returnTimePreference || 'N/A');
+    body.replaceText('\\{\\{ES_INTERNACIONAL\\}\\}', req.isInternational ? 'Sí' : 'No');
+    body.replaceText('\\{\\{VIOLACION_POLITICA\\}\\}', req.policyViolation ? '⚠️ SÍ' : 'No');
+    
+    body.replaceText('\\{\\{EMPRESA\\}\\}', req.company || 'N/A');
+    body.replaceText('\\{\\{SEDE\\}\\}', req.site || 'N/A');
+    body.replaceText('\\{\\{UNIDAD_NEGOCIO\\}\\}', req.businessUnit || 'N/A');
+    body.replaceText('\\{\\{CENTRO_COSTOS\\}\\}', req.costCenter || 'N/A');
+    body.replaceText('\\{\\{NOMBRE_CC\\}\\}', req.costCenterName || req.variousCostCenters || 'N/A');
+    body.replaceText('\\{\\{ORDEN_TRABAJO\\}\\}', req.workOrder || 'N/A');
+    
+    body.replaceText('\\{\\{PASAJEROS_DETALLE\\}\\}', passengersText);
+    
+    body.replaceText('\\{\\{REQUIERE_HOTEL\\}\\}', req.requiresHotel ? 'Sí' : 'No');
+    body.replaceText('\\{\\{HOTEL_NOMBRE\\}\\}', req.hotelName || 'N/A');
+    body.replaceText('\\{\\{NOCHES\\}\\}', String(req.nights || 0));
+    
+    body.replaceText('\\{\\{SELECCION_TEXTO\\}\\}', req.selectionDetails || 'N/A');
+    body.replaceText('\\{\\{COSTO_TIQUETES\\}\\}', formatCurrency(req.finalCostTickets));
+    body.replaceText('\\{\\{COSTO_HOTEL\\}\\}', formatCurrency(req.finalCostHotel));
+    body.replaceText('\\{\\{COSTO_TOTAL\\}\\}', formatCurrency(req.totalCost));
+    
+    body.replaceText('\\{\\{NUMERO_RESERVA\\}\\}', req.reservationNumber || 'N/A');
+    body.replaceText('\\{\\{TARJETA_CREDITO\\}\\}', req.creditCard || 'N/A');
+    
+    body.replaceText('\\{\\{APROBADOR_AREA\\}\\}', req.approverName || 'N/A');
+    body.replaceText('\\{\\{ESTADO_AREA\\}\\}', formatApproval(req.approvalStatusArea));
+    body.replaceText('\\{\\{ESTADO_CDS\\}\\}', req.isInternational ? formatApproval(req.approvalStatusCDS) : 'N/A (Nacional)');
+    body.replaceText('\\{\\{ESTADO_CEO\\}\\}', req.isInternational ? formatApproval(req.approvalStatusCEO) : 'N/A (Nacional)');
+    
+    body.replaceText('\\{\\{OBSERVACIONES\\}\\}', req.comments || 'Sin observaciones');
+    body.replaceText('\\{\\{LINK_CARPETA\\}\\}', folderUrl);
+    
+    const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
+    body.replaceText('\\{\\{FECHA_GENERACION\\}\\}', now);
+    
+    doc.saveAndClose();
+    
+    // 8. Export as PDF
+    const pdfBlob = DriveApp.getFileById(copy.getId()).getAs('application/pdf');
+    pdfBlob.setName(`Soporte_${requestId}.pdf`);
+    
+    // 9. Save to request folder
+    const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+    let folder;
+    const allFolders = root.getFolders();
+    while (allFolders.hasNext()) {
+        const f = allFolders.next();
+        if (f.getName().indexOf(requestId) === 0) {
+            folder = f;
+            break;
+        }
+    }
+    if (!folder) {
+        folder = root.createFolder(requestId);
+    }
+    
+    // Remove old report if exists
+    const existingFiles = folder.getFilesByName(`Soporte_${requestId}.pdf`);
+    while (existingFiles.hasNext()) {
+        existingFiles.next().setTrashed(true);
+    }
+    
+    const pdfFile = folder.createFile(pdfBlob);
+    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
+    // 10. Cleanup: delete temp doc
+    DriveApp.getFileById(copy.getId()).setTrashed(true);
+    
+    const pdfUrl = `https://drive.google.com/file/d/${pdfFile.getId()}/view?usp=sharing`;
+    console.log('Report generated: ' + pdfUrl);
+    return pdfUrl;
 }
 
 /**

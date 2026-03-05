@@ -355,6 +355,14 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                 )}
                                             </div>
                                         </div>
+                                        {isAdmin && request.creditCard && (
+                                            <div className="mt-3 pt-3 border-t border-blue-200">
+                                                <span className="block text-xs text-blue-500 mb-1">Tarjeta de Crédito</span>
+                                                <div className="text-sm font-mono font-bold text-gray-900 bg-white px-3 py-1.5 rounded border border-blue-100 inline-block">
+                                                    💳 {request.creditCard}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
