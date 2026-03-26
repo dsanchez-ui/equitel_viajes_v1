@@ -5,6 +5,7 @@ import { COMPANIES, SITES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 import { generateTravelRequestEmail } from '../utils/EmailGenerator';
 import { formatToYYYYMMDD, formatToDDMMYYYY } from '../utils/dateUtils';
+import { CityCombobox } from './CityCombobox';
 
 interface RequestFormProps {
   userEmail: string;
@@ -181,6 +182,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     } else {
       setFormData(prev => ({ ...prev, [name]: finalValue }));
     }
+  };
+
+  const handleCityChange = (fieldName: string, value: string) => {
+    setFormData(prev => ({ ...prev, [fieldName]: value }));
   };
 
   const handleOpenPicker = (e: React.MouseEvent<HTMLInputElement>) => {
@@ -582,34 +587,24 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-700">Ciudad Origen *</label>
-              <input
-                list="cities-list"
+              <CityCombobox
                 name="origin"
-                required
-                placeholder={isCitiesLoading ? "Cargando ciudades..." : "Escriba y seleccione ciudad..."}
-                className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 uppercase text-gray-900"
-                value={formData.origin}
-                onChange={handleInputChange}
+                value={formData.origin || ''}
+                cities={cities}
+                isLoading={isCitiesLoading}
+                onChange={handleCityChange}
               />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Ciudad Destino *</label>
-              <input
-                list="cities-list"
+              <CityCombobox
                 name="destination"
-                required
-                placeholder={isCitiesLoading ? "Cargando ciudades..." : "Escriba y seleccione ciudad..."}
-                className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 uppercase text-gray-900"
-                value={formData.destination}
-                onChange={handleInputChange}
+                value={formData.destination || ''}
+                cities={cities}
+                isLoading={isCitiesLoading}
+                onChange={handleCityChange}
               />
             </div>
-
-            <datalist id="cities-list">
-              {cities.map((c, i) => (
-                <option key={i} value={`${c.city}, ${c.country}`} />
-              ))}
-            </datalist>
             <div>
               <label className="block text-sm font-medium text-gray-700">Fecha Ida *</label>
               <input type="date" name="departureDate" required min={new Date().toISOString().split('T')[0]} style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureDate} onChange={handleInputChange} onClick={handleOpenPicker} />
