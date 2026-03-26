@@ -38,7 +38,7 @@ const App: React.FC = () => {
         setIntegrantes(loadedIntegrantes);
         const email = await gasService.getCurrentUser();
         if (email) {
-          handleLoginSuccess(email, true, loadedIntegrantes);
+          handleLoginSuccess(email, false, loadedIntegrantes);
         } else {
           setLoading(false);
         }
@@ -66,14 +66,13 @@ const App: React.FC = () => {
     return "Hola, Integrante Equitel";
   };
 
-  const handleLoginSuccess = async (email: string, auto: boolean = false, preloadedIntegrantes?: Integrant[]) => {
+  const handleLoginSuccess = async (email: string, authenticatedAsAdmin: boolean = false, preloadedIntegrantes?: Integrant[]) => {
     setUserEmail(email);
     const list = preloadedIntegrantes || integrantes;
     setUserName(determineUserName(email, list));
-    const isAdmin = email.includes('compras') || email.includes('admin') || email.includes('analista');
-    setRole(isAdmin ? UserRole.ANALYST : UserRole.REQUESTER);
+    setRole(authenticatedAsAdmin ? UserRole.ANALYST : UserRole.REQUESTER);
     setLoading(false);
-    await fetchRequests(email, isAdmin, false);
+    await fetchRequests(email, authenticatedAsAdmin, false);
   };
 
   const handleRequesterLogin = (e: React.FormEvent) => {
@@ -106,7 +105,7 @@ const App: React.FC = () => {
       const isValid = await gasService.verifyAdminPin(pin);
       if (isValid) {
         setShowPinModal(false);
-        handleLoginSuccess(pendingAdminEmail);
+        handleLoginSuccess(pendingAdminEmail, true);
         return true;
       }
       return false;

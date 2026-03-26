@@ -481,6 +481,9 @@ function processApprovalFromEmail(e) {
   const decisionColor = decision === 'approved' ? '#059669' : '#D71920';
 
   if (confirm !== 'true') {
+      if (decision === 'denied') {
+          return renderDenialReasonPage(id, role, actor, decisionColor);
+      }
       const url = `${WEB_APP_URL}?action=approve&id=${id}&decision=${decision}&role=${role}&confirm=true&actor=${encodeURIComponent(actor || '')}`;
       return renderConfirmationPage(
           `Confirmar Decisión`,
@@ -604,11 +607,20 @@ function processApprovalFromEmail(e) {
 
           // 2. REJECTION: Any rejection kills the request instantly (ONLY IF NOT ADVANCED)
           if (!isApproved) {
-              updateRequestStatus(id, 'DENEGADO', {}); // Update global status
-              
+              // Save denial reason to observations if provided
+              const denialReason = e.parameter.reason ? decodeURIComponent(e.parameter.reason) : '';
+              if (denialReason) {
+                  const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+                  const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
+                  const denialNote = `[DENEGACIÓN - ${approverEmail}]: ${denialReason}`;
+                  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + denialNote);
+              }
+
+              updateRequestStatus(id, 'DENEGADO', { denialReason: denialReason }); // Update global status
+
               return renderMessagePage(
-                  'Decisión Registrada', 
-                  `Ha <strong>DENEGADO</strong> la solicitud. El proceso se ha detenido.`,
+                  'Decisión Registrada',
+                  `Ha <strong>DENEGADO</strong> la solicitud. El proceso se ha detenido.${denialReason ? '<br/><br/><strong>Motivo:</strong> ' + denialReason : ''}`,
                   '#D71920'
               );
           }
@@ -673,34 +685,69 @@ function processApprovalFromEmail(e) {
 function registerReservation(requestId, reservationNumber, fileData, fileName, creditCard) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-    
+
     // Find Row
     const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
     const resNoIdx = HEADERS_REQUESTS.indexOf("No RESERVA");
     const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
     const creditCardIdx = HEADERS_REQUESTS.indexOf("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA");
     const departureDateIdx = HEADERS_REQUESTS.indexOf("FECHA IDA");
-    
+    const parentIdIdx = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
+
     const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
     const rowIndex = ids.map(String).indexOf(String(requestId));
     if (rowIndex === -1) throw new Error("Solicitud no encontrada");
     const rowNumber = rowIndex + 2;
 
-    // 1. Handle File Upload
-    // Find existing folder by name (Request ID) or create new (should exist)
+    // Check if this is a modification (has parent)
+    const parentId = String(sheet.getRange(rowNumber, parentIdIdx + 1).getValue()).trim();
+    const isModification = parentId && parentId !== '' && parentId !== 'undefined';
+
+    // 1. Handle File Upload — Determine folder location
     const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
     let folder;
-    // Search all subfolders for one that starts with the requestId
-    const allFolders = root.getFolders();
-    while (allFolders.hasNext()) {
-        const f = allFolders.next();
-        if (f.getName().indexOf(requestId) === 0) {
-            folder = f;
-            break;
+    let parentFolder;
+
+    if (isModification) {
+        // MODIFICATION: Create folder as subfolder inside parent's folder
+        // First, find parent folder in root (starts with parentId)
+        const rootFolders = root.getFolders();
+        while (rootFolders.hasNext()) {
+            const f = rootFolders.next();
+            if (f.getName().indexOf(parentId) === 0) {
+                parentFolder = f;
+                break;
+            }
         }
-    }
-    if (!folder) {
-        folder = root.createFolder(requestId);
+        if (!parentFolder) {
+            parentFolder = root.createFolder(parentId);
+        }
+
+        // Search for existing child folder inside parent
+        const childFolders = parentFolder.getFolders();
+        while (childFolders.hasNext()) {
+            const f = childFolders.next();
+            if (f.getName().indexOf(requestId) === 0) {
+                folder = f;
+                break;
+            }
+        }
+        if (!folder) {
+            folder = parentFolder.createFolder(requestId);
+        }
+    } else {
+        // ORIGINAL: Create/find folder in root as before
+        const allFolders = root.getFolders();
+        while (allFolders.hasNext()) {
+            const f = allFolders.next();
+            if (f.getName().indexOf(requestId) === 0) {
+                folder = f;
+                break;
+            }
+        }
+        if (!folder) {
+            folder = root.createFolder(requestId);
+        }
     }
 
     // Create file
@@ -710,16 +757,15 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     const fileUrl = `https://drive.google.com/file/d/${file.getId()}/view?usp=sharing`;
 
-    // 2. Build descriptive folder name: SOL-000019 - TC 5038 - MAR 26
+    // 2. Build descriptive folder name
     const MONTH_NAMES_ES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
-    
+
     let tcShort = '';
     if (creditCard) {
-        // Extract TC number: "TC-5038 CUMMINS" → "TC 5038"
         const match = String(creditCard).match(/TC[- ]?(\d+)/i);
         tcShort = match ? `TC ${match[1]}` : String(creditCard).split(' ')[0];
     }
-    
+
     const depDate = sheet.getRange(rowNumber, departureDateIdx + 1).getValue();
     let monthYear = '';
     if (depDate instanceof Date) {
@@ -730,11 +776,28 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
             monthYear = `${MONTH_NAMES_ES[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`;
         }
     }
-    
-    let newFolderName = requestId;
-    if (tcShort) newFolderName += ` - ${tcShort}`;
-    if (monthYear) newFolderName += ` - ${monthYear}`;
-    folder.setName(newFolderName);
+
+    if (isModification) {
+        // Child folder name: requestId - CAMBIO DE parentId - PNR - TC - MES
+        let childFolderName = `${requestId} - CAMBIO DE ${parentId}`;
+        if (reservationNumber) childFolderName += ` - ${reservationNumber}`;
+        if (tcShort) childFolderName += ` - ${tcShort}`;
+        if (monthYear) childFolderName += ` - ${monthYear}`;
+        folder.setName(childFolderName);
+
+        // Annotate parent folder name with CAMBIADA tag (if not already tagged)
+        const currentParentName = parentFolder.getName();
+        if (currentParentName.indexOf('CAMBIADA') === -1) {
+            parentFolder.setName(currentParentName + ' [CAMBIADA]');
+        }
+    } else {
+        // Original folder name: requestId - PNR - TC - MES
+        let newFolderName = requestId;
+        if (reservationNumber) newFolderName += ` - ${reservationNumber}`;
+        if (tcShort) newFolderName += ` - ${tcShort}`;
+        if (monthYear) newFolderName += ` - ${monthYear}`;
+        folder.setName(newFolderName);
+    }
 
     // 3. Update Sheets
     sheet.getRange(rowNumber, resNoIdx + 1).setValue(reservationNumber);
@@ -747,12 +810,12 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
     const supportIdx = HEADERS_REQUESTS.indexOf("SOPORTES (JSON)");
     const jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
     let supportData = jsonStr ? JSON.parse(jsonStr) : { folderId: folder.getId(), folderUrl: folder.getUrl(), files: [] };
-    
-    supportData.files.push({ 
-        id: file.getId(), 
-        name: `Reserva ${reservationNumber}`, 
-        url: fileUrl, 
-        mimeType: 'application/pdf', 
+
+    supportData.files.push({
+        id: file.getId(),
+        name: `Reserva ${reservationNumber}`,
+        url: fileUrl,
+        mimeType: 'application/pdf',
         date: new Date().toISOString(),
         isReservation: true
     });
@@ -764,7 +827,7 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
     fullReq.reservationUrl = fileUrl;
 
     const html = HtmlTemplates.reservationConfirmed(fullReq);
-    const subject = getStandardSubject(fullReq); 
+    const subject = getStandardSubject(fullReq);
 
     try {
         MailApp.sendEmail({
@@ -1207,13 +1270,22 @@ const HtmlTemplates = {
         const color = isApproved ? '#059669' : '#dc2626';
         const title = isApproved ? 'SOLICITUD APROBADA' : 'SOLICITUD DENEGADA';
         const icon = isApproved ? '✅' : '❌';
-        
+
+        let denialReasonBlock = '';
+        if (!isApproved && request.denialReason) {
+            denialReasonBlock = `
+            <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #dc2626; border-radius: 6px; padding: 15px; margin: 20px 0; text-align: left;">
+                <div style="font-size: 11px; font-weight: bold; color: #991b1b; text-transform: uppercase; margin-bottom: 6px;">Motivo de la Denegación</div>
+                <div style="font-size: 13px; color: #374151; font-style: italic; line-height: 1.5;">"${request.denialReason}"</div>
+            </div>`;
+        }
+
         const content = `
             <div style="text-align: center; margin-bottom: 25px;">
                 <div style="font-size: 40px; margin-bottom: 10px;">${icon}</div>
                 <div style="font-size: 16px; color: #374151;">Su solicitud de viaje <strong>${request.requestId}</strong> ha sido <strong style="color: ${color};">${status}</strong>.</div>
             </div>
-            
+            ${denialReasonBlock}
             ${isApproved ? `<div style="text-align: center; margin-bottom: 30px;"><a href="${PLATFORM_URL}" style="background-color: #111827; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-size: 12px;">Ingresar a la Plataforma</a></div>` : ''}
 
             <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;">
@@ -1282,6 +1354,48 @@ function renderConfirmationPage(title, message, actionText, actionUrl, color) {
     <div id="l" class="card" style="display:none"><h1>Procesando...</h1><p>Por favor espere.</p></div>
     </body></html>`;
     return HtmlService.createHtmlOutput(html).setTitle(title).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function renderDenialReasonPage(id, role, actor, color) {
+    const html = `
+    <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Denegar Solicitud</title>
+    <style>
+      body{font-family:sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:16px}
+      .card{background:white;padding:30px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);text-align:center;max-width:440px;width:100%}
+      h1{color:${color};font-size:20px;margin-bottom:8px}
+      .id-badge{font-family:monospace;font-size:14px;background:#fee2e2;color:#991b1b;padding:4px 12px;border-radius:4px;display:inline-block;margin-bottom:16px}
+      p{color:#374151;font-size:14px;line-height:1.5}
+      textarea{width:100%;min-height:80px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:sans-serif;font-size:13px;resize:vertical;box-sizing:border-box;margin-top:8px}
+      textarea:focus{outline:none;border-color:${color};box-shadow:0 0 0 2px rgba(215,25,32,0.15)}
+      label{display:block;text-align:left;font-size:12px;font-weight:bold;color:#6b7280;text-transform:uppercase;margin-top:16px}
+      .hint{text-align:left;font-size:11px;color:#9ca3af;margin-top:4px}
+      .btn{background:${color};color:white;padding:12px 24px;border:none;border-radius:4px;cursor:pointer;font-size:15px;font-weight:bold;margin-top:20px;width:100%}
+      .btn:hover{opacity:0.9}
+      .loading{display:none}
+    </style>
+    <script>
+      function submitDenial(){
+        var reason = document.getElementById('reason').value.trim();
+        var encodedReason = encodeURIComponent(reason);
+        var url = '${WEB_APP_URL}?action=approve&id=${id}&decision=denied&role=${role}&confirm=true&actor=${encodeURIComponent(actor || '')}' + (reason ? '&reason=' + encodedReason : '');
+        document.getElementById('form-card').style.display='none';
+        document.getElementById('loading-card').style.display='block';
+        window.location.href = url;
+      }
+    </script>
+    </head><body>
+    <div id="form-card" class="card">
+      <h1>Denegar Solicitud</h1>
+      <div class="id-badge">${id}</div>
+      <p>¿Está seguro de <strong>DENEGAR</strong> esta solicitud?</p>
+      <label for="reason">Motivo de la denegación (opcional)</label>
+      <textarea id="reason" placeholder="Ej: No se justifica el viaje en estas fechas, presupuesto insuficiente..."></textarea>
+      <div class="hint">Si desea, indique brevemente la razón. Quedará registrada y se notificará al solicitante.</div>
+      <button onclick="submitDenial()" class="btn">SÍ, DENEGAR</button>
+    </div>
+    <div id="loading-card" class="card loading"><h1>Procesando...</h1><p>Por favor espere.</p></div>
+    </body></html>`;
+    return HtmlService.createHtmlOutput(html).setTitle('Denegar Solicitud').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 function renderMessagePage(title, message, color) {
@@ -1616,6 +1730,56 @@ function createNewRequest(data, emailHtml) {
   return id;
 }
 
+/**
+ * Helper: Get or create a Drive folder for a request.
+ * If the request is a modification (has parent ID), the folder is created
+ * as a subfolder inside the parent request's folder.
+ */
+function getOrCreateRequestFolder_(requestId, rowNumber, sheet) {
+    const parentIdIdx = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
+    const parentId = String(sheet.getRange(rowNumber, parentIdIdx + 1).getValue()).trim();
+    const isModification = parentId && parentId !== '' && parentId !== 'undefined';
+    const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+
+    if (isModification) {
+        // Find or create parent folder in root
+        let parentFolder;
+        const rootFolders = root.getFolders();
+        while (rootFolders.hasNext()) {
+            const f = rootFolders.next();
+            if (f.getName().indexOf(parentId) === 0) {
+                parentFolder = f;
+                break;
+            }
+        }
+        if (!parentFolder) {
+            parentFolder = root.createFolder(parentId);
+        }
+
+        // Find or create child folder inside parent
+        let folder;
+        const childFolders = parentFolder.getFolders();
+        while (childFolders.hasNext()) {
+            const f = childFolders.next();
+            if (f.getName().indexOf(requestId) === 0) {
+                folder = f;
+                break;
+            }
+        }
+        return folder || parentFolder.createFolder(requestId);
+    } else {
+        // Original request: find or create in root
+        const allFolders = root.getFolders();
+        while (allFolders.hasNext()) {
+            const f = allFolders.next();
+            if (f.getName().indexOf(requestId) === 0) {
+                return f;
+            }
+        }
+        return root.createFolder(requestId);
+    }
+}
+
 // NEW FUNCTION: Upload Option Image (v2.7)
 function uploadOptionImage(requestId, fileData, fileName, type, optionLetter, direction) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1624,12 +1788,10 @@ function uploadOptionImage(requestId, fileData, fileName, type, optionLetter, di
     const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
     const rowIndex = ids.map(String).indexOf(String(requestId));
     if (rowIndex === -1) throw new Error("Solicitud no encontrada");
-    
-    // Get or Create Folder
-    const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-    const name = `${requestId}`;
-    const folders = root.getFoldersByName(name);
-    const folder = folders.hasNext() ? folders.next() : root.createFolder(name);
+    const rowNumber = rowIndex + 2;
+
+    // Get or Create Folder (nested inside parent folder if modification)
+    const folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
     
     // Ensure folder is accessible (optional based on org policy, but needed for public links if not using service account bridging)
     // folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
@@ -1689,28 +1851,24 @@ function updateRequestStatus(id, status, payload) {
        const legs = hasReturn ? 2 : 1;
        sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("Q TKT") + 1).setValue(paxCount * legs);
 
-       // *** NEW LOGIC: CANCEL PARENT IF THIS WAS A MODIFICATION ***
+       // CANCEL PARENT: When a modification is approved, the original request is cancelled
        const parentIdIdx = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
        const parentId = sheet.getRange(rowNumber, parentIdIdx + 1).getValue();
-       
+
        if (parentId && String(parentId).trim() !== '') {
-           // Find parent row
            const allIds = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
            const parentRowIdx = allIds.map(String).indexOf(String(parentId));
-           
+
            if (parentRowIdx !== -1) {
                const parentRowNum = parentRowIdx + 2;
-               // Set Parent Status to ANULADO
                sheet.getRange(parentRowNum, statusIdx + 1).setValue('ANULADO');
-               
-               // Add observation note to parent
+
                const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
                const pObs = sheet.getRange(parentRowNum, obsIdx + 1).getValue();
                const cancelNote = `[SISTEMA]: Anulada automáticamente por aprobación del cambio ${id}.`;
                sheet.getRange(parentRowNum, obsIdx + 1).setValue((pObs ? pObs + "\n" : "") + cancelNote);
            }
        }
-       // *** END NEW LOGIC ***
 
    } else if (status === 'DENEGADO') {
        // sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA?") + 1).setValue("NO"); // REMOVED TO PRESERVE DETAILED LOGS
@@ -1763,6 +1921,9 @@ function updateRequestStatus(id, status, payload) {
 
    if (status === 'APROBADO' || status === 'DENEGADO') {
       const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
+      if (status === 'DENEGADO' && payload && payload.denialReason) {
+          fullReq.denialReason = payload.denialReason;
+      }
       sendDecisionNotification(fullReq, status);
    }
    
@@ -1778,17 +1939,14 @@ function uploadSupportFile(requestId, fileData, fileName, mimeType) {
   if (rowIndex === -1) throw new Error("Solicitud no encontrada");
   const rowNumber = rowIndex + 2;
   const supportIdx = HEADERS_REQUESTS.indexOf("SOPORTES (JSON)");
-  
+
   const jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
   let supportData = jsonStr ? JSON.parse(jsonStr) : { folderId: null, folderUrl: null, files: [] };
-  
+
   let folder;
   if (supportData.folderId) { try { folder = DriveApp.getFolderById(supportData.folderId); } catch(e) {} }
   if (!folder) {
-     const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-     const name = `${requestId}`;
-     const folders = root.getFoldersByName(name);
-     folder = folders.hasNext() ? folders.next() : root.createFolder(name);
+     folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
      supportData.folderId = folder.getId();
      supportData.folderUrl = folder.getUrl();
   }
