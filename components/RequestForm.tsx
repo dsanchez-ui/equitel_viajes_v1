@@ -393,7 +393,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         approverEmail,
         returnDate: tripType === 'ONE_WAY' ? '' : formatToDDMMYYYY(formData.returnDate),
         returnTimePreference: tripType === 'ONE_WAY' ? '' : formData.returnTimePreference,
-        requesterEmail: userEmail,
+        requesterEmail: isModification && initialData?.requesterEmail ? initialData.requesterEmail : userEmail,
         passengers,
         requiresHotel,
         nights: requiresHotel ? numberOfNights : 0,
