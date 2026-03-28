@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+/* Force date/time inputs to use light theme for controls (dark icons) */
+input[type="date"], input[type="time"] {
+  color-scheme: light;
+}
+
+/* Additional safeguard for Webkit browsers to ensure the picker icon is dark and visible */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    filter: invert(0);
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+}
+
+/* Custom brand colors for Tailwind v4 */
+@theme {
+  --color-brand-red: #D71920;
+  --color-brand-black: #000000;
+  --color-brand-dark: #1a1a1a;
+  --color-brand-gray: #f4f4f4;
+}

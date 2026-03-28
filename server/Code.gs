@@ -6,20 +6,22 @@
  */
 
 // --- CONFIGURATION & CONSTANTS ---
-// TODO: AFTER DEPLOYING AS WEB APP, PASTE THE URL HERE FOR EMAILS (API ENDPOINT)
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec'; 
+// Helper to read secrets from ScriptProperties (set via GAS editor: File > Project settings > Script properties)
+function getConfig_(key, defaultVal) {
+  var val = PropertiesService.getScriptProperties().getProperty(key);
+  return val !== null ? val : (defaultVal || '');
+}
 
-// LINK DE ACCESO A LA PLATAFORMA (INTERFAZ VISUAL)
-const PLATFORM_URL = 'https://sistematiquetesequitel-302740316698.us-west1.run.app';
+// Public URLs (not secrets, but configurable)
+const WEB_APP_URL = getConfig_('WEB_APP_URL', 'https://script.google.com/macros/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec');
+const PLATFORM_URL = getConfig_('PLATFORM_URL', 'https://sistematiquetesequitel-302740316698.us-west1.run.app');
+const EMAIL_LOGO_URL = getConfig_('EMAIL_LOGO_URL', 'https://drive.google.com/thumbnail?id=1hA1i-1mG4DbBmzG1pFWafoDrCWwijRjq&sz=w1000');
 
-// LOGO URL
-const EMAIL_LOGO_URL = 'https://drive.google.com/thumbnail?id=1hA1i-1mG4DbBmzG1pFWafoDrCWwijRjq&sz=w1000';
-
-// TODO: INSERT YOUR GEMINI API KEY HERE
-const GEMINI_API_KEY = 'test1'; 
+// Secrets (MUST be set in ScriptProperties for production)
+const GEMINI_API_KEY = getConfig_('GEMINI_API_KEY', '');
 
 // TIMEOUT PARA BLOQUEOS (CONCURRENCIA)
-const LOCK_WAIT_MS = 30000; 
+const LOCK_WAIT_MS = 30000;
 
 const SHEET_NAME_REQUESTS = 'Nueva Base Solicitudes';
 const SHEET_NAME_MASTERS = 'MAESTROS';
@@ -27,15 +29,22 @@ const SHEET_NAME_RELATIONS = 'CDS vs UDEN';
 const SHEET_NAME_INTEGRANTES = 'INTEGRANTES';
 const SHEET_NAME_CITIES = 'CIUDADES DEL MUNDO';
 
-// DRIVE CONFIGURATION
-const ROOT_DRIVE_FOLDER_ID = '1uaett_yH1qZcS-rVr_sUh73mODvX02im';
+// DRIVE & EMAIL CONFIG (set in ScriptProperties for production)
+const ROOT_DRIVE_FOLDER_ID = getConfig_('ROOT_DRIVE_FOLDER_ID', '1uaett_yH1qZcS-rVr_sUh73mODvX02im');
+const ADMIN_EMAIL = getConfig_('ADMIN_EMAIL', 'apcompras@equitel.com.co');
+const CEO_EMAIL = getConfig_('CEO_EMAIL', 'misaza@equitel.com.co');
+const DIRECTOR_EMAIL = getConfig_('DIRECTOR_EMAIL', 'yprieto@equitel.com.co');
 
-// ADMIN EMAIL CONFIGURATION
-const ADMIN_EMAIL = 'apcompras@equitel.com.co';
-
-// EXTRA APPROVERS FOR INTERNATIONAL TRIPS
-const CEO_EMAIL = 'misaza@equitel.com.co';
-const DIRECTOR_EMAIL = 'yprieto@equitel.com.co';
+// --- SECURITY: HTML escaping to prevent XSS in email templates ---
+function escapeHtml_(unsafe) {
+  if (unsafe === null || unsafe === undefined) return '';
+  return String(unsafe)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 // HEADERS - ACTUALIZADOS
 const HEADERS_REQUESTS = [
@@ -183,13 +192,25 @@ function dispatch(action, payload) {
   }
 
   try {
+    // SECURITY: Validate user identity for non-public actions
+    const publicActions = ['getCurrentUser', 'getIntegrantesData', 'getCitiesList', 'getCostCenterData', 'getCreditCards', 'verifyAdminPin', 'checkIsAnalyst'];
+    if (!publicActions.includes(action) && !validateUserEmail_(currentUserEmail)) {
+      return { success: false, error: 'Usuario no autorizado. Su correo no está registrado en el sistema.' };
+    }
+
+    // SECURITY: Admin-only actions require analyst role
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation'];
+    if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
+      return { success: false, error: 'Esta acción requiere permisos de administrador.' };
+    }
+
     // LOCKING STRATEGY: Block execution until lock is acquired to prevent race conditions.
     if (isWriteAction) {
       const hasLock = lock.tryLock(LOCK_WAIT_MS);
       if (!hasLock) {
-        return { 
-          success: false, 
-          error: 'El sistema está ocupado procesando otra solicitud (Alta concurrencia). Por favor intente de nuevo en unos segundos.' 
+        return {
+          success: false,
+          error: 'El sistema está ocupado procesando otra solicitud (Alta concurrencia). Por favor intente de nuevo en unos segundos.'
         };
       }
     }
@@ -201,6 +222,8 @@ function dispatch(action, payload) {
       case 'getIntegrantesData': result = getIntegrantesData(); break;
       case 'getCitiesList': result = getCitiesList(); break;
       case 'getCreditCards': result = getCreditCards(); break;
+      // SECURITY: Server-side analyst check
+      case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
       case 'getMyRequests': result = getRequestsByEmail(currentUserEmail); break;
       case 'getAllRequests': 
         if(!isUserAnalyst(currentUserEmail)) {
@@ -259,22 +282,161 @@ function dispatch(action, payload) {
   }
 }
 
-// ... HELPERS ...
+// --- SECURITY: Validate email exists in INTEGRANTES sheet ---
+function validateUserEmail_(email) {
+  if (!email) return false;
+  // Analysts are always valid (they are in the whitelist)
+  if (isUserAnalyst(email)) return true;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
+  if (!sheet) return false;
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return false;
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const emailIdx = headers.indexOf("correo");
+  if (emailIdx < 0) return false;
+
+  const data = sheet.getRange(2, emailIdx + 1, lastRow - 1, 1).getValues();
+  const target = email.toLowerCase().trim();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).toLowerCase().trim() === target) return true;
+  }
+  return false;
+}
+
+// --- SECURITY: PIN hashing + rate limiting ---
+function hashPin_(pin) {
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, pin + 'equitel_viajes_salt_v1');
+  return digest.map(function(b) { return ('0' + ((b & 0xFF).toString(16))).slice(-2); }).join('');
+}
+
+function isPinRateLimited_() {
+  var props = PropertiesService.getScriptProperties();
+  var lockoutUntil = props.getProperty('PIN_LOCKOUT_UNTIL');
+  if (lockoutUntil && new Date().getTime() < Number(lockoutUntil)) {
+    return true;
+  }
+  return false;
+}
+
+function recordFailedPinAttempt_() {
+  var props = PropertiesService.getScriptProperties();
+  var attempts = Number(props.getProperty('PIN_FAILED_ATTEMPTS') || '0') + 1;
+  props.setProperty('PIN_FAILED_ATTEMPTS', String(attempts));
+  if (attempts >= 5) {
+    // Lock for 15 minutes
+    var lockoutUntil = new Date().getTime() + (15 * 60 * 1000);
+    props.setProperty('PIN_LOCKOUT_UNTIL', String(lockoutUntil));
+    props.setProperty('PIN_FAILED_ATTEMPTS', '0');
+  }
+}
 
 function verifyAdminPin(inputPin) {
-  const scriptProperties = PropertiesService.getScriptProperties();
-  const storedPin = scriptProperties.getProperty('ADMIN_PIN');
-  const currentPin = storedPin ? storedPin : '12345678';
-  return String(inputPin) === String(currentPin);
+  if (isPinRateLimited_()) {
+    throw new Error('Demasiados intentos fallidos. Intente de nuevo en 15 minutos.');
+  }
+
+  var props = PropertiesService.getScriptProperties();
+  var storedHash = props.getProperty('ADMIN_PIN_HASH');
+
+  // If no hash exists, check for legacy plaintext PIN and migrate it
+  if (!storedHash) {
+    var legacyPin = props.getProperty('ADMIN_PIN');
+    if (legacyPin) {
+      // Auto-migrate to hashed storage
+      storedHash = hashPin_(legacyPin);
+      props.setProperty('ADMIN_PIN_HASH', storedHash);
+      props.deleteProperty('ADMIN_PIN');
+    } else {
+      throw new Error('PIN de administrador no configurado. Ejecute configurarPinInicial() desde el editor de Apps Script.');
+    }
+  }
+
+  var inputHash = hashPin_(String(inputPin));
+  if (inputHash === storedHash) {
+    props.deleteProperty('PIN_FAILED_ATTEMPTS');
+    props.deleteProperty('PIN_LOCKOUT_UNTIL');
+    return true;
+  } else {
+    recordFailedPinAttempt_();
+    return false;
+  }
 }
 
 function updateAdminPin(newPin) {
-  if (!newPin || String(newPin).length !== 8) {
-    throw new Error("El PIN debe tener exactamente 8 dígitos.");
+  if (!newPin || String(newPin).length !== 8 || !/^\d{8}$/.test(String(newPin))) {
+    throw new Error("El PIN debe ser exactamente 8 dígitos numéricos.");
   }
-  const scriptProperties = PropertiesService.getScriptProperties();
-  scriptProperties.setProperty('ADMIN_PIN', String(newPin));
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('ADMIN_PIN_HASH', hashPin_(String(newPin)));
+  props.deleteProperty('ADMIN_PIN'); // Remove legacy plaintext if exists
   return true;
+}
+
+/**
+ * ADMIN UTILITY: Run from GAS editor to see all configured properties and which ones need setup.
+ * Select this function in the editor dropdown and click ▶ Run, then check Execution Log.
+ */
+function verPropiedadesDelScript() {
+  var props = PropertiesService.getScriptProperties().getProperties();
+  var expected = [
+    { key: 'GEMINI_API_KEY', desc: 'API key de Google Gemini (para mejora de texto con IA)', required: false },
+    { key: 'ANALYST_EMAILS', desc: 'JSON array de correos admin, ej: ["apcompras@equitel.com.co"]', required: true },
+    { key: 'ADMIN_PIN_HASH', desc: 'Hash del PIN admin (se genera automáticamente)', required: true },
+    { key: 'REPORT_TEMPLATE_ID', desc: 'ID del template de reportes (se genera con createReportTemplate)', required: false },
+    { key: 'WEB_APP_URL', desc: 'URL del web app de GAS (tiene default)', required: false },
+    { key: 'PLATFORM_URL', desc: 'URL del frontend en Cloud Run (tiene default)', required: false },
+    { key: 'ROOT_DRIVE_FOLDER_ID', desc: 'ID de la carpeta raíz en Drive (tiene default)', required: false },
+    { key: 'ADMIN_EMAIL', desc: 'Correo del admin principal (default: apcompras@equitel.com.co)', required: false },
+    { key: 'CEO_EMAIL', desc: 'Correo del CEO (default: misaza@equitel.com.co)', required: false },
+    { key: 'DIRECTOR_EMAIL', desc: 'Correo del director CDS (default: yprieto@equitel.com.co)', required: false }
+  ];
+
+  console.log('========================================');
+  console.log('  PROPIEDADES DEL SCRIPT - DIAGNÓSTICO');
+  console.log('========================================\n');
+
+  console.log('--- PROPIEDADES CONFIGURADAS ---');
+  var configuredKeys = Object.keys(props);
+  if (configuredKeys.length === 0) {
+    console.log('  (ninguna)');
+  } else {
+    configuredKeys.forEach(function(key) {
+      var val = props[key];
+      // Ocultar valores sensibles
+      var display = (key.indexOf('PIN') > -1 || key.indexOf('KEY') > -1 || key.indexOf('HASH') > -1)
+        ? val.substring(0, 8) + '...' : val;
+      console.log('  ✅ ' + key + ' = ' + display);
+    });
+  }
+
+  console.log('\n--- PROPIEDADES PENDIENTES ---');
+  var pending = expected.filter(function(e) { return !props[e.key]; });
+  if (pending.length === 0) {
+    console.log('  ¡Todas las propiedades están configuradas!');
+  } else {
+    pending.forEach(function(e) {
+      var tag = e.required ? '⚠️  REQUERIDA' : 'ℹ️  OPCIONAL';
+      console.log('  ' + tag + ': ' + e.key + ' — ' + e.desc);
+    });
+  }
+
+  console.log('\n========================================');
+  return 'Revise el Log de Ejecución para ver el resultado.';
+}
+
+/**
+ * ONE-TIME SETUP: Set initial admin PIN via ScriptProperties.
+ * Usage in GAS editor: Set script property INITIAL_ADMIN_PIN to your 8-digit PIN, then run this function.
+ */
+function configurarPinInicial() {
+  var pin = PropertiesService.getScriptProperties().getProperty('INITIAL_ADMIN_PIN');
+  if (!pin) return 'Error: Primero configure la propiedad INITIAL_ADMIN_PIN en Configuración del proyecto > Propiedades del script.';
+  updateAdminPin(pin);
+  PropertiesService.getScriptProperties().deleteProperty('INITIAL_ADMIN_PIN');
+  return 'PIN configurado exitosamente. La propiedad temporal INITIAL_ADMIN_PIN ha sido eliminada.';
 }
 
 function enhanceTextWithGemini(currentRequest, userDraft) {
@@ -329,6 +491,7 @@ function enhanceTextWithGemini(currentRequest, userDraft) {
 // --- NEW MODIFICATION ARCHITECTURE ---
 
 function requestModification(originalRequestId, modifiedRequestData, changeReason, emailHtml) {
+   validateRequestInput_(modifiedRequestData);
    const ss = SpreadsheetApp.getActiveSpreadsheet();
    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
    if (!sheet) throw new Error("Base de datos no encontrada");
@@ -533,8 +696,13 @@ function processApprovalFromEmail(e) {
           if (role === 'CEO') approverEmail = CEO_EMAIL;
           else if (role === 'CDS') approverEmail = DIRECTOR_EMAIL;
           else {
-              // Use actor if available, otherwise fallback to sheet (legacy)
-              approverEmail = actor || sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)") + 1).getValue();
+              // Use expected approver from sheet; only use actor if it matches to prevent impersonation
+              const expectedApprover = String(sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)") + 1).getValue()).toLowerCase().trim();
+              if (actor && String(actor).toLowerCase().trim() === expectedApprover) {
+                approverEmail = actor;
+              } else {
+                approverEmail = expectedApprover || actor || 'desconocido';
+              }
           }
           
           // Log format: Decision_Email_Timestamp (or just Decision_Email for Area since Time is separate)
@@ -683,6 +851,8 @@ function processApprovalFromEmail(e) {
 // --- NEW RESERVATION FUNCTION ---
 
 function registerReservation(requestId, reservationNumber, fileData, fileName, creditCard) {
+    if (fileData && fileName) validateFileUpload_(fileData, fileName, 'application/pdf');
+    if (reservationNumber && String(reservationNumber).length > 100) throw new Error('Número de reserva demasiado largo.');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
 
@@ -912,22 +1082,22 @@ const HtmlTemplates = {
     _getFullSummary: function(data) {
         let ccDisplay = '';
         if (data.costCenter === 'VARIOS' && data.variousCostCenters) {
-            ccDisplay = `VARIOS: ${data.variousCostCenters}`;
+            ccDisplay = `VARIOS: ${escapeHtml_(data.variousCostCenters)}`;
         } else {
-            ccDisplay = `${data.costCenter}${data.costCenterName ? ' - ' + data.costCenterName : ''}`;
+            ccDisplay = `${escapeHtml_(data.costCenter)}${data.costCenterName ? ' - ' + escapeHtml_(data.costCenterName) : ''}`;
         }
-            
-        const approverDisplay = data.approverName 
-            ? `${data.approverName} <span style="font-weight:normal; font-size:12px; color:#6b7280;">(${data.approverEmail})</span>`
-            : (data.approverEmail || 'Por Definir');
 
-        const headerColor = '#D71920'; 
+        const approverDisplay = data.approverName
+            ? `${escapeHtml_(data.approverName)} <span style="font-weight:normal; font-size:12px; color:#6b7280;">(${escapeHtml_(data.approverEmail)})</span>`
+            : (escapeHtml_(data.approverEmail) || 'Por Definir');
+
+        const headerColor = '#D71920';
         const internationalBadge = data.isInternational
             ? `<span style="background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-left: 5px;">Internacional 🌍</span>`
             : '';
 
-        const passengerList = (data.passengers || []).map(p => 
-            `<li style="margin-bottom: 4px;">${p.name} <span style="color:#6b7280; font-size:12px;">(${p.idNumber})</span></li>`
+        const passengerList = (data.passengers || []).map(p =>
+            `<li style="margin-bottom: 4px;">${escapeHtml_(p.name)} <span style="color:#6b7280; font-size:12px;">(${escapeHtml_(p.idNumber)})</span></li>`
         ).join('');
 
         return `
@@ -937,12 +1107,12 @@ const HtmlTemplates = {
             <tr>
               <td width="45%" align="left">
                 <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">ORIGEN</div>
-                <div style="font-size: 18px; font-weight: bold; color: #111827;">${data.origin}</div>
+                <div style="font-size: 18px; font-weight: bold; color: #111827;">${escapeHtml_(data.origin)}</div>
               </td>
               <td width="10%" align="center"><span style="color: #d1d5db; font-size: 20px;">&#10142;</span></td>
               <td width="45%" align="right">
                 <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">DESTINO ${internationalBadge}</div>
-                <div style="font-size: 18px; font-weight: bold; color: #111827;">${data.destination}</div>
+                <div style="font-size: 18px; font-weight: bold; color: #111827;">${escapeHtml_(data.destination)}</div>
               </td>
             </tr>
           </table>
@@ -966,21 +1136,21 @@ const HtmlTemplates = {
         ${data.comments ? `
         <div style="background-color: #fefce8; border: 1px solid #fef08a; border-radius: 6px; padding: 15px; margin-bottom: 25px; border-left: 4px solid #eab308;">
           <div style="font-size: 11px; font-weight: bold; color: #b45309; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 0.5px;">MOTIVO DEL VIAJE / OBSERVACIONES</div>
-          <div style="font-size: 14px; color: #713f12; font-style: italic; line-height: 1.5;">"${data.comments}"</div>
+          <div style="font-size: 14px; color: #713f12; font-style: italic; line-height: 1.5;">"${escapeHtml_(data.comments)}"</div>
         </div>` : ''}
 
         <!-- DETAILS -->
         <div style="margin-top: 25px;">
             <div style="font-size: 14px; font-weight: bold; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 15px;">Detalles del Caso</div>
             <table width="100%" cellpadding="6" cellspacing="0" border="0" style="font-size: 13px;">
-                <tr><td width="35%" style="color: #6b7280;">Empresa / Sede:</td><td style="font-weight: 600; color: #111827;">${data.company} - ${data.site}</td></tr>
-                <tr><td style="color: #6b7280;">Unidad de Negocio:</td><td style="font-weight: 600; color: #111827;">${data.businessUnit}</td></tr>
+                <tr><td width="35%" style="color: #6b7280;">Empresa / Sede:</td><td style="font-weight: 600; color: #111827;">${escapeHtml_(data.company)} - ${escapeHtml_(data.site)}</td></tr>
+                <tr><td style="color: #6b7280;">Unidad de Negocio:</td><td style="font-weight: 600; color: #111827;">${escapeHtml_(data.businessUnit)}</td></tr>
                 <tr><td style="color: #6b7280;">Centro de Costos:</td><td style="font-weight: 600; color: #111827;">${ccDisplay}</td></tr>
-                ${data.workOrder ? `<tr><td style="color: #6b7280;">Orden de Trabajo:</td><td style="font-weight: 600; color: #111827;">${data.workOrder}</td></tr>` : ''}
-                <tr><td style="color: #6b7280;">Solicitante:</td><td><a href="mailto:${data.requesterEmail}" style="color: #0056b3;">${data.requesterEmail}</a></td></tr>
+                ${data.workOrder ? `<tr><td style="color: #6b7280;">Orden de Trabajo:</td><td style="font-weight: 600; color: #111827;">${escapeHtml_(data.workOrder)}</td></tr>` : ''}
+                <tr><td style="color: #6b7280;">Solicitante:</td><td><a href="mailto:${escapeHtml_(data.requesterEmail)}" style="color: #0056b3;">${escapeHtml_(data.requesterEmail)}</a></td></tr>
                 <tr><td style="color: #6b7280;">Aprobador:</td><td style="font-weight: 600; color: #111827;">${approverDisplay}</td></tr>
                 <tr><td style="color: #6b7280;">Hospedaje:</td><td style="font-weight: 600; color: #0056b3;">${data.requiresHotel ? `Sí (${data.nights} Noches)` : 'No'}</td></tr>
-                ${data.requiresHotel ? `<tr><td style="color: #6b7280;">Hotel Sugerido:</td><td style="font-weight: 600; color: #111827;">${data.hotelName || 'N/A'}</td></tr>` : ''}
+                ${data.requiresHotel ? `<tr><td style="color: #6b7280;">Hotel Sugerido:</td><td style="font-weight: 600; color: #111827;">${escapeHtml_(data.hotelName) || 'N/A'}</td></tr>` : ''}
             </table>
         </div>
 
@@ -1052,9 +1222,9 @@ const HtmlTemplates = {
             items.forEach(item => {
                 html += `
                     <tr>
-                        <td style="border-bottom: 1px solid #f3f4f6;"><strong>${item.requestId}</strong></td>
-                        <td style="border-bottom: 1px solid #f3f4f6;">${item.requesterEmail}</td>
-                        <td style="border-bottom: 1px solid #f3f4f6;">${item.origin} ➝ ${item.destination}</td>
+                        <td style="border-bottom: 1px solid #f3f4f6;"><strong>${escapeHtml_(item.requestId)}</strong></td>
+                        <td style="border-bottom: 1px solid #f3f4f6;">${escapeHtml_(item.requesterEmail)}</td>
+                        <td style="border-bottom: 1px solid #f3f4f6;">${escapeHtml_(item.origin)} ➝ ${escapeHtml_(item.destination)}</td>
                         <td align="right" style="border-bottom: 1px solid #f3f4f6;">${item.departureDate}</td>
                     </tr>
                 `;
@@ -1129,12 +1299,12 @@ const HtmlTemplates = {
     userSelectionNotification: function(request) {
         const content = `
             <p style="color: #4b5563; margin-bottom: 20px;">
-                El usuario <strong>${request.requesterEmail}</strong> ha realizado su selección para la solicitud <strong>${request.requestId}</strong>.
+                El usuario <strong>${escapeHtml_(request.requesterEmail)}</strong> ha realizado su selección para la solicitud <strong>${escapeHtml_(request.requestId)}</strong>.
             </p>
 
             <div style="background-color: #f3f4f6; border-left: 4px solid #D71920; padding: 15px; margin-bottom: 25px; border-radius: 4px;">
                 <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight:bold; margin-bottom: 5px;">SELECCIÓN DEL USUARIO</div>
-                <div style="font-size: 14px; color: #111827; font-style: italic;">"${request.selectionDetails}"</div>
+                <div style="font-size: 14px; color: #111827; font-style: italic;">"${escapeHtml_(request.selectionDetails)}"</div>
             </div>
 
             <p style="margin-bottom: 20px;">Por favor ingrese a la plataforma para registrar los costos finales y solicitar la aprobación financiera.</p>
@@ -1222,14 +1392,14 @@ const HtmlTemplates = {
         }
 
         const content = `
-            <p style="color: #4b5563; margin-bottom: 20px;">El usuario <strong>${request.requesterEmail}</strong> requiere aprobación para el viaje <strong>${request.requestId}</strong>.</p>
+            <p style="color: #4b5563; margin-bottom: 20px;">El usuario <strong>${escapeHtml_(request.requesterEmail)}</strong> requiere aprobación para el viaje <strong>${escapeHtml_(request.requestId)}</strong>.</p>
             
             ${alertHtml}
 
             <!-- USER SELECTION TEXT -->
             <div style="background-color: #f3f4f6; border-left: 4px solid #374151; padding: 15px; margin-bottom: 25px; border-radius: 4px;">
                 <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight:bold; margin-bottom: 5px;">ELECCIÓN DEL USUARIO</div>
-                <div style="font-size: 14px; color: #111827; font-style: italic;">"${request.selectionDetails}"</div>
+                <div style="font-size: 14px; color: #111827; font-style: italic;">"${escapeHtml_(request.selectionDetails)}"</div>
             </div>
 
             <!-- FINAL COSTS TABLE -->
@@ -1276,7 +1446,7 @@ const HtmlTemplates = {
             denialReasonBlock = `
             <div style="background-color: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #dc2626; border-radius: 6px; padding: 15px; margin: 20px 0; text-align: left;">
                 <div style="font-size: 11px; font-weight: bold; color: #991b1b; text-transform: uppercase; margin-bottom: 6px;">Motivo de la Denegación</div>
-                <div style="font-size: 13px; color: #374151; font-style: italic; line-height: 1.5;">"${request.denialReason}"</div>
+                <div style="font-size: 13px; color: #374151; font-style: italic; line-height: 1.5;">"${escapeHtml_(request.denialReason)}"</div>
             </div>`;
         }
 
@@ -1304,7 +1474,7 @@ const HtmlTemplates = {
             
             <div style="background-color: #eff6ff; border: 1px solid #dbeafe; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 25px;">
                 <div style="font-size: 12px; color: #60a5fa; margin-bottom: 5px; text-transform: uppercase; font-weight: bold;">NÚMERO DE RESERVA (PNR)</div>
-                <div style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 2px;">${request.reservationNumber || 'N/A'}</div>
+                <div style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 2px;">${escapeHtml_(request.reservationNumber) || 'N/A'}</div>
             </div>
 
             <p style="text-align: center; color: #4b5563; margin-bottom: 25px;">
@@ -1348,15 +1518,17 @@ function renderConfirmationPage(title, message, actionText, actionUrl, color) {
     const html = `
     <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${title}</title>
     <style>body{font-family:sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.card{background:white;padding:30px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);text-align:center;max-width:400px}.btn{background:${color};color:white;padding:10px 20px;text-decoration:none;border-radius:4px;display:inline-block;margin-top:20px;border:none;cursor:pointer;font-size:16px}</style>
-    <script>function go(){document.getElementById('c').style.display='none';document.getElementById('l').style.display='block';window.location.href="${actionUrl}";}</script>
+    <script>function go(){document.getElementById('c').style.display='none';document.getElementById('l').style.display='block';window.top.location.href="${actionUrl}";}</script>
     </head><body>
     <div id="c" class="card"><h1>${title}</h1><p>${message}</p><button onclick="go()" class="btn">${actionText}</button></div>
     <div id="l" class="card" style="display:none"><h1>Procesando...</h1><p>Por favor espere.</p></div>
     </body></html>`;
-    return HtmlService.createHtmlOutput(html).setTitle(title).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    return HtmlService.createHtmlOutput(html).setTitle(title).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
 
 function renderDenialReasonPage(id, role, actor, color) {
+    const safeId = escapeHtml_(id);
+    const safeRole = escapeHtml_(role);
     const html = `
     <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Denegar Solicitud</title>
     <style>
@@ -1377,16 +1549,16 @@ function renderDenialReasonPage(id, role, actor, color) {
       function submitDenial(){
         var reason = document.getElementById('reason').value.trim();
         var encodedReason = encodeURIComponent(reason);
-        var url = '${WEB_APP_URL}?action=approve&id=${id}&decision=denied&role=${role}&confirm=true&actor=${encodeURIComponent(actor || '')}' + (reason ? '&reason=' + encodedReason : '');
+        var url = '${WEB_APP_URL}?action=approve&id=${encodeURIComponent(id)}&decision=denied&role=${encodeURIComponent(role)}&confirm=true&actor=${encodeURIComponent(actor || '')}' + (reason ? '&reason=' + encodedReason : '');
         document.getElementById('form-card').style.display='none';
         document.getElementById('loading-card').style.display='block';
-        window.location.href = url;
+        window.top.location.href = url;
       }
     </script>
     </head><body>
     <div id="form-card" class="card">
       <h1>Denegar Solicitud</h1>
-      <div class="id-badge">${id}</div>
+      <div class="id-badge">${safeId}</div>
       <p>¿Está seguro de <strong>DENEGAR</strong> esta solicitud?</p>
       <label for="reason">Motivo de la denegación (opcional)</label>
       <textarea id="reason" placeholder="Ej: No se justifica el viaje en estas fechas, presupuesto insuficiente..."></textarea>
@@ -1395,12 +1567,14 @@ function renderDenialReasonPage(id, role, actor, color) {
     </div>
     <div id="loading-card" class="card loading"><h1>Procesando...</h1><p>Por favor espere.</p></div>
     </body></html>`;
-    return HtmlService.createHtmlOutput(html).setTitle('Denegar Solicitud').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    return HtmlService.createHtmlOutput(html).setTitle('Denegar Solicitud').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
 
 function renderMessagePage(title, message, color) {
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>body{font-family:sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:8px;text-align:center}</style></head><body><div class="card"><h1 style="color:${color}">${title}</h1><p>${message}</p></div></body></html>`;
-    return HtmlService.createHtmlOutput(html).setTitle(title).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    const safeTitle = escapeHtml_(title);
+    const safeMessage = escapeHtml_(message);
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>body{font-family:sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:8px;text-align:center}</style></head><body><div class="card"><h1 style="color:${color}">${safeTitle}</h1><p>${safeMessage}</p></div></body></html>`;
+    return HtmlService.createHtmlOutput(html).setTitle(safeTitle).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
 
 // --- DATA ACCESS ---
@@ -1560,7 +1734,31 @@ function getIntegrantesData() {
   return integrantes;
 }
 
+// --- SECURITY: Server-side input validation ---
+function validateRequestInput_(data) {
+  var errors = [];
+  if (!data.requesterEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.requesterEmail)) errors.push('Correo del solicitante inválido.');
+  if (!data.company || String(data.company).length > 100) errors.push('Empresa inválida.');
+  if (!data.origin || String(data.origin).length > 200) errors.push('Ciudad origen inválida.');
+  if (!data.destination || String(data.destination).length > 200) errors.push('Ciudad destino inválida.');
+  if (!data.departureDate) errors.push('Fecha de ida requerida.');
+  if (!data.passengers || !Array.isArray(data.passengers) || data.passengers.length === 0 || data.passengers.length > 5) {
+    errors.push('Debe haber entre 1 y 5 pasajeros.');
+  } else {
+    data.passengers.forEach(function(p, i) {
+      if (!p.name || String(p.name).length > 200) errors.push('Nombre del pasajero ' + (i+1) + ' inválido.');
+      if (!p.idNumber || String(p.idNumber).length > 50) errors.push('Cédula del pasajero ' + (i+1) + ' inválida.');
+    });
+  }
+  if (data.comments && String(data.comments).length > 2000) errors.push('Observaciones demasiado largas (máx 2000 caracteres).');
+  if (data.workOrder && String(data.workOrder).length > 100) errors.push('Orden de trabajo demasiado larga.');
+  if (data.hotelName && String(data.hotelName).length > 200) errors.push('Nombre de hotel demasiado largo.');
+  if (data.changeReason && String(data.changeReason).length > 2000) errors.push('Motivo del cambio demasiado largo.');
+  if (errors.length > 0) throw new Error('Validación: ' + errors.join(' '));
+}
+
 function createNewRequest(data, emailHtml) {
+  validateRequestInput_(data);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const idColIndex = HEADERS_REQUESTS.indexOf("ID RESPUESTA") + 1; 
@@ -1781,7 +1979,26 @@ function getOrCreateRequestFolder_(requestId, rowNumber, sheet) {
 }
 
 // NEW FUNCTION: Upload Option Image (v2.7)
+// --- SECURITY: File upload constants ---
+var ALLOWED_UPLOAD_TYPES = ['application/pdf', 'image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
+var MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+function validateFileUpload_(fileData, fileName, mimeType) {
+  if (!fileData) throw new Error('Datos del archivo vacíos.');
+  if (!fileName || String(fileName).length > 255) throw new Error('Nombre de archivo inválido.');
+  var decoded = Utilities.base64Decode(fileData);
+  if (decoded.length > MAX_FILE_SIZE_BYTES) throw new Error('Archivo demasiado grande (máximo 10MB).');
+  if (mimeType && ALLOWED_UPLOAD_TYPES.indexOf(mimeType) === -1 && mimeType !== MimeType.PNG) {
+    // Allow generic PNG from option images even if not in list
+    console.warn('Tipo de archivo no estándar: ' + mimeType);
+  }
+  // Sanitize filename
+  return String(fileName).replace(/[\/\\:*?"<>|]/g, '_').substring(0, 200);
+}
+
 function uploadOptionImage(requestId, fileData, fileName, type, optionLetter, direction) {
+    validateFileUpload_(fileData, fileName, 'image/png');
+    if (!/^[A-Z]$/.test(optionLetter)) throw new Error('Letra de opción inválida.');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
     const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
@@ -1801,7 +2018,7 @@ function uploadOptionImage(requestId, fileData, fileName, type, optionLetter, di
     blob.setName(newName);
     
     const file = folder.createFile(blob);
-    // Make file viewable to anyone with link so it can be embedded in emails easily
+    // Make file viewable to anyone with link so it can be embedded in emails/app across domains
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
     const publicUrl = `https://drive.google.com/thumbnail?id=${file.getId()}&sz=w1000`; // CHANGED FROM uc?export=view for reliability
@@ -1931,6 +2148,7 @@ function updateRequestStatus(id, status, payload) {
 }
 
 function uploadSupportFile(requestId, fileData, fileName, mimeType) {
+  var sanitizedName = validateFileUpload_(fileData, fileName, mimeType);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
@@ -2086,7 +2304,34 @@ function sendApprovalRequestEmail(req) {
     }
 }
 
-function isUserAnalyst(email) { return email.includes('admin') || email.includes('compras') || email.includes('analista') || email === ADMIN_EMAIL; }
+// --- SECURITY: Analyst whitelist (replaces insecure string-matching) ---
+function isUserAnalyst(email) {
+  const whitelist = getAnalystWhitelist_();
+  return whitelist.includes(String(email).toLowerCase().trim());
+}
+
+function getAnalystWhitelist_() {
+  const props = PropertiesService.getScriptProperties();
+  const cached = props.getProperty('ANALYST_EMAILS');
+  if (cached) {
+    try {
+      return JSON.parse(cached).map(function(e) { return e.toLowerCase().trim(); });
+    } catch(err) { /* fall through to default */ }
+  }
+  // Default: only the configured admin email
+  return [ADMIN_EMAIL.toLowerCase().trim()];
+}
+
+/**
+ * One-time setup: call from GAS editor to configure analyst emails.
+ * Example: setAnalystWhitelist(['apcompras@equitel.com.co', 'analista@equitel.com.co'])
+ */
+function setAnalystWhitelist(emails) {
+  if (!Array.isArray(emails) || emails.length === 0) throw new Error('Debe proporcionar un array de correos.');
+  const props = PropertiesService.getScriptProperties();
+  props.setProperty('ANALYST_EMAILS', JSON.stringify(emails.map(function(e) { return e.toLowerCase().trim(); })));
+  return true;
+}
 
 function mapRowToRequest(row) {
   const get = (h) => { const i = HEADERS_REQUESTS.indexOf(h); return (i>-1 && i<row.length) ? row[i] : ''; };
@@ -2778,8 +3023,8 @@ function anularSolicitud(requestId, reason) {
     const html = `
       <div style="font-family: Arial, sans-serif; color: #374151;">
         <h2 style="color: #D71920;">Solicitud Anulada</h2>
-        <p>Le informamos que su solicitud de viaje <strong>${requestId}</strong> ha sido anulada por el administrador.</p>
-        <p><strong>Motivo:</strong> ${reason}</p>
+        <p>Le informamos que su solicitud de viaje <strong>${escapeHtml_(requestId)}</strong> ha sido anulada por el administrador.</p>
+        <p><strong>Motivo:</strong> ${escapeHtml_(reason)}</p>
         <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
         <p style="font-size: 12px; color: #6b7280;">Este es un mensaje automático del Sistema de Tiquetes Equitel.</p>
       </div>

@@ -3,6 +3,17 @@ import { TravelRequest } from '../types';
 import { LOGO_URL } from '../constants';
 import { getDaysDiff } from './dateUtils';
 
+/** Escapes HTML special characters to prevent XSS in email templates. */
+function escapeHtml(unsafe: string | undefined | null): string {
+  if (!unsafe) return '';
+  return String(unsafe)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 /**
  * Generates a modern HTML email template mimicking the "Gestión de Viajes" card style.
  */
@@ -16,18 +27,18 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
 
   // Passenger List
   const passengerList = (data.passengers || []).map(p =>
-    `<li style="margin-bottom: 4px;">${p.name} <span style="color:#6b7280; font-size:12px;">(${p.idNumber})</span></li>`
+    `<li style="margin-bottom: 4px;">${escapeHtml(p.name)} <span style="color:#6b7280; font-size:12px;">(${escapeHtml(p.idNumber)})</span></li>`
   ).join('');
 
   // Cost Center Display
   const ccDisplay = data.costCenter === 'VARIOS'
-    ? `VARIOS: ${data.variousCostCenters || data.costCenterName || ''}`
-    : `${data.costCenter} - ${data.costCenterName || ''}`;
+    ? `VARIOS: ${escapeHtml(data.variousCostCenters || data.costCenterName || '')}`
+    : `${escapeHtml(data.costCenter)} - ${escapeHtml(data.costCenterName || '')}`;
 
   // Approver Display
   const approverDisplay = data.approverName
-    ? `${data.approverName} <span style="color:#6b7280; font-weight:normal;">&lt;${data.approverEmail}&gt;</span>`
-    : (data.approverEmail || 'Por Definir');
+    ? `${escapeHtml(data.approverName)} <span style="color:#6b7280; font-weight:normal;">&lt;${escapeHtml(data.approverEmail)}&gt;</span>`
+    : (escapeHtml(data.approverEmail) || 'Por Definir');
 
   // Linked Request Logic (Days ago)
   let linkedRequestInfo = '';
@@ -37,7 +48,7 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
     linkedRequestInfo = `
       <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 12px; text-align: center;">
          <strong>ℹ️ SOLICITUD VINCULADA:</strong><br/>
-         Esta solicitud reemplaza a la solicitud <strong>${data.relatedRequestId}</strong>, creada hace <strong>${diffDays} días</strong>.
+         Esta solicitud reemplaza a la solicitud <strong>${escapeHtml(data.relatedRequestId)}</strong>, creada hace <strong>${diffDays} días</strong>.
       </div>`;
   }
 
@@ -47,7 +58,7 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
     extraCostWarning = `
       <div style="background-color: #fee2e2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; text-align: center; border-left: 4px solid #ef4444;">
          <strong style="display:block; margin-bottom:4px; font-size:14px;">⚠️ CAMBIO CON COSTO EXTRA</strong>
-         La solicitud original (<strong>${data.relatedRequestId}</strong>) ya tenía tiquetes comprados (Etapa: RESERVADO).<br/>
+         La solicitud original (<strong>${escapeHtml(data.relatedRequestId)}</strong>) ya tenía tiquetes comprados (Etapa: RESERVADO).<br/>
          Este cambio generará penalidades o costos adicionales.
       </div>`;
   }
@@ -56,7 +67,7 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
   const modBlock = isModification
     ? `<div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
          <strong style="color: #92400e; display: block; font-size: 12px; margin-bottom: 5px; text-transform:uppercase;">Motivo del Cambio:</strong>
-         <div style="color: #333; font-style: italic;">"${data.changeReason}"</div>
+         <div style="color: #333; font-style: italic;">"${escapeHtml(data.changeReason)}"</div>
        </div>`
     : '';
 
@@ -142,7 +153,7 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
         
         <div class="intro">
           Se ha registrado un ${isModification ? 'requerimiento de cambio' : 'nuevo requerimiento de viaje'} para 
-          <strong>${data.requesterEmail}</strong>.
+          <strong>${escapeHtml(data.requesterEmail)}</strong>.
         </div>
 
         <!-- ROUTE -->
@@ -151,12 +162,12 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
             <tr>
               <td width="45%" align="left">
                 <div class="route-label">ORIGEN</div>
-                <div class="route-city">${data.origin}</div>
+                <div class="route-city">${escapeHtml(data.origin)}</div>
               </td>
               <td width="10%" align="center"><span class="route-arrow">&#10142;</span></td>
               <td width="45%" align="right">
                 <div class="route-label">DESTINO ${internationalBadge}</div>
-                <div class="route-city">${data.destination}</div>
+                <div class="route-city">${escapeHtml(data.destination)}</div>
               </td>
             </tr>
           </table>
@@ -181,11 +192,11 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
           <div class="section-title">Detalles del Caso</div>
           <div class="detail-row">
             <span class="detail-label">Empresa / Sede:</span>
-            <span class="detail-value">${data.company} - ${data.site}</span>
+            <span class="detail-value">${escapeHtml(data.company)} - ${escapeHtml(data.site)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Unidad de Negocio:</span>
-            <span class="detail-value">${data.businessUnit}</span>
+            <span class="detail-value">${escapeHtml(data.businessUnit)}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Centro de Costos:</span>
@@ -194,12 +205,12 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
           ${data.workOrder ? `
           <div class="detail-row">
             <span class="detail-label">Orden de Trabajo:</span>
-            <span class="detail-value">${data.workOrder}</span>
+            <span class="detail-value">${escapeHtml(data.workOrder)}</span>
           </div>
           ` : ''}
           <div class="detail-row">
             <span class="detail-label">Hospedaje:</span>
-            <span class="detail-value">${data.requiresHotel ? `Sí - ${data.hotelName} (${data.nights} Noches)` : 'No'}</span>
+            <span class="detail-value">${data.requiresHotel ? `Sí - ${escapeHtml(data.hotelName)} (${data.nights} Noches)` : 'No'}</span>
           </div>
           <div class="detail-row">
             <span class="detail-label">Aprobador:</span>
@@ -211,7 +222,7 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
         ${data.comments ? `
         <div class="note-box">
           <div class="note-label">OBSERVACIONES / NOTAS:</div>
-          <div class="note-text">${data.comments}</div>
+          <div class="note-text">${escapeHtml(data.comments)}</div>
         </div>` : ''}
 
         <!-- PASSENGERS -->

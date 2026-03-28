@@ -14,9 +14,11 @@ interface RequestDetailProps {
     isAdmin?: boolean;
 }
 
-// Helper to generate reliable thumbnail URLs based on Drive ID
-const getThumbnailUrl = (driveId: string) => `https://drive.google.com/thumbnail?id=${driveId}&sz=w1000`;
-// Helper to generate reliable viewer URLs
+// Drive image URL: uc?export=view serves raw content for public files (works cross-origin in browsers)
+const getDriveImageUrl = (driveId: string) => `https://drive.google.com/uc?export=view&id=${driveId}`;
+// Fallback URL formats if primary fails
+const getDriveFallbackUrl = (driveId: string) => `https://drive.google.com/thumbnail?id=${driveId}&sz=w1000`;
+// Viewer URL for "open in new tab"
 const getViewerUrl = (driveId: string) => `https://drive.google.com/file/d/${driveId}/view?usp=sharing`;
 
 const ApprovalStatusRow = ({ label, statusString }: { label: string, statusString?: string }) => {
@@ -397,12 +399,22 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                         </div>
                                                     </div>
                                                     <div className="bg-white rounded mb-2 overflow-hidden border border-white relative group">
-                                                        {/* Use constructed thumbnail URL for reliability */}
                                                         <img
-                                                            src={getThumbnailUrl(opt.driveId)}
+                                                            src={getDriveImageUrl(opt.driveId)}
                                                             alt="Vuelo"
                                                             className="w-full h-64 object-contain mx-auto"
                                                             loading="lazy"
+                                                            referrerPolicy="no-referrer"
+                                                            onError={(e) => {
+                                                                const img = e.currentTarget;
+                                                                if (img.dataset.retried === '1') {
+                                                                    img.dataset.retried = '2';
+                                                                    img.src = `https://lh3.googleusercontent.com/d/${opt.driveId}=w800`;
+                                                                } else if (!img.dataset.retried) {
+                                                                    img.dataset.retried = '1';
+                                                                    img.src = getDriveFallbackUrl(opt.driveId);
+                                                                }
+                                                            }}
                                                         />
                                                         <a
                                                             href={getViewerUrl(opt.driveId)}
@@ -429,12 +441,22 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                 <div key={i} className="border border-gray-200 p-3 rounded-lg shadow-sm bg-white">
                                                     <div className="font-bold text-blue-600 mb-2 text-lg">Opción {opt.id}</div>
                                                     <div className="bg-gray-100 rounded mb-2 overflow-hidden border border-gray-100 relative group">
-                                                        {/* Use constructed thumbnail URL for reliability */}
                                                         <img
-                                                            src={getThumbnailUrl(opt.driveId)}
+                                                            src={getDriveImageUrl(opt.driveId)}
                                                             alt="Hotel"
                                                             className="w-full h-64 object-contain mx-auto"
                                                             loading="lazy"
+                                                            referrerPolicy="no-referrer"
+                                                            onError={(e) => {
+                                                                const img = e.currentTarget;
+                                                                if (img.dataset.retried === '1') {
+                                                                    img.dataset.retried = '2';
+                                                                    img.src = `https://lh3.googleusercontent.com/d/${opt.driveId}=w800`;
+                                                                } else if (!img.dataset.retried) {
+                                                                    img.dataset.retried = '1';
+                                                                    img.src = getDriveFallbackUrl(opt.driveId);
+                                                                }
+                                                            }}
                                                         />
                                                         <a
                                                             href={getViewerUrl(opt.driveId)}

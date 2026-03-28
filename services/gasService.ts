@@ -3,6 +3,11 @@ import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, O
 import { API_BASE_URL } from '../constants';
 
 class GasService {
+  private _userEmail: string = '';
+
+  setUserEmail(email: string) {
+    this._userEmail = email.toLowerCase().trim();
+  }
 
   /**
    * Universal Bridge using HTTP FETCH.
@@ -23,7 +28,7 @@ class GasService {
         },
         body: JSON.stringify({
           action,
-          payload
+          payload: { ...payload, userEmail: payload?.userEmail || this._userEmail }
         })
       });
 
@@ -173,6 +178,11 @@ class GasService {
     const response = await this.runGas('createReportTemplate');
     if (!response.success) throw new Error(response.error);
     return response.data;
+  }
+
+  async checkIsAnalyst(email: string): Promise<boolean> {
+    const response = await this.runGas('checkIsAnalyst', { userEmail: email });
+    return response.success && response.data === true;
   }
 
   async verifyAdminPin(pin: string): Promise<boolean> {

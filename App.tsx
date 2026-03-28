@@ -68,6 +68,7 @@ const App: React.FC = () => {
 
   const handleLoginSuccess = async (email: string, authenticatedAsAdmin: boolean = false, preloadedIntegrantes?: Integrant[]) => {
     setUserEmail(email);
+    gasService.setUserEmail(email);
     const list = preloadedIntegrantes || integrantes;
     setUserName(determineUserName(email, list));
     setRole(authenticatedAsAdmin ? UserRole.ANALYST : UserRole.REQUESTER);
@@ -80,9 +81,8 @@ const App: React.FC = () => {
     if (loginEmailInput) {
       const emailLower = loginEmailInput.toLowerCase().trim();
       const userExists = integrantes.some(i => i.email.toLowerCase().trim() === emailLower);
-      const isAdminType = emailLower.includes('admin') || emailLower.includes('compras') || emailLower.includes('analista');
 
-      if (!userExists && !isAdminType) {
+      if (!userExists) {
         alert("El correo ingresado (" + emailLower + ") no se encuentra registrado en nuestra base de datos de integrantes.");
         return;
       }
@@ -90,13 +90,22 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAdminLoginClick = () => {
-    let emailToUse = loginEmailInput || 'admin@travelmaster.com';
-    if (emailToUse.includes('admin') || emailToUse.includes('compras') || emailToUse.includes('analista')) {
-      setPendingAdminEmail(emailToUse);
-      setShowPinModal(true);
-    } else {
-      alert('El correo ingresado no tiene permisos de administrador (debe contener "admin", "compras" o "analista").');
+  const handleAdminLoginClick = async () => {
+    const emailToUse = loginEmailInput.trim();
+    if (!emailToUse) {
+      alert('Por favor ingrese su correo corporativo de administrador.');
+      return;
+    }
+    try {
+      const isAnalyst = await gasService.checkIsAnalyst(emailToUse);
+      if (isAnalyst) {
+        setPendingAdminEmail(emailToUse);
+        setShowPinModal(true);
+      } else {
+        alert('El correo ingresado no tiene permisos de administrador.');
+      }
+    } catch {
+      alert('Error al verificar permisos. Intente de nuevo.');
     }
   };
 
@@ -114,6 +123,7 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     setUserEmail('');
+    gasService.setUserEmail('');
     setRequests([]);
     setRole(UserRole.REQUESTER);
     setLoginEmailInput('');

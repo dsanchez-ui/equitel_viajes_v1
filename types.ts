@@ -47,6 +47,7 @@ export interface Option {
   driveId: string;
   name: string;
   direction?: 'IDA' | 'VUELTA';
+  localPreview?: string;
 }
 
 export interface SupportFile {
