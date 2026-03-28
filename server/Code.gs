@@ -607,7 +607,7 @@ function processStudyDecision(e) {
         }
         return renderMessagePage("Acción Completada", decision === 'study' ? 'Solicitud pasada a estudio (pend. opciones).' : 'Solicitud de cambio rechazada.', decisionColor);
      } catch(err) {
-        return renderMessagePage("Error", err.toString(), '#D71920');
+        return renderMessagePage("Error", escapeHtml_(err.toString()), '#D71920');
      } finally {
        lock.releaseLock();
      }
@@ -757,7 +757,7 @@ function processApprovalFromEmail(e) {
           if (alreadyDecided) {
                return renderMessagePage(
                   'Decisión Previa Detectada', 
-                  `Usted ya había registrado una decisión para esta solicitud anteriormente (Fecha: ${previousDecisionDate || 'Desconocida'}).<br/>No se han realizado cambios.`,
+                  `Usted ya había registrado una decisión para esta solicitud anteriormente (Fecha: ${escapeHtml_(previousDecisionDate) || 'Desconocida'}).<br/>No se han realizado cambios.`,
                   '#374151'
               );
           }
@@ -768,7 +768,7 @@ function processApprovalFromEmail(e) {
           if (isAdvancedStatus) {
               return renderMessagePage(
                   'Decisión Registrada', 
-                  `Su decisión ha sido registrada en el sistema.<br/><br/><strong>Nota:</strong> Esta solicitud ya había avanzado previamente y se encuentra en estado: <span style="color:blue">${currentStatus}</span>. El flujo no se ha modificado.`,
+                  `Su decisión ha sido registrada en el sistema.<br/><br/><strong>Nota:</strong> Esta solicitud ya había avanzado previamente y se encuentra en estado: <span style="color:blue">${escapeHtml_(currentStatus)}</span>. El flujo no se ha modificado.`,
                   '#374151'
               );
           }
@@ -788,7 +788,7 @@ function processApprovalFromEmail(e) {
 
               return renderMessagePage(
                   'Decisión Registrada',
-                  `Ha <strong>DENEGADO</strong> la solicitud. El proceso se ha detenido.${denialReason ? '<br/><br/><strong>Motivo:</strong> ' + denialReason : ''}`,
+                  `Ha <strong>DENEGADO</strong> la solicitud. El proceso se ha detenido.${denialReason ? '<br/><br/><strong>Motivo:</strong> ' + escapeHtml_(denialReason) : ''}`,
                   '#D71920'
               );
           }
@@ -840,7 +840,7 @@ function processApprovalFromEmail(e) {
           }
 
       } catch (e) {
-          return renderMessagePage('Error', 'Error al procesar: ' + e.toString(), '#D71920');
+          return renderMessagePage('Error', 'Error al procesar: ' + escapeHtml_(e.toString()), '#D71920');
       } finally {
           lock.releaseLock();
       }
@@ -1572,8 +1572,9 @@ function renderDenialReasonPage(id, role, actor, color) {
 
 function renderMessagePage(title, message, color) {
     const safeTitle = escapeHtml_(title);
-    const safeMessage = escapeHtml_(message);
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>body{font-family:sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:8px;text-align:center}</style></head><body><div class="card"><h1 style="color:${color}">${safeTitle}</h1><p>${safeMessage}</p></div></body></html>`;
+    // Note: message contains intentional HTML (br, strong, span) from server-side callers.
+    // User input within messages must be escaped at the interpolation site, not here.
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${safeTitle}</title><style>body{font-family:sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:8px;text-align:center}</style></head><body><div class="card"><h1 style="color:${color}">${safeTitle}</h1><p>${message}</p></div></body></html>`;
     return HtmlService.createHtmlOutput(html).setTitle(safeTitle).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
 

@@ -3,8 +3,8 @@
 // NOTE: In a real GAS project, we might fetch headers dynamically. 
 // Here we map key properties to their conceptual column usage.
 
-// API URL loaded from environment variable (set in .env as VITE_API_BASE_URL)
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+// API URL: env var for local dev, hardcoded default for production builds (public GAS endpoint, not a secret)
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://script.google.com/macros/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec';
 
 // Logo hosted on Google Drive (Using Thumbnail endpoint for better embedding reliability)
 export const LOGO_URL = 'https://drive.google.com/thumbnail?id=1hA1i-1mG4DbBmzG1pFWafoDrCWwijRjq&sz=w1000';
