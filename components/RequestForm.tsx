@@ -64,14 +64,41 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   // Modification Reason State
   const [changeReason, setChangeReason] = useState('');
 
-  // Resolve approver display based on first passenger
-  const resolvedApprover = useMemo(() => {
+  // Co-approver rules from backend
+  const [coApproverRules, setCoApproverRules] = useState<{ principalEmail: string, coApproverName: string, condition: string }[]>([]);
+
+  useEffect(() => {
+    gasService.getCoApproverRules().then(setCoApproverRules).catch(() => {});
+  }, []);
+
+  // Resolve full approver chain preview
+  const approverPreview = useMemo(() => {
+    const approvers: { name: string, role: string }[] = [];
+
+    // 1. Area approver (from first passenger)
     if (passengers.length > 0 && passengers[0].idNumber) {
       const p1 = integrantes.find(i => i.idNumber === passengers[0].idNumber);
-      if (p1 && p1.approverName) return p1.approverName;
+      if (p1 && p1.approverName && p1.approverEmail) {
+        approvers.push({ name: p1.approverName, role: 'Área' });
+
+        // 2. Co-approvers (from rules, if international)
+        if (isInternational) {
+          const matches = coApproverRules.filter(r => r.principalEmail === p1.approverEmail.toLowerCase() && r.condition === 'INTERNACIONAL');
+          matches.forEach(rule => {
+            approvers.push({ name: rule.coApproverName, role: 'Área (co-aprobador)' });
+          });
+        }
+      }
     }
-    return null;
-  }, [passengers, integrantes]);
+
+    // 3. Executive approvers (international always requires them)
+    if (isInternational) {
+      approvers.push({ name: 'CEO', role: 'Ejecutivo' });
+      approvers.push({ name: 'Director CDS', role: 'Ejecutivo' });
+    }
+
+    return approvers;
+  }, [passengers, integrantes, isInternational, coApproverRules]);
 
   const [formData, setFormData] = useState<Partial<TravelRequest>>({
     company: initialData?.company || '',
@@ -711,12 +738,17 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         {/* ACTIONS & ALERTS */}
         <div className="pt-4 space-y-4">
 
-          {resolvedApprover && (
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 flex items-center gap-2">
-              <span className="text-blue-500 text-lg">👤</span>
-              <p className="text-sm text-blue-800">
-                <span className="font-semibold">Aprobador de área:</span> {resolvedApprover}
-              </p>
+          {approverPreview.length > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
+              <p className="text-xs font-semibold text-blue-700 uppercase mb-1">Cadena de aprobación estimada</p>
+              <div className="flex flex-wrap gap-2">
+                {approverPreview.map((a, i) => (
+                  <span key={i} className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${a.role === 'Ejecutivo' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
+                    {a.name} <span className="opacity-60">({a.role})</span>
+                  </span>
+                ))}
+              </div>
+              {!isInternational && <p className="text-xs text-blue-500 mt-1">* Aprobadores ejecutivos (CEO, Director CDS) podrían requerirse si el costo final supera $1.200.000 COP</p>}
             </div>
           )}
 

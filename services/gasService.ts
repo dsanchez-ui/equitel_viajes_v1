@@ -113,6 +113,11 @@ class GasService {
     return response.data || [];
   }
 
+  async getCoApproverRules(): Promise<{ principalEmail: string, coApproverName: string, coApproverEmail: string, condition: string }[]> {
+    const response = await this.runGas('getCoApproverRules');
+    return response.data || [];
+  }
+
   async getCreditCards(): Promise<{ value: string, label: string }[]> {
     const response = await this.runGas('getCreditCards');
     return response.data || [];

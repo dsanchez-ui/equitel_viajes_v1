@@ -222,6 +222,7 @@ function dispatch(action, payload) {
       case 'getIntegrantesData': result = getIntegrantesData(); break;
       case 'getCitiesList': result = getCitiesList(); break;
       case 'getCreditCards': result = getCreditCards(); break;
+      case 'getCoApproverRules': result = getCoApproverRules_(); break;
       // SECURITY: Server-side analyst check
       case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
       case 'getMyRequests': result = getRequestsByEmail(currentUserEmail); break;
