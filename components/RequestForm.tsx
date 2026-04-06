@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster } from '../types';
 import { COMPANIES, SITES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
@@ -63,6 +63,15 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   // Modification Reason State
   const [changeReason, setChangeReason] = useState('');
+
+  // Resolve approver display based on first passenger
+  const resolvedApprover = useMemo(() => {
+    if (passengers.length > 0 && passengers[0].idNumber) {
+      const p1 = integrantes.find(i => i.idNumber === passengers[0].idNumber);
+      if (p1 && p1.approverName) return p1.approverName;
+    }
+    return null;
+  }, [passengers, integrantes]);
 
   const [formData, setFormData] = useState<Partial<TravelRequest>>({
     company: initialData?.company || '',
@@ -701,6 +710,15 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
         {/* ACTIONS & ALERTS */}
         <div className="pt-4 space-y-4">
+
+          {resolvedApprover && (
+            <div className="bg-blue-50 border border-blue-200 rounded-md p-3 flex items-center gap-2">
+              <span className="text-blue-500 text-lg">👤</span>
+              <p className="text-sm text-blue-800">
+                <span className="font-semibold">Aprobador de área:</span> {resolvedApprover}
+              </p>
+            </div>
+          )}
 
           {policyViolation && (
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-md animate-pulse">

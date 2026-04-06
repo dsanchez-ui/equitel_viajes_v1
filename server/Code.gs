@@ -1660,6 +1660,19 @@ function getCostCenterData() {
   return data.map(row => ({ code: String(row[0]).trim(), name: String(row[1]), businessUnit: String(row[2]) })).filter(i => i.code);
 }
 
+function getCoApproverRules_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("REGLAS_COAPROBADOR");
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+  return data.filter(row => String(row[1]).trim() && String(row[3]).trim()).map(row => ({
+      principalEmail: String(row[1]).toLowerCase().trim(),
+      coApproverName: String(row[2]).trim(),
+      coApproverEmail: String(row[3]).toLowerCase().trim(),
+      condition: String(row[4]).trim().toUpperCase()
+  }));
+}
+
 function getIntegrantesData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
@@ -1793,7 +1806,7 @@ function createNewRequest(data, emailHtml) {
   }
 
   // --- RESOLVE APPROVER ---
-  let approverEmail = ADMIN_EMAIL; 
+  let approverEmail = ADMIN_EMAIL;
   let approverName = 'Por Definir';
 
   if (data.passengers && data.passengers.length > 0) {
@@ -1803,6 +1816,16 @@ function createNewRequest(data, emailHtml) {
          approverEmail = integrant.approverEmail;
          approverName = integrant.approverName;
      }
+  }
+
+  // --- CO-APPROVER RULES (e.g. international flights) ---
+  if (data.isInternational && approverEmail && approverEmail !== ADMIN_EMAIL) {
+      const coRules = getCoApproverRules_();
+      const matches = coRules.filter(r => r.principalEmail === approverEmail.toLowerCase() && r.condition === 'INTERNACIONAL');
+      matches.forEach(rule => {
+          approverEmail += ',' + rule.coApproverEmail;
+          approverName += ', ' + rule.coApproverName;
+      });
   }
 
   let nights = data.nights || 0;
