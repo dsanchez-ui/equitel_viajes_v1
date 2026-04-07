@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { TravelRequest, Passenger, CostCenterMaster, Integrant } from '../types';
-import { COMPANIES, SITES, MAX_PASSENGERS } from '../constants';
+import { COMPANIES, SITES as SITES_FALLBACK, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 
 interface ModificationFormProps {
@@ -31,6 +31,12 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
   const [masterData, setMasterData] = useState<CostCenterMaster[]>([]);
   const [availableBusinessUnits, setAvailableBusinessUnits] = useState<string[]>([]);
   const [filteredCostCenters, setFilteredCostCenters] = useState<CostCenterMaster[]>([]);
+
+  // Sites (sedes) loaded dynamically from MISC sheet
+  const [sites, setSites] = useState<string[]>(SITES_FALLBACK);
+  useEffect(() => {
+    gasService.getSites().then(s => { if (s && s.length) setSites(s); }).catch(() => {});
+  }, []);
   
   // Various Cost Center State
   const [variousCCList, setVariousCCList] = useState<string[]>(
@@ -321,7 +327,7 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
                                   onChange={handleInputChange} 
                                   className="block w-full bg-white text-gray-900 border-gray-300 rounded-md shadow-sm focus:ring-brand-red focus:border-brand-red sm:text-sm p-2"
                                 >
-                                  {SITES.map(s => <option key={s} value={s}>{s}</option>)}
+                                  {sites.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                             </div>
                             <div>
