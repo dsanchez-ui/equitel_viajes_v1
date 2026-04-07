@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster } from '../types';
-import { COMPANIES, SITES as SITES_FALLBACK, MAX_PASSENGERS } from '../constants';
+import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 import { generateTravelRequestEmail } from '../utils/EmailGenerator';
 import { formatToYYYYMMDD, formatToDDMMYYYY } from '../utils/dateUtils';
@@ -57,7 +57,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const [isCitiesLoading, setIsCitiesLoading] = useState(false);
 
   // Sites (sedes) loaded dynamically from MISC sheet
-  const [sites, setSites] = useState<string[]>(SITES_FALLBACK);
+  const [sites, setSites] = useState<string[]>([]);
+  const [isSitesLoading, setIsSitesLoading] = useState<boolean>(true);
 
   const [variousCCList, setVariousCCList] = useState<string[]>(
     initialData?.variousCostCenters ? initialData.variousCostCenters.split(',').map(s => s.split(' - ')[0].trim()) : []
@@ -72,7 +73,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   useEffect(() => {
     gasService.getCoApproverRules().then(setCoApproverRules).catch(() => {});
-    gasService.getSites().then(s => { if (s && s.length) setSites(s); }).catch(() => {});
+    gasService.getSites()
+      .then(s => setSites(Array.isArray(s) ? s : []))
+      .catch(() => setSites([]))
+      .finally(() => setIsSitesLoading(false));
   }, []);
 
   // Resolve full approver chain preview
@@ -514,8 +518,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Sede *</label>
-              <select name="site" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.site} onChange={handleInputChange}>
-                <option value="">Seleccione...</option>
+              <select name="site" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.site} onChange={handleInputChange} disabled={isSitesLoading}>
+                <option value="">{isSitesLoading ? 'Cargando...' : 'Seleccione...'}</option>
                 {sites.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>

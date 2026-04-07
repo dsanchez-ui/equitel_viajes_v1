@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { TravelRequest, Passenger, CostCenterMaster, Integrant } from '../types';
-import { COMPANIES, SITES as SITES_FALLBACK, MAX_PASSENGERS } from '../constants';
+import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 
 interface ModificationFormProps {
@@ -33,9 +33,13 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
   const [filteredCostCenters, setFilteredCostCenters] = useState<CostCenterMaster[]>([]);
 
   // Sites (sedes) loaded dynamically from MISC sheet
-  const [sites, setSites] = useState<string[]>(SITES_FALLBACK);
+  const [sites, setSites] = useState<string[]>([]);
+  const [isSitesLoading, setIsSitesLoading] = useState<boolean>(true);
   useEffect(() => {
-    gasService.getSites().then(s => { if (s && s.length) setSites(s); }).catch(() => {});
+    gasService.getSites()
+      .then(s => setSites(Array.isArray(s) ? s : []))
+      .catch(() => setSites([]))
+      .finally(() => setIsSitesLoading(false));
   }, []);
   
   // Various Cost Center State
@@ -321,12 +325,14 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Sede</label>
-                                <select 
-                                  name="site" 
-                                  value={formData.site} 
-                                  onChange={handleInputChange} 
+                                <select
+                                  name="site"
+                                  value={formData.site}
+                                  onChange={handleInputChange}
+                                  disabled={isSitesLoading}
                                   className="block w-full bg-white text-gray-900 border-gray-300 rounded-md shadow-sm focus:ring-brand-red focus:border-brand-red sm:text-sm p-2"
                                 >
+                                  {isSitesLoading && <option value="">Cargando...</option>}
                                   {sites.map(s => <option key={s} value={s}>{s}</option>)}
                                 </select>
                             </div>
