@@ -1015,7 +1015,7 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
 
 /**
  * Get sites (sedes) from MISC sheet column D.
- * Header "SEDES" is in row 2, data starts at row 3.
+ * The SEDES table header is in row 1, data starts at row 2.
  */
 function getSites() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1023,13 +1023,12 @@ function getSites() {
     if (!sheet) return [];
 
     const lastRow = sheet.getLastRow();
-    if (lastRow < 3) return [];
+    if (lastRow < 2) return [];
 
-    const data = sheet.getRange(3, 4, lastRow - 2, 1).getValues();
+    const data = sheet.getRange(2, 4, lastRow - 1, 1).getValues();
     const sites = data
         .map(row => String(row[0] || '').trim())
         .filter(v => v !== '');
-    // Sort alphabetically (defensive, in case sheet ordering changes)
     sites.sort((a, b) => a.localeCompare(b, 'es'));
     return sites;
 }
