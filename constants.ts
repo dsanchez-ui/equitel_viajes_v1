@@ -24,7 +24,6 @@ export const COLORS = {
 
 // Dropdown Options (Simplified for demo, usually fetched from Masters)
 export const COMPANIES = ['Cumandes', 'Equitel', 'Ingenergía', 'LAP'];
-export const SITES = ['MOSQUERA', 'PEREIRA', 'BARRANQUILLA', 'MEDELLIN', 'YUMBO', 'BOGOTA', 'CALI'];
 export const BUSINESS_UNITS = ['ADM ADMON Y FINANCIERA', 'ENERGIA PROYECTOS', 'PARTES Y MOTORES', 'VICEPRESIDENCIA'];
 export const COST_CENTERS = ['0100', '0101', '0200', '0400', '0500', 'VARIOS'];
 
