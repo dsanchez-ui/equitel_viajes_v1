@@ -193,7 +193,7 @@ function dispatch(action, payload) {
 
   try {
     // SECURITY: Validate user identity for non-public actions
-    const publicActions = ['getCurrentUser', 'getIntegrantesData', 'getCitiesList', 'getCostCenterData', 'getCreditCards', 'verifyAdminPin', 'checkIsAnalyst'];
+    const publicActions = ['getCurrentUser', 'getIntegrantesData', 'getCitiesList', 'getCostCenterData', 'getCreditCards', 'getSites', 'verifyAdminPin', 'checkIsAnalyst'];
     if (!publicActions.includes(action) && !validateUserEmail_(currentUserEmail)) {
       return { success: false, error: 'Usuario no autorizado. Su correo no está registrado en el sistema.' };
     }
@@ -222,6 +222,7 @@ function dispatch(action, payload) {
       case 'getIntegrantesData': result = getIntegrantesData(); break;
       case 'getCitiesList': result = getCitiesList(); break;
       case 'getCreditCards': result = getCreditCards(); break;
+      case 'getSites': result = getSites(); break;
       case 'getCoApproverRules': result = getCoApproverRules_(); break;
       // SECURITY: Server-side analyst check
       case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
@@ -1013,6 +1014,27 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
 }
 
 /**
+ * Get sites (sedes) from MISC sheet column D.
+ * Header "SEDES" is in row 2, data starts at row 3.
+ */
+function getSites() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('MISC');
+    if (!sheet) return [];
+
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 3) return [];
+
+    const data = sheet.getRange(3, 4, lastRow - 2, 1).getValues();
+    const sites = data
+        .map(row => String(row[0] || '').trim())
+        .filter(v => v !== '');
+    // Sort alphabetically (defensive, in case sheet ordering changes)
+    sites.sort((a, b) => a.localeCompare(b, 'es'));
+    return sites;
+}
+
+/**
  * Get credit card options from MISC sheet (v2.5)
  */
 function getCreditCards() {
@@ -1078,6 +1100,49 @@ function sendEmailRich(to, subject, htmlBody, cc) {
 }
 
 const HtmlTemplates = {
+    // SHARED: Renders the gallery of analyst-uploaded options (flights/hotels)
+    // so approvers have visibility of the alternatives the requester chose from.
+    _renderOptionsGallery: function(request) {
+        const options = (request && request.analystOptions) || [];
+        if (!options.length) return '';
+
+        const flightOptions = options.filter(o => o.type === 'FLIGHT');
+        const hotelOptions = options.filter(o => o.type === 'HOTEL');
+
+        const renderImages = (opts) => opts.map(opt => {
+            const directionTag = opt.direction
+                ? `<span style="background-color: ${opt.direction === 'VUELTA' ? '#10B981' : '#FBBF24'}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 10px; vertical-align: middle;">${escapeHtml_(opt.direction)}</span>`
+                : '';
+            return `
+            <div style="margin-bottom: 15px; border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
+                <div style="font-weight:bold; color:#D71920; margin-bottom:5px;">Opción ${escapeHtml_(opt.id)} ${directionTag}</div>
+                <img src="${escapeHtml_(opt.url)}" alt="${escapeHtml_(opt.name || '')}" style="max-width: 100%; height: auto; display: block; border-radius: 4px;" />
+            </div>`;
+        }).join('');
+
+        let html = `
+        <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 15px; margin-bottom: 25px;">
+            <div style="font-size: 12px; color: #92400e; text-transform: uppercase; font-weight: bold; margin-bottom: 10px;">
+                🔎 Opciones disponibles para esta solicitud
+            </div>
+            <div style="font-size: 12px; color: #4b5563; margin-bottom: 15px;">
+                A continuación se muestran todas las opciones que el área de compras puso a disposición del solicitante. Esto le permite verificar que el criterio de selección haya sido razonable (costo, horario, conveniencia).
+            </div>
+        `;
+
+        if (flightOptions.length > 0) {
+            html += `<h4 style="color: #374151; border-bottom: 2px solid #D71920; padding-bottom: 5px; margin-top:10px;">✈️ Opciones de Vuelo (${flightOptions.length})</h4>`;
+            html += renderImages(flightOptions);
+        }
+        if (hotelOptions.length > 0) {
+            html += `<h4 style="color: #374151; border-bottom: 2px solid #1e40af; padding-bottom: 5px; margin-top:20px;">🏨 Opciones de Hotel (${hotelOptions.length})</h4>`;
+            html += renderImages(hotelOptions);
+        }
+
+        html += `</div>`;
+        return html;
+    },
+
     // SHARED: Generates the full Route, Dates, Passengers and Details block.
     // Replicates the "Initial Email" visual structure for consistency.
     _getFullSummary: function(data) {
@@ -1402,6 +1467,8 @@ const HtmlTemplates = {
                 <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight:bold; margin-bottom: 5px;">ELECCIÓN DEL USUARIO</div>
                 <div style="font-size: 14px; color: #111827; font-style: italic;">"${escapeHtml_(request.selectionDetails)}"</div>
             </div>
+
+            ${this._renderOptionsGallery(request)}
 
             <!-- FINAL COSTS TABLE -->
             <div style="background-color: #ffffff; border: 1px solid #e5e7eb; padding: 0; border-radius: 8px; margin-bottom: 25px; overflow: hidden;">

@@ -123,6 +123,11 @@ class GasService {
     return response.data || [];
   }
 
+  async getSites(): Promise<string[]> {
+    const response = await this.runGas('getSites');
+    return response.data || [];
+  }
+
   async uploadSupportFile(requestId: string, fileData: string, fileName: string, mimeType: string): Promise<SupportData> {
     const response = await this.runGas('uploadSupportFile', { requestId, fileData, fileName, mimeType });
     if (!response.success) throw new Error(response.error);
