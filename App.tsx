@@ -328,6 +328,7 @@ const App: React.FC = () => {
           <PinEntryModal
             isOpen={showPinModal}
             title="PIN de Administrador"
+            associatedEmail={pendingAdminEmail}
             onClose={() => setShowPinModal(false)}
             onSubmit={handlePinSubmit}
           />
@@ -337,6 +338,7 @@ const App: React.FC = () => {
             isOpen={showUserPinModal}
             title="Ingresa tu PIN de acceso"
             subtitle="Para proteger tu información, ingresa el PIN de 8 dígitos asociado a tu cuenta."
+            associatedEmail={pendingPinEmail}
             infoBox={
               pinFlowKind === 'existing' ? (
                 <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900 text-left">
@@ -369,7 +371,7 @@ const App: React.FC = () => {
           <form onSubmit={handleRequesterLogin}>
             <div className="text-left mb-6">
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Correo Corporativo</label>
-              <input name="email" type="email" placeholder="usuario@equitel.com.co" className="w-full bg-gray-50 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-md shadow-sm p-3 focus:ring-2 focus:ring-brand-red focus:border-brand-red outline-none transition" value={loginEmailInput} onChange={(e) => setLoginEmailInput(e.target.value)} autoFocus disabled={loginBusy} />
+              <input name="email" type="email" autoComplete="username" placeholder="usuario@equitel.com.co" className="w-full bg-gray-50 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-md shadow-sm p-3 focus:ring-2 focus:ring-brand-red focus:border-brand-red outline-none transition" value={loginEmailInput} onChange={(e) => setLoginEmailInput(e.target.value)} autoFocus disabled={loginBusy} />
             </div>
             <div className="space-y-3">
               <button type="submit" disabled={loginBusy} className="w-full bg-brand-red text-white py-3 px-4 rounded font-bold uppercase tracking-wide hover:bg-red-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed">{loginBusy ? 'ENVIANDO PIN...' : 'INGRESAR'}</button>

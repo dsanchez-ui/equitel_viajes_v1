@@ -10,9 +10,10 @@ interface PinEntryModalProps {
   onSubmit: (pin: string) => Promise<boolean>; // Returns success status
   onChangeMode?: boolean; // If true, logic changes to "New Pin" entry
   onResend?: () => Promise<void>; // If provided, shows a "Resend PIN" button
+  associatedEmail?: string; // For browser password manager integration (autofill)
 }
 
-export const PinEntryModal: React.FC<PinEntryModalProps> = ({ isOpen, title = "Ingrese PIN de Administrador", subtitle, infoBox, onClose, onSubmit, onChangeMode = false, onResend }) => {
+export const PinEntryModal: React.FC<PinEntryModalProps> = ({ isOpen, title = "Ingrese PIN de Administrador", subtitle, infoBox, onClose, onSubmit, onChangeMode = false, onResend, associatedEmail }) => {
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -102,10 +103,26 @@ export const PinEntryModal: React.FC<PinEntryModalProps> = ({ isOpen, title = "I
                     {infoBox && <div className="mb-4">{infoBox}</div>}
 
                     <form onSubmit={handleSubmit}>
+                        {/* Hidden username field so the browser password manager can associate
+                            the saved PIN with the user's email account. */}
+                        {associatedEmail && (
+                            <input
+                                type="email"
+                                name="email"
+                                autoComplete="username"
+                                value={associatedEmail}
+                                readOnly
+                                tabIndex={-1}
+                                aria-hidden="true"
+                                style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', opacity: 0 }}
+                            />
+                        )}
                         <input
                             ref={inputRef}
                             type="password"
                             inputMode="numeric"
+                            name="pin"
+                            autoComplete={onChangeMode ? "new-password" : "current-password"}
                             value={pin}
                             onChange={handleChange}
                             className="block w-full text-center text-2xl tracking-[0.5em] font-bold border-gray-300 rounded-md focus:ring-brand-red focus:border-brand-red p-2 border mb-2 bg-white text-gray-900 placeholder-gray-400"
