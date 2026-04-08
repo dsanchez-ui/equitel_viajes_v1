@@ -1953,11 +1953,17 @@ const HtmlTemplates = {
         let filesBlock = '';
         if (reservationFiles.length > 0) {
             const itemsHtml = reservationFiles.map(function(f, i) {
+                const safeName = escapeHtml_(f.name) || ('Archivo ' + (i + 1));
+                const safeUrl = escapeHtml_(f.url);
                 return `
-                    <div style="background-color:#ffffff; border:1px solid #dbeafe; border-radius:6px; padding:10px 12px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
-                        <span style="font-size:13px; color:#1e3a8a;">📄 ${escapeHtml_(f.name) || 'Archivo ' + (i + 1)}</span>
-                        <a href="${escapeHtml_(f.url)}" style="background-color:#2563eb; color:#ffffff; padding:6px 12px; text-decoration:none; border-radius:4px; font-size:12px; font-weight:bold;">Descargar</a>
-                    </div>
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border:1px solid #dbeafe; border-radius:6px; margin-bottom:8px; border-collapse:separate;">
+                      <tr>
+                        <td style="padding:12px 14px; font-size:13px; color:#1e3a8a; word-break:break-word; vertical-align:middle;">📄 ${safeName}</td>
+                        <td width="110" style="padding:12px 14px 12px 6px; text-align:right; white-space:nowrap; vertical-align:middle;">
+                          <a href="${safeUrl}" style="background-color:#2563eb; color:#ffffff; padding:8px 16px; text-decoration:none; border-radius:4px; font-size:12px; font-weight:bold; display:inline-block;">Descargar</a>
+                        </td>
+                      </tr>
+                    </table>
                 `;
             }).join('');
 
