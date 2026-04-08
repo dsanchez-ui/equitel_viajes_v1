@@ -271,7 +271,7 @@ function dispatch(action, payload) {
       case 'logout': result = logout(payload.email, payload.token); break;
 
       // NEW: RESERVATION LOGIC
-      case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.fileData, payload.fileName, payload.creditCard); break;
+      case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard); break;
 
       // NEW: DRIVE DELETION
       case 'deleteDriveFile': result = deleteDriveFile(payload.fileId); break;
@@ -579,11 +579,15 @@ function setUserPinHash_(email, hash) {
 }
 
 // --- Session management ---
+// IMPORTANT: Sessions are keyed by TOKEN, not by email. This allows multiple
+// concurrent sessions per user (different tabs, devices, browsers) without one
+// invalidating another. The session record stores the email so we can verify
+// that the token actually belongs to the user making the request.
 function createSession_(email, role) {
   var token = generateSessionToken_();
   var expiresAt = new Date().getTime() + SESSION_TTL_MS;
   var props = PropertiesService.getScriptProperties();
-  props.setProperty('SESSION_' + hashEmail_(email), JSON.stringify({
+  props.setProperty('SESSION_' + token, JSON.stringify({
     token: token,
     expiresAt: expiresAt,
     email: String(email).toLowerCase().trim(),
@@ -595,12 +599,13 @@ function createSession_(email, role) {
 function validateUserSession_(email, token) {
   if (!email || !token) return null;
   var props = PropertiesService.getScriptProperties();
-  var key = 'SESSION_' + hashEmail_(email);
+  var key = 'SESSION_' + token;
   var raw = props.getProperty(key);
   if (!raw) return null;
   try {
     var session = JSON.parse(raw);
-    if (session.token !== token) return null;
+    // The token must belong to the email making the request (defense in depth)
+    if (String(session.email).toLowerCase().trim() !== String(email).toLowerCase().trim()) return null;
     if (new Date().getTime() > Number(session.expiresAt)) {
       props.deleteProperty(key); // lazy cleanup
       return null;
@@ -611,9 +616,10 @@ function validateUserSession_(email, token) {
   }
 }
 
-function destroySession_(email) {
+function destroySession_(token) {
+  if (!token) return;
   var props = PropertiesService.getScriptProperties();
-  props.deleteProperty('SESSION_' + hashEmail_(email));
+  props.deleteProperty('SESSION_' + token);
 }
 
 /**
@@ -737,9 +743,9 @@ function validateSession(email, token) {
 }
 
 function logout(email, token) {
-  // Only destroy if the token matches (prevents arbitrary logout)
+  // Only destroy if the token actually belongs to this email (prevents arbitrary logout)
   var session = validateUserSession_(email, token);
-  if (session) destroySession_(email);
+  if (session) destroySession_(token);
   return true;
 }
 
@@ -1154,9 +1160,31 @@ function processApprovalFromEmail(e) {
 
 // --- NEW RESERVATION FUNCTION ---
 
-function registerReservation(requestId, reservationNumber, fileData, fileName, creditCard) {
-    if (fileData && fileName) validateFileUpload_(fileData, fileName, 'application/pdf');
+function registerReservation(requestId, reservationNumber, files, creditCard) {
+    // Backward compatibility: if old clients still pass (fileData, fileName, creditCard) positionally,
+    // wrap into a single-element files array.
+    if (typeof files === 'string') {
+        // Legacy signature: registerReservation(requestId, reservationNumber, fileDataString, fileName, creditCard)
+        // The 3rd arg is fileData, the 4th is fileName, the 5th (passed via arguments) is creditCard.
+        var legacyFileData = files;
+        var legacyFileName = creditCard; // shifted
+        var legacyCreditCard = arguments[4];
+        files = [{ fileData: legacyFileData, fileName: legacyFileName }];
+        creditCard = legacyCreditCard;
+    }
+
+    if (!Array.isArray(files) || files.length === 0) {
+        throw new Error('Debe adjuntar al menos un archivo de confirmación.');
+    }
+    if (files.length > 10) {
+        throw new Error('Máximo 10 archivos por reserva.');
+    }
+    files.forEach(function(f) {
+        if (!f || !f.fileData || !f.fileName) throw new Error('Archivo inválido en la lista.');
+        validateFileUpload_(f.fileData, f.fileName, 'application/pdf');
+    });
     if (reservationNumber && String(reservationNumber).length > 100) throw new Error('Número de reserva demasiado largo.');
+
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
 
@@ -1224,12 +1252,32 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
         }
     }
 
-    // Create file
-    const blob = Utilities.newBlob(Utilities.base64Decode(fileData), MimeType.PDF, fileName);
-    blob.setName(`Reserva_${reservationNumber}_${requestId}`);
-    const file = folder.createFile(blob);
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    const fileUrl = `https://drive.google.com/file/d/${file.getId()}/view?usp=sharing`;
+    // Upload all reservation files into the folder
+    const uploadedFiles = files.map(function(f, idx) {
+        var safeName = String(f.fileName).replace(/[\/\\:*?"<>|]/g, '_').substring(0, 200);
+        var lower = safeName.toLowerCase();
+        var mime = lower.endsWith('.pdf') ? MimeType.PDF
+                 : (lower.endsWith('.png') ? MimeType.PNG
+                 : (lower.endsWith('.jpg') || lower.endsWith('.jpeg') ? MimeType.JPEG
+                 : MimeType.PDF));
+        var blob = Utilities.newBlob(Utilities.base64Decode(f.fileData), mime, safeName);
+        // Name files with the PNR + index for traceability
+        var label = files.length > 1 ? `Reserva_${reservationNumber}_${idx + 1}_${requestId}` : `Reserva_${reservationNumber}_${requestId}`;
+        blob.setName(label);
+        var driveFile = folder.createFile(blob);
+        driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        return {
+            id: driveFile.getId(),
+            name: label,
+            originalName: safeName,
+            url: `https://drive.google.com/file/d/${driveFile.getId()}/view?usp=sharing`,
+            mimeType: mime
+        };
+    });
+
+    // Keep first file as the "primary" reservation reference (for backward-compat with templates)
+    const file = { getId: function() { return uploadedFiles[0].id; } };
+    const fileUrl = uploadedFiles[0].url;
 
     // 2. Build descriptive folder name
     const MONTH_NAMES_ES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
@@ -1280,25 +1328,31 @@ function registerReservation(requestId, reservationNumber, fileData, fileName, c
         sheet.getRange(rowNumber, creditCardIdx + 1).setValue(creditCard);
     }
 
-    // 4. Update JSON Support Data
+    // 4. Update JSON Support Data — push ALL uploaded files
     const supportIdx = HEADERS_REQUESTS.indexOf("SOPORTES (JSON)");
     const jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
     let supportData = jsonStr ? JSON.parse(jsonStr) : { folderId: folder.getId(), folderUrl: folder.getUrl(), files: [] };
 
-    supportData.files.push({
-        id: file.getId(),
-        name: `Reserva ${reservationNumber}`,
-        url: fileUrl,
-        mimeType: 'application/pdf',
-        date: new Date().toISOString(),
-        isReservation: true
+    var nowIso = new Date().toISOString();
+    uploadedFiles.forEach(function(uf, idx) {
+        supportData.files.push({
+            id: uf.id,
+            name: files.length > 1 ? `Reserva ${reservationNumber} (${idx + 1}/${files.length})` : `Reserva ${reservationNumber}`,
+            url: uf.url,
+            mimeType: uf.mimeType,
+            date: nowIso,
+            isReservation: true
+        });
     });
     sheet.getRange(rowNumber, supportIdx + 1).setValue(JSON.stringify(supportData));
 
-    // 5. Send Email
+    // 5. Send Email — pass ALL reservation file URLs to the template
     const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
     fullReq.reservationNumber = reservationNumber;
-    fullReq.reservationUrl = fileUrl;
+    fullReq.reservationUrl = fileUrl; // primary (first file) for backward-compat
+    fullReq.reservationFiles = uploadedFiles.map(function(uf) {
+        return { name: uf.originalName, url: uf.url };
+    });
 
     const html = HtmlTemplates.reservationConfirmed(fullReq);
     const subject = getStandardSubject(fullReq);
@@ -1892,25 +1946,50 @@ const HtmlTemplates = {
     
     // NEW TEMPLATE FOR RESERVATION CONFIRMATION (Updated with Full Summary)
     reservationConfirmed: function(request) {
+        const reservationFiles = (request.reservationFiles && request.reservationFiles.length > 0)
+            ? request.reservationFiles
+            : (request.reservationUrl ? [{ name: 'Confirmación de Reserva', url: request.reservationUrl }] : []);
+
+        let filesBlock = '';
+        if (reservationFiles.length > 0) {
+            const itemsHtml = reservationFiles.map(function(f, i) {
+                return `
+                    <div style="background-color:#ffffff; border:1px solid #dbeafe; border-radius:6px; padding:10px 12px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between;">
+                        <span style="font-size:13px; color:#1e3a8a;">📄 ${escapeHtml_(f.name) || 'Archivo ' + (i + 1)}</span>
+                        <a href="${escapeHtml_(f.url)}" style="background-color:#2563eb; color:#ffffff; padding:6px 12px; text-decoration:none; border-radius:4px; font-size:12px; font-weight:bold;">Descargar</a>
+                    </div>
+                `;
+            }).join('');
+
+            filesBlock = `
+                <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 25px;">
+                    <div style="font-size: 11px; color: #6b7280; text-transform: uppercase; font-weight: bold; margin-bottom: 10px;">
+                        📎 Archivos de la Reserva (${reservationFiles.length})
+                    </div>
+                    ${itemsHtml}
+                </div>
+            `;
+        }
+
         const content = `
             <div style="text-align: center; margin-bottom: 25px;">
                 <div style="font-size: 40px; margin-bottom: 10px;">✈️</div>
                 <div style="font-size: 16px; color: #374151;">Los tiquetes para su viaje <strong>${request.requestId}</strong> han sido comprados.</div>
             </div>
-            
+
             <div style="background-color: #eff6ff; border: 1px solid #dbeafe; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 25px;">
                 <div style="font-size: 12px; color: #60a5fa; margin-bottom: 5px; text-transform: uppercase; font-weight: bold;">NÚMERO DE RESERVA (PNR)</div>
                 <div style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 2px;">${escapeHtml_(request.reservationNumber) || 'N/A'}</div>
             </div>
 
+            ${filesBlock}
+
             <p style="text-align: center; color: #4b5563; margin-bottom: 25px;">
-                Puede descargar la confirmación de la reserva y los tiquetes directamente desde la plataforma.
+                También puede acceder a todos los archivos desde la plataforma.
             </p>
-            
+
             <div style="text-align: center;">
                 <a href="${PLATFORM_URL}" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">VER EN LA APP</a>
-                <br/><br/>
-                <a href="${request.reservationUrl}" style="color: #2563eb; font-size: 12px; text-decoration: underline;">Descargar Archivo Directamente</a>
             </div>
 
             <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;">

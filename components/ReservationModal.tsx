@@ -16,7 +16,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
     const [creditCard, setCreditCard] = useState('');
     const [creditCards, setCreditCards] = useState<{ value: string, label: string }[]>([]);
     const [loadingCards, setLoadingCards] = useState(true);
-    const [file, setFile] = useState<File | null>(null);
+    const [files, setFiles] = useState<File[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [dialog, setDialog] = useState<{
@@ -46,9 +46,42 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
-            setFile(e.target.files[0]);
+            const incoming: File[] = Array.from(e.target.files);
+            setFiles((prev: File[]) => {
+                const merged: File[] = [...prev];
+                incoming.forEach((nf: File) => {
+                    if (!merged.some((f: File) => f.name === nf.name && f.size === nf.size)) merged.push(nf);
+                });
+                if (merged.length > 10) {
+                    setDialog({
+                        isOpen: true,
+                        title: 'Demasiados archivos',
+                        message: 'Máximo 10 archivos por reserva.',
+                        type: 'ALERT',
+                        onConfirm: closeDialog
+                    });
+                    return prev;
+                }
+                return merged;
+            });
+            // reset input so the same file can be re-added if removed
+            if (fileInputRef.current) fileInputRef.current.value = '';
         }
     };
+
+    const removeFile = (idx: number) => {
+        setFiles(prev => prev.filter((_, i) => i !== idx));
+    };
+
+    const readFileAsBase64 = (f: File): Promise<string> => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result as string;
+            resolve(result.split(',')[1]);
+        };
+        reader.onerror = () => reject(new Error('No se pudo leer ' + f.name));
+        reader.readAsDataURL(f);
+    });
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -72,11 +105,11 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             });
             return;
         }
-        if (!file) {
+        if (files.length === 0) {
             setDialog({
                 isOpen: true,
                 title: 'Archivo Requerido',
-                message: 'Debe cargar el archivo de confirmación de la reserva.',
+                message: 'Debe cargar al menos un archivo de confirmación de la reserva.',
                 type: 'ALERT',
                 onConfirm: closeDialog
             });
@@ -86,7 +119,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
         setDialog({
             isOpen: true,
             title: 'Confirmar Reserva',
-            message: `Se registrará la reserva ${reservationNumber} con la tarjeta ${creditCard} y se notificará al usuario.\n\n¿Desea continuar?`,
+            message: `Se registrará la reserva ${reservationNumber} con la tarjeta ${creditCard}, se subirán ${files.length} archivo(s) y se notificará al usuario.\n\n¿Desea continuar?`,
             type: 'CONFIRM',
             onConfirm: executeSubmission,
             onCancel: closeDialog
@@ -97,41 +130,40 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
         closeDialog();
         setLoading(true);
 
-        const reader = new FileReader();
-        reader.onload = async () => {
-            const base64String = (reader.result as string).split(',')[1];
-            try {
-                await gasService.registerReservation(
-                    request.requestId,
-                    reservationNumber,
-                    base64String,
-                    file!.name,
-                    creditCard
-                );
+        try {
+            const payload = await Promise.all(files.map(async (f) => ({
+                fileData: await readFileAsBase64(f),
+                fileName: f.name
+            })));
 
-                setDialog({
-                    isOpen: true,
-                    title: 'Reserva Registrada',
-                    message: 'La reserva ha sido guardada y el usuario notificado.',
-                    type: 'SUCCESS',
-                    onConfirm: () => {
-                        closeDialog();
-                        onSuccess();
-                    }
-                });
-            } catch (err) {
-                setDialog({
-                    isOpen: true,
-                    title: 'Error',
-                    message: 'Error al registrar reserva: ' + err,
-                    type: 'ALERT',
-                    onConfirm: closeDialog
-                });
-            } finally {
-                setLoading(false);
-            }
-        };
-        reader.readAsDataURL(file!);
+            await gasService.registerReservation(
+                request.requestId,
+                reservationNumber,
+                payload,
+                creditCard
+            );
+
+            setDialog({
+                isOpen: true,
+                title: 'Reserva Registrada',
+                message: `La reserva ha sido guardada (${files.length} archivo(s)) y el usuario notificado.`,
+                type: 'SUCCESS',
+                onConfirm: () => {
+                    closeDialog();
+                    onSuccess();
+                }
+            });
+        } catch (err) {
+            setDialog({
+                isOpen: true,
+                title: 'Error',
+                message: 'Error al registrar reserva: ' + err,
+                type: 'ALERT',
+                onConfirm: closeDialog
+            });
+        } finally {
+            setLoading(false);
+        }
     };
 
     return (
@@ -198,35 +230,50 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                             </div>
 
                             <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-2">Archivo de Confirmación</label>
+                                <label className="block text-sm font-bold text-gray-700 mb-2">
+                                    Archivos de Confirmación {files.length > 0 && <span className="text-gray-500 font-normal">({files.length})</span>}
+                                </label>
+
+                                {files.length > 0 && (
+                                    <div className="mb-3 space-y-2">
+                                        {files.map((f, idx) => (
+                                            <div key={idx} className="flex items-center justify-between bg-green-50 border border-green-200 rounded p-2">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <span className="text-green-700">📄</span>
+                                                    <span className="text-sm text-gray-800 truncate" title={f.name}>{f.name}</span>
+                                                    <span className="text-xs text-gray-400 flex-shrink-0">({(f.size / 1024).toFixed(0)} KB)</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeFile(idx)}
+                                                    disabled={loading}
+                                                    className="text-xs text-red-500 hover:text-red-700 underline ml-2 flex-shrink-0"
+                                                >
+                                                    Quitar
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
                                 <div
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:bg-gray-50 transition"
+                                    className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:bg-gray-50 transition"
                                 >
-                                    {file ? (
-                                        <div className="text-green-600 font-bold flex flex-col items-center">
-                                            <span className="text-2xl">📄</span>
-                                            <span className="text-sm">{file.name}</span>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); setFile(null); }}
-                                                className="text-xs text-red-500 mt-2 underline"
-                                            >
-                                                Quitar archivo
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <div className="text-gray-500">
-                                            <span className="text-2xl block mb-1">📎</span>
-                                            <span className="text-sm font-medium">Clic para cargar PDF o Imagen</span>
-                                        </div>
-                                    )}
+                                    <div className="text-gray-500">
+                                        <span className="text-2xl block mb-1">📎</span>
+                                        <span className="text-sm font-medium">
+                                            {files.length === 0 ? 'Clic para cargar PDF o imágenes' : 'Agregar más archivos'}
+                                        </span>
+                                        <span className="block text-xs text-gray-400 mt-1">Puedes cargar varios archivos a la vez (máx. 10)</span>
+                                    </div>
                                     <input
                                         type="file"
                                         ref={fileInputRef}
                                         onChange={handleFileChange}
                                         className="hidden"
                                         accept=".pdf,image/*"
+                                        multiple
                                     />
                                 </div>
                             </div>

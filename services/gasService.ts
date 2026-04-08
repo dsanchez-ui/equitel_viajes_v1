@@ -186,8 +186,8 @@ class GasService {
   }
 
   // --- RESERVATION ---
-  async registerReservation(requestId: string, reservationNumber: string, fileData: string, fileName: string, creditCard: string): Promise<void> {
-    const response = await this.runGas('registerReservation', { requestId, reservationNumber, fileData, fileName, creditCard });
+  async registerReservation(requestId: string, reservationNumber: string, files: { fileData: string, fileName: string }[], creditCard: string): Promise<void> {
+    const response = await this.runGas('registerReservation', { requestId, reservationNumber, files, creditCard });
     if (!response.success) throw new Error(response.error);
   }
 
