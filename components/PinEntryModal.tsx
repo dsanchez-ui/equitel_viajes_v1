@@ -4,26 +4,52 @@ import React, { useState, useEffect, useRef } from 'react';
 interface PinEntryModalProps {
   isOpen: boolean;
   title?: string;
+  subtitle?: string;
+  infoBox?: React.ReactNode;
   onClose: () => void;
   onSubmit: (pin: string) => Promise<boolean>; // Returns success status
   onChangeMode?: boolean; // If true, logic changes to "New Pin" entry
+  onResend?: () => Promise<void>; // If provided, shows a "Resend PIN" button
 }
 
-export const PinEntryModal: React.FC<PinEntryModalProps> = ({ isOpen, title = "Ingrese PIN de Administrador", onClose, onSubmit, onChangeMode = false }) => {
+export const PinEntryModal: React.FC<PinEntryModalProps> = ({ isOpen, title = "Ingrese PIN de Administrador", subtitle, infoBox, onClose, onSubmit, onChangeMode = false, onResend }) => {
   const [pin, setPin] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
         setPin('');
         setError('');
+        setResendMsg('');
         setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [isOpen]);
 
+  const handleResendClick = async () => {
+    if (!onResend || resending) return;
+    setResending(true);
+    setError('');
+    setResendMsg('');
+    try {
+      await onResend();
+      setResendMsg('Te enviamos un nuevo PIN. Revisa tu correo.');
+      setPin('');
+    } catch (e: any) {
+      setError(e?.message || 'No se pudo reenviar el PIN. Intenta nuevamente.');
+    } finally {
+      setResending(false);
+    }
+  };
+
   if (!isOpen) return null;
+
+  const defaultSubtitle = onChangeMode
+    ? "Ingrese el nuevo PIN de 8 dígitos."
+    : "Área restringida. Ingrese su clave de acceso.";
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replace(/\D/g, ''); // Only digits
@@ -63,46 +89,61 @@ export const PinEntryModal: React.FC<PinEntryModalProps> = ({ isOpen, title = "I
             <div className="fixed inset-0 bg-gray-600 bg-opacity-75 transition-opacity" onClick={onClose}></div>
             <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
             
-            <div className="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-xs sm:w-full sm:p-6 border-t-4 border-brand-red">
+            <div className="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full sm:p-6 border-t-4 border-brand-red">
                 <div className="text-center">
                     <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
                         <span className="text-xl">🔒</span>
                     </div>
                     <h3 className="text-lg leading-6 font-bold text-gray-900 mb-2">{title}</h3>
                     <p className="text-xs text-gray-500 mb-4">
-                        {onChangeMode ? "Ingrese el nuevo PIN de 8 dígitos." : "Área restringida. Ingrese su clave de acceso."}
+                        {subtitle || defaultSubtitle}
                     </p>
-                    
+
+                    {infoBox && <div className="mb-4">{infoBox}</div>}
+
                     <form onSubmit={handleSubmit}>
-                        <input 
+                        <input
                             ref={inputRef}
-                            type="password" 
+                            type="password"
                             inputMode="numeric"
                             value={pin}
                             onChange={handleChange}
                             className="block w-full text-center text-2xl tracking-[0.5em] font-bold border-gray-300 rounded-md focus:ring-brand-red focus:border-brand-red p-2 border mb-2 bg-white text-gray-900 placeholder-gray-400"
                             placeholder="••••••••"
-                            disabled={loading}
+                            disabled={loading || resending}
                         />
-                        
+
                         {error && <p className="text-xs text-red-600 font-bold mb-2 animate-pulse">{error}</p>}
+                        {resendMsg && <p className="text-xs text-green-700 font-bold mb-2">{resendMsg}</p>}
 
                         <div className="mt-4 flex gap-2">
-                            <button 
+                            <button
                                 type="button"
                                 onClick={onClose}
                                 className="flex-1 bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none"
+                                disabled={loading || resending}
                             >
                                 Cancelar
                             </button>
-                            <button 
+                            <button
                                 type="submit"
-                                disabled={loading || pin.length !== 8}
+                                disabled={loading || resending || pin.length !== 8}
                                 className="flex-1 inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-black text-base font-medium text-white hover:bg-gray-800 focus:outline-none disabled:opacity-50 sm:text-sm"
                             >
                                 {loading ? '...' : 'Entrar'}
                             </button>
                         </div>
+
+                        {onResend && (
+                            <button
+                                type="button"
+                                onClick={handleResendClick}
+                                disabled={resending || loading}
+                                className="mt-3 text-xs text-blue-600 hover:text-blue-800 font-semibold underline disabled:opacity-50"
+                            >
+                                {resending ? 'Enviando...' : 'No recibí el correo · Reenviar PIN'}
+                            </button>
+                        )}
                     </form>
                 </div>
             </div>

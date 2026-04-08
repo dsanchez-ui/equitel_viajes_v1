@@ -5,11 +5,40 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { UserDashboard } from './components/UserDashboard';
 import { RequestDetail } from './components/RequestDetail';
 import { PinEntryModal } from './components/PinEntryModal';
-import { gasService } from './services/gasService';
+import { gasService, setOnSessionExpired } from './services/gasService';
 import { TravelRequest, UserRole, Integrant } from './types';
 import { LOGO_URL, APP_VERSION } from './constants';
 
 const POLL_INTERVAL_MS = 15000;
+const SESSION_STORAGE_KEY = 'equitel_session';
+
+interface StoredSession {
+  email: string;
+  token: string;
+  expiresAt: number;
+  role: 'REQUESTER' | 'ANALYST';
+}
+
+const readStoredSession = (): StoredSession | null => {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.email || !parsed.token) return null;
+    if (parsed.expiresAt && Date.now() > Number(parsed.expiresAt)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const writeStoredSession = (s: StoredSession) => {
+  try { localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(s)); } catch { /* noop */ }
+};
+
+const clearStoredSession = () => {
+  try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch { /* noop */ }
+};
 
 const App: React.FC = () => {
   const [userEmail, setUserEmail] = useState<string>('');
@@ -31,19 +60,54 @@ const App: React.FC = () => {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pendingAdminEmail, setPendingAdminEmail] = useState('');
 
+  // User PIN flow state
+  const [showUserPinModal, setShowUserPinModal] = useState(false);
+  const [pendingPinEmail, setPendingPinEmail] = useState('');
+  const [pinFlowMessage, setPinFlowMessage] = useState('');
+  const [pinFlowKind, setPinFlowKind] = useState<'existing' | 'sent'>('sent');
+  const [loginBusy, setLoginBusy] = useState(false);
+
+  // Listen for session expiry events from gasService
+  useEffect(() => {
+    setOnSessionExpired(() => {
+      clearStoredSession();
+      setUserEmail('');
+      gasService.clearSession();
+      setRequests([]);
+      setRole(UserRole.REQUESTER);
+      setView('LIST');
+      setLoading(false);
+      alert('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
+    });
+    return () => setOnSessionExpired(null);
+  }, []);
+
   useEffect(() => {
     const init = async () => {
       try {
+        const stored = readStoredSession();
+        if (!stored) {
+          setLoading(false);
+          return;
+        }
+        // Validate session against backend
+        gasService.setUserEmail(stored.email);
+        gasService.setSessionToken(stored.token);
+        const validation = await gasService.validateSession(stored.email, stored.token);
+        if (!validation.valid) {
+          clearStoredSession();
+          gasService.clearSession();
+          setLoading(false);
+          return;
+        }
+        // Session OK → load integrantes (now session-protected) and finish login
         const loadedIntegrantes = await gasService.getIntegrantesData();
         setIntegrantes(loadedIntegrantes);
-        const email = await gasService.getCurrentUser();
-        if (email) {
-          handleLoginSuccess(email, false, loadedIntegrantes);
-        } else {
-          setLoading(false);
-        }
+        await handleLoginSuccess(stored.email, validation.role === 'ANALYST', loadedIntegrantes);
       } catch (err) {
         console.error("Init failed", err);
+        clearStoredSession();
+        gasService.clearSession();
         setLoading(false);
       }
     };
@@ -76,18 +140,79 @@ const App: React.FC = () => {
     await fetchRequests(email, authenticatedAsAdmin, false);
   };
 
-  const handleRequesterLogin = (e: React.FormEvent) => {
+  const handleRequesterLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loginEmailInput) {
-      const emailLower = loginEmailInput.toLowerCase().trim();
-      const userExists = integrantes.some(i => i.email.toLowerCase().trim() === emailLower);
-
-      if (!userExists) {
-        alert("El correo ingresado (" + emailLower + ") no se encuentra registrado en nuestra base de datos de integrantes.");
-        return;
-      }
-      handleLoginSuccess(loginEmailInput.trim());
+    const emailLower = loginEmailInput.toLowerCase().trim();
+    if (!emailLower || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailLower)) {
+      alert('Por favor ingresa un correo válido.');
+      return;
     }
+    setLoginBusy(true);
+    try {
+      const result = await gasService.requestUserPin(emailLower, false);
+      setPendingPinEmail(emailLower);
+      if (result.hasExistingPin) {
+        setPinFlowKind('existing');
+        setPinFlowMessage(
+          `Ya tienes un PIN configurado para ${result.maskedEmail}. Ingresa el PIN que recibiste anteriormente. Si no lo recuerdas, usa "Reenviar PIN" para generar uno nuevo.`
+        );
+      } else if (result.isFirstTime) {
+        setPinFlowKind('sent');
+        setPinFlowMessage(
+          `Es tu primera vez ingresando. Te enviamos tu PIN inicial de 8 dígitos a ${result.maskedEmail}.`
+        );
+      } else {
+        setPinFlowKind('sent');
+        setPinFlowMessage(
+          `Te enviamos un PIN de 8 dígitos a ${result.maskedEmail}.`
+        );
+      }
+      setShowUserPinModal(true);
+    } catch (err: any) {
+      alert(err?.message || 'No se pudo enviar el PIN. Intenta nuevamente.');
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
+  const handleUserPinSubmit = async (pin: string): Promise<boolean> => {
+    try {
+      const result = await gasService.verifyUserPin(pendingPinEmail, pin);
+      if (!result.success || !result.token) return false;
+
+      // Persist session
+      const session: StoredSession = {
+        email: pendingPinEmail,
+        token: result.token,
+        expiresAt: result.expiresAt || (Date.now() + 30 * 24 * 60 * 60 * 1000),
+        role: (result.role as 'REQUESTER' | 'ANALYST') || 'REQUESTER'
+      };
+      writeStoredSession(session);
+      gasService.setUserEmail(pendingPinEmail);
+      gasService.setSessionToken(result.token);
+
+      // Now we can load integrantes (session-protected endpoint)
+      const loadedIntegrantes = await gasService.getIntegrantesData();
+      setIntegrantes(loadedIntegrantes);
+
+      setShowUserPinModal(false);
+      setPendingPinEmail('');
+      setPinFlowMessage('');
+      await handleLoginSuccess(pendingPinEmail, session.role === 'ANALYST', loadedIntegrantes);
+      return true;
+    } catch (err: any) {
+      console.error('verifyUserPin error', err);
+      return false;
+    }
+  };
+
+  const handleResendUserPin = async () => {
+    if (!pendingPinEmail) return;
+    const result = await gasService.requestUserPin(pendingPinEmail, true);
+    setPinFlowKind('sent');
+    setPinFlowMessage(
+      `Te enviamos un nuevo PIN de 8 dígitos a ${result.maskedEmail}. El PIN anterior ya no es válido.`
+    );
   };
 
   const handleAdminLoginClick = async () => {
@@ -109,21 +234,40 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePinSubmit = async (pin: string) => {
+  const handlePinSubmit = async (pin: string): Promise<boolean> => {
     try {
-      const isValid = await gasService.verifyAdminPin(pin);
-      if (isValid) {
-        setShowPinModal(false);
-        handleLoginSuccess(pendingAdminEmail, true);
-        return true;
-      }
+      const result = await gasService.verifyAdminPin(pin, pendingAdminEmail);
+      if (!result.success || !result.token) return false;
+
+      const session: StoredSession = {
+        email: pendingAdminEmail,
+        token: result.token,
+        expiresAt: result.expiresAt || (Date.now() + 30 * 24 * 60 * 60 * 1000),
+        role: 'ANALYST'
+      };
+      writeStoredSession(session);
+      gasService.setUserEmail(pendingAdminEmail);
+      gasService.setSessionToken(result.token);
+
+      const loadedIntegrantes = await gasService.getIntegrantesData();
+      setIntegrantes(loadedIntegrantes);
+
+      setShowPinModal(false);
+      await handleLoginSuccess(pendingAdminEmail, true, loadedIntegrantes);
+      return true;
+    } catch (e) {
+      console.error('verifyAdminPin error', e);
       return false;
-    } catch (e) { return false; }
+    }
   };
 
   const handleLogout = () => {
+    // Best-effort backend logout (does not block UI)
+    gasService.logout().catch(() => { /* noop */ });
+    clearStoredSession();
+
     setUserEmail('');
-    gasService.setUserEmail('');
+    gasService.clearSession();
     setRequests([]);
     setRole(UserRole.REQUESTER);
     setLoginEmailInput('');
@@ -180,7 +324,40 @@ const App: React.FC = () => {
   if (!userEmail) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-        {showPinModal && <PinEntryModal isOpen={showPinModal} onClose={() => setShowPinModal(false)} onSubmit={handlePinSubmit} />}
+        {showPinModal && (
+          <PinEntryModal
+            isOpen={showPinModal}
+            title="PIN de Administrador"
+            onClose={() => setShowPinModal(false)}
+            onSubmit={handlePinSubmit}
+          />
+        )}
+        {showUserPinModal && (
+          <PinEntryModal
+            isOpen={showUserPinModal}
+            title="Ingresa tu PIN de acceso"
+            subtitle="Para proteger tu información, ingresa el PIN de 8 dígitos asociado a tu cuenta."
+            infoBox={
+              pinFlowKind === 'existing' ? (
+                <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-900 text-left">
+                  <p className="font-bold mb-1">🔑 PIN ya configurado</p>
+                  <p>{pinFlowMessage}</p>
+                </div>
+              ) : (
+                <div className="bg-blue-50 border border-blue-200 rounded p-3 text-xs text-blue-800 text-left">
+                  <p className="font-bold mb-1">📧 PIN enviado</p>
+                  <p>{pinFlowMessage}</p>
+                  <p className="mt-2 text-blue-600">
+                    Revisa tu bandeja de entrada y la carpeta de spam. El PIN llega en segundos.
+                  </p>
+                </div>
+              )
+            }
+            onClose={() => { setShowUserPinModal(false); setPendingPinEmail(''); setPinFlowMessage(''); }}
+            onSubmit={handleUserPinSubmit}
+            onResend={handleResendUserPin}
+          />
+        )}
         <div className="bg-white p-8 rounded-lg shadow-2xl text-center max-w-md w-full border-t-8 border-brand-red">
           <div className="flex justify-center mb-6">
             <img src={LOGO_URL} alt="Organización Equitel" className="h-20 w-auto object-contain" referrerPolicy="no-referrer" />
@@ -189,15 +366,20 @@ const App: React.FC = () => {
             <h2 className="text-2xl font-bold text-gray-900 tracking-tight leading-tight">Portal de Viajes</h2>
             <h3 className="text-xl font-bold text-brand-red tracking-wide">Organización Equitel</h3>
           </div>
-          <div className="text-left mb-6">
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Correo Corporativo</label>
-            <input name="email" type="email" placeholder="usuario@equitel.com.co" className="w-full bg-gray-50 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-md shadow-sm p-3 focus:ring-2 focus:ring-brand-red focus:border-brand-red outline-none transition" value={loginEmailInput} onChange={(e) => setLoginEmailInput(e.target.value)} autoFocus />
-          </div>
-          <div className="space-y-3">
-            <button onClick={handleRequesterLogin} className="w-full bg-brand-red text-white py-3 px-4 rounded font-bold uppercase tracking-wide hover:bg-red-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">INGRESAR</button>
-            <div className="relative flex py-2 items-center"><div className="flex-grow border-t border-gray-300"></div><span className="flex-shrink-0 mx-4 text-gray-400 text-xs uppercase font-bold">O Acceso Staff</span><div className="flex-grow border-t border-gray-300"></div></div>
-            <button onClick={handleAdminLoginClick} className="w-full bg-black text-white py-3 px-4 rounded font-bold uppercase tracking-wide hover:bg-gray-800 transition shadow hover:shadow-md">ADMINISTRADOR</button>
-          </div>
+          <form onSubmit={handleRequesterLogin}>
+            <div className="text-left mb-6">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Correo Corporativo</label>
+              <input name="email" type="email" placeholder="usuario@equitel.com.co" className="w-full bg-gray-50 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-md shadow-sm p-3 focus:ring-2 focus:ring-brand-red focus:border-brand-red outline-none transition" value={loginEmailInput} onChange={(e) => setLoginEmailInput(e.target.value)} autoFocus disabled={loginBusy} />
+            </div>
+            <div className="space-y-3">
+              <button type="submit" disabled={loginBusy} className="w-full bg-brand-red text-white py-3 px-4 rounded font-bold uppercase tracking-wide hover:bg-red-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed">{loginBusy ? 'ENVIANDO PIN...' : 'INGRESAR'}</button>
+              <div className="relative flex py-2 items-center"><div className="flex-grow border-t border-gray-300"></div><span className="flex-shrink-0 mx-4 text-gray-400 text-xs uppercase font-bold">O Acceso Staff</span><div className="flex-grow border-t border-gray-300"></div></div>
+              <button type="button" onClick={handleAdminLoginClick} disabled={loginBusy} className="w-full bg-black text-white py-3 px-4 rounded font-bold uppercase tracking-wide hover:bg-gray-800 transition shadow hover:shadow-md disabled:opacity-60">ADMINISTRADOR</button>
+            </div>
+          </form>
+          <p className="mt-6 text-[10px] text-gray-400 leading-relaxed">
+            🔒 La primera vez que ingreses, recibirás un PIN de 8 dígitos en tu correo corporativo. Lo usarás cada vez que accedas desde un navegador o dispositivo nuevo.
+          </p>
         </div>
       </div>
     );

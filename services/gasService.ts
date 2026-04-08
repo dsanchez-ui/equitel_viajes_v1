@@ -2,11 +2,32 @@
 import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster } from '../types';
 import { API_BASE_URL } from '../constants';
 
+// Global handler so the App can react when the backend reports an expired session.
+type SessionExpiredHandler = () => void;
+let sessionExpiredHandler: SessionExpiredHandler | null = null;
+export function setOnSessionExpired(handler: SessionExpiredHandler | null) {
+  sessionExpiredHandler = handler;
+}
+
 class GasService {
   private _userEmail: string = '';
+  private _sessionToken: string = '';
 
   setUserEmail(email: string) {
     this._userEmail = email.toLowerCase().trim();
+  }
+
+  setSessionToken(token: string) {
+    this._sessionToken = token || '';
+  }
+
+  getSessionToken(): string {
+    return this._sessionToken;
+  }
+
+  clearSession() {
+    this._sessionToken = '';
+    this._userEmail = '';
   }
 
   /**
@@ -28,7 +49,11 @@ class GasService {
         },
         body: JSON.stringify({
           action,
-          payload: { ...payload, userEmail: payload?.userEmail || this._userEmail }
+          payload: {
+            ...payload,
+            userEmail: payload?.userEmail || this._userEmail,
+            sessionToken: payload?.sessionToken || this._sessionToken
+          }
         })
       });
 
@@ -51,6 +76,14 @@ class GasService {
         }
         console.error("Invalid JSON response:", textResult);
         throw new Error("El servidor devolvió una respuesta inválida.");
+      }
+
+      // If the backend reports an expired/invalid session, notify the app shell.
+      if (result && result.success === false && result.code === 'SESSION_EXPIRED') {
+        this.clearSession();
+        if (sessionExpiredHandler) {
+          try { sessionExpiredHandler(); } catch (_) { /* noop */ }
+        }
       }
 
       return result;
@@ -195,16 +228,52 @@ class GasService {
     return response.success && response.data === true;
   }
 
-  async verifyAdminPin(pin: string): Promise<boolean> {
-    const response = await this.runGas('verifyAdminPin', { pin });
+  async verifyAdminPin(pin: string, email: string): Promise<{ success: boolean, token?: string, expiresAt?: number, role?: string }> {
+    const response = await this.runGas('verifyAdminPin', { pin, email, userEmail: email });
     if (!response.success) throw new Error(response.error);
-    return response.data === true;
+    // New response shape: { success, token, expiresAt, role }
+    if (response.data && typeof response.data === 'object') {
+      return response.data;
+    }
+    // Backward-compat fallback (old backend that returns boolean)
+    return { success: response.data === true };
   }
 
   async updateAdminPin(newPin: string): Promise<boolean> {
     const response = await this.runGas('updateAdminPin', { newPin });
     if (!response.success) throw new Error(response.error);
     return response.data === true;
+  }
+
+  // --- USER PIN AUTHENTICATION ---
+
+  async requestUserPin(email: string, forceRegenerate: boolean = false): Promise<{ sent: boolean, hasExistingPin: boolean, isFirstTime: boolean, maskedEmail: string }> {
+    const response = await this.runGas('requestUserPin', { email, forceRegenerate, userEmail: email });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
+  async verifyUserPin(email: string, pin: string): Promise<{ success: boolean, token?: string, expiresAt?: number, role?: string }> {
+    const response = await this.runGas('verifyUserPin', { email, pin, userEmail: email });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
+  async validateSession(email: string, token: string): Promise<{ valid: boolean, role?: string, expiresAt?: number }> {
+    const response = await this.runGas('validateSession', { email, token, userEmail: email });
+    if (!response.success) return { valid: false };
+    return response.data || { valid: false };
+  }
+
+  async logout(): Promise<void> {
+    if (!this._userEmail || !this._sessionToken) {
+      this.clearSession();
+      return;
+    }
+    try {
+      await this.runGas('logout', { email: this._userEmail, token: this._sessionToken });
+    } catch (_) { /* best-effort */ }
+    this.clearSession();
   }
 }
 

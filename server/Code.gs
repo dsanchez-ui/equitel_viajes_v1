@@ -192,10 +192,19 @@ function dispatch(action, payload) {
   }
 
   try {
-    // SECURITY: Validate user identity for non-public actions
-    const publicActions = ['getCurrentUser', 'getIntegrantesData', 'getCitiesList', 'getCostCenterData', 'getCreditCards', 'getSites', 'verifyAdminPin', 'checkIsAnalyst'];
-    if (!publicActions.includes(action) && !validateUserEmail_(currentUserEmail)) {
-      return { success: false, error: 'Usuario no autorizado. Su correo no está registrado en el sistema.' };
+    // SECURITY TIER 1: Actions exempt from session validation (login flow + pre-login checks)
+    const sessionExemptActions = ['getCurrentUser', 'requestUserPin', 'verifyUserPin', 'validateSession', 'logout', 'verifyAdminPin', 'checkIsAnalyst'];
+
+    // SECURITY TIER 2: For all other actions, the user must have a valid session token
+    if (!sessionExemptActions.includes(action)) {
+      const token = payload && payload.sessionToken;
+      if (!token || !validateUserSession_(currentUserEmail, token)) {
+        return { success: false, error: 'Sesión expirada o inválida. Por favor inicia sesión nuevamente.', code: 'SESSION_EXPIRED' };
+      }
+      // Defense in depth: also confirm email is in INTEGRANTES (or analyst whitelist)
+      if (!validateUserEmail_(currentUserEmail)) {
+        return { success: false, error: 'Usuario no autorizado. Su correo no está registrado en el sistema.' };
+      }
     }
 
     // SECURITY: Admin-only actions require analyst role
@@ -252,8 +261,14 @@ function dispatch(action, payload) {
       case 'requestModification': result = requestModification(payload.requestId, payload.modifiedRequest, payload.changeReason, payload.emailHtml); break;
       
       // PIN FEATURES
-      case 'verifyAdminPin': result = verifyAdminPin(payload.pin); break;
+      case 'verifyAdminPin': result = verifyAdminPin(payload.pin, payload.email); break;
       case 'updateAdminPin': result = updateAdminPin(payload.newPin); break;
+
+      // USER PIN AUTHENTICATION + SESSIONS
+      case 'requestUserPin': result = requestUserPin(payload.email, payload.forceRegenerate === true); break;
+      case 'verifyUserPin': result = verifyUserPin(payload.email, payload.pin); break;
+      case 'validateSession': result = validateSession(payload.email, payload.token); break;
+      case 'logout': result = logout(payload.email, payload.token); break;
 
       // NEW: RESERVATION LOGIC
       case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.fileData, payload.fileName, payload.creditCard); break;
@@ -335,7 +350,7 @@ function recordFailedPinAttempt_() {
   }
 }
 
-function verifyAdminPin(inputPin) {
+function verifyAdminPin(inputPin, email) {
   if (isPinRateLimited_()) {
     throw new Error('Demasiados intentos fallidos. Intente de nuevo en 15 minutos.');
   }
@@ -357,14 +372,29 @@ function verifyAdminPin(inputPin) {
   }
 
   var inputHash = hashPin_(String(inputPin));
-  if (inputHash === storedHash) {
-    props.deleteProperty('PIN_FAILED_ATTEMPTS');
-    props.deleteProperty('PIN_LOCKOUT_UNTIL');
-    return true;
-  } else {
+  if (inputHash !== storedHash) {
     recordFailedPinAttempt_();
-    return false;
+    return { success: false };
   }
+
+  // PIN matches. Now require an email to issue a session token.
+  // Backward compat: if no email provided, return legacy `true` so old clients still work.
+  props.deleteProperty('PIN_FAILED_ATTEMPTS');
+  props.deleteProperty('PIN_LOCKOUT_UNTIL');
+
+  if (!email) return true;
+
+  var normalized = String(email).toLowerCase().trim();
+  if (!isUserAnalyst(normalized)) {
+    throw new Error('El correo proporcionado no tiene permisos de administrador.');
+  }
+  var session = createSession_(normalized, 'ANALYST');
+  return {
+    success: true,
+    token: session.token,
+    expiresAt: session.expiresAt,
+    role: 'ANALYST'
+  };
 }
 
 function updateAdminPin(newPin) {
@@ -439,6 +469,278 @@ function configurarPinInicial() {
   updateAdminPin(pin);
   PropertiesService.getScriptProperties().deleteProperty('INITIAL_ADMIN_PIN');
   return 'PIN configurado exitosamente. La propiedad temporal INITIAL_ADMIN_PIN ha sido eliminada.';
+}
+
+// =====================================================================
+// USER PIN AUTHENTICATION + SESSION TOKENS
+// =====================================================================
+
+var SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function hashEmail_(email) {
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(email).toLowerCase().trim());
+  return digest.map(function(b) { return ('0' + ((b & 0xFF).toString(16))).slice(-2); }).join('');
+}
+
+function generateRandomPin_() {
+  var pin = '';
+  for (var i = 0; i < 8; i++) {
+    pin += Math.floor(Math.random() * 10);
+  }
+  return pin;
+}
+
+function generateSessionToken_() {
+  // 2 UUIDs concatenated (no dashes) → 64 hex chars, 244 bits of entropy
+  return (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+}
+
+function maskEmail_(email) {
+  var parts = String(email).split('@');
+  if (parts.length !== 2) return email;
+  var name = parts[0];
+  var domain = parts[1];
+  if (name.length <= 2) return name[0] + '***@' + domain;
+  return name.substring(0, 2) + '****@' + domain;
+}
+
+// --- Per-user PIN rate limiting ---
+function isUserPinRateLimited_(email) {
+  var props = PropertiesService.getScriptProperties();
+  var key = 'USER_PIN_LOCKOUT_' + hashEmail_(email);
+  var lockoutUntil = props.getProperty(key);
+  if (lockoutUntil && new Date().getTime() < Number(lockoutUntil)) return true;
+  return false;
+}
+
+function recordFailedUserPinAttempt_(email) {
+  var props = PropertiesService.getScriptProperties();
+  var hashKey = hashEmail_(email);
+  var failKey = 'USER_PIN_FAILS_' + hashKey;
+  var lockKey = 'USER_PIN_LOCKOUT_' + hashKey;
+  var attempts = Number(props.getProperty(failKey) || '0') + 1;
+  props.setProperty(failKey, String(attempts));
+  if (attempts >= 5) {
+    var lockoutUntil = new Date().getTime() + (15 * 60 * 1000);
+    props.setProperty(lockKey, String(lockoutUntil));
+    props.setProperty(failKey, '0');
+  }
+}
+
+function clearFailedUserPinAttempts_(email) {
+  var props = PropertiesService.getScriptProperties();
+  var hashKey = hashEmail_(email);
+  props.deleteProperty('USER_PIN_FAILS_' + hashKey);
+  props.deleteProperty('USER_PIN_LOCKOUT_' + hashKey);
+}
+
+// --- INTEGRANTES column M (PIN hash) read/write ---
+function _findIntegranteRowByEmail_(sheet, email) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var emailIdx = headers.indexOf("correo");
+  if (emailIdx < 0) return -1;
+  var data = sheet.getRange(2, emailIdx + 1, lastRow - 1, 1).getValues();
+  var target = String(email).toLowerCase().trim();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]).toLowerCase().trim() === target) return i + 2; // 1-indexed row
+  }
+  return -1;
+}
+
+function _getPinColumnIndex_(sheet) {
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var idx = headers.indexOf("PIN");
+  return idx >= 0 ? idx + 1 : -1;
+}
+
+function getUserPinHash_(email) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
+  if (!sheet) return '';
+  var row = _findIntegranteRowByEmail_(sheet, email);
+  if (row < 0) return '';
+  var pinCol = _getPinColumnIndex_(sheet);
+  if (pinCol < 0) return '';
+  return String(sheet.getRange(row, pinCol).getValue() || '').trim();
+}
+
+function setUserPinHash_(email, hash) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
+  if (!sheet) throw new Error('Hoja INTEGRANTES no encontrada.');
+  var row = _findIntegranteRowByEmail_(sheet, email);
+  if (row < 0) throw new Error('Correo no encontrado en INTEGRANTES.');
+  var pinCol = _getPinColumnIndex_(sheet);
+  if (pinCol < 0) throw new Error('Columna PIN no encontrada en INTEGRANTES.');
+  sheet.getRange(row, pinCol).setValue(hash);
+  SpreadsheetApp.flush();
+}
+
+// --- Session management ---
+function createSession_(email, role) {
+  var token = generateSessionToken_();
+  var expiresAt = new Date().getTime() + SESSION_TTL_MS;
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('SESSION_' + hashEmail_(email), JSON.stringify({
+    token: token,
+    expiresAt: expiresAt,
+    email: String(email).toLowerCase().trim(),
+    role: role
+  }));
+  return { token: token, expiresAt: expiresAt, role: role };
+}
+
+function validateUserSession_(email, token) {
+  if (!email || !token) return null;
+  var props = PropertiesService.getScriptProperties();
+  var key = 'SESSION_' + hashEmail_(email);
+  var raw = props.getProperty(key);
+  if (!raw) return null;
+  try {
+    var session = JSON.parse(raw);
+    if (session.token !== token) return null;
+    if (new Date().getTime() > Number(session.expiresAt)) {
+      props.deleteProperty(key); // lazy cleanup
+      return null;
+    }
+    return session;
+  } catch (e) {
+    return null;
+  }
+}
+
+function destroySession_(email) {
+  var props = PropertiesService.getScriptProperties();
+  props.deleteProperty('SESSION_' + hashEmail_(email));
+}
+
+/**
+ * Manual cleanup utility: removes all expired sessions from ScriptProperties.
+ * Run from GAS editor periodically (e.g. monthly).
+ */
+function cleanupExpiredSessions() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  var now = new Date().getTime();
+  var removed = 0;
+  Object.keys(all).forEach(function(key) {
+    if (key.indexOf('SESSION_') !== 0) return;
+    try {
+      var s = JSON.parse(all[key]);
+      if (now > Number(s.expiresAt)) {
+        props.deleteProperty(key);
+        removed++;
+      }
+    } catch (e) {
+      props.deleteProperty(key); // corrupt → remove
+      removed++;
+    }
+  });
+  console.log('Sesiones expiradas eliminadas: ' + removed);
+  return removed;
+}
+
+// --- Public PIN endpoints ---
+
+/**
+ * Two modes:
+ * - forceRegenerate=false (default): if user already has a PIN, do NOT regenerate or email — just
+ *   confirm that the user must enter their existing PIN. If they don't have one, generate the
+ *   first PIN and email it.
+ * - forceRegenerate=true: always generate a new PIN, hash it, store it, and email it (used by
+ *   the explicit "Reenviar PIN" button). The previous PIN becomes invalid.
+ *
+ * The plain PIN is NEVER persisted server-side; only its hash lives in INTEGRANTES col M.
+ */
+function requestUserPin(email, forceRegenerate) {
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email))) {
+    throw new Error('Correo inválido.');
+  }
+  var normalized = String(email).toLowerCase().trim();
+
+  // 1. Verify the user exists in INTEGRANTES
+  if (!validateUserEmail_(normalized)) {
+    throw new Error('Tu correo no está registrado en el sistema. Contacta al área de viajes.');
+  }
+
+  // 2. Detect if it's the first time (no hash yet)
+  var existingHash = getUserPinHash_(normalized);
+  var hasPin = !!existingHash;
+
+  // 3. If user already has a PIN and we're not forcing regeneration, just acknowledge —
+  //    no email, no hash overwrite. Frontend will show the "enter your existing PIN" UI.
+  if (hasPin && !forceRegenerate) {
+    return {
+      sent: false,
+      hasExistingPin: true,
+      isFirstTime: false,
+      maskedEmail: maskEmail_(normalized)
+    };
+  }
+
+  // 4. Generate a new PIN, hash, store
+  var plainPin = generateRandomPin_();
+  var hash = hashPin_(plainPin);
+  setUserPinHash_(normalized, hash);
+
+  // 5. Send email with the plain PIN
+  var isFirstTime = !hasPin; // truly first time vs. forced regeneration of an existing PIN
+  var html = HtmlTemplates.userPinDelivery(normalized, plainPin, isFirstTime);
+  var subject = 'Tu PIN de acceso - Portal de Viajes Equitel';
+  sendEmailRich(normalized, subject, html, null);
+
+  return {
+    sent: true,
+    hasExistingPin: false,
+    isFirstTime: isFirstTime,
+    maskedEmail: maskEmail_(normalized)
+  };
+}
+
+function verifyUserPin(email, inputPin) {
+  if (!email || !inputPin) throw new Error('Correo y PIN son requeridos.');
+  var normalized = String(email).toLowerCase().trim();
+
+  if (isUserPinRateLimited_(normalized)) {
+    throw new Error('Demasiados intentos fallidos. Intenta de nuevo en 15 minutos.');
+  }
+
+  var storedHash = getUserPinHash_(normalized);
+  if (!storedHash) {
+    throw new Error('No tienes un PIN configurado. Solicita primero el envío de tu PIN.');
+  }
+
+  var inputHash = hashPin_(String(inputPin));
+  if (inputHash !== storedHash) {
+    recordFailedUserPinAttempt_(normalized);
+    return { success: false };
+  }
+
+  // Success: clear failures, determine role, create session
+  clearFailedUserPinAttempts_(normalized);
+  var role = isUserAnalyst(normalized) ? 'ANALYST' : 'REQUESTER';
+  var session = createSession_(normalized, role);
+  return {
+    success: true,
+    token: session.token,
+    expiresAt: session.expiresAt,
+    role: role
+  };
+}
+
+function validateSession(email, token) {
+  var session = validateUserSession_(email, token);
+  if (!session) return { valid: false };
+  return { valid: true, role: session.role, expiresAt: session.expiresAt };
+}
+
+function logout(email, token) {
+  // Only destroy if the token matches (prevents arbitrary logout)
+  var session = validateUserSession_(email, token);
+  if (session) destroySession_(email);
+  return true;
 }
 
 function enhanceTextWithGemini(currentRequest, userDraft) {
@@ -1141,6 +1443,62 @@ const HtmlTemplates = {
 
         html += `</div>`;
         return html;
+    },
+
+    // USER PIN DELIVERY: sends the plain PIN to the user with clear instructions.
+    userPinDelivery: function(email, pin, isFirstTime) {
+        var platformUrl = (function() {
+            try { return PropertiesService.getScriptProperties().getProperty('PLATFORM_URL') || ''; }
+            catch(e) { return ''; }
+        })();
+        var statusMessage = isFirstTime
+            ? 'Este es tu <strong>PIN inicial</strong> para acceder al portal. Guárdalo en un lugar seguro: lo necesitarás cada vez que inicies sesión en un navegador o dispositivo nuevo.'
+            : 'Tu PIN ha sido <strong>regenerado</strong>. El PIN anterior ya no es válido. Usa este nuevo PIN para ingresar al portal.';
+        var goButton = platformUrl
+            ? '<div style="text-align:center; margin: 25px 0 10px;"><a href="' + escapeHtml_(platformUrl) + '" style="background-color:#D71920; color:#ffffff; padding:12px 30px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px; display:inline-block;">Ir a la plataforma →</a></div>'
+            : '';
+
+        return '' +
+        '<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e5e7eb;">' +
+            '<div style="background-color: #D71920; color: white; padding: 20px; text-align: center;">' +
+                '<h2 style="margin: 0; font-size: 18px; letter-spacing: 1px;">PORTAL DE VIAJES EQUITEL</h2>' +
+                '<div style="font-size: 12px; opacity: 0.9; margin-top: 4px;">Acceso seguro a tu cuenta</div>' +
+            '</div>' +
+            '<div style="padding: 25px;">' +
+                '<p style="color: #111827; font-size: 14px; line-height: 1.6; margin: 0 0 15px;">Hola,</p>' +
+                '<p style="color: #374151; font-size: 14px; line-height: 1.6; margin: 0 0 15px;">' +
+                    'Te compartimos por este medio tu <strong>PIN de acceso</strong> al Portal de Viajes Equitel. ' +
+                    'Esto es para mejorar la seguridad de tu cuenta y de tu información.' +
+                '</p>' +
+                '<p style="color: #374151; font-size: 14px; line-height: 1.6; margin: 0 0 20px;">' + statusMessage + '</p>' +
+
+                '<div style="background-color: #fef2f2; border: 2px solid #D71920; border-radius: 8px; padding: 20px; margin: 20px 0;">' +
+                    '<div style="font-size: 11px; color: #991b1b; text-transform: uppercase; font-weight: bold; margin-bottom: 8px;">Tu correo registrado</div>' +
+                    '<div style="font-size: 15px; color: #111827; font-weight: 600; margin-bottom: 18px; word-break: break-all;">' + escapeHtml_(email) + '</div>' +
+                    '<div style="font-size: 11px; color: #991b1b; text-transform: uppercase; font-weight: bold; margin-bottom: 8px;">Tu PIN de acceso</div>' +
+                    '<div style="font-family: \'Courier New\', monospace; font-size: 32px; color: #D71920; font-weight: bold; letter-spacing: 6px; text-align: center; padding: 12px; background-color: #ffffff; border-radius: 6px; border: 1px dashed #fca5a5;">' + escapeHtml_(pin) + '</div>' +
+                '</div>' +
+
+                '<div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 12px 15px; margin: 20px 0; font-size: 12px; color: #78350f; line-height: 1.5;">' +
+                    '<strong>¿Cómo lo uso?</strong><br/>' +
+                    '1. Ingresa al Portal de Viajes con tu correo corporativo.<br/>' +
+                    '2. Cuando se te solicite, introduce este PIN de 8 dígitos.<br/>' +
+                    '3. Una vez verificado, no se te pedirá de nuevo durante 30 días en este navegador.' +
+                '</div>' +
+
+                goButton +
+
+                '<div style="border-top: 1px solid #e5e7eb; margin-top: 25px; padding-top: 15px;">' +
+                    '<p style="color: #6b7280; font-size: 11px; line-height: 1.5; margin: 0;">' +
+                        'Si <strong>no solicitaste este correo</strong>, ignóralo o repórtalo al área de viajes (apcompras@equitel.com.co). ' +
+                        'Por seguridad, nunca compartas tu PIN con nadie.' +
+                    '</p>' +
+                '</div>' +
+            '</div>' +
+            '<div style="background-color: #111827; color: #9ca3af; padding: 12px; text-align: center; font-size: 10px;">' +
+                'Portal de Viajes Equitel · Mensaje automático, no responder.' +
+            '</div>' +
+        '</div>';
     },
 
     // SHARED: Generates the full Route, Dates, Passengers and Details block.
