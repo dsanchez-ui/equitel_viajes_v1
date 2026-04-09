@@ -1140,9 +1140,17 @@ function processApprovalFromEmail(e) {
           if (requesterIsCeo) {
               // CEO requested → his single approval (sent with role CEO) is enough
               if (ceoApproved) isFullyApproved = true;
+              // LEGACY FALLBACK: in-flight requests created BEFORE the dedup change may
+              // have area + CDS marked already (because the old flow sent the CEO three
+              // separate emails). Honor that combination so they don't stall after deploy.
+              // Cannot trigger for new requests because the new flow only sends 1 email
+              // to CEO with role CEO, so the area and CDS columns stay empty.
+              else if (areaApproved && cdsApproved) isFullyApproved = true;
           } else if (requesterIsCds) {
               // CDS requested → his single approval (sent with role CDS) is enough
               if (cdsApproved) isFullyApproved = true;
+              // LEGACY FALLBACK: same reasoning as the CEO branch above.
+              else if (areaApproved && ceoApproved) isFullyApproved = true;
           } else if (requiresExecutiveApproval) {
               // Standard executive flow: area + (CEO or CDS).
               // If the assigned area approver IS the CEO/CDS, the deduped email
