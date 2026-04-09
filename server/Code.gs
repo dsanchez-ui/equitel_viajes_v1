@@ -1,8 +1,7 @@
 
 /**
- * @OnlyCurrentDoc
  * @AuthorizationRequired
- * @oauthScopes https://www.googleapis.com/auth/spreadsheets.currentonly, https://www.googleapis.com/auth/drive, https://www.googleapis.com/auth/script.external_request, https://www.googleapis.com/auth/userinfo.email
+ * @oauthScopes https://www.googleapis.com/auth/spreadsheets, https://www.googleapis.com/auth/drive, https://www.googleapis.com/auth/script.external_request, https://www.googleapis.com/auth/userinfo.email, https://www.googleapis.com/auth/script.container.ui, https://www.googleapis.com/auth/script.send_mail
  */
 
 // --- CONFIGURATION & CONSTANTS ---
@@ -28,6 +27,18 @@ const SHEET_NAME_MASTERS = 'MAESTROS';
 const SHEET_NAME_RELATIONS = 'CDS vs UDEN';
 const SHEET_NAME_INTEGRANTES = 'INTEGRANTES';
 const SHEET_NAME_CITIES = 'CIUDADES DEL MUNDO';
+
+// =====================================================================
+// PHASE B FEATURE FLAG: read user data from USUARIOS instead of INTEGRANTES
+// =====================================================================
+// To switch the runtime to USUARIOS:
+//   Script Properties → set USE_USUARIOS_SHEET = 'true'
+// To revert to INTEGRANTES:
+//   Script Properties → set to 'false' (or delete the property)
+// No redeploy required — Apps Script re-reads constants on each web app
+// invocation. The switch is instantaneous and atomic.
+// =====================================================================
+const USE_USUARIOS_SHEET = getConfig_('USE_USUARIOS_SHEET', 'false') === 'true';
 
 // DRIVE & EMAIL CONFIG (set in ScriptProperties for production)
 const ROOT_DRIVE_FOLDER_ID = getConfig_('ROOT_DRIVE_FOLDER_ID', '1uaett_yH1qZcS-rVr_sUh73mODvX02im');
@@ -300,20 +311,24 @@ function dispatch(action, payload) {
   }
 }
 
-// --- SECURITY: Validate email exists in INTEGRANTES sheet ---
+// --- SECURITY: Validate email exists in the active user sheet ---
+// Branches between INTEGRANTES (legacy) and USUARIOS (Phase B) based on
+// the USE_USUARIOS_SHEET flag.
 function validateUserEmail_(email) {
   if (!email) return false;
   // Analysts are always valid (they are in the whitelist)
   if (isUserAnalyst(email)) return true;
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
+  const sheetName = USE_USUARIOS_SHEET ? SHEET_NAME_USUARIOS : SHEET_NAME_INTEGRANTES;
+  const emailColName = USE_USUARIOS_SHEET ? 'Correo' : 'correo';
+  const sheet = ss.getSheetByName(sheetName);
   if (!sheet) return false;
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return false;
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const emailIdx = headers.indexOf("correo");
+  const emailIdx = headers.indexOf(emailColName);
   if (emailIdx < 0) return false;
 
   const data = sheet.getRange(2, emailIdx + 1, lastRow - 1, 1).getValues();
@@ -535,12 +550,17 @@ function clearFailedUserPinAttempts_(email) {
   props.deleteProperty('USER_PIN_LOCKOUT_' + hashKey);
 }
 
-// --- INTEGRANTES column M (PIN hash) read/write ---
+// --- PIN hash read/write — works against INTEGRANTES or USUARIOS ---
+// Branches via USE_USUARIOS_SHEET flag. Both sheets have a "PIN" column,
+// but the email column has different casing ("correo" vs "Correo").
+
 function _findIntegranteRowByEmail_(sheet, email) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  // Try both casings so the helper works for either sheet
   var emailIdx = headers.indexOf("correo");
+  if (emailIdx < 0) emailIdx = headers.indexOf("Correo");
   if (emailIdx < 0) return -1;
   var data = sheet.getRange(2, emailIdx + 1, lastRow - 1, 1).getValues();
   var target = String(email).toLowerCase().trim();
@@ -556,9 +576,14 @@ function _getPinColumnIndex_(sheet) {
   return idx >= 0 ? idx + 1 : -1;
 }
 
-function getUserPinHash_(email) {
+function _getActiveUserSheet_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
+  var name = USE_USUARIOS_SHEET ? SHEET_NAME_USUARIOS : SHEET_NAME_INTEGRANTES;
+  return ss.getSheetByName(name);
+}
+
+function getUserPinHash_(email) {
+  var sheet = _getActiveUserSheet_();
   if (!sheet) return '';
   var row = _findIntegranteRowByEmail_(sheet, email);
   if (row < 0) return '';
@@ -568,13 +593,12 @@ function getUserPinHash_(email) {
 }
 
 function setUserPinHash_(email, hash) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
-  if (!sheet) throw new Error('Hoja INTEGRANTES no encontrada.');
+  var sheet = _getActiveUserSheet_();
+  if (!sheet) throw new Error('Hoja de usuarios no encontrada (' + (USE_USUARIOS_SHEET ? SHEET_NAME_USUARIOS : SHEET_NAME_INTEGRANTES) + ').');
   var row = _findIntegranteRowByEmail_(sheet, email);
-  if (row < 0) throw new Error('Correo no encontrado en INTEGRANTES.');
+  if (row < 0) throw new Error('Correo no encontrado en la hoja de usuarios.');
   var pinCol = _getPinColumnIndex_(sheet);
-  if (pinCol < 0) throw new Error('Columna PIN no encontrada en INTEGRANTES.');
+  if (pinCol < 0) throw new Error('Columna PIN no encontrada en la hoja de usuarios.');
   sheet.getRange(row, pinCol).setValue(hash);
   SpreadsheetApp.flush();
 }
@@ -2236,10 +2260,48 @@ function getExecutiveEmails() {
 }
 
 function getIntegrantesData() {
+  if (USE_USUARIOS_SHEET) {
+    return _getIntegrantesDataFromUsuarios_();
+  }
+  return _getIntegrantesDataFromIntegrantes_();
+}
+
+/**
+ * Phase B: lee USUARIOS y devuelve la misma shape que el frontend espera.
+ * Las columnas H/I (correos/nombres aprobadores auto) ya vienen resueltas
+ * desde la migración o desde el sidebar al guardar.
+ */
+function _getIntegrantesDataFromUsuarios_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) return [];
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  // Cols: A=Cedula B=Nombre C=Correo D=Empresa E=Sede F=CC
+  //       G=Cedulas Aprobadores H=Correos Aprobadores I=Nombres Aprobadores
+  const data = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+  return data
+    .filter(function(r) { return r[0] && r[2]; })
+    .map(function(r) {
+      return {
+        idNumber: String(r[0]).trim(),
+        name: String(r[1]).trim(),
+        email: String(r[2]).toLowerCase().trim(),
+        approverName: String(r[8] || '').trim(),
+        approverEmail: String(r[7] || '').toLowerCase().trim()
+      };
+    });
+}
+
+/**
+ * Legacy: lee INTEGRANTES (sección verde + sección roja). Sin tocar.
+ */
+function _getIntegrantesDataFromIntegrantes_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
   if (!sheet) return [];
-  
+
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
   if (lastRow < 2) return [];
@@ -2286,17 +2348,10 @@ function getIntegrantesData() {
           const name = String(row[idxName2]).trim();
           const email = String(row[idxEmail2]).toLowerCase().trim();
           if (name && email) {
-              // Avoid duplicates if the same person is in both lists (unlikely but possible)
-              // We check if email already exists in the list we are building
-              // However, iterating 400 rows x 2 checks is fast enough.
-              // But `integrantes` array grows.
-              
-              // Only add if not already added (by email)
-              // Note: Right section usually lacks ID, so we pass empty string.
               const exists = integrantes.some(u => u.email === email);
               if (!exists) {
                   integrantes.push({
-                      idNumber: '', // Right section has no ID in the provided CSV
+                      idNumber: '',
                       name: name,
                       email: email,
                       approverName: idxAppName2 > -1 ? String(row[idxAppName2]).trim() : '',
@@ -3774,6 +3829,971 @@ function anularSolicitud(requestId, reason) {
   } catch (e) {
     console.error("Error enviando email de anulación: " + e);
   }
-  
+
   return true;
+}
+
+// =====================================================================
+// PLAN 2 - FASE A: USUARIOS SHEET MANAGEMENT (parallel, opt-in)
+// =====================================================================
+// Hoja paralela `USUARIOS` que reemplazará a INTEGRANTES en Fase B.
+// El backend de producción sigue leyendo INTEGRANTES — esta Fase A solo
+// instala el menú, las funciones de creación/migración y el sidebar.
+// Cero impacto en el flujo actual mientras se valida.
+// =====================================================================
+
+const SHEET_NAME_USUARIOS = 'USUARIOS';
+const HEADERS_USUARIOS = [
+  'Cedula', 'Nombre', 'Correo', 'Empresa', 'Sede', 'Centro de Costo',
+  'Cedulas Aprobadores', 'Correos Aprobadores (auto)', 'Nombres Aprobadores (auto)',
+  'PIN'
+];
+
+// Maestro RH (Recursos Humanos) — Sheet externo con la lista completa de
+// empleados. Se usa durante la migración para "rellenar" aprobadores que no
+// existen en INTEGRANTES (huérfanos) creando filas stub en USUARIOS.
+// Default apunta al sheet de prueba del clon; sobreescribir en producción
+// vía Script Property HR_MAESTRO_ID.
+const HR_MAESTRO_ID = getConfig_('HR_MAESTRO_ID', '1C0PQvx3Ueo5i7k2diWeMAAmnzX_SgKwXrgsLOo0lfMs');
+const HR_MAESTRO_SHEET = getConfig_('HR_MAESTRO_SHEET', 'Hoja 1');
+
+/**
+ * Menú "Equitel Viajes" en la barra superior del sheet.
+ * Se ejecuta automáticamente cuando alguien abre el spreadsheet.
+ */
+function onOpen() {
+  const modeLabel = USE_USUARIOS_SHEET ? '⚡ USUARIOS' : '📋 INTEGRANTES';
+  SpreadsheetApp.getUi()
+    .createMenu('Equitel Viajes')
+    .addItem('Gestionar Usuarios (Sidebar)', 'abrirSidebarUsuarios')
+    .addSeparator()
+    .addItem('Modo activo: ' + modeLabel, 'mostrarModoActivo')
+    .addSeparator()
+    .addItem('1. Crear hoja USUARIOS', 'crearHojaUsuarios')
+    .addItem('2. Migrar desde INTEGRANTES', 'migrarIntegrantesAUsuarios')
+    .addItem('3. Sincronizar con Maestro RH', 'sincronizarConMaestroRH')
+    .addItem('4. Recargar resoluciones (cols H, I)', 'recargarResolucionesUsuarios')
+    .addToUi();
+}
+
+/**
+ * Muestra qué hoja está leyendo el backend en este momento. Útil para
+ * confirmar que el switch de Fase B está activo.
+ */
+function mostrarModoActivo() {
+  const ui = SpreadsheetApp.getUi();
+  if (USE_USUARIOS_SHEET) {
+    ui.alert(
+      'Modo activo: USUARIOS',
+      'El backend está leyendo de la hoja USUARIOS (Fase B activa).\n\n' +
+      'Para revertir a INTEGRANTES:\n' +
+      '  Configuración del proyecto → Propiedades del script\n' +
+      '  Cambiar USE_USUARIOS_SHEET a "false" (o eliminar la propiedad)\n' +
+      '  Recargar el sheet — el cambio es inmediato, sin redespliegue.',
+      ui.ButtonSet.OK
+    );
+  } else {
+    ui.alert(
+      'Modo activo: INTEGRANTES (legacy)',
+      'El backend está leyendo de la hoja INTEGRANTES (modo por defecto).\n\n' +
+      'Para activar Fase B (leer de USUARIOS):\n' +
+      '  Configuración del proyecto → Propiedades del script\n' +
+      '  Agregar USE_USUARIOS_SHEET = "true"\n' +
+      '  Recargar el sheet — el cambio es inmediato, sin redespliegue.\n\n' +
+      'Antes de activar, asegúrate de haber corrido la migración (paso 2 del menú).',
+      ui.ButtonSet.OK
+    );
+  }
+}
+
+/**
+ * Recorre el Maestro RH y crea filas stub en USUARIOS para los empleados
+ * que aún no existen. NO toca filas existentes (preserva ediciones manuales).
+ * Útil para mantener USUARIOS sincronizada cuando RH agrega nuevas personas.
+ */
+function sincronizarConMaestroRH() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const usuarios = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!usuarios) {
+    ui.alert('Primero crea la hoja USUARIOS.');
+    return;
+  }
+
+  const hrResult = _readMaestroRH_();
+  if (hrResult.error) {
+    ui.alert('Error leyendo Maestro RH:\n\n' + hrResult.error);
+    return;
+  }
+  const hrLookup = hrResult.lookup;
+  const hrSize = Object.keys(hrLookup).length;
+
+  // Snapshot de lo que ya existe en USUARIOS
+  const lastRow = usuarios.getLastRow();
+  const existingCedulas = {};
+  const existingEmails = {};
+  if (lastRow >= 2) {
+    const existing = usuarios.getRange(2, 1, lastRow - 1, 3).getValues();
+    existing.forEach(function(r) {
+      const c = String(r[0] || '').trim();
+      const e = String(r[2] || '').toLowerCase().trim();
+      if (c) existingCedulas[c] = true;
+      if (e) existingEmails[e] = true;
+    });
+  }
+
+  // Detectar empleados del Maestro RH que no están en USUARIOS
+  const toCreate = [];
+  Object.keys(hrLookup).forEach(function(email) {
+    const entry = hrLookup[email];
+    if (!entry.cedula) return;
+    if (existingCedulas[entry.cedula]) return;
+    if (existingEmails[email]) return;
+    toCreate.push({
+      cedula: entry.cedula,
+      nombre: entry.nombre || email,
+      correo: email
+    });
+  });
+
+  if (toCreate.length === 0) {
+    ui.alert(
+      'Todo sincronizado.\n\n' +
+      'Maestro RH: ' + hrSize + ' empleados\n' +
+      'No hay usuarios nuevos que agregar.'
+    );
+    return;
+  }
+
+  const resp = ui.alert(
+    'Sincronizar con Maestro RH',
+    'Se crearán ' + toCreate.length + ' usuarios nuevos como STUBS:\n' +
+    '  • Solo cédula + nombre + correo\n' +
+    '  • Sin empresa, sede, centro de costo ni aprobador\n' +
+    '  • Sin PIN\n\n' +
+    'Tendrás que asignarles aprobador desde el sidebar después.\n\n' +
+    '¿Continuar?',
+    ui.ButtonSet.YES_NO
+  );
+  if (resp !== ui.Button.YES) return;
+
+  let nextRow = (lastRow >= 2 ? lastRow : 1) + 1;
+  toCreate.forEach(function(u) {
+    _writeUsuarioRow_(usuarios, nextRow, {
+      cedula: u.cedula,
+      nombre: u.nombre,
+      correo: u.correo,
+      empresa: '',
+      sede: '',
+      centroCosto: '',
+      cedulasAprobadores: ''
+    }, {});
+    nextRow++;
+  });
+  SpreadsheetApp.flush();
+
+  ui.alert(
+    'Sincronización completa.\n\n' +
+    '• Stubs creados: ' + toCreate.length + '\n' +
+    '• Total empleados en Maestro RH: ' + hrSize + '\n\n' +
+    'Asígnales aprobador desde el sidebar cuando puedas.'
+  );
+}
+
+function abrirSidebarUsuarios() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss.getSheetByName(SHEET_NAME_USUARIOS)) {
+    SpreadsheetApp.getUi().alert(
+      'La hoja USUARIOS aún no existe.\n\n' +
+      'Ejecuta primero: Equitel Viajes → "1. Crear hoja USUARIOS".'
+    );
+    return;
+  }
+  const html = HtmlService.createHtmlOutputFromFile('AdminSidebar')
+    .setTitle('Gestión de Usuarios');
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * One-time: crea la hoja USUARIOS con headers, formato y notas.
+ * Idempotente: si ya existe, avisa y no toca nada.
+ */
+function crearHojaUsuarios() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (ss.getSheetByName(SHEET_NAME_USUARIOS)) {
+    ui.alert('La hoja USUARIOS ya existe. Si quieres recrearla, elimínala manualmente primero.');
+    return;
+  }
+  const sheet = ss.insertSheet(SHEET_NAME_USUARIOS);
+  sheet.getRange(1, 1, 1, HEADERS_USUARIOS.length).setValues([HEADERS_USUARIOS]);
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, HEADERS_USUARIOS.length)
+    .setFontWeight('bold')
+    .setBackground('#1f2937')
+    .setFontColor('white');
+
+  // Anchos de columna razonables
+  sheet.setColumnWidth(1, 110);  // Cedula
+  sheet.setColumnWidth(2, 220);  // Nombre
+  sheet.setColumnWidth(3, 240);  // Correo
+  sheet.setColumnWidth(4, 110);  // Empresa
+  sheet.setColumnWidth(5, 140);  // Sede
+  sheet.setColumnWidth(6, 130);  // CC
+  sheet.setColumnWidth(7, 200);  // Cedulas Aprobadores
+  sheet.setColumnWidth(8, 280);  // Correos Aprobadores (auto)
+  sheet.setColumnWidth(9, 280);  // Nombres Aprobadores (auto)
+  sheet.setColumnWidth(10, 100); // PIN
+
+  sheet.getRange(1, 7).setNote('Cédulas separadas por coma. Cada una debe existir en la columna A.');
+  sheet.getRange(1, 8).setNote('Resuelto al guardar/migrar desde la columna G. Si editas G manualmente, usa "3. Recargar resoluciones" del menú.');
+  sheet.getRange(1, 9).setNote('Resuelto al guardar/migrar desde la columna G. Si editas G manualmente, usa "3. Recargar resoluciones" del menú.');
+  sheet.getRange(1, 10).setNote('Hash SHA-256 del PIN del usuario. NO editar manualmente.');
+
+  ui.alert(
+    'Hoja USUARIOS creada.\n\n' +
+    'Próximos pasos:\n' +
+    '1. Equitel Viajes → "2. Migrar desde INTEGRANTES" para poblarla.\n' +
+    '2. Equitel Viajes → "Gestionar Usuarios (Sidebar)" para administrar.'
+  );
+}
+
+/**
+ * Migración completa: lee INTEGRANTES (sección verde) + Maestro RH externo,
+ * y puebla USUARIOS resolviendo todas las referencias de aprobadores a
+ * cédulas. Si un aprobador no existe como usuario propio en INTEGRANTES,
+ * lo crea como "stub" usando datos del Maestro RH.
+ *
+ * Flujo:
+ *   1. Parse INTEGRANTES → array de usuarios con sus correos de aprobadores
+ *   2. Identifica huérfanos (correos de aprobadores no existentes en INTEGRANTES)
+ *   3. Abre Maestro RH y crea filas stub para los huérfanos encontrados
+ *   4. Resuelve todos los correos de aprobadores → cédulas con el mapa completo
+ *   5. Escribe USUARIOS preservando los hashes de PIN
+ */
+function migrarIntegrantesAUsuarios() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const usuarios = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!usuarios) {
+    ui.alert('Primero ejecuta "1. Crear hoja USUARIOS".');
+    return;
+  }
+  if (usuarios.getLastRow() > 1) {
+    const resp = ui.alert(
+      'USUARIOS ya tiene datos',
+      '¿Quieres BORRAR el contenido actual y volver a migrar?',
+      ui.ButtonSet.YES_NO
+    );
+    if (resp !== ui.Button.YES) return;
+    usuarios.getRange(2, 1, usuarios.getLastRow() - 1, usuarios.getLastColumn()).clearContent();
+    SpreadsheetApp.flush();
+  }
+
+  const intSheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
+  if (!intSheet) {
+    ui.alert('No se encontró la hoja INTEGRANTES.');
+    return;
+  }
+  const lastRow = intSheet.getLastRow();
+  if (lastRow < 2) {
+    ui.alert('INTEGRANTES está vacía.');
+    return;
+  }
+
+  const data = intSheet.getRange(1, 1, lastRow, intSheet.getLastColumn()).getValues();
+  const headers = data[0];
+  const idxCedula = headers.indexOf('Cedula Numero');
+  const idxNombre = headers.indexOf('Apellidos y Nombres');
+  const idxCorreo = headers.indexOf('correo');
+  const idxEmpresa = headers.indexOf('Empresa');
+  const idxSede = headers.indexOf('sede');
+  const idxCC = headers.indexOf('Centro de Costo');
+  const idxAprobCorreo = headers.indexOf('correo aprobador');
+  const idxPin = headers.indexOf('PIN');
+
+  if (idxCedula < 0 || idxNombre < 0 || idxCorreo < 0) {
+    ui.alert('No se encontraron las columnas básicas (Cedula Numero, Apellidos y Nombres, correo) en INTEGRANTES.');
+    return;
+  }
+
+  // ============= PASO 1: Parse INTEGRANTES =============
+  const parsedRows = []; // { cedula, nombre, correo, empresa, sede, cc, pinHash, aprobCorreos: [emails] }
+  let migratedPins = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    const cedula = String(data[i][idxCedula] || '').trim();
+    const nombre = String(data[i][idxNombre] || '').trim();
+    const correo = String(data[i][idxCorreo] || '').toLowerCase().trim();
+    if (!cedula || !nombre || !correo) continue;
+
+    const aprobCorreos = idxAprobCorreo > -1
+      ? String(data[i][idxAprobCorreo] || '').toLowerCase()
+          .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; })
+      : [];
+
+    parsedRows.push({
+      cedula: cedula,
+      nombre: nombre,
+      correo: correo,
+      empresa: idxEmpresa > -1 ? String(data[i][idxEmpresa] || '').trim() : '',
+      sede: idxSede > -1 ? String(data[i][idxSede] || '').trim() : '',
+      centroCosto: idxCC > -1 ? String(data[i][idxCC] || '').trim() : '',
+      pinHash: idxPin > -1 ? String(data[i][idxPin] || '').trim() : '',
+      aprobCorreos: aprobCorreos
+    });
+    if (parsedRows[parsedRows.length - 1].pinHash) migratedPins++;
+  }
+
+  // Lookup inicial correo → cedula desde lo que ya tenemos
+  const emailToCedula = {};
+  parsedRows.forEach(function(r) { emailToCedula[r.correo] = r.cedula; });
+
+  // ============= PASO 2: Identificar correos huérfanos =============
+  const allApprovers = {};
+  parsedRows.forEach(function(r) {
+    r.aprobCorreos.forEach(function(em) { allApprovers[em] = true; });
+  });
+  const orphanEmails = Object.keys(allApprovers).filter(function(em) {
+    return !emailToCedula[em];
+  });
+
+  // ============= PASO 3: Rellenar huérfanos desde Maestro RH =============
+  const stubRows = [];
+  const stillOrphan = [];
+  let hrLookupSize = 0;
+  let hrError = '';
+
+  if (orphanEmails.length > 0) {
+    const hrResult = _readMaestroRH_();
+    hrError = hrResult.error || '';
+    const hrLookup = hrResult.lookup;
+    hrLookupSize = Object.keys(hrLookup).length;
+
+    orphanEmails.forEach(function(em) {
+      const hrEntry = hrLookup[em];
+      if (hrEntry && hrEntry.cedula) {
+        // Stub: solo cedula+nombre+correo, sin empresa/sede/cc/aprobadores/pin.
+        // El admin puede completarlo después desde el sidebar si lo necesita.
+        stubRows.push({
+          cedula: hrEntry.cedula,
+          nombre: hrEntry.nombre || em,
+          correo: em,
+          empresa: '',
+          sede: '',
+          centroCosto: '',
+          pinHash: '',
+          aprobCorreos: []
+        });
+        emailToCedula[em] = hrEntry.cedula;
+      } else {
+        stillOrphan.push(em);
+      }
+    });
+  }
+
+  // ============= PASO 4: Resolver aprobadores → cédulas con mapa completo =============
+  const allRows = parsedRows.concat(stubRows);
+  const unresolvedRefs = []; // referencias específicas que aún no se pueden resolver
+
+  allRows.forEach(function(r) {
+    const cedulas = [];
+    r.aprobCorreos.forEach(function(em) {
+      const ced = emailToCedula[em];
+      if (ced) {
+        cedulas.push(ced);
+      } else {
+        unresolvedRefs.push({ usuario: r.correo, aprobadorCorreo: em });
+      }
+    });
+    r.cedulasAprobadores = cedulas.join(', ');
+  });
+
+  // Lookup cedula → {nombre, correo} para resolver cols H/I al escribir
+  const cedulaLookup = {};
+  allRows.forEach(function(r) {
+    if (r.cedula) {
+      cedulaLookup[r.cedula] = { nombre: r.nombre, correo: r.correo };
+    }
+  });
+
+  // ============= PASO 5: Escribir USUARIOS =============
+  allRows.forEach(function(r, idx) {
+    _writeUsuarioRow_(usuarios, idx + 2, r, cedulaLookup);
+  });
+  SpreadsheetApp.flush();
+
+  // ============= REPORTE =============
+  let msg = 'Migración completa.\n\n';
+  msg += '• Filas desde INTEGRANTES: ' + parsedRows.length + '\n';
+  msg += '• PINs preservados: ' + migratedPins + '\n';
+  msg += '• Stubs creados desde Maestro RH: ' + stubRows.length + '\n';
+  msg += '• Aprobadores aún no resueltos: ' + stillOrphan.length + '\n';
+  msg += '• Total filas en USUARIOS: ' + allRows.length + '\n';
+
+  if (hrError) {
+    msg += '\n⚠️ Maestro RH: ' + hrError + '\n';
+  } else if (orphanEmails.length > 0) {
+    msg += '\nMaestro RH leído OK (' + hrLookupSize + ' empleados).\n';
+  }
+
+  if (stillOrphan.length > 0) {
+    msg += '\nCorreos de aprobadores no encontrados en ningún lado:\n';
+    stillOrphan.slice(0, 10).forEach(function(em) { msg += '  - ' + em + '\n'; });
+    if (stillOrphan.length > 10) msg += '  ... y ' + (stillOrphan.length - 10) + ' más.\n';
+    msg += '\nEstos usuarios tendrán aprobador vacío. Créalos desde el sidebar o agrégalos al Maestro RH y vuelve a migrar.';
+    console.log('=== APROBADORES SIN RESOLVER ===');
+    stillOrphan.forEach(function(em) { console.log(em); });
+  }
+
+  console.log('=== REFERENCIAS NO RESUELTAS POR USUARIO ===');
+  unresolvedRefs.forEach(function(o) { console.log(o.usuario + ' → ' + o.aprobadorCorreo); });
+
+  ui.alert(msg);
+}
+
+/**
+ * Lee el Maestro RH (Spreadsheet externo) y retorna un lookup
+ * { correo → {cedula, nombre} }. Si falla, retorna lookup vacío y un mensaje
+ * de error en `error`.
+ */
+function _readMaestroRH_() {
+  const id = HR_MAESTRO_ID;
+  if (!id) {
+    return { lookup: {}, error: 'HR_MAESTRO_ID no configurado.' };
+  }
+  try {
+    const file = SpreadsheetApp.openById(id);
+    const sheet = file.getSheetByName(HR_MAESTRO_SHEET) || file.getSheets()[0];
+    if (!sheet) {
+      return { lookup: {}, error: 'No se encontró pestaña "' + HR_MAESTRO_SHEET + '" en el Maestro RH.' };
+    }
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      return { lookup: {}, error: 'Maestro RH vacío.' };
+    }
+    const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+    // Match tolerante (lowercase + trim)
+    const idxCedula = _findHeaderIndex_(headers, ['cc', 'cedula', 'cédula', 'cedula numero', 'numero documento']);
+    const idxNombre = _findHeaderIndex_(headers, ['nombre', 'nombres', 'apellidos y nombres', 'nombre completo']);
+    const idxCorreo = _findHeaderIndex_(headers, ['correo corporativo', 'correo', 'email', 'e-mail']);
+
+    if (idxCedula < 0 || idxCorreo < 0) {
+      return {
+        lookup: {},
+        error: 'Maestro RH: no se encontraron columnas de cédula o correo. Headers detectados: ' + headers.slice(0, 8).join(', ') + '...'
+      };
+    }
+
+    const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    const lookup = {};
+    for (let i = 0; i < data.length; i++) {
+      const correo = String(data[i][idxCorreo] || '').toLowerCase().trim();
+      const cedula = String(data[i][idxCedula] || '').trim();
+      const nombre = idxNombre >= 0 ? String(data[i][idxNombre] || '').trim() : '';
+      if (correo && cedula) {
+        lookup[correo] = { cedula: cedula, nombre: nombre };
+      }
+    }
+    return { lookup: lookup, error: '' };
+  } catch (e) {
+    return {
+      lookup: {},
+      error: 'No se pudo abrir el Maestro RH (id=' + id + '): ' + e.message
+    };
+  }
+}
+
+function _findHeaderIndex_(headers, candidates) {
+  for (let i = 0; i < headers.length; i++) {
+    const h = String(headers[i] || '').toLowerCase().trim();
+    if (!h) continue;
+    for (let j = 0; j < candidates.length; j++) {
+      if (h === candidates[j]) return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Escribe (o sobreescribe) una fila en USUARIOS.
+ * Las columnas H (correos aprobadores) e I (nombres aprobadores) se escriben
+ * como VALORES resueltos, no como fórmulas — locale-independent y robusto.
+ *
+ * Si `lookup` no se provee, se construye en caliente leyendo USUARIOS.
+ * Si `lookup` se provee (caso migración masiva), evita N reads del sheet.
+ */
+function _writeUsuarioRow_(sheet, rowNumber, data, lookup) {
+  const cedulasStr = String(data.cedulasAprobadores || '').trim();
+  const resolved = _resolveAprobadores_(sheet, cedulasStr, lookup);
+
+  sheet.getRange(rowNumber, 1, 1, 9).setValues([[
+    String(data.cedula || '').trim(),
+    String(data.nombre || '').trim(),
+    String(data.correo || '').toLowerCase().trim(),
+    String(data.empresa || '').trim(),
+    String(data.sede || '').trim(),
+    String(data.centroCosto || '').trim(),
+    cedulasStr,
+    resolved.correos,
+    resolved.nombres
+  ]]);
+  if (data.pinHash !== undefined && data.pinHash !== null && data.pinHash !== '') {
+    sheet.getRange(rowNumber, 10).setValue(data.pinHash);
+  }
+}
+
+/**
+ * Resuelve "1234, 5678" → { correos: "a@x.com, b@y.com", nombres: "Juan, Pedro" }
+ * usando un lookup pre-construido `cedula → {nombre, correo}` o leyendo el
+ * sheet en vivo si no se provee.
+ */
+function _resolveAprobadores_(sheet, cedulasStr, lookup) {
+  if (!cedulasStr) return { correos: '', nombres: '' };
+  if (!lookup) lookup = _buildCedulaLookup_(sheet);
+
+  const cedulas = cedulasStr.split(',').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
+  const correos = [];
+  const nombres = [];
+  cedulas.forEach(function(ced) {
+    const entry = lookup[ced];
+    if (entry) {
+      correos.push(entry.correo || '');
+      nombres.push(entry.nombre || '');
+    } else {
+      correos.push('(no resuelto)');
+      nombres.push('(no resuelto)');
+    }
+  });
+  return { correos: correos.join(', '), nombres: nombres.join(', ') };
+}
+
+/**
+ * Construye un mapa { cedula → {nombre, correo} } leyendo toda la hoja
+ * USUARIOS. Costoso (1 read), úsalo una sola vez en operaciones masivas.
+ */
+function _buildCedulaLookup_(sheet) {
+  const lookup = {};
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return lookup;
+  const data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+  for (let i = 0; i < data.length; i++) {
+    const ced = String(data[i][0] || '').trim();
+    if (!ced) continue;
+    lookup[ced] = {
+      nombre: String(data[i][1] || '').trim(),
+      correo: String(data[i][2] || '').toLowerCase().trim()
+    };
+  }
+  return lookup;
+}
+
+/**
+ * Recorre USUARIOS y reescribe las columnas H e I de cada fila resolviendo
+ * sus aprobadores con el snapshot actual de la hoja. Útil cuando se editó
+ * col G manualmente, o cuando se agregaron nuevos usuarios que ahora pueden
+ * resolver referencias antes huérfanas.
+ */
+function recargarResolucionesUsuarios() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) {
+    ui.alert('No existe la hoja USUARIOS.');
+    return;
+  }
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    ui.alert('USUARIOS está vacía.');
+    return;
+  }
+  const lookup = _buildCedulaLookup_(sheet);
+  const cedulasCol = sheet.getRange(2, 7, lastRow - 1, 1).getValues();
+  const newH = [];
+  const newI = [];
+  let resolvedCount = 0;
+  let unresolvedCount = 0;
+  cedulasCol.forEach(function(row) {
+    const cedulasStr = String(row[0] || '').trim();
+    const r = _resolveAprobadores_(sheet, cedulasStr, lookup);
+    newH.push([r.correos]);
+    newI.push([r.nombres]);
+    if (cedulasStr) {
+      if (r.correos.indexOf('(no resuelto)') > -1) unresolvedCount++;
+      else resolvedCount++;
+    }
+  });
+  sheet.getRange(2, 8, newH.length, 1).setValues(newH);
+  sheet.getRange(2, 9, newI.length, 1).setValues(newI);
+  SpreadsheetApp.flush();
+  ui.alert(
+    'Resoluciones recargadas.\n\n' +
+    '• Filas con aprobadores resueltos: ' + resolvedCount + '\n' +
+    '• Filas con al menos un aprobador no resuelto: ' + unresolvedCount
+  );
+}
+
+function _findUsuarioRowByCedula_(sheet, cedula) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return -1;
+  const target = String(cedula).trim();
+  if (!target) return -1;
+  const data = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  for (let i = 0; i < data.length; i++) {
+    if (String(data[i][0]).trim() === target) return i + 2;
+  }
+  return -1;
+}
+
+// --- Sidebar API (llamada desde AdminSidebar.html via google.script.run) ---
+
+function usuarios_listAll() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const lastRow = sheet.getLastRow();
+  // Lee 10 columnas (incluye PIN en col 10) para detectar si hay hash
+  const data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+  return data.filter(function(r) { return r[0]; }).map(function(r) {
+    return {
+      cedula: String(r[0]).trim(),
+      nombre: String(r[1]).trim(),
+      correo: String(r[2]).toLowerCase().trim(),
+      empresa: String(r[3]).trim(),
+      sede: String(r[4]).trim(),
+      centroCosto: String(r[5]).trim(),
+      cedulasAprobadores: String(r[6]).trim(),
+      correosAprobadores: String(r[7]).trim(),
+      nombresAprobadores: String(r[8]).trim(),
+      // Solo expone si hay PIN (boolean) — NUNCA el hash al frontend
+      hasPin: !!String(r[9] || '').trim()
+    };
+  });
+}
+
+/**
+ * Borra el hash de PIN de un usuario. Después de esto, el usuario tendrá
+ * que volver a pedir su PIN desde el flujo normal del frontend (login).
+ */
+function usuarios_clearPin(cedula) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) throw new Error('Hoja USUARIOS no encontrada.');
+  const row = _findUsuarioRowByCedula_(sheet, cedula);
+  if (row < 0) throw new Error('Usuario no encontrado.');
+  sheet.getRange(row, 10).clearContent();
+  SpreadsheetApp.flush();
+  return { success: true };
+}
+
+/**
+ * Lee el Maestro RH (Spreadsheet externo) y retorna el catálogo de empleados
+ * con cédula+nombre+correo, usado para autocompletar el form de "nuevo usuario"
+ * en el sidebar. Reemplaza la antigua sección roja de INTEGRANTES.
+ *
+ * Si el Maestro RH no se puede leer, intenta como fallback la sección roja
+ * de INTEGRANTES (compatibilidad temporal con setups donde aún no se ha
+ * configurado HR_MAESTRO_ID).
+ */
+function usuarios_getCatalogoOrg() {
+  const hrResult = _readMaestroRH_();
+  if (!hrResult.error && hrResult.lookup) {
+    const out = [];
+    Object.keys(hrResult.lookup).forEach(function(email) {
+      const entry = hrResult.lookup[email];
+      out.push({
+        cedula: entry.cedula || '',
+        nombre: entry.nombre || '',
+        correo: email
+      });
+    });
+    return out.filter(function(x) { return x.nombre && x.correo; });
+  }
+
+  // Fallback: leer la sección roja antigua de INTEGRANTES
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idxNombre = headers.indexOf('nombre');
+  const idxCorreo = headers.indexOf('Correo corporativo');
+  if (idxNombre < 0 || idxCorreo < 0) return [];
+  const lastRow = sheet.getLastRow();
+  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  return data.map(function(r) {
+    return {
+      cedula: '',
+      nombre: String(r[idxNombre] || '').trim(),
+      correo: String(r[idxCorreo] || '').toLowerCase().trim()
+    };
+  }).filter(function(x) { return x.nombre && x.correo; });
+}
+
+function usuarios_getSedes() {
+  try { return getSites() || []; } catch (e) { return []; }
+}
+
+function usuarios_getEmpresas() {
+  return ['Cumandes', 'Equitel', 'Ingenergía', 'LAP'];
+}
+
+function usuarios_create(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) throw new Error('Hoja USUARIOS no encontrada. Crea la hoja primero.');
+
+  const cedula = String(data.cedula || '').trim();
+  if (!cedula) throw new Error('Cédula es requerida.');
+  if (!data.nombre || !String(data.nombre).trim()) throw new Error('Nombre es requerido.');
+  const correo = String(data.correo || '').toLowerCase().trim();
+  if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) throw new Error('Correo inválido.');
+
+  if (_findUsuarioRowByCedula_(sheet, cedula) > 0) {
+    throw new Error('Ya existe un usuario con esa cédula.');
+  }
+
+  const newRow = sheet.getLastRow() + 1;
+  _writeUsuarioRow_(sheet, newRow, {
+    cedula: cedula,
+    nombre: data.nombre,
+    correo: correo,
+    empresa: data.empresa,
+    sede: data.sede,
+    centroCosto: data.centroCosto,
+    cedulasAprobadores: data.cedulasAprobadores
+  });
+  SpreadsheetApp.flush();
+  return { success: true, cedula: cedula };
+}
+
+function usuarios_update(originalCedula, data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) throw new Error('Hoja USUARIOS no encontrada.');
+
+  const row = _findUsuarioRowByCedula_(sheet, originalCedula);
+  if (row < 0) throw new Error('Usuario no encontrado.');
+
+  const newCedula = String(data.cedula || '').trim();
+  if (!newCedula) throw new Error('Cédula es requerida.');
+  if (newCedula !== String(originalCedula).trim()) {
+    const existing = _findUsuarioRowByCedula_(sheet, newCedula);
+    if (existing > 0 && existing !== row) {
+      throw new Error('Otra fila ya tiene esa cédula.');
+    }
+  }
+
+  const correo = String(data.correo || '').toLowerCase().trim();
+  if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) throw new Error('Correo inválido.');
+
+  // Preservar el hash de PIN existente
+  const existingPin = String(sheet.getRange(row, 10).getValue() || '').trim();
+
+  _writeUsuarioRow_(sheet, row, {
+    cedula: newCedula,
+    nombre: data.nombre,
+    correo: correo,
+    empresa: data.empresa,
+    sede: data.sede,
+    centroCosto: data.centroCosto,
+    cedulasAprobadores: data.cedulasAprobadores,
+    pinHash: existingPin
+  });
+  SpreadsheetApp.flush();
+  return { success: true };
+}
+
+function usuarios_delete(cedula) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) throw new Error('Hoja USUARIOS no encontrada.');
+  const row = _findUsuarioRowByCedula_(sheet, cedula);
+  if (row < 0) throw new Error('Usuario no encontrado.');
+  sheet.deleteRow(row);
+  SpreadsheetApp.flush();
+  return { success: true };
+}
+
+// =====================================================================
+// REEMPLAZO MASIVO DE APROBADOR
+// =====================================================================
+
+/**
+ * Encuentra todos los usuarios cuya col G (cédulas aprobadores) contiene
+ * la cédula dada. Útil para vista previa antes de un reemplazo masivo.
+ */
+function usuarios_findUsersWithApprover(cedulaAprobador) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const target = String(cedulaAprobador).trim();
+  if (!target) return [];
+
+  const lastRow = sheet.getLastRow();
+  const data = sheet.getRange(2, 1, lastRow - 1, 7).getValues();
+  const result = [];
+  data.forEach(function(r, i) {
+    const cedulasAprob = String(r[6] || '').split(',').map(function(c) { return c.trim(); });
+    if (cedulasAprob.indexOf(target) !== -1) {
+      result.push({
+        rowNumber: i + 2,
+        cedula: String(r[0]).trim(),
+        nombre: String(r[1]).trim(),
+        correo: String(r[2]).toLowerCase().trim(),
+        cedulasAprobadores: String(r[6]).trim()
+      });
+    }
+  });
+  return result;
+}
+
+/**
+ * Reemplaza la cédula de un aprobador por otra en TODOS los usuarios que la
+ * tengan en col G. Re-resuelve cols H/I para los afectados. Atómico desde
+ * la perspectiva del flush — si algo falla, la operación se aborta.
+ *
+ * Validaciones:
+ * - newCedula debe existir como fila en USUARIOS
+ * - oldCedula y newCedula no pueden ser iguales
+ */
+function usuarios_replaceApprover(oldCedula, newCedula) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) throw new Error('Hoja USUARIOS no encontrada.');
+
+  const oldStr = String(oldCedula || '').trim();
+  const newStr = String(newCedula || '').trim();
+  if (!oldStr || !newStr) throw new Error('Cédulas inválidas.');
+  if (oldStr === newStr) throw new Error('La cédula vieja y la nueva son iguales.');
+
+  // El nuevo aprobador debe existir como usuario
+  if (_findUsuarioRowByCedula_(sheet, newStr) < 0) {
+    throw new Error('La cédula nueva (' + newStr + ') no existe en USUARIOS. Créala primero.');
+  }
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { affected: 0 };
+
+  const lookup = _buildCedulaLookup_(sheet);
+  const cedulasCol = sheet.getRange(2, 7, lastRow - 1, 1).getValues();
+  let affected = 0;
+  const affectedRows = [];
+
+  cedulasCol.forEach(function(row, idx) {
+    const original = String(row[0] || '').trim();
+    if (!original) return;
+    const cedulas = original.split(',').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
+    if (cedulas.indexOf(oldStr) === -1) return;
+
+    // Reemplazar (preservando duplicados teóricos)
+    const replaced = cedulas.map(function(c) { return c === oldStr ? newStr : c; });
+    // Deduplicar por si new ya estaba presente además de old
+    const seen = {};
+    const dedup = replaced.filter(function(c) {
+      if (seen[c]) return false;
+      seen[c] = true;
+      return c;
+    });
+    const updated = dedup.join(', ');
+
+    affectedRows.push({
+      rowNumber: idx + 2,
+      newG: updated
+    });
+    affected++;
+  });
+
+  // Aplicar cambios
+  affectedRows.forEach(function(a) {
+    const r = _resolveAprobadores_(sheet, a.newG, lookup);
+    sheet.getRange(a.rowNumber, 7).setValue(a.newG);
+    sheet.getRange(a.rowNumber, 8).setValue(r.correos);
+    sheet.getRange(a.rowNumber, 9).setValue(r.nombres);
+  });
+  SpreadsheetApp.flush();
+
+  return { affected: affected };
+}
+
+// =====================================================================
+// VISTA DE ANOMALÍAS
+// =====================================================================
+
+/**
+ * Lista de dominios considerados "corporativos". Si el correo de un usuario
+ * no termina en alguno de estos, se reporta como anomalía.
+ * Sobreescribir vía Script Property CORPORATE_DOMAINS (CSV).
+ */
+function _getCorporateDomains_() {
+  const raw = getConfig_('CORPORATE_DOMAINS', 'equitel.com.co');
+  return raw.split(',').map(function(d) { return d.trim().toLowerCase(); }).filter(function(d) { return d; });
+}
+
+/**
+ * Recorre USUARIOS y reporta tres tipos de anomalías:
+ *   1. sinAprobador — col G vacía (no podrán crear solicitudes)
+ *   2. correoNoCorporativo — dominio del correo no está en CORPORATE_DOMAINS
+ *   3. aprobadorNoResuelto — col G referencia cédulas que no existen en USUARIOS
+ *      (su col H contiene literalmente "(no resuelto)")
+ */
+function usuarios_getAnomalias() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet || sheet.getLastRow() < 2) {
+    return { sinAprobador: [], correoNoCorporativo: [], aprobadorNoResuelto: [] };
+  }
+
+  const corporateDomains = _getCorporateDomains_();
+  const lastRow = sheet.getLastRow();
+  const data = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
+
+  const sinAprobador = [];
+  const correoNoCorporativo = [];
+  const aprobadorNoResuelto = [];
+
+  data.forEach(function(r) {
+    const cedula = String(r[0] || '').trim();
+    if (!cedula) return;
+    const nombre = String(r[1] || '').trim();
+    const correo = String(r[2] || '').toLowerCase().trim();
+    const cedulasAprobadores = String(r[6] || '').trim();
+    const correosAprobadoresAuto = String(r[7] || '').trim();
+
+    // 1. Sin aprobador asignado
+    if (!cedulasAprobadores) {
+      sinAprobador.push({ cedula: cedula, nombre: nombre, correo: correo });
+    }
+
+    // 2. Correo no corporativo
+    if (correo) {
+      const parts = correo.split('@');
+      if (parts.length === 2) {
+        const domain = parts[1];
+        if (corporateDomains.indexOf(domain) === -1) {
+          correoNoCorporativo.push({ cedula: cedula, nombre: nombre, correo: correo, dominio: domain });
+        }
+      } else {
+        // Correo malformado también cuenta como anomalía
+        correoNoCorporativo.push({ cedula: cedula, nombre: nombre, correo: correo, dominio: '(inválido)' });
+      }
+    }
+
+    // 3. Aprobador huérfano: col G tiene cédulas pero col H/I tiene "(no resuelto)"
+    if (cedulasAprobadores && correosAprobadoresAuto.indexOf('(no resuelto)') !== -1) {
+      aprobadorNoResuelto.push({
+        cedula: cedula,
+        nombre: nombre,
+        correo: correo,
+        cedulasAprobadores: cedulasAprobadores,
+        correosAprobadoresAuto: correosAprobadoresAuto
+      });
+    }
+  });
+
+  return {
+    sinAprobador: sinAprobador,
+    correoNoCorporativo: correoNoCorporativo,
+    aprobadorNoResuelto: aprobadorNoResuelto
+  };
 }

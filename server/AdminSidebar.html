@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      color: #1f2937;
+      margin: 0;
+      padding: 12px;
+      background: #f9fafb;
+    }
+    h2 {
+      font-size: 14px;
+      margin: 0 0 10px 0;
+      color: #111827;
+      font-weight: 600;
+    }
+    h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #6b7280;
+      margin: 16px 0 6px 0;
+      font-weight: 600;
+    }
+    /* TABS */
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .tab {
+      flex: 1;
+      padding: 8px 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #6b7280;
+      background: transparent;
+      border: none;
+      border-bottom: 2px solid transparent;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      position: relative;
+    }
+    .tab:hover { color: #374151; }
+    .tab.active {
+      color: #D71920;
+      border-bottom-color: #D71920;
+    }
+    .tab .badge {
+      display: inline-block;
+      background: #D71920;
+      color: white;
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 8px;
+      margin-left: 3px;
+      font-weight: bold;
+      vertical-align: middle;
+      letter-spacing: 0;
+    }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    /* TOOLBAR */
+    .toolbar {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .toolbar input {
+      flex: 1;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    button {
+      padding: 6px 10px;
+      border: 1px solid #d1d5db;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      color: #374151;
+    }
+    button:hover { background: #f3f4f6; }
+    button.primary {
+      background: #D71920;
+      color: white;
+      border-color: #D71920;
+    }
+    button.primary:hover { background: #b8141a; }
+    button.danger {
+      background: white;
+      color: #b91c1c;
+      border-color: #fca5a5;
+    }
+    button.danger:hover { background: #fef2f2; }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    /* LIST */
+    .list {
+      max-height: 240px;
+      overflow-y: auto;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      background: white;
+    }
+    .list-item {
+      padding: 8px 10px;
+      border-bottom: 1px solid #f3f4f6;
+      cursor: pointer;
+    }
+    .list-item:last-child { border-bottom: none; }
+    .list-item:hover { background: #f9fafb; }
+    .list-item.selected { background: #fef2f2; }
+    .list-item .name {
+      font-weight: 500;
+      color: #111827;
+    }
+    .list-item .meta {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 2px;
+    }
+    /* FORM */
+    .form {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+    .field { margin-bottom: 10px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .field input,
+    .field select {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 13px;
+    }
+    .field input:focus,
+    .field select:focus {
+      outline: none;
+      border-color: #D71920;
+      box-shadow: 0 0 0 2px rgba(215,25,32,0.15);
+    }
+    .approver-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 6px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      min-height: 32px;
+      background: white;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #fef3c7;
+      border: 1px solid #fde68a;
+      color: #92400e;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-size: 11px;
+    }
+    .chip button {
+      padding: 0;
+      border: none;
+      background: transparent;
+      color: #92400e;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .approver-search {
+      position: relative;
+      margin-top: 6px;
+    }
+    .approver-search input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .approver-results {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      max-height: 160px;
+      overflow-y: auto;
+      z-index: 10;
+      margin-top: 2px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+    }
+    .approver-results .result {
+      padding: 6px 8px;
+      cursor: pointer;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 12px;
+    }
+    .approver-results .result:hover { background: #f9fafb; }
+    .approver-results .result .name { font-weight: 500; }
+    .approver-results .result .ced { color: #6b7280; font-size: 10px; }
+    .form-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .form-actions button { flex: 1; }
+    /* STATUS */
+    .status {
+      margin-top: 10px;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      display: none;
+    }
+    .status.success {
+      background: #d1fae5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+      display: block;
+    }
+    .status.error {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      display: block;
+    }
+    .empty {
+      text-align: center;
+      color: #9ca3af;
+      padding: 20px;
+      font-size: 12px;
+    }
+    .loading {
+      text-align: center;
+      color: #6b7280;
+      padding: 12px;
+      font-size: 12px;
+    }
+    .pin-info {
+      font-size: 11px;
+      color: #6b7280;
+      font-style: italic;
+    }
+    .help-text {
+      font-size: 10px;
+      color: #6b7280;
+      margin-top: 3px;
+    }
+    /* ANOMALIES */
+    .anomaly-section {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .anomaly-header {
+      padding: 10px 12px;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+    .anomaly-header.critical {
+      background: #fef2f2;
+      border-bottom-color: #fecaca;
+    }
+    .anomaly-header.warning {
+      background: #fffbeb;
+      border-bottom-color: #fde68a;
+    }
+    .anomaly-header .title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #111827;
+    }
+    .anomaly-header .count {
+      font-size: 11px;
+      font-weight: bold;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #e5e7eb;
+      color: #374151;
+    }
+    .anomaly-header.critical .count {
+      background: #D71920;
+      color: white;
+    }
+    .anomaly-header.warning .count {
+      background: #f59e0b;
+      color: white;
+    }
+    .anomaly-list {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .anomaly-list .row {
+      padding: 8px 12px;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .anomaly-list .row:hover { background: #f9fafb; }
+    .anomaly-list .row:last-child { border-bottom: none; }
+    .anomaly-list .row .name { font-weight: 500; color: #111827; }
+    .anomaly-list .row .detail { font-size: 10px; color: #6b7280; margin-top: 1px; }
+    .anomaly-list .row .detail strong { color: #b91c1c; }
+    /* REPLACE APPROVER */
+    .replace-card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 12px;
+    }
+    .replace-card .arrow {
+      text-align: center;
+      color: #9ca3af;
+      font-size: 18px;
+      margin: 6px 0;
+    }
+    .preview-box {
+      margin-top: 10px;
+      padding: 10px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #92400e;
+    }
+    .preview-box strong { color: #78350f; }
+    .preview-list {
+      max-height: 150px;
+      overflow-y: auto;
+      margin-top: 8px;
+      background: white;
+      border: 1px solid #fde68a;
+      border-radius: 4px;
+    }
+    .preview-list .row {
+      padding: 5px 8px;
+      border-bottom: 1px solid #fef3c7;
+      font-size: 11px;
+      color: #374151;
+    }
+    .preview-list .row:last-child { border-bottom: none; }
+    /* PIN row */
+    #pinRow { display: flex; align-items: center; gap: 8px; }
+  </style>
+</head>
+<body>
+  <h2>Gestión de Usuarios</h2>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="users">Usuarios</button>
+    <button class="tab" data-tab="anomalies">Anomalías <span id="anomalyBadge" class="badge" style="display:none;">0</span></button>
+    <button class="tab" data-tab="replace">Reemplazar</button>
+  </div>
+
+  <!-- ============ TAB: USUARIOS ============ -->
+  <div id="tab-users" class="tab-content active">
+    <div class="toolbar">
+      <input type="text" id="searchBox" placeholder="Buscar nombre, cédula o correo..." />
+      <button id="btnNew" class="primary">+ Nuevo</button>
+    </div>
+
+    <div id="listContainer">
+      <div class="loading">Cargando usuarios...</div>
+    </div>
+
+    <div id="formContainer" style="display: none;">
+      <h3 id="formTitle">Nuevo usuario</h3>
+      <div class="form">
+        <div class="field">
+          <label>Cédula *</label>
+          <input type="text" id="f_cedula" placeholder="Ej: 1234567890" />
+        </div>
+        <div class="field">
+          <label>Nombre completo *</label>
+          <input type="text" id="f_nombre" placeholder="Apellidos y Nombres" list="catalogoNombres" />
+          <datalist id="catalogoNombres"></datalist>
+        </div>
+        <div class="field">
+          <label>Correo *</label>
+          <input type="email" id="f_correo" placeholder="usuario@equitel.com.co" />
+        </div>
+        <div class="field">
+          <label>Empresa</label>
+          <select id="f_empresa">
+            <option value="">— Seleccionar —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Sede</label>
+          <select id="f_sede">
+            <option value="">— Seleccionar —</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Centro de Costo</label>
+          <input type="text" id="f_cc" placeholder="Ej: 12345" />
+        </div>
+
+        <div class="field">
+          <label>Aprobadores</label>
+          <div class="approver-chips" id="approverChips"></div>
+          <div class="approver-search">
+            <input type="text" id="approverSearch" placeholder="Buscar aprobador por nombre o cédula..." />
+            <div class="approver-results" id="approverResults" style="display: none;"></div>
+          </div>
+          <div class="help-text">Las cédulas se guardan en col G; los correos/nombres se resuelven automáticamente.</div>
+        </div>
+
+        <div class="field" id="pinField" style="display: none;">
+          <label>PIN</label>
+          <div id="pinRow">
+            <div class="pin-info" id="pinInfo">—</div>
+            <button id="btnClearPin" type="button" class="danger" style="display: none; padding: 3px 8px; font-size: 11px;">Borrar PIN</button>
+          </div>
+          <div class="help-text">Borrar el PIN obliga al usuario a solicitar uno nuevo en el próximo login.</div>
+        </div>
+
+        <div class="form-actions">
+          <button id="btnCancel">Cancelar</button>
+          <button id="btnDelete" class="danger" style="display: none;">Eliminar</button>
+          <button id="btnSave" class="primary">Guardar</button>
+        </div>
+
+        <div id="status" class="status"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: ANOMALIES ============ -->
+  <div id="tab-anomalies" class="tab-content">
+    <div style="margin-bottom:10px;">
+      <button id="btnRefreshAnomalies">↻ Recargar</button>
+      <span class="help-text" style="margin-left:8px;">Diagnóstico de la base USUARIOS</span>
+    </div>
+    <div id="anomaliesContainer">
+      <div class="loading">Pulsa "Recargar" para escanear...</div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: REPLACE ============ -->
+  <div id="tab-replace" class="tab-content">
+    <div class="replace-card">
+      <h3 style="margin-top:0;">Reemplazar aprobador masivamente</h3>
+      <div class="help-text" style="margin-bottom:10px;">
+        Útil cuando un aprobador sale de la empresa y muchos usuarios dependen de él.
+      </div>
+
+      <div class="field">
+        <label>Aprobador a reemplazar (viejo)</label>
+        <div class="approver-search">
+          <input type="text" id="replOldSearch" placeholder="Buscar por nombre o cédula..." />
+          <div class="approver-results" id="replOldResults" style="display: none;"></div>
+        </div>
+        <div id="replOldSelected" style="margin-top:6px;"></div>
+      </div>
+
+      <div class="field">
+        <label>Aprobador nuevo</label>
+        <div class="approver-search">
+          <input type="text" id="replNewSearch" placeholder="Buscar por nombre o cédula..." />
+          <div class="approver-results" id="replNewResults" style="display: none;"></div>
+        </div>
+        <div id="replNewSelected" style="margin-top:6px;"></div>
+      </div>
+
+      <div class="form-actions">
+        <button id="btnReplPreview">Vista previa</button>
+        <button id="btnReplConfirm" class="primary" disabled>Confirmar reemplazo</button>
+      </div>
+
+      <div id="replPreview" style="display:none;"></div>
+      <div id="replStatus" class="status"></div>
+    </div>
+  </div>
+
+  <script>
+    // ============ STATE ============
+    var allUsers = [];
+    var catalogo = [];
+    var sedes = [];
+    var empresas = [];
+    var currentEditing = null;
+    var selectedApprovers = [];
+    var anomalies = null;
+    var replOld = null;
+    var replNew = null;
+    var replPreviewRows = [];
+
+    // ============ INIT ============
+    function init() {
+      loadAll();
+
+      // Tabs
+      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function(t) {
+        t.addEventListener('click', function() { switchTab(t.dataset.tab); });
+      });
+
+      // Users tab
+      document.getElementById('searchBox').addEventListener('input', renderList);
+      document.getElementById('btnNew').addEventListener('click', startCreate);
+      document.getElementById('btnCancel').addEventListener('click', cancelForm);
+      document.getElementById('btnSave').addEventListener('click', saveForm);
+      document.getElementById('btnDelete').addEventListener('click', deleteUser);
+      document.getElementById('btnClearPin').addEventListener('click', clearPin);
+      document.getElementById('approverSearch').addEventListener('input', searchApprovers);
+      document.getElementById('approverSearch').addEventListener('focus', searchApprovers);
+
+      // Anomalies tab
+      document.getElementById('btnRefreshAnomalies').addEventListener('click', loadAnomalies);
+
+      // Replace tab
+      document.getElementById('replOldSearch').addEventListener('input', function() { searchUserPicker('replOld'); });
+      document.getElementById('replOldSearch').addEventListener('focus', function() { searchUserPicker('replOld'); });
+      document.getElementById('replNewSearch').addEventListener('input', function() { searchUserPicker('replNew'); });
+      document.getElementById('replNewSearch').addEventListener('focus', function() { searchUserPicker('replNew'); });
+      document.getElementById('btnReplPreview').addEventListener('click', previewReplace);
+      document.getElementById('btnReplConfirm').addEventListener('click', confirmReplace);
+
+      // Click outside picker
+      document.addEventListener('click', function(e) {
+        if (!e.target.closest('.approver-search')) {
+          document.getElementById('approverResults').style.display = 'none';
+          document.getElementById('replOldResults').style.display = 'none';
+          document.getElementById('replNewResults').style.display = 'none';
+        }
+      });
+    }
+
+    function switchTab(name) {
+      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function(t) {
+        t.classList.toggle('active', t.dataset.tab === name);
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('.tab-content'), function(c) {
+        c.classList.toggle('active', c.id === 'tab-' + name);
+      });
+      // Lazy-load anomalies the first time
+      if (name === 'anomalies' && anomalies === null) {
+        loadAnomalies();
+      }
+    }
+
+    // ============ LOAD ALL ============
+    function loadAll() {
+      google.script.run
+        .withSuccessHandler(function(users) {
+          allUsers = users || [];
+          renderList();
+          // Auto-load anomalies in background to update badge
+          loadAnomaliesSilently();
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('listContainer').innerHTML =
+            '<div class="empty">Error: ' + err.message + '</div>';
+        })
+        .usuarios_listAll();
+
+      google.script.run
+        .withSuccessHandler(function(c) {
+          catalogo = c || [];
+          var dl = document.getElementById('catalogoNombres');
+          dl.innerHTML = '';
+          catalogo.forEach(function(item) {
+            var opt = document.createElement('option');
+            opt.value = item.nombre;
+            opt.dataset.correo = item.correo;
+            opt.dataset.cedula = item.cedula;
+            dl.appendChild(opt);
+          });
+        })
+        .usuarios_getCatalogoOrg();
+
+      google.script.run
+        .withSuccessHandler(function(s) {
+          sedes = s || [];
+          var sel = document.getElementById('f_sede');
+          sedes.forEach(function(sede) {
+            var opt = document.createElement('option');
+            opt.value = sede;
+            opt.textContent = sede;
+            sel.appendChild(opt);
+          });
+        })
+        .usuarios_getSedes();
+
+      google.script.run
+        .withSuccessHandler(function(e) {
+          empresas = e || [];
+          var sel = document.getElementById('f_empresa');
+          empresas.forEach(function(emp) {
+            var opt = document.createElement('option');
+            opt.value = emp;
+            opt.textContent = emp;
+            sel.appendChild(opt);
+          });
+        })
+        .usuarios_getEmpresas();
+    }
+
+    // ============ USERS LIST ============
+    function renderList() {
+      var query = document.getElementById('searchBox').value.toLowerCase().trim();
+      var filtered = allUsers.filter(function(u) {
+        if (!query) return true;
+        return u.nombre.toLowerCase().indexOf(query) > -1
+          || u.cedula.toLowerCase().indexOf(query) > -1
+          || u.correo.toLowerCase().indexOf(query) > -1;
+      });
+
+      var container = document.getElementById('listContainer');
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty">' + (allUsers.length === 0 ? 'No hay usuarios. Crea el primero.' : 'Sin resultados.') + '</div>';
+        return;
+      }
+
+      var html = '<div class="list">';
+      filtered.slice(0, 200).forEach(function(u) {
+        html += '<div class="list-item" data-cedula="' + escapeAttr(u.cedula) + '">'
+          + '<div class="name">' + escapeHtml(u.nombre) + '</div>'
+          + '<div class="meta">' + escapeHtml(u.cedula) + ' · ' + escapeHtml(u.correo) + '</div>'
+          + '</div>';
+      });
+      html += '</div>';
+      if (filtered.length > 200) {
+        html += '<div class="help-text" style="text-align:center;margin-top:4px;">Mostrando 200 de ' + filtered.length + '. Refina la búsqueda.</div>';
+      }
+      container.innerHTML = html;
+
+      Array.prototype.forEach.call(container.querySelectorAll('.list-item'), function(item) {
+        item.addEventListener('click', function() {
+          startEdit(item.dataset.cedula);
+        });
+      });
+    }
+
+    // ============ USER FORM ============
+    function startCreate() {
+      currentEditing = null;
+      selectedApprovers = [];
+      document.getElementById('formTitle').textContent = 'Nuevo usuario';
+      document.getElementById('btnDelete').style.display = 'none';
+      document.getElementById('pinField').style.display = 'none';
+      clearForm();
+      showForm();
+    }
+
+    function startEdit(cedula) {
+      var u = allUsers.find(function(x) { return x.cedula === cedula; });
+      if (!u) return;
+      currentEditing = cedula;
+      document.getElementById('formTitle').textContent = 'Editar: ' + u.nombre;
+      document.getElementById('btnDelete').style.display = 'block';
+      document.getElementById('pinField').style.display = 'block';
+
+      var pinInfo = document.getElementById('pinInfo');
+      var btnClearPin = document.getElementById('btnClearPin');
+      if (u.hasPin) {
+        pinInfo.textContent = '✓ Configurado';
+        pinInfo.style.color = '#065f46';
+        pinInfo.style.fontWeight = '500';
+        pinInfo.style.fontStyle = 'normal';
+        btnClearPin.style.display = 'inline-block';
+      } else {
+        pinInfo.textContent = 'No configurado';
+        pinInfo.style.color = '#9ca3af';
+        pinInfo.style.fontWeight = 'normal';
+        pinInfo.style.fontStyle = 'italic';
+        btnClearPin.style.display = 'none';
+      }
+
+      document.getElementById('f_cedula').value = u.cedula;
+      document.getElementById('f_nombre').value = u.nombre;
+      document.getElementById('f_correo').value = u.correo;
+      document.getElementById('f_empresa').value = u.empresa || '';
+      document.getElementById('f_sede').value = u.sede || '';
+      document.getElementById('f_cc').value = u.centroCosto || '';
+
+      var cedulas = (u.cedulasAprobadores || '').split(',').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
+      var nombres = (u.nombresAprobadores || '').split(',').map(function(n) { return n.trim(); });
+      var correos = (u.correosAprobadores || '').split(',').map(function(c) { return c.trim(); });
+      selectedApprovers = cedulas.map(function(ced, i) {
+        return {
+          cedula: ced,
+          nombre: nombres[i] || '(no resuelto)',
+          correo: correos[i] || ''
+        };
+      });
+      renderApproverChips();
+      showForm();
+    }
+
+    function clearForm() {
+      ['f_cedula', 'f_nombre', 'f_correo', 'f_cc'].forEach(function(id) {
+        document.getElementById(id).value = '';
+      });
+      document.getElementById('f_empresa').value = '';
+      document.getElementById('f_sede').value = '';
+      renderApproverChips();
+      hideStatus();
+    }
+
+    function showForm() {
+      document.getElementById('formContainer').style.display = 'block';
+      hideStatus();
+    }
+
+    function cancelForm() {
+      document.getElementById('formContainer').style.display = 'none';
+      currentEditing = null;
+      selectedApprovers = [];
+      clearForm();
+    }
+
+    function saveForm() {
+      var data = {
+        cedula: document.getElementById('f_cedula').value.trim(),
+        nombre: document.getElementById('f_nombre').value.trim(),
+        correo: document.getElementById('f_correo').value.trim().toLowerCase(),
+        empresa: document.getElementById('f_empresa').value,
+        sede: document.getElementById('f_sede').value,
+        centroCosto: document.getElementById('f_cc').value.trim(),
+        cedulasAprobadores: selectedApprovers.map(function(a) { return a.cedula; }).join(', ')
+      };
+
+      // Auto-completar cédula+correo desde catálogo si están vacíos
+      if (data.nombre) {
+        var match = catalogo.find(function(c) { return c.nombre === data.nombre; });
+        if (match) {
+          if (!data.correo) data.correo = match.correo;
+          if (!data.cedula) data.cedula = match.cedula;
+        }
+      }
+
+      var btn = document.getElementById('btnSave');
+      btn.disabled = true;
+      btn.textContent = 'Guardando...';
+
+      var handler = function() {
+        btn.disabled = false;
+        btn.textContent = 'Guardar';
+        showStatus('Guardado correctamente.', 'success');
+        loadAll();
+        setTimeout(cancelForm, 800);
+      };
+      var errHandler = function(err) {
+        btn.disabled = false;
+        btn.textContent = 'Guardar';
+        showStatus('Error: ' + err.message, 'error');
+      };
+
+      if (currentEditing) {
+        google.script.run.withSuccessHandler(handler).withFailureHandler(errHandler).usuarios_update(currentEditing, data);
+      } else {
+        google.script.run.withSuccessHandler(handler).withFailureHandler(errHandler).usuarios_create(data);
+      }
+    }
+
+    function deleteUser() {
+      if (!currentEditing) return;
+      if (!confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.')) return;
+      var btn = document.getElementById('btnDelete');
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function() {
+          showStatus('Eliminado.', 'success');
+          loadAll();
+          setTimeout(cancelForm, 600);
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .usuarios_delete(currentEditing);
+    }
+
+    function clearPin() {
+      if (!currentEditing) return;
+      if (!confirm('¿Borrar el PIN de este usuario?\n\nEn su próximo login se le enviará uno nuevo automáticamente.')) return;
+      var btn = document.getElementById('btnClearPin');
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function() {
+          showStatus('PIN borrado.', 'success');
+          var u = allUsers.find(function(x) { return x.cedula === currentEditing; });
+          if (u) u.hasPin = false;
+          var pinInfo = document.getElementById('pinInfo');
+          pinInfo.textContent = 'No configurado';
+          pinInfo.style.color = '#9ca3af';
+          pinInfo.style.fontStyle = 'italic';
+          pinInfo.style.fontWeight = 'normal';
+          btn.style.display = 'none';
+          btn.disabled = false;
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .usuarios_clearPin(currentEditing);
+    }
+
+    // ============ APPROVER PICKER (form) ============
+    function searchApprovers() {
+      var query = document.getElementById('approverSearch').value.toLowerCase().trim();
+      var resultsDiv = document.getElementById('approverResults');
+      if (!query) { resultsDiv.style.display = 'none'; return; }
+
+      var matches = allUsers.filter(function(u) {
+        if (selectedApprovers.some(function(a) { return a.cedula === u.cedula; })) return false;
+        if (currentEditing && u.cedula === currentEditing) return false;
+        return u.nombre.toLowerCase().indexOf(query) > -1
+          || u.cedula.toLowerCase().indexOf(query) > -1
+          || u.correo.toLowerCase().indexOf(query) > -1;
+      }).slice(0, 8);
+
+      if (matches.length === 0) {
+        resultsDiv.innerHTML = '<div class="result"><span class="ced">Sin resultados</span></div>';
+        resultsDiv.style.display = 'block';
+        return;
+      }
+
+      var html = '';
+      matches.forEach(function(u) {
+        html += '<div class="result" data-cedula="' + escapeAttr(u.cedula) + '">'
+          + '<div class="name">' + escapeHtml(u.nombre) + '</div>'
+          + '<div class="ced">' + escapeHtml(u.cedula) + ' · ' + escapeHtml(u.correo) + '</div>'
+          + '</div>';
+      });
+      resultsDiv.innerHTML = html;
+      resultsDiv.style.display = 'block';
+
+      Array.prototype.forEach.call(resultsDiv.querySelectorAll('.result'), function(r) {
+        r.addEventListener('click', function() {
+          var cedula = r.dataset.cedula;
+          if (!cedula) return;
+          var u = allUsers.find(function(x) { return x.cedula === cedula; });
+          if (u) {
+            selectedApprovers.push({ cedula: u.cedula, nombre: u.nombre, correo: u.correo });
+            renderApproverChips();
+            document.getElementById('approverSearch').value = '';
+            resultsDiv.style.display = 'none';
+          }
+        });
+      });
+    }
+
+    function renderApproverChips() {
+      var chipsDiv = document.getElementById('approverChips');
+      if (selectedApprovers.length === 0) {
+        chipsDiv.innerHTML = '<span style="color:#9ca3af;font-size:11px;">Sin aprobadores asignados</span>';
+        return;
+      }
+      chipsDiv.innerHTML = '';
+      selectedApprovers.forEach(function(a, idx) {
+        var chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.innerHTML = escapeHtml(a.nombre) + ' <button data-idx="' + idx + '">×</button>';
+        chipsDiv.appendChild(chip);
+      });
+      Array.prototype.forEach.call(chipsDiv.querySelectorAll('button'), function(btn) {
+        btn.addEventListener('click', function() {
+          var idx = Number(btn.dataset.idx);
+          selectedApprovers.splice(idx, 1);
+          renderApproverChips();
+        });
+      });
+    }
+
+    // ============ ANOMALIES ============
+    function loadAnomaliesSilently() {
+      google.script.run
+        .withSuccessHandler(function(data) {
+          anomalies = data;
+          updateAnomalyBadge();
+        })
+        .withFailureHandler(function() { /* silent */ })
+        .usuarios_getAnomalias();
+    }
+
+    function loadAnomalies() {
+      var container = document.getElementById('anomaliesContainer');
+      container.innerHTML = '<div class="loading">Escaneando USUARIOS...</div>';
+      google.script.run
+        .withSuccessHandler(function(data) {
+          anomalies = data;
+          renderAnomalies();
+          updateAnomalyBadge();
+        })
+        .withFailureHandler(function(err) {
+          container.innerHTML = '<div class="empty">Error: ' + err.message + '</div>';
+        })
+        .usuarios_getAnomalias();
+    }
+
+    function updateAnomalyBadge() {
+      if (!anomalies) return;
+      var total = anomalies.sinAprobador.length
+                + anomalies.correoNoCorporativo.length
+                + anomalies.aprobadorNoResuelto.length;
+      var badge = document.getElementById('anomalyBadge');
+      if (total > 0) {
+        badge.textContent = total;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    function renderAnomalies() {
+      var container = document.getElementById('anomaliesContainer');
+      if (!anomalies) { container.innerHTML = ''; return; }
+
+      var total = anomalies.sinAprobador.length
+                + anomalies.correoNoCorporativo.length
+                + anomalies.aprobadorNoResuelto.length;
+      if (total === 0) {
+        container.innerHTML = '<div class="empty" style="color:#065f46;background:#d1fae5;border:1px solid #a7f3d0;border-radius:6px;padding:15px;">✓ Todo en orden. Sin anomalías detectadas.</div>';
+        return;
+      }
+
+      var html = '';
+
+      // 1. APROBADORES HUÉRFANOS (CRITICAL)
+      html += renderAnomalySection(
+        'critical',
+        '🚨 Aprobadores huérfanos',
+        anomalies.aprobadorNoResuelto,
+        'Estos usuarios tienen aprobadores cuya cédula no existe en USUARIOS. ' +
+        'Cuando creen una solicitud, el sistema no podrá notificar al aprobador.',
+        function(item) {
+          return '<div class="name">' + escapeHtml(item.nombre) + '</div>'
+            + '<div class="detail">' + escapeHtml(item.cedula) + ' · ' + escapeHtml(item.correo) + '</div>'
+            + '<div class="detail">Aprobador: <strong>' + escapeHtml(item.correosAprobadoresAuto) + '</strong></div>';
+        }
+      );
+
+      // 2. SIN APROBADOR
+      html += renderAnomalySection(
+        'critical',
+        '⚠️ Sin aprobador asignado',
+        anomalies.sinAprobador,
+        'Estos usuarios no podrán completar el flujo de aprobación porque no tienen aprobador en col G.',
+        function(item) {
+          return '<div class="name">' + escapeHtml(item.nombre) + '</div>'
+            + '<div class="detail">' + escapeHtml(item.cedula) + ' · ' + escapeHtml(item.correo) + '</div>';
+        }
+      );
+
+      // 3. CORREO NO CORPORATIVO
+      html += renderAnomalySection(
+        'warning',
+        '📧 Correo no corporativo',
+        anomalies.correoNoCorporativo,
+        'Estos usuarios tienen un correo personal en lugar del dominio corporativo. Pueden acceder, pero conviene actualizarlos cuando puedas.',
+        function(item) {
+          return '<div class="name">' + escapeHtml(item.nombre) + '</div>'
+            + '<div class="detail">' + escapeHtml(item.cedula) + ' · ' + escapeHtml(item.correo) + '</div>'
+            + '<div class="detail">Dominio: <strong>' + escapeHtml(item.dominio) + '</strong></div>';
+        }
+      );
+
+      container.innerHTML = html;
+
+      // Wire clicks: ir a editar el usuario
+      Array.prototype.forEach.call(container.querySelectorAll('.anomaly-list .row'), function(row) {
+        row.addEventListener('click', function() {
+          var cedula = row.dataset.cedula;
+          if (!cedula) return;
+          switchTab('users');
+          startEdit(cedula);
+        });
+      });
+    }
+
+    function renderAnomalySection(severity, title, items, description, itemRenderer) {
+      if (!items || items.length === 0) return '';
+      var html = '<div class="anomaly-section">';
+      html += '<div class="anomaly-header ' + severity + '">';
+      html += '<span class="title">' + title + '</span>';
+      html += '<span class="count">' + items.length + '</span>';
+      html += '</div>';
+      html += '<div style="padding:8px 12px; font-size:11px; color:#6b7280; border-bottom:1px solid #f3f4f6;">' + description + '</div>';
+      html += '<div class="anomaly-list">';
+      items.slice(0, 50).forEach(function(item) {
+        html += '<div class="row" data-cedula="' + escapeAttr(item.cedula) + '">' + itemRenderer(item) + '</div>';
+      });
+      if (items.length > 50) {
+        html += '<div class="row" style="text-align:center; color:#9ca3af;">... y ' + (items.length - 50) + ' más</div>';
+      }
+      html += '</div></div>';
+      return html;
+    }
+
+    // ============ REPLACE APPROVER ============
+    function searchUserPicker(prefix) {
+      var query = document.getElementById(prefix + 'Search').value.toLowerCase().trim();
+      var resultsDiv = document.getElementById(prefix + 'Results');
+      if (!query) { resultsDiv.style.display = 'none'; return; }
+
+      var matches = allUsers.filter(function(u) {
+        return u.nombre.toLowerCase().indexOf(query) > -1
+          || u.cedula.toLowerCase().indexOf(query) > -1
+          || u.correo.toLowerCase().indexOf(query) > -1;
+      }).slice(0, 8);
+
+      if (matches.length === 0) {
+        resultsDiv.innerHTML = '<div class="result"><span class="ced">Sin resultados</span></div>';
+        resultsDiv.style.display = 'block';
+        return;
+      }
+
+      var html = '';
+      matches.forEach(function(u) {
+        html += '<div class="result" data-cedula="' + escapeAttr(u.cedula) + '">'
+          + '<div class="name">' + escapeHtml(u.nombre) + '</div>'
+          + '<div class="ced">' + escapeHtml(u.cedula) + ' · ' + escapeHtml(u.correo) + '</div>'
+          + '</div>';
+      });
+      resultsDiv.innerHTML = html;
+      resultsDiv.style.display = 'block';
+
+      Array.prototype.forEach.call(resultsDiv.querySelectorAll('.result'), function(r) {
+        r.addEventListener('click', function() {
+          var cedula = r.dataset.cedula;
+          if (!cedula) return;
+          var u = allUsers.find(function(x) { return x.cedula === cedula; });
+          if (!u) return;
+          if (prefix === 'replOld') replOld = u;
+          else replNew = u;
+          renderReplSelected(prefix);
+          document.getElementById(prefix + 'Search').value = '';
+          resultsDiv.style.display = 'none';
+          // Reset preview cuando cambia selección
+          document.getElementById('replPreview').style.display = 'none';
+          document.getElementById('btnReplConfirm').disabled = true;
+        });
+      });
+    }
+
+    function renderReplSelected(prefix) {
+      var u = (prefix === 'replOld') ? replOld : replNew;
+      var div = document.getElementById(prefix + 'Selected');
+      if (!u) { div.innerHTML = ''; return; }
+      div.innerHTML = '<span class="chip" style="background:#dbeafe;border-color:#bfdbfe;color:#1e40af;">'
+        + escapeHtml(u.nombre) + ' · ' + escapeHtml(u.cedula)
+        + ' <button data-pref="' + prefix + '">×</button></span>';
+      div.querySelector('button').addEventListener('click', function() {
+        if (prefix === 'replOld') replOld = null;
+        else replNew = null;
+        renderReplSelected(prefix);
+        document.getElementById('replPreview').style.display = 'none';
+        document.getElementById('btnReplConfirm').disabled = true;
+      });
+    }
+
+    function previewReplace() {
+      hideReplStatus();
+      if (!replOld) { showReplStatus('Selecciona el aprobador a reemplazar.', 'error'); return; }
+      if (!replNew) { showReplStatus('Selecciona el aprobador nuevo.', 'error'); return; }
+      if (replOld.cedula === replNew.cedula) { showReplStatus('Las cédulas son iguales.', 'error'); return; }
+
+      var btn = document.getElementById('btnReplPreview');
+      btn.disabled = true;
+      btn.textContent = 'Buscando...';
+
+      google.script.run
+        .withSuccessHandler(function(rows) {
+          btn.disabled = false;
+          btn.textContent = 'Vista previa';
+          replPreviewRows = rows || [];
+          var div = document.getElementById('replPreview');
+
+          if (replPreviewRows.length === 0) {
+            div.innerHTML = '<div class="preview-box">Ningún usuario tiene a <strong>' + escapeHtml(replOld.nombre) + '</strong> como aprobador.</div>';
+            div.style.display = 'block';
+            document.getElementById('btnReplConfirm').disabled = true;
+            return;
+          }
+
+          var html = '<div class="preview-box">';
+          html += 'Se reemplazará a <strong>' + escapeHtml(replOld.nombre) + '</strong> por <strong>' + escapeHtml(replNew.nombre) + '</strong> en <strong>' + replPreviewRows.length + ' usuario(s)</strong>.';
+          html += '<div class="preview-list">';
+          replPreviewRows.slice(0, 100).forEach(function(r) {
+            html += '<div class="row">' + escapeHtml(r.nombre) + ' <span style="color:#9ca3af;">(' + escapeHtml(r.cedula) + ')</span></div>';
+          });
+          if (replPreviewRows.length > 100) {
+            html += '<div class="row" style="color:#9ca3af;">... y ' + (replPreviewRows.length - 100) + ' más</div>';
+          }
+          html += '</div></div>';
+          div.innerHTML = html;
+          div.style.display = 'block';
+          document.getElementById('btnReplConfirm').disabled = false;
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Vista previa';
+          showReplStatus('Error: ' + err.message, 'error');
+        })
+        .usuarios_findUsersWithApprover(replOld.cedula);
+    }
+
+    function confirmReplace() {
+      if (!replOld || !replNew) return;
+      if (!confirm('¿Confirmar el reemplazo en ' + replPreviewRows.length + ' usuario(s)?\n\nEsta acción NO se puede deshacer automáticamente.')) return;
+
+      var btn = document.getElementById('btnReplConfirm');
+      btn.disabled = true;
+      btn.textContent = 'Reemplazando...';
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          btn.textContent = 'Confirmar reemplazo';
+          showReplStatus('Reemplazo completado: ' + result.affected + ' usuario(s) actualizados.', 'success');
+          replOld = null;
+          replNew = null;
+          replPreviewRows = [];
+          renderReplSelected('replOld');
+          renderReplSelected('replNew');
+          document.getElementById('replPreview').style.display = 'none';
+          loadAll(); // Recarga lista global
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Confirmar reemplazo';
+          showReplStatus('Error: ' + err.message, 'error');
+        })
+        .usuarios_replaceApprover(replOld.cedula, replNew.cedula);
+    }
+
+    function showReplStatus(msg, type) {
+      var s = document.getElementById('replStatus');
+      s.textContent = msg;
+      s.className = 'status ' + type;
+    }
+    function hideReplStatus() {
+      var s = document.getElementById('replStatus');
+      s.className = 'status';
+      s.textContent = '';
+    }
+
+    // ============ UTILS ============
+    function showStatus(msg, type) {
+      var s = document.getElementById('status');
+      s.textContent = msg;
+      s.className = 'status ' + type;
+    }
+    function hideStatus() {
+      var s = document.getElementById('status');
+      s.className = 'status';
+      s.textContent = '';
+    }
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+    function escapeAttr(str) { return escapeHtml(str); }
+
+    init();
+  </script>
+</body>
+</html>
