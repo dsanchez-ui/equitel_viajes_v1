@@ -69,44 +69,111 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const [changeReason, setChangeReason] = useState('');
 
   // Co-approver rules from backend
-  const [coApproverRules, setCoApproverRules] = useState<{ principalEmail: string, coApproverName: string, condition: string }[]>([]);
+  const [coApproverRules, setCoApproverRules] = useState<{ principalEmail: string, coApproverName: string, coApproverEmail: string, condition: string }[]>([]);
+  // Executive emails (CEO + Director CDS) — needed to detect special cases
+  const [executiveEmails, setExecutiveEmails] = useState<{ ceoEmail: string, directorEmail: string }>({ ceoEmail: '', directorEmail: '' });
 
   useEffect(() => {
     gasService.getCoApproverRules().then(setCoApproverRules).catch(() => {});
+    gasService.getExecutiveEmails().then(setExecutiveEmails).catch(() => {});
     gasService.getSites()
       .then(s => setSites(Array.isArray(s) ? s : []))
       .catch(() => setSites([]))
       .finally(() => setIsSitesLoading(false));
   }, []);
 
-  // Resolve full approver chain preview
-  const approverPreview = useMemo(() => {
-    const approvers: { name: string, role: string }[] = [];
+  // The effective requester email — for modifications it's the original requester,
+  // otherwise it's the currently logged-in user.
+  const effectiveRequesterEmail = (isModification && initialData?.requesterEmail) ? initialData.requesterEmail : userEmail;
 
-    // 1. Area approver (from first passenger)
+  // Resolve full approver chain preview, with awareness of CEO/CDS deduplication rules.
+  // Returns one entry per unique person, with one or more "roles" they cover.
+  // Special cases:
+  // - If the requester IS the CEO → single self-approval entry, no other approvers shown.
+  // - If the requester IS the CDS → same.
+  // - If the area approver IS the CEO/CDS → that person gets BOTH "Área" and "Ejecutivo" labels (single email).
+  const approverPreview = useMemo(() => {
+    const requesterLower = String(effectiveRequesterEmail || '').toLowerCase().trim();
+    const ceoLower = (executiveEmails.ceoEmail || '').toLowerCase().trim();
+    const cdsLower = (executiveEmails.directorEmail || '').toLowerCase().trim();
+    const requesterIsCeo = !!ceoLower && requesterLower === ceoLower;
+    const requesterIsCds = !!cdsLower && requesterLower === cdsLower;
+
+    type Entry = { name: string; email: string; roles: string[]; note?: string };
+
+    // Special case 1: requester is CEO → only the CEO needs to approve
+    if (requesterIsCeo) {
+      return [{
+        name: 'Tú mismo (CEO)',
+        email: ceoLower,
+        roles: ['Aprobación única'],
+        note: 'Como CEO, tu sola aprobación basta para esta solicitud — no se notifica a nadie más.'
+      }] as Entry[];
+    }
+
+    // Special case 2: requester is CDS → only the CDS needs to approve
+    if (requesterIsCds) {
+      return [{
+        name: 'Tú mismo (Director CDS)',
+        email: cdsLower,
+        roles: ['Aprobación única'],
+        note: 'Como Director CDS, tu sola aprobación basta para esta solicitud — no se notifica a nadie más.'
+      }] as Entry[];
+    }
+
+    // Standard case: dedupe by email so a person who is BOTH area approver AND
+    // CEO/CDS only appears once with a combined role label.
+    const map = new Map<string, Entry>();
+
+    // 1. Area approver(s) from the first passenger's integrant lookup
     if (passengers.length > 0 && passengers[0].idNumber) {
       const p1 = integrantes.find(i => i.idNumber === passengers[0].idNumber);
-      if (p1 && p1.approverName && p1.approverEmail) {
-        approvers.push({ name: p1.approverName, role: 'Área' });
+      if (p1 && p1.approverEmail) {
+        const lower = p1.approverEmail.toLowerCase().trim();
+        if (lower && !map.has(lower)) {
+          map.set(lower, { name: p1.approverName || lower, email: lower, roles: ['Área'] });
+        }
 
-        // 2. Co-approvers (from rules, if international)
+        // Co-approvers from REGLAS_COAPROBADOR (international only)
         if (isInternational) {
-          const matches = coApproverRules.filter(r => r.principalEmail === p1.approverEmail.toLowerCase() && r.condition === 'INTERNACIONAL');
+          const matches = coApproverRules.filter(r =>
+            r.principalEmail === lower && r.condition === 'INTERNACIONAL'
+          );
           matches.forEach(rule => {
-            approvers.push({ name: rule.coApproverName, role: 'Área (co-aprobador)' });
+            const coLower = rule.coApproverEmail.toLowerCase().trim();
+            if (coLower && !map.has(coLower)) {
+              map.set(coLower, { name: rule.coApproverName, email: coLower, roles: ['Área (co-aprobador)'] });
+            }
           });
         }
       }
     }
 
-    // 3. Executive approvers (international always requires them)
+    // 2. Executive approvers (CEO + CDS) only if international
     if (isInternational) {
-      approvers.push({ name: 'CEO', role: 'Ejecutivo' });
-      approvers.push({ name: 'Director CDS', role: 'Ejecutivo' });
+      if (ceoLower) {
+        if (map.has(ceoLower)) {
+          // CEO is also area approver — append role to existing entry, single email
+          const existing = map.get(ceoLower)!;
+          existing.roles.push('Ejecutivo (CEO)');
+          existing.note = 'Cubre área y aprobación ejecutiva con un solo click.';
+        } else {
+          map.set(ceoLower, { name: 'CEO', email: ceoLower, roles: ['Ejecutivo (CEO)'] });
+        }
+      }
+      if (cdsLower) {
+        if (map.has(cdsLower)) {
+          const existing = map.get(cdsLower)!;
+          existing.roles.push('Ejecutivo (Director CDS)');
+          existing.note = 'Cubre área y aprobación ejecutiva con un solo click.';
+        } else {
+          map.set(cdsLower, { name: 'Director CDS', email: cdsLower, roles: ['Ejecutivo (Director CDS)'] });
+        }
+      }
     }
 
-    return approvers;
-  }, [passengers, integrantes, isInternational, coApproverRules]);
+    return Array.from(map.values());
+  }, [passengers, integrantes, isInternational, coApproverRules, executiveEmails, effectiveRequesterEmail]);
 
   const [formData, setFormData] = useState<Partial<TravelRequest>>({
     company: initialData?.company || '',
@@ -748,15 +815,30 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
           {approverPreview.length > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
-              <p className="text-xs font-semibold text-blue-700 uppercase mb-1">Cadena de aprobación estimada</p>
-              <div className="flex flex-wrap gap-2">
-                {approverPreview.map((a, i) => (
-                  <span key={i} className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${a.role === 'Ejecutivo' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'}`}>
-                    {a.name} <span className="opacity-60">({a.role})</span>
-                  </span>
-                ))}
+              <p className="text-xs font-semibold text-blue-700 uppercase mb-2">Cadena de aprobación estimada</p>
+              <div className="space-y-2">
+                {approverPreview.map((a, i) => {
+                  const isExecutive = a.roles.some(r => r.startsWith('Ejecutivo') || r === 'Aprobación única');
+                  return (
+                    <div key={i} className={`flex flex-col gap-1 px-3 py-2 rounded ${isExecutive ? 'bg-amber-50 border border-amber-200' : 'bg-white border border-blue-100'}`}>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-sm font-semibold text-gray-900">{a.name}</span>
+                        <div className="flex flex-wrap gap-1">
+                          {a.roles.map((r, j) => (
+                            <span key={j} className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${r.startsWith('Ejecutivo') || r === 'Aprobación única' ? 'bg-amber-200 text-amber-900' : 'bg-blue-200 text-blue-900'}`}>
+                              {r}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      {a.note && <p className="text-[11px] text-gray-500 italic">{a.note}</p>}
+                    </div>
+                  );
+                })}
               </div>
-              {!isInternational && <p className="text-xs text-blue-500 mt-1">* Aprobadores ejecutivos (CEO, Director CDS) podrían requerirse si el costo final supera $1.200.000 COP</p>}
+              {!isInternational && approverPreview.length > 0 && approverPreview[0].roles[0] !== 'Aprobación única' && (
+                <p className="text-xs text-blue-500 mt-2">* Aprobadores ejecutivos (CEO, Director CDS) podrían requerirse si el costo final supera $1.200.000 COP</p>
+              )}
             </div>
           )}
 

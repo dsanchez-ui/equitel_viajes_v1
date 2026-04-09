@@ -21,36 +21,71 @@ const getDriveFallbackUrl = (driveId: string) => `https://drive.google.com/thumb
 // Viewer URL for "open in new tab"
 const getViewerUrl = (driveId: string) => `https://drive.google.com/file/d/${driveId}/view?usp=sharing`;
 
-const ApprovalStatusRow = ({ label, statusString }: { label: string, statusString?: string }) => {
-    const isApproved = statusString && statusString.startsWith('Sí');
-    const isRejected = statusString && statusString.startsWith('No');
-    const parts = statusString ? statusString.split('_') : [];
+type EffectiveStatus = 'APPROVED' | 'DENIED' | 'PENDING' | 'NA';
+
+const ApprovalStatusRow = ({
+    label,
+    effectiveStatus,
+    rawStatusString,
+    naReason
+}: {
+    label: string;
+    effectiveStatus?: EffectiveStatus;
+    rawStatusString?: string;
+    naReason?: string;
+}) => {
+    // Extract date from the raw status string (format: "Sí_email_dd/m/yyyy hh:mm" or "Sí_email")
+    const parts = rawStatusString ? rawStatusString.split('_') : [];
     const date = parts.length > 2 ? parts[2] : '';
 
-    return (
-        <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0 text-sm">
-            <span className="text-gray-600 font-medium">{label}</span>
-            <div className="text-right">
-                {isApproved ? (
+    const renderBadge = () => {
+        switch (effectiveStatus) {
+            case 'APPROVED':
+                return (
                     <div className="flex flex-col items-end">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-800">
                             ✅ APROBADO
                         </span>
                         {date && <span className="text-[10px] text-gray-400 mt-0.5">{date}</span>}
                     </div>
-                ) : isRejected ? (
+                );
+            case 'DENIED':
+                return (
                     <div className="flex flex-col items-end">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-800">
                             ❌ DENEGADO
                         </span>
                         {date && <span className="text-[10px] text-gray-400 mt-0.5">{date}</span>}
                     </div>
-                ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500">
+                );
+            case 'NA':
+                return (
+                    <span
+                        className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-400"
+                        title={naReason || 'No aplica'}
+                    >
+                        🚫 NO APLICA
+                    </span>
+                );
+            case 'PENDING':
+            default:
+                return (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
                         ⏳ PENDIENTE
                     </span>
+                );
+        }
+    };
+
+    return (
+        <div className="flex justify-between items-start py-2 border-b border-gray-100 last:border-0 text-sm">
+            <div className="flex flex-col flex-1 min-w-0 pr-3">
+                <span className="text-gray-600 font-medium">{label}</span>
+                {effectiveStatus === 'NA' && naReason && (
+                    <span className="text-[11px] text-gray-400 italic mt-0.5">{naReason}</span>
                 )}
             </div>
+            <div className="text-right flex-shrink-0">{renderBadge()}</div>
         </div>
     );
 };
@@ -541,14 +576,43 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 border-b border-gray-100 pb-2">
                                         Estado de Aprobaciones
                                     </h4>
+
+                                    {/* Context banner: explain WHO needs to approve in special cases */}
+                                    {request.requesterIsCeo && (
+                                        <div className="mb-3 bg-blue-50 border border-blue-200 rounded-md p-2 text-xs text-blue-800">
+                                            ℹ️ Como el solicitante es el <strong>CEO</strong>, su sola aprobación es suficiente. No se requiere aprobación de área ni del Director CDS.
+                                        </div>
+                                    )}
+                                    {request.requesterIsCds && (
+                                        <div className="mb-3 bg-blue-50 border border-blue-200 rounded-md p-2 text-xs text-blue-800">
+                                            ℹ️ Como el solicitante es el <strong>Director CDS</strong>, su sola aprobación es suficiente. No se requiere aprobación de área ni del CEO.
+                                        </div>
+                                    )}
+                                    {!request.requesterIsCeo && !request.requesterIsCds && (request.ceoIsAreaApprover || request.cdsIsAreaApprover) && (
+                                        <div className="mb-3 bg-blue-50 border border-blue-200 rounded-md p-2 text-xs text-blue-800">
+                                            ℹ️ El aprobador de área de esta solicitud es {request.ceoIsAreaApprover ? 'el CEO' : 'el Director CDS'}. Su click cubre tanto el rol de área como el ejecutivo.
+                                        </div>
+                                    )}
+
                                     <div className="flex flex-col">
-                                        <ApprovalStatusRow label={`Aprobador Área (${request.approverName})`} statusString={request.approvalStatusArea} />
-                                        {request.isInternational && (
-                                            <>
-                                                <ApprovalStatusRow label="Dirección Cadena Suministro" statusString={request.approvalStatusCDS} />
-                                                <ApprovalStatusRow label="Gerencia General (CEO)" statusString={request.approvalStatusCEO} />
-                                            </>
-                                        )}
+                                        <ApprovalStatusRow
+                                            label={`Aprobador de Área${request.approverName ? ` (${request.approverName})` : ''}`}
+                                            effectiveStatus={request.effectiveApprovalArea}
+                                            rawStatusString={request.approvalStatusArea}
+                                            naReason={request.effectiveApprovalAreaReason}
+                                        />
+                                        <ApprovalStatusRow
+                                            label="Gerencia General (CEO)"
+                                            effectiveStatus={request.effectiveApprovalCeo}
+                                            rawStatusString={request.approvalStatusCEO}
+                                            naReason={request.effectiveApprovalCeoReason}
+                                        />
+                                        <ApprovalStatusRow
+                                            label="Dirección Cadena Suministro"
+                                            effectiveStatus={request.effectiveApprovalCds}
+                                            rawStatusString={request.approvalStatusCDS}
+                                            naReason={request.effectiveApprovalCdsReason}
+                                        />
                                     </div>
                                 </section>
 

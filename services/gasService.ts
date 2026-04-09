@@ -151,6 +151,11 @@ class GasService {
     return response.data || [];
   }
 
+  async getExecutiveEmails(): Promise<{ ceoEmail: string, directorEmail: string }> {
+    const response = await this.runGas('getExecutiveEmails');
+    return response.data || { ceoEmail: '', directorEmail: '' };
+  }
+
   async getCreditCards(): Promise<{ value: string, label: string }[]> {
     const response = await this.runGas('getCreditCards');
     return response.data || [];

@@ -135,6 +135,22 @@ export interface TravelRequest {
   parentWasReserved?: boolean;
   parentTimestamp?: string;
   daysInAdvance?: number;
+
+  // EFFECTIVE approval status (computed by backend, mirrors the dedup rules
+  // applied in sendApprovalRequestEmail / processApprovalFromEmail).
+  // Possible values: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA'.
+  // *Reason fields are filled when the role is NA, explaining why.
+  effectiveApprovalArea?: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA';
+  effectiveApprovalAreaReason?: string;
+  effectiveApprovalCeo?: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA';
+  effectiveApprovalCeoReason?: string;
+  effectiveApprovalCds?: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA';
+  effectiveApprovalCdsReason?: string;
+  requesterIsCeo?: boolean;
+  requesterIsCds?: boolean;
+  ceoIsAreaApprover?: boolean;
+  cdsIsAreaApprover?: boolean;
+  requiresExecutiveApproval?: boolean;
 }
 
 export interface CostCenterMaster {

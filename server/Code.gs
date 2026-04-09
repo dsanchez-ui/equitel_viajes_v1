@@ -233,6 +233,7 @@ function dispatch(action, payload) {
       case 'getCreditCards': result = getCreditCards(); break;
       case 'getSites': result = getSites(); break;
       case 'getCoApproverRules': result = getCoApproverRules_(); break;
+      case 'getExecutiveEmails': result = getExecutiveEmails(); break;
       // SECURITY: Server-side analyst check
       case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
       case 'getMyRequests': result = getRequestsByEmail(currentUserEmail); break;
@@ -2212,6 +2213,20 @@ function getCoApproverRules_() {
   }));
 }
 
+/**
+ * Returns the executive emails (CEO and Director CDS) so the frontend can
+ * detect when the requester or area approver matches one of them and adjust
+ * the approval-chain preview / detail view accordingly. These addresses are
+ * already public (they appear in approval emails sent to area approvers), so
+ * exposing them does not leak any secret.
+ */
+function getExecutiveEmails() {
+  return {
+    ceoEmail: String(CEO_EMAIL).toLowerCase().trim(),
+    directorEmail: String(DIRECTOR_EMAIL).toLowerCase().trim()
+  };
+}
+
 function getIntegrantesData() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
@@ -2937,6 +2952,91 @@ function setAnalystWhitelist(emails) {
   return true;
 }
 
+/**
+ * Computes the "effective" approval status for each role (Area, CEO, CDS) of a request,
+ * applying the same rules as sendApprovalRequestEmail + processApprovalFromEmail.
+ * Returns one of: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA' for each role,
+ * plus a human-readable reason when the role is NA, so the UI can explain WHY.
+ */
+function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isInternational, totalCost, areaVal, ceoVal, cdsVal) {
+  const startsWithSi = function(v) { return String(v || '').startsWith('Sí'); };
+  const startsWithNo = function(v) { return String(v || '').startsWith('No'); };
+
+  const areaApproved = startsWithSi(areaVal);
+  const areaDenied = startsWithNo(areaVal);
+  const ceoApproved = startsWithSi(ceoVal);
+  const ceoDenied = startsWithNo(ceoVal);
+  const cdsApproved = startsWithSi(cdsVal);
+  const cdsDenied = startsWithNo(cdsVal);
+
+  const requesterLower = String(requesterEmail || '').toLowerCase().trim();
+  const ceoLower = String(CEO_EMAIL).toLowerCase().trim();
+  const cdsLower = String(DIRECTOR_EMAIL).toLowerCase().trim();
+  const requesterIsCeo = requesterLower === ceoLower;
+  const requesterIsCds = requesterLower === cdsLower;
+
+  const assignedAreaApprovers = String(approverEmail || '').toLowerCase()
+      .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
+  const ceoIsAreaApprover = assignedAreaApprovers.indexOf(ceoLower) !== -1;
+  const cdsIsAreaApprover = assignedAreaApprovers.indexOf(cdsLower) !== -1;
+
+  const requiresExecutive = isInternational || (Number(totalCost) || 0) > 1200000;
+
+  var area = 'PENDING', areaReason = '';
+  var ceo = 'PENDING', ceoReason = '';
+  var cds = 'PENDING', cdsReason = '';
+
+  if (requesterIsCeo) {
+    // CEO is the requester → only CEO needs to approve. Everything else is N/A.
+    area = 'NA'; areaReason = 'El solicitante es el CEO; su sola aprobación cubre el rol de área.';
+    cds = 'NA'; cdsReason = 'Cuando el CEO solicita, no requiere aprobación adicional del Director CDS.';
+    if (ceoApproved) ceo = 'APPROVED';
+    else if (ceoDenied) ceo = 'DENIED';
+    else ceo = 'PENDING';
+  } else if (requesterIsCds) {
+    // CDS is the requester → only CDS needs to approve.
+    area = 'NA'; areaReason = 'El solicitante es el Director CDS; su sola aprobación cubre el rol de área.';
+    ceo = 'NA'; ceoReason = 'Cuando el Director CDS solicita, no requiere aprobación adicional del CEO.';
+    if (cdsApproved) cds = 'APPROVED';
+    else if (cdsDenied) cds = 'DENIED';
+    else cds = 'PENDING';
+  } else {
+    // Standard case
+    // AREA: direct approval, OR implicit when the area approver IS the CEO/CDS who already clicked
+    if (areaApproved || (ceoIsAreaApprover && ceoApproved) || (cdsIsAreaApprover && cdsApproved)) {
+      area = 'APPROVED';
+    } else if (areaDenied || (ceoIsAreaApprover && ceoDenied) || (cdsIsAreaApprover && cdsDenied)) {
+      area = 'DENIED';
+    } else {
+      area = 'PENDING';
+    }
+
+    if (requiresExecutive) {
+      if (ceoApproved) ceo = 'APPROVED';
+      else if (ceoDenied) ceo = 'DENIED';
+      else ceo = 'PENDING';
+
+      if (cdsApproved) cds = 'APPROVED';
+      else if (cdsDenied) cds = 'DENIED';
+      else cds = 'PENDING';
+    } else {
+      ceo = 'NA'; ceoReason = 'Solicitud nacional y bajo $1.200.000 — no requiere aprobación ejecutiva.';
+      cds = 'NA'; cdsReason = 'Solicitud nacional y bajo $1.200.000 — no requiere aprobación ejecutiva.';
+    }
+  }
+
+  return {
+    area: area, areaReason: areaReason,
+    ceo: ceo, ceoReason: ceoReason,
+    cds: cds, cdsReason: cdsReason,
+    requesterIsCeo: requesterIsCeo,
+    requesterIsCds: requesterIsCds,
+    ceoIsAreaApprover: ceoIsAreaApprover,
+    cdsIsAreaApprover: cdsIsAreaApprover,
+    requiresExecutive: requiresExecutive
+  };
+}
+
 function mapRowToRequest(row) {
   const get = (h) => { const i = HEADERS_REQUESTS.indexOf(h); return (i>-1 && i<row.length) ? row[i] : ''; };
   const safeDate = (v) => { if(!v)return ''; if(v instanceof Date) return v.toISOString().split('T')[0]; return String(v).split('T')[0]; };
@@ -2974,10 +3074,10 @@ function mapRowToRequest(row) {
   const areaTimeVal = getTimestampStr(get("FECHA/HORA (AUTOMÁTICO)"));
   const approvalStatusArea = areaVal && areaTimeVal ? `${areaVal}_${areaTimeVal}` : areaVal;
 
-  return {
+  const result = {
     requestId: String(get("ID RESPUESTA")),
-    relatedRequestId: String(get("ID SOLICITUD PADRE")), 
-    requestType: String(get("TIPO DE SOLICITUD")), 
+    relatedRequestId: String(get("ID SOLICITUD PADRE")),
+    requestType: String(get("TIPO DE SOLICITUD")),
     timestamp: String(get("FECHA SOLICITUD")),
     company: String(get("EMPRESA")),
     origin: String(get("CIUDAD ORIGEN")),
@@ -2999,8 +3099,8 @@ function mapRowToRequest(row) {
     approverName: String(get("QUIÉN APRUEBA? (AUTOMÁTICO)")),
     approverEmail: String(get("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)")),
     analystOptions, selectedOption, supportData,
-    departureTimePreference: safeTime(get("HORA LLEGADA VUELO IDA")), 
-    returnTimePreference: safeTime(get("HORA LLEGADA VUELO VUELTA")), 
+    departureTimePreference: safeTime(get("HORA LLEGADA VUELO IDA")),
+    returnTimePreference: safeTime(get("HORA LLEGADA VUELO VUELTA")),
     comments: String(get("OBSERVACIONES")),
     changeReason: String(get("TEXTO_CAMBIO")),
     hasChangeFlag: get("FLAG_CAMBIO_REALIZADO") === "CAMBIO GENERADO",
@@ -3009,14 +3109,14 @@ function mapRowToRequest(row) {
     approvalStatusCDS: String(get("APROBADO CDS")),
     approvalStatusCEO: String(get("APROBADO CEO")),
     approvalStatusArea: approvalStatusArea,
-    
+
     // NEW FIELDS MAPPING
     selectionDetails: String(get("SELECCION_TEXTO")),
     finalCostTickets: Number(get("COSTO_FINAL_TIQUETES")) || 0,
     finalCostHotel: Number(get("COSTO_FINAL_HOTEL")) || 0,
     totalCost: Number(get("COSTO COTIZADO PARA VIAJE")) || 0,
     daysInAdvance: Number(get("DIAS DE ANTELACION TKT")) || 0,
-    
+
     // RESERVATION MAPPING (Requires flushing or reading new value)
     reservationNumber: String(get("No RESERVA")),
     // For Reservation URL, we don't have a direct column, but we can try to extract it from supportData if marked
@@ -3024,10 +3124,39 @@ function mapRowToRequest(row) {
 
     parentWasReserved: get("ES_CAMBIO_CON_COSTO") === "SI",
     parentTimestamp: String(get("FECHA_SOLICITUD_PADRE")),
-    
+
     // CREDIT CARD (v2.5+)
     creditCard: String(get("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA"))
   };
+
+  // Compute and attach the EFFECTIVE approval status (mirrors the rules in
+  // sendApprovalRequestEmail and processApprovalFromEmail). This lets the
+  // frontend show consistent UI even in the special cases where the deduped
+  // approval flow leaves some columns blank.
+  const requesterEmailRaw = String(get("CORREO ENCUESTADO"));
+  const approverEmailRaw = String(get("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)"));
+  const eff = computeEffectiveApprovalStatus_(
+      requesterEmailRaw,
+      approverEmailRaw,
+      result.isInternational,
+      result.totalCost,
+      get("APROBADO POR ÁREA? (AUTOMÁTICO)"),
+      get("APROBADO CEO"),
+      get("APROBADO CDS")
+  );
+  result.effectiveApprovalArea = eff.area;
+  result.effectiveApprovalAreaReason = eff.areaReason;
+  result.effectiveApprovalCeo = eff.ceo;
+  result.effectiveApprovalCeoReason = eff.ceoReason;
+  result.effectiveApprovalCds = eff.cds;
+  result.effectiveApprovalCdsReason = eff.cdsReason;
+  result.requesterIsCeo = eff.requesterIsCeo;
+  result.requesterIsCds = eff.requesterIsCds;
+  result.ceoIsAreaApprover = eff.ceoIsAreaApprover;
+  result.cdsIsAreaApprover = eff.cdsIsAreaApprover;
+  result.requiresExecutiveApproval = eff.requiresExecutive;
+
+  return result;
 }
 
 // --- CRON JOBS / TRIGGERS ---
