@@ -1107,29 +1107,57 @@ function processApprovalFromEmail(e) {
           // We need to re-read or track state variables
           // Re-read current row data to check other columns
           const rowValues = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
-          
+
           // Check CEO & CDS columns
           const cdsVal = rowValues[HEADERS_REQUESTS.indexOf("APROBADO CDS")];
           const ceoVal = rowValues[HEADERS_REQUESTS.indexOf("APROBADO CEO")];
           // For area, we check the (AUTOMÁTICO) column we just wrote to or legacy
           const areaVal = rowValues[HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA? (AUTOMÁTICO)")];
-          
+
           const cdsApproved = String(cdsVal).startsWith("Sí");
           const ceoApproved = String(ceoVal).startsWith("Sí");
           const areaApproved = String(areaVal).startsWith("Sí");
-          
+
+          // Detect special cases: requester is CEO/CDS, or the assigned area approver
+          // happens to be CEO/CDS (so a single click on the deduped email implicitly
+          // covers both the area and the executive role).
+          const requesterEmailRaw = rowValues[HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO")];
+          const requesterLowerHere = String(requesterEmailRaw || '').toLowerCase().trim();
+          const ceoLowerHere = String(CEO_EMAIL).toLowerCase().trim();
+          const cdsLowerHere = String(DIRECTOR_EMAIL).toLowerCase().trim();
+          const requesterIsCeo = requesterLowerHere === ceoLowerHere;
+          const requesterIsCds = requesterLowerHere === cdsLowerHere;
+
+          const assignedAreaApproversRaw = rowValues[HEADERS_REQUESTS.indexOf("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)")];
+          const assignedAreaApprovers = String(assignedAreaApproversRaw || '').toLowerCase()
+              .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
+          const ceoIsAreaApprover = assignedAreaApprovers.indexOf(ceoLowerHere) !== -1;
+          const cdsIsAreaApprover = assignedAreaApprovers.indexOf(cdsLowerHere) !== -1;
+
           let isFullyApproved = false;
 
-          if (requiresExecutiveApproval) {
-              // MODIFIED LOGIC: Area Approver AND (CDS OR CEO)
-              // If either CDS or CEO approves (and Area approved), it counts as fully approved.
-              if (areaApproved && (cdsApproved || ceoApproved)) {
+          if (requesterIsCeo) {
+              // CEO requested → his single approval (sent with role CEO) is enough
+              if (ceoApproved) isFullyApproved = true;
+          } else if (requesterIsCds) {
+              // CDS requested → his single approval (sent with role CDS) is enough
+              if (cdsApproved) isFullyApproved = true;
+          } else if (requiresExecutiveApproval) {
+              // Standard executive flow: area + (CEO or CDS).
+              // If the assigned area approver IS the CEO/CDS, the deduped email
+              // was sent only with executive role (CEO or CDS), so the area column
+              // never gets marked. Treat the executive approval as implicitly
+              // satisfying the area requirement in that case.
+              const effectiveAreaApproved = areaApproved
+                  || (ceoIsAreaApprover && ceoApproved)
+                  || (cdsIsAreaApprover && cdsApproved);
+              if (effectiveAreaApproved && (cdsApproved || ceoApproved)) {
                   isFullyApproved = true;
               }
           } else {
-              // National: Just Normal Approver
+              // National + low cost: just the area approver
               if (areaApproved) {
-                  isFullyApproved = true; 
+                  isFullyApproved = true;
               }
           }
 
@@ -2762,12 +2790,29 @@ function sendRequestEmailWithHtml(data, requestId, htmlTemplate) {
         let actionsHtml = `
             <a href="${PLATFORM_URL}" style="background-color: #111827; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block;">INGRESAR A LA PLATAFORMA</a>
         `;
-        
+
         const finalHtml = baseHtml.replace("{{ACTION_BUTTONS}}", actionsHtml);
         const subject = getStandardSubject({ ...data, requestId });
-        const ccEmails = [data.requesterEmail, getCCList(data)].filter(e => e).join(',');
-        
-        try { 
+
+        // Self-approver / executive: omit requester from CC. They'll receive the
+        // approval email later (and the options/decision emails) — no need to spam
+        // them with the initial creation notification too. Other passengers stay in CC.
+        const requesterLower = String(data.requesterEmail || '').toLowerCase().trim();
+        const approverEmailsLower = String(data.approverEmail || '').toLowerCase()
+            .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
+        const requesterIsApprover = approverEmailsLower.indexOf(requesterLower) !== -1;
+        const requesterIsExecutive = requesterLower === CEO_EMAIL.toLowerCase()
+                                  || requesterLower === DIRECTOR_EMAIL.toLowerCase();
+
+        let ccEmails;
+        if (requesterIsApprover || requesterIsExecutive) {
+            // getCCList already excludes the requester from the passenger list
+            ccEmails = getCCList(data);
+        } else {
+            ccEmails = [data.requesterEmail, getCCList(data)].filter(function(e) { return e; }).join(',');
+        }
+
+        try {
             sendEmailRich(ADMIN_EMAIL, subject, finalHtml, ccEmails);
         } catch (e) { console.error("Error sending standard email: " + e); }
     }
@@ -2808,35 +2853,59 @@ function sendDecisionNotification(req, status) {
 }
 
 function sendApprovalRequestEmail(req) {
-    const getLinks = (role, actorEmail) => ({
-        approve: `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=approved&role=${role}&actor=${encodeURIComponent(actorEmail || '')}`,
-        reject: `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=denied&role=${role}&actor=${encodeURIComponent(actorEmail || '')}`
-    });
+    const requesterLower = String(req.requesterEmail || '').toLowerCase().trim();
+    const ceoLower = String(CEO_EMAIL).toLowerCase().trim();
+    const cdsLower = String(DIRECTOR_EMAIL).toLowerCase().trim();
+    const requesterIsCeo = requesterLower === ceoLower;
+    const requesterIsCds = requesterLower === cdsLower;
 
-    const subject = getStandardSubject(req) + " - APROBACIÓN REQUERIDA";
-
-    // Handle Multiple Area Approvers
-    const approverEmails = req.approverEmail.split(',').map(e => e.trim()).filter(e => e);
-    
-    approverEmails.forEach(email => {
-        const normalLinks = getLinks('NORMAL', email);
-        const normalHtml = HtmlTemplates.approvalRequest(req, req.selectedOption, normalLinks.approve, normalLinks.reject);
-        sendEmailRich(email, subject, normalHtml, null);
-    });
-
-    // Check for High Cost Threshold (1.2M)
     const totalCost = Number(req.totalCost) || 0;
     const requiresExecutiveApproval = req.isInternational || totalCost > 1200000;
+    const subject = getStandardSubject(req) + " - APROBACIÓN REQUERIDA";
+
+    const sendOne = function(email, role) {
+        const approveLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=approved&role=${role}&actor=${encodeURIComponent(email || '')}`;
+        const rejectLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=denied&role=${role}&actor=${encodeURIComponent(email || '')}`;
+        const html = HtmlTemplates.approvalRequest(req, req.selectedOption, approveLink, rejectLink);
+        sendEmailRich(email, subject, html, null);
+    };
+
+    // CASE 1: requester IS the CEO → only CEO needs to approve. Skip everyone else.
+    if (requesterIsCeo) {
+        sendOne(CEO_EMAIL, 'CEO');
+        return;
+    }
+    // CASE 2: requester IS the CDS → only CDS needs to approve. Skip everyone else.
+    if (requesterIsCds) {
+        sendOne(DIRECTOR_EMAIL, 'CDS');
+        return;
+    }
+
+    // CASE 3: standard flow with deduplication.
+    // Build a plan: email_lower → { email, role } so each address only gets ONE email.
+    // Priority of role assignment: executive (CEO/CDS) outranks NORMAL — if a person is
+    // BOTH the area approver AND CEO/CDS, send them a single email with the executive
+    // role. The completion check (processApprovalFromEmail) recognizes that the executive
+    // approval implicitly satisfies the area requirement when the area approver IS that
+    // executive (effectiveAreaApproved logic).
+    const planned = new Map();
 
     if (requiresExecutiveApproval) {
-        const ceoLinks = getLinks('CEO', CEO_EMAIL);
-        const ceoHtml = HtmlTemplates.approvalRequest(req, req.selectedOption, ceoLinks.approve, ceoLinks.reject);
-        sendEmailRich(CEO_EMAIL, subject, ceoHtml, null);
-
-        const cdsLinks = getLinks('CDS', DIRECTOR_EMAIL);
-        const cdsHtml = HtmlTemplates.approvalRequest(req, req.selectedOption, cdsLinks.approve, cdsLinks.reject);
-        sendEmailRich(DIRECTOR_EMAIL, subject, cdsHtml, null);
+        planned.set(ceoLower, { email: CEO_EMAIL, role: 'CEO' });
+        planned.set(cdsLower, { email: DIRECTOR_EMAIL, role: 'CDS' });
     }
+
+    const approverEmails = String(req.approverEmail || '').split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
+    approverEmails.forEach(function(email) {
+        const lower = email.toLowerCase();
+        if (!planned.has(lower)) {
+            planned.set(lower, { email: email, role: 'NORMAL' });
+        }
+    });
+
+    planned.forEach(function(entry) {
+        sendOne(entry.email, entry.role);
+    });
 }
 
 // --- SECURITY: Analyst whitelist (replaces insecure string-matching) ---
