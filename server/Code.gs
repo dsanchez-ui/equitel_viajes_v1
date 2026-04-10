@@ -1262,55 +1262,25 @@ function registerReservation(requestId, reservationNumber, files, creditCard) {
     if (rowIndex === -1) throw new Error("Solicitud no encontrada");
     const rowNumber = rowIndex + 2;
 
-    // Check if this is a modification (has parent)
+    // Check if this is a modification (has parent) — solo para etiquetar el nombre,
+    // ya NO se anida la carpeta dentro del padre. Toda solicitud (original o
+    // modificación) vive al nivel raíz para que Wendy navegue Drive plano.
     const parentId = String(sheet.getRange(rowNumber, parentIdIdx + 1).getValue()).trim();
     const isModification = parentId && parentId !== '' && parentId !== 'undefined';
 
-    // 1. Handle File Upload — Determine folder location
+    // 1. Handle File Upload — toda carpeta vive en root, sea original o modificación
     const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
     let folder;
-    let parentFolder;
-
-    if (isModification) {
-        // MODIFICATION: Create folder as subfolder inside parent's folder
-        // First, find parent folder in root (starts with parentId)
-        const rootFolders = root.getFolders();
-        while (rootFolders.hasNext()) {
-            const f = rootFolders.next();
-            if (f.getName().indexOf(parentId) === 0) {
-                parentFolder = f;
-                break;
-            }
+    const allFolders = root.getFolders();
+    while (allFolders.hasNext()) {
+        const f = allFolders.next();
+        if (f.getName().indexOf(requestId) === 0) {
+            folder = f;
+            break;
         }
-        if (!parentFolder) {
-            parentFolder = root.createFolder(parentId);
-        }
-
-        // Search for existing child folder inside parent
-        const childFolders = parentFolder.getFolders();
-        while (childFolders.hasNext()) {
-            const f = childFolders.next();
-            if (f.getName().indexOf(requestId) === 0) {
-                folder = f;
-                break;
-            }
-        }
-        if (!folder) {
-            folder = parentFolder.createFolder(requestId);
-        }
-    } else {
-        // ORIGINAL: Create/find folder in root as before
-        const allFolders = root.getFolders();
-        while (allFolders.hasNext()) {
-            const f = allFolders.next();
-            if (f.getName().indexOf(requestId) === 0) {
-                folder = f;
-                break;
-            }
-        }
-        if (!folder) {
-            folder = root.createFolder(requestId);
-        }
+    }
+    if (!folder) {
+        folder = root.createFolder(requestId);
     }
 
     // Upload all reservation files into the folder
@@ -1360,27 +1330,15 @@ function registerReservation(requestId, reservationNumber, files, creditCard) {
         }
     }
 
-    if (isModification) {
-        // Child folder name: requestId - CAMBIO DE parentId - PNR - TC - MES
-        let childFolderName = `${requestId} - CAMBIO DE ${parentId}`;
-        if (reservationNumber) childFolderName += ` - ${reservationNumber}`;
-        if (tcShort) childFolderName += ` - ${tcShort}`;
-        if (monthYear) childFolderName += ` - ${monthYear}`;
-        folder.setName(childFolderName);
-
-        // Annotate parent folder name with CAMBIADA tag (if not already tagged)
-        const currentParentName = parentFolder.getName();
-        if (currentParentName.indexOf('CAMBIADA') === -1) {
-            parentFolder.setName(currentParentName + ' [CAMBIADA]');
-        }
-    } else {
-        // Original folder name: requestId - PNR - TC - MES
-        let newFolderName = requestId;
-        if (reservationNumber) newFolderName += ` - ${reservationNumber}`;
-        if (tcShort) newFolderName += ` - ${tcShort}`;
-        if (monthYear) newFolderName += ` - ${monthYear}`;
-        folder.setName(newFolderName);
-    }
+    // Naming: original = "${requestId} - PNR - TC - MES"
+    //         modificación = "${requestId} - CAMBIO DE ${parentId} - PNR - TC - MES"
+    // Ya NO se anida ni se taggea el padre con [CAMBIADA] — todo plano en root.
+    let newFolderName = requestId;
+    if (isModification) newFolderName += ` - CAMBIO DE ${parentId}`;
+    if (reservationNumber) newFolderName += ` - ${reservationNumber}`;
+    if (tcShort) newFolderName += ` - ${tcShort}`;
+    if (monthYear) newFolderName += ` - ${monthYear}`;
+    folder.setName(newFolderName);
 
     // 3. Update Sheets
     sheet.getRange(rowNumber, resNoIdx + 1).setValue(reservationNumber);
@@ -1811,7 +1769,20 @@ const HtmlTemplates = {
             `;
         }).join('');
 
-        let content = `<p style="margin-bottom: 20px; color: #4b5563;">Se han cargado las opciones de viaje para su solicitud <strong>${request.requestId}</strong>. Por favor revise las imágenes a continuación e ingrese al aplicativo para confirmar su elección.</p>`;
+        let content = `<p style="margin-bottom: 16px; color: #4b5563;">Se han cargado las opciones de viaje para su solicitud <strong>${request.requestId}</strong>. Por favor revise las imágenes a continuación e ingrese al aplicativo para confirmar su elección.</p>`;
+
+        // BANNER: instrucción explícita de indicar categoría
+        content += `
+            <div style="background-color: #fef3c7; border: 1px solid #fde68a; color: #92400e; padding: 14px 16px; margin-bottom: 22px; border-radius: 6px; font-size: 13px; line-height: 1.55;">
+                <strong>⚠️ Importante al describir su selección:</strong><br/>
+                Indique <strong>siempre la categoría</strong> que desea elegir (no solo la letra de la opción). Sin esto, el área de viajes no podrá tramitar su reserva.
+                <ul style="margin: 8px 0 0 18px; padding: 0;">
+                    <li><strong>Vuelo:</strong> categoría tarifaria — ej. Económica, Economy Plus, Premium, Business.</li>
+                    ${request.requiresHotel ? '<li><strong>Hotel:</strong> tipo de habitación — ej. Estándar, Superior, Suite.</li>' : ''}
+                </ul>
+                <div style="margin-top: 8px; font-style: italic;">Ejemplo: "Opción A vuelo de ida en categoría Económica${request.returnDate ? ', Opción C vuelo de vuelta en Economy Plus' : ''}${request.requiresHotel ? ', Opción B hotel habitación Estándar' : ''}."</div>
+            </div>
+        `;
 
         if (flightOptions.length > 0) {
             content += `<h3 style="color: #374151; border-bottom: 2px solid #D71920; padding-bottom: 5px; margin-top:20px;">✈️ Opciones de Vuelo</h3>`;
@@ -2571,52 +2542,21 @@ function createNewRequest(data, emailHtml) {
 
 /**
  * Helper: Get or create a Drive folder for a request.
- * If the request is a modification (has parent ID), the folder is created
- * as a subfolder inside the parent request's folder.
+ * Modificaciones y originales viven al MISMO nivel raíz. El nombre de la
+ * carpeta de una modificación tiene el prefix "CAMBIO DE ${parentId}" que
+ * deja clara la relación visualmente, pero no se anida físicamente. Esto
+ * facilita la navegación de Wendy en Drive (todo en el root, sin subfolders).
  */
 function getOrCreateRequestFolder_(requestId, rowNumber, sheet) {
-    const parentIdIdx = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
-    const parentId = String(sheet.getRange(rowNumber, parentIdIdx + 1).getValue()).trim();
-    const isModification = parentId && parentId !== '' && parentId !== 'undefined';
     const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-
-    if (isModification) {
-        // Find or create parent folder in root
-        let parentFolder;
-        const rootFolders = root.getFolders();
-        while (rootFolders.hasNext()) {
-            const f = rootFolders.next();
-            if (f.getName().indexOf(parentId) === 0) {
-                parentFolder = f;
-                break;
-            }
+    const allFolders = root.getFolders();
+    while (allFolders.hasNext()) {
+        const f = allFolders.next();
+        if (f.getName().indexOf(requestId) === 0) {
+            return f;
         }
-        if (!parentFolder) {
-            parentFolder = root.createFolder(parentId);
-        }
-
-        // Find or create child folder inside parent
-        let folder;
-        const childFolders = parentFolder.getFolders();
-        while (childFolders.hasNext()) {
-            const f = childFolders.next();
-            if (f.getName().indexOf(requestId) === 0) {
-                folder = f;
-                break;
-            }
-        }
-        return folder || parentFolder.createFolder(requestId);
-    } else {
-        // Original request: find or create in root
-        const allFolders = root.getFolders();
-        while (allFolders.hasNext()) {
-            const f = allFolders.next();
-            if (f.getName().indexOf(requestId) === 0) {
-                return f;
-            }
-        }
-        return root.createFolder(requestId);
     }
+    return root.createFolder(requestId);
 }
 
 // NEW FUNCTION: Upload Option Image (v2.7)
@@ -3328,6 +3268,102 @@ function sendReminderEmail(req, toEmail, role) {
     }
 }
 
+/**
+ * RECORDATORIO A USUARIOS PENDIENTES DE SELECCIÓN.
+ *
+ * Recorre solicitudes en estado PENDIENTE_SELECCION y le envía un recordatorio
+ * al solicitante para que ingrese al portal y describa su elección de opción.
+ *
+ * Diseñado para ser ejecutado por un Trigger de Tiempo (sugerido cada 2 horas,
+ * mismo intervalo que sendPendingApprovalReminders). El usuario crea el trigger
+ * manualmente desde el editor GAS:
+ *   Triggers → + Add Trigger → función `sendPendingSelectionReminders`,
+ *   event source = Time-driven, type = Hours timer, every 2 hours.
+ *
+ * Respeta:
+ * - Horario laboral (isWorkingHour) — no spamea fuera de horario
+ * - Fecha de vuelo pasada — skipea solicitudes ya vencidas (abandonadas)
+ * - Mismo asunto que el correo de cargue de opciones → queda en el mismo hilo
+ *   en Gmail, el usuario ve toda la cadena junta (incluyendo las imágenes
+ *   originales). El cuerpo es liviano: solo banner + link al portal, sin
+ *   re-enviar las opciones (las puede ver en el correo anterior del hilo).
+ */
+function sendPendingSelectionReminders() {
+  if (!isWorkingHour()) return;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return;
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
+
+  const today = Utilities.formatDate(new Date(), "America/Bogota", "yyyy-MM-dd");
+  let remindersSent = 0;
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    if (row[statusIdx] !== 'PENDIENTE_SELECCION') continue;
+
+    const request = mapRowToRequest(row);
+    if (!request.requesterEmail) continue;
+
+    // Skip si la fecha de vuelo ya pasó (solicitud abandonada)
+    if (request.departureDate && request.departureDate < today) continue;
+
+    sendUserSelectionReminderEmail_(request);
+    remindersSent++;
+  }
+
+  console.log('Recordatorios de selección enviados: ' + remindersSent);
+}
+
+function sendUserSelectionReminderEmail_(req) {
+  const subject = getStandardSubject(req); // Mismo asunto = mismo hilo en Gmail
+
+  const banner = `
+    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; color: #c2410c; padding: 12px 14px; text-align: left; font-weight: bold; font-size: 14px; margin-bottom: 18px; border-radius: 6px;">
+      ⏰ RECORDATORIO: Tienes opciones de viaje pendientes de seleccionar
+    </div>
+  `;
+
+  const body = `
+    <p style="margin-bottom: 14px; color: #4b5563; font-size: 13px; line-height: 1.55;">
+      Hola, este es un recordatorio amistoso para tu solicitud de viaje
+      <strong>${escapeHtml_(req.requestId)}</strong> con destino
+      <strong>${escapeHtml_(req.destination)}</strong>.
+    </p>
+    <p style="margin-bottom: 14px; color: #4b5563; font-size: 13px; line-height: 1.55;">
+      El área de viajes ya cargó las opciones. Por favor ingresa al portal y
+      describe cuál opción de vuelo${req.requiresHotel ? ' y hotel' : ''} deseas
+      tomar (recuerda <strong>indicar siempre la categoría</strong>: Económica,
+      Premium, Business${req.requiresHotel ? ', tipo de habitación' : ''}, etc.).
+    </p>
+    <div style="background-color: #fef3c7; border: 1px solid #fde68a; color: #92400e; padding: 10px 12px; margin-bottom: 18px; border-radius: 6px; font-size: 12px;">
+      <strong>Tip:</strong> Las opciones (con sus imágenes) están en el correo
+      anterior de este mismo hilo. Solo necesitas ir al portal y escribir tu
+      elección.
+    </div>
+    <div style="text-align: center; margin: 24px 0 8px;">
+      <a href="${PLATFORM_URL}" style="background-color: #D71920; color: white; padding: 12px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 14px; display: inline-block;">INGRESAR Y SELECCIONAR</a>
+    </div>
+  `;
+
+  const html = HtmlTemplates.layout(req.requestId, banner + body, '#c2410c', 'RECORDATORIO DE SELECCIÓN');
+
+  try {
+    MailApp.sendEmail({
+      to: req.requesterEmail,
+      subject: subject,
+      htmlBody: html
+    });
+  } catch (e) {
+    console.error(`Error enviando recordatorio de selección a ${req.requesterEmail} para ${req.requestId}: ${e}`);
+  }
+}
+
 // --- EMAIL HELPERS & TEMPLATES ---
 
 function getStandardSubject(data) {
@@ -3859,15 +3895,29 @@ const HR_MAESTRO_SHEET = getConfig_('HR_MAESTRO_SHEET', 'Hoja 1');
 
 /**
  * Menú "Equitel Viajes" en la barra superior del sheet.
- * Se ejecuta automáticamente cuando alguien abre el spreadsheet.
+ *
+ * GATED: solo se muestra cuando USE_USUARIOS_SHEET === 'true'. Esto asegura
+ * que en producción (donde el switch está apagado), Wendy no ve nada nuevo
+ * en la barra de menús y no puede activar accidentalmente funciones de
+ * Plan 2 que aún no deben estar disponibles.
+ *
+ * Setup inicial (cuando se decide activar Plan 2 en producción):
+ *   1. Abrir el editor de Apps Script
+ *   2. Seleccionar `crearHojaUsuarios` en el dropdown → ▶ Run
+ *   3. Seleccionar `migrarIntegrantesAUsuarios` → ▶ Run (verifica USUARIOS)
+ *   4. Script Properties → agregar USE_USUARIOS_SHEET = 'true'
+ *   5. Recargar el sheet → menú aparece + backend ya lee de USUARIOS
+ *
+ * Rollback: cambiar la propiedad a 'false' (o borrarla) + recargar sheet.
+ * El único modo de cambiar el switch es manualmente desde el editor GAS.
  */
 function onOpen() {
-  const modeLabel = USE_USUARIOS_SHEET ? '⚡ USUARIOS' : '📋 INTEGRANTES';
+  if (!USE_USUARIOS_SHEET) return; // Switch apagado → menú invisible, Plan 2 inerte
   SpreadsheetApp.getUi()
     .createMenu('Equitel Viajes')
     .addItem('Gestionar Usuarios (Sidebar)', 'abrirSidebarUsuarios')
     .addSeparator()
-    .addItem('Modo activo: ' + modeLabel, 'mostrarModoActivo')
+    .addItem('Modo activo: ⚡ USUARIOS', 'mostrarModoActivo')
     .addSeparator()
     .addItem('1. Crear hoja USUARIOS', 'crearHojaUsuarios')
     .addItem('2. Migrar desde INTEGRANTES', 'migrarIntegrantesAUsuarios')
@@ -4001,11 +4051,21 @@ function sincronizarConMaestroRH() {
 }
 
 function abrirSidebarUsuarios() {
+  // Defense-in-depth: el menú ya está gateado en onOpen, pero si alguien
+  // llama esta función directo del editor GAS sin haber flipado el switch,
+  // no la dejamos correr para evitar estados inconsistentes.
+  if (!USE_USUARIOS_SHEET) {
+    SpreadsheetApp.getUi().alert(
+      'Plan 2 (USUARIOS) no está activo.\n\n' +
+      'Para activarlo: Script Properties → USE_USUARIOS_SHEET = "true".'
+    );
+    return;
+  }
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss.getSheetByName(SHEET_NAME_USUARIOS)) {
     SpreadsheetApp.getUi().alert(
       'La hoja USUARIOS aún no existe.\n\n' +
-      'Ejecuta primero: Equitel Viajes → "1. Crear hoja USUARIOS".'
+      'Ejecuta primero: crearHojaUsuarios() desde el editor de Apps Script.'
     );
     return;
   }

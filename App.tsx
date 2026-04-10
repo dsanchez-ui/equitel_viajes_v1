@@ -412,7 +412,7 @@ const App: React.FC = () => {
       )}
 
       {role === UserRole.ANALYST && (
-        <AdminDashboard requests={requests} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={setSelectedRequest} />
+        <AdminDashboard requests={requests} integrantes={integrantes} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={setSelectedRequest} />
       )}
 
       {selectedRequest && (

@@ -29,8 +29,11 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
     const [confirmedOptions, setConfirmedOptions] = useState<Option[]>(request.analystOptions || []);
     // Pending options: local only, not yet in Drive
     const [pendingOptions, setPendingOptions] = useState<PendingOption[]>([]);
-
-    const [deletingId, setDeletingId] = useState<string | null>(null);
+    // Marked-for-deletion driveIds: NO se borran de Drive hasta que el usuario
+    // confirme. Si cancela el modal, no se ejecuta ningún borrado. Esto evita
+    // el bug anterior donde click en X borraba inmediatamente y dejaba el modal
+    // en estado inconsistente.
+    const [markedForDeletion, setMarkedForDeletion] = useState<Set<string>>(new Set());
 
     const flightInputRef = useRef<HTMLInputElement>(null);
     const hotelInputRef = useRef<HTMLInputElement>(null);
@@ -48,9 +51,9 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
 
     const getDriveImageUrl = (driveId: string) => `https://drive.google.com/uc?export=view&id=${driveId}`;
 
-    // Count all options of a type (confirmed + pending) for letter assignment
+    // Count all options of a type (confirmed-no-deleted + pending) for letter assignment
     const getNextLetter = (type: 'FLIGHT' | 'HOTEL') => {
-        const confirmedCount = confirmedOptions.filter(o => o.type === type).length;
+        const confirmedCount = confirmedOptions.filter(o => o.type === type && !markedForDeletion.has(o.driveId)).length;
         const pendingCount = pendingOptions.filter(o => o.type === type).length;
         return String.fromCharCode(65 + confirmedCount + pendingCount);
     };
@@ -107,23 +110,15 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
         }
     };
 
-    // Delete a confirmed option (already in Drive)
-    const removeConfirmedOption = async (index: number) => {
-        const opt = confirmedOptions[index];
-        if (!opt) return;
-        setDeletingId(opt.id);
-        try {
-            await gasService.deleteOptionFile(opt.driveId);
-            setConfirmedOptions(prev => prev.filter((_, i) => i !== index));
-        } catch (err) {
-            setDialog({
-                isOpen: true, title: 'Error al eliminar',
-                message: 'No se pudo eliminar el archivo de Drive: ' + err,
-                type: 'ALERT', onConfirm: closeDialog
-            });
-        } finally {
-            setDeletingId(null);
-        }
+    // Marca una opción confirmada para borrado (LOCAL ONLY, no toca Drive todavía)
+    // Si el usuario cancela el modal, NO se borra nada de Drive.
+    const toggleConfirmedDeletion = (driveId: string) => {
+        setMarkedForDeletion(prev => {
+            const next = new Set(prev);
+            if (next.has(driveId)) next.delete(driveId);
+            else next.add(driveId);
+            return next;
+        });
     };
 
     // Delete a pending option (local only, nothing to clean up)
@@ -131,7 +126,9 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
         setPendingOptions(prev => prev.filter((_, i) => i !== index));
     };
 
-    const totalCount = confirmedOptions.length + pendingOptions.length;
+    // Total visible (excluyendo las marcadas para borrar)
+    const visibleConfirmedCount = confirmedOptions.filter(o => !markedForDeletion.has(o.driveId)).length;
+    const totalCount = visibleConfirmedCount + pendingOptions.length;
 
     const handleSubmit = () => {
         if (totalCount === 0) {
@@ -143,9 +140,18 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
             return;
         }
 
+        const deleteCount = markedForDeletion.size;
+        const uploadCount = pendingOptions.length;
+        const summaryParts = [];
+        if (uploadCount > 0) summaryParts.push(`${uploadCount} nueva(s)`);
+        if (deleteCount > 0) summaryParts.push(`${deleteCount} eliminada(s)`);
+        const summary = summaryParts.length > 0
+            ? `Cambios pendientes: ${summaryParts.join(' y ')}.\n\n`
+            : '';
+
         setDialog({
             isOpen: true, title: 'Enviar Opciones',
-            message: `Se enviarán ${totalCount} opciones visuales al usuario.\n\nEl usuario recibirá un correo con las imágenes y deberá ingresar a la plataforma para describir su elección.`,
+            message: `${summary}Se enviarán ${totalCount} opciones visuales al usuario.\n\nEl usuario recibirá un correo con las imágenes y deberá ingresar a la plataforma para describir su elección.`,
             type: 'CONFIRM', onConfirm: executeSubmission, onCancel: closeDialog
         });
     };
@@ -154,7 +160,21 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
         closeDialog();
         setLoading(true);
         try {
-            // 1. Upload all pending options to Drive
+            // 1. Aplicar borrados marcados (Drive trash). Errores se loggean
+            //    pero no abortan el flujo — el archivo huérfano en Drive es
+            //    inofensivo y el siguiente updateRequestStatus reescribirá el
+            //    JSON de opciones sin la referencia.
+            const deletionErrors: string[] = [];
+            for (const driveId of markedForDeletion) {
+                try {
+                    await gasService.deleteOptionFile(driveId);
+                } catch (err) {
+                    deletionErrors.push(`${driveId}: ${err}`);
+                    console.error('Error eliminando opción del Drive:', driveId, err);
+                }
+            }
+
+            // 2. Upload all pending options to Drive
             const uploadedOptions: Option[] = [];
             for (const pending of pendingOptions) {
                 const uploaded = await gasService.uploadOptionImage(
@@ -168,17 +188,22 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                 uploadedOptions.push(uploaded);
             }
 
-            // 2. Combine confirmed + newly uploaded
-            const allOptions = [...confirmedOptions, ...uploadedOptions];
+            // 3. Combine confirmed-survivors + newly uploaded
+            const survivors = confirmedOptions.filter(o => !markedForDeletion.has(o.driveId));
+            const allOptions = [...survivors, ...uploadedOptions];
 
-            // 3. Update request status with all options
+            // 4. Update request status with the final list (overwrites OPCIONES JSON)
             await gasService.updateRequestStatus(request.requestId, RequestStatus.PENDING_SELECTION, {
                 analystOptions: allOptions
             });
 
+            const successMsg = deletionErrors.length > 0
+                ? `Las opciones han sido enviadas al usuario correctamente.\n\nNota: ${deletionErrors.length} archivo(s) en Drive no se pudieron eliminar (referencia ya removida del registro, los huérfanos son inofensivos).`
+                : 'Las opciones han sido enviadas al usuario correctamente.';
+
             setDialog({
                 isOpen: true, title: 'Envío Exitoso',
-                message: 'Las opciones han sido enviadas al usuario correctamente.',
+                message: successMsg,
                 type: 'SUCCESS',
                 onConfirm: () => { closeDialog(); onSuccess(); }
             });
@@ -193,8 +218,8 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
         }
     };
 
-    const flightCount = confirmedOptions.filter(o => o.type === 'FLIGHT').length + pendingOptions.filter(o => o.type === 'FLIGHT').length;
-    const hotelCount = confirmedOptions.filter(o => o.type === 'HOTEL').length + pendingOptions.filter(o => o.type === 'HOTEL').length;
+    const flightCount = confirmedOptions.filter(o => o.type === 'FLIGHT' && !markedForDeletion.has(o.driveId)).length + pendingOptions.filter(o => o.type === 'FLIGHT').length;
+    const hotelCount = confirmedOptions.filter(o => o.type === 'HOTEL' && !markedForDeletion.has(o.driveId)).length + pendingOptions.filter(o => o.type === 'HOTEL').length;
 
     return (
         <>
@@ -314,11 +339,14 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                 )}
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {/* CONFIRMED OPTIONS (already in Drive) */}
-                                    {confirmedOptions.map((opt, idx) => (
+                                    {/* CONFIRMED OPTIONS (already in Drive). Las marcadas para borrar se muestran tachadas con botón Restaurar. El borrado real solo ocurre en Confirmar y Enviar. */}
+                                    {confirmedOptions.map((opt, idx) => {
+                                        const isMarkedForDelete = markedForDeletion.has(opt.driveId);
+                                        return (
                                         <div
                                             key={`confirmed-${idx}`}
-                                            className={`p-2 rounded shadow relative group border-2 ${opt.type === 'HOTEL' ? 'bg-white border-transparent' :
+                                            className={`p-2 rounded shadow relative group border-2 ${isMarkedForDelete ? 'bg-red-50 border-red-300 opacity-60' :
+                                                opt.type === 'HOTEL' ? 'bg-white border-transparent' :
                                                 opt.direction === 'VUELTA' ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'
                                                 }`}
                                         >
@@ -331,19 +359,33 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                                         {opt.direction === 'VUELTA' ? 'VUELTA' : 'IDA'}
                                                     </div>
                                                 )}
+                                                {isMarkedForDelete && (
+                                                    <div className="bg-red-600 text-white text-[10px] px-2 py-1 rounded font-bold">
+                                                        SE ELIMINARÁ
+                                                    </div>
+                                                )}
                                             </div>
-                                            <button
-                                                onClick={() => removeConfirmedOption(idx)}
-                                                disabled={deletingId === opt.id}
-                                                className="absolute top-2 right-2 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold opacity-0 group-hover:opacity-100 transition shadow disabled:opacity-50 z-[1]"
-                                                title="Eliminar"
-                                            >
-                                                {deletingId === opt.id ? '...' : '\u00d7'}
-                                            </button>
+                                            {isMarkedForDelete ? (
+                                                <button
+                                                    onClick={() => toggleConfirmedDeletion(opt.driveId)}
+                                                    className="absolute top-2 right-2 bg-blue-600 text-white text-[10px] px-2 py-1 rounded font-bold opacity-100 transition shadow z-[1] hover:bg-blue-700"
+                                                    title="Restaurar (no eliminar)"
+                                                >
+                                                    ↺ Restaurar
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => toggleConfirmedDeletion(opt.driveId)}
+                                                    className="absolute top-2 right-2 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center font-bold opacity-0 group-hover:opacity-100 transition shadow z-[1]"
+                                                    title="Marcar para eliminar (reversible hasta confirmar)"
+                                                >
+                                                    {'\u00d7'}
+                                                </button>
+                                            )}
                                             <img
                                                 src={getDriveImageUrl(opt.driveId)}
                                                 alt={`Opción ${opt.id}`}
-                                                className="w-full h-40 object-cover rounded mb-2 border border-white"
+                                                className={`w-full h-40 object-cover rounded mb-2 border border-white ${isMarkedForDelete ? 'grayscale' : ''}`}
                                                 referrerPolicy="no-referrer"
                                                 onError={(e) => {
                                                     const img = e.currentTarget;
@@ -353,9 +395,10 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                                     }
                                                 }}
                                             />
-                                            <p className="text-xs text-gray-500 truncate" title={opt.name}>{opt.name}</p>
+                                            <p className={`text-xs truncate ${isMarkedForDelete ? 'text-red-600 line-through' : 'text-gray-500'}`} title={opt.name}>{opt.name}</p>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
 
                                     {/* PENDING OPTIONS (local only, not in Drive yet) */}
                                     {pendingOptions.map((pending, idx) => (

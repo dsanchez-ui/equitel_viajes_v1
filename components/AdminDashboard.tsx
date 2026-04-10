@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { TravelRequest, RequestStatus } from '../types';
+import React, { useMemo, useState } from 'react';
+import { TravelRequest, RequestStatus, Integrant } from '../types';
 import { OptionUploadModal } from './OptionUploadModal';
 import { SupportUploadModal } from './SupportUploadModal';
 import { ReservationModal } from './ReservationModal';
@@ -13,13 +13,68 @@ import { getDaysDiff, formatToDDMMYYYY } from '../utils/dateUtils';
 
 interface AdminDashboardProps {
   requests: TravelRequest[];
+  integrantes: Integrant[];
   onRefresh: () => void;
   isLoading: boolean;
   onViewRequest: (req: TravelRequest) => void;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefresh, isLoading, onViewRequest }) => {
+/**
+ * Una solicitud es PRIORITARIA cuando el solicitante o algún pasajero es
+ * su propio aprobador (autoaprobador). Esto incluye CEO, Director CDS, y
+ * cualquier persona en la lista de integrantes cuyo aprobador asignado
+ * coincide con su propio correo. Las prioritarias merecen tratamiento
+ * preferencial porque suelen ser personas de dirección con urgencias.
+ */
+const isRequestPriority = (req: TravelRequest, integrantes: Integrant[]): boolean => {
+  // Caso A: el solicitante está en la lista de aprobadores asignados a la solicitud
+  const requesterLower = (req.requesterEmail || '').toLowerCase().trim();
+  if (requesterLower) {
+    const approverEmails = (req.approverEmail || '')
+      .toLowerCase()
+      .split(',')
+      .map(e => e.trim())
+      .filter(Boolean);
+    if (approverEmails.includes(requesterLower)) return true;
+  }
+
+  // Caso B: el backend ya marcó al solicitante como CEO/CDS (siempre prioritario)
+  if (req.requesterIsCeo || req.requesterIsCds) return true;
+
+  // Caso C: alguno de los pasajeros es su propio aprobador según el directorio
+  if (integrantes && integrantes.length > 0 && req.passengers && req.passengers.length > 0) {
+    for (const p of req.passengers) {
+      const matches = integrantes.filter(i =>
+        (p.idNumber && i.idNumber === p.idNumber) ||
+        (p.email && i.email && i.email.toLowerCase() === p.email.toLowerCase())
+      );
+      for (const m of matches) {
+        if (m.approverEmail && m.email && m.email.toLowerCase() === m.approverEmail.toLowerCase()) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+};
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integrantes, onRefresh, isLoading, onViewRequest }) => {
   const [filter, setFilter] = useState<string>('ALL');
+  const [showOnlyPriority, setShowOnlyPriority] = useState<boolean>(false);
+
+  // Pre-compute priority flag por requestId para evitar O(N*M) en cada render
+  const priorityMap = useMemo(() => {
+    const m = new Map<string, boolean>();
+    requests.forEach(r => m.set(r.requestId, isRequestPriority(r, integrantes)));
+    return m;
+  }, [requests, integrantes]);
+
+  const priorityCount = useMemo(() => {
+    let count = 0;
+    priorityMap.forEach(v => { if (v) count++; });
+    return count;
+  }, [priorityMap]);
   const [selectedRequestForOptions, setSelectedRequestForOptions] = useState<TravelRequest | null>(null);
   const [selectedRequestForSupports, setSelectedRequestForSupports] = useState<TravelRequest | null>(null);
   const [selectedRequestForReservation, setSelectedRequestForReservation] = useState<TravelRequest | null>(null);
@@ -47,6 +102,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
   const closeDialog = () => setDialog({ ...dialog, isOpen: false });
 
   const filteredRequests = requests.filter(r => {
+    if (showOnlyPriority && !priorityMap.get(r.requestId)) return false;
     if (filter === 'ALL') return true;
     return r.status === filter;
   });
@@ -218,9 +274,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Toggle persistente: ver solo prioritarias (autoaprobadores) */}
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => setShowOnlyPriority(prev => !prev)}
+          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold border transition ${showOnlyPriority
+            ? 'bg-amber-400 text-amber-900 border-amber-500 shadow-sm'
+            : 'bg-white text-gray-600 border-gray-300 hover:bg-amber-50 hover:border-amber-300'
+            }`}
+          title="Mostrar solo solicitudes de autoaprobadores (CEO, CDS, dirección, etc.)"
+        >
+          <span>⭐</span>
+          {showOnlyPriority ? `Mostrando solo prioritarias (${priorityCount})` : `Ver solo prioritarias (${priorityCount})`}
+        </button>
+        {showOnlyPriority && (
+          <span className="text-xs text-gray-500 italic">Combinable con los filtros de estado abajo</span>
+        )}
+      </div>
+
+      {/* Filters — PENDIENTE_CONFIRMACION_COSTO removido del filtro visual */}
+      {/* (el estado sigue existiendo en el flujo, solo no aparece como pill) */}
       <div className="flex gap-2 pb-4 overflow-x-auto">
-        {['ALL', ...Object.values(RequestStatus)].map(s => (
+        {['ALL', ...Object.values(RequestStatus).filter(s => s !== RequestStatus.PENDING_CONFIRMACION_COSTO)].map(s => (
           <button
             key={s}
             onClick={() => setFilter(s)}
@@ -267,10 +342,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, onRefr
                         const anticipationDays = getDaysDiff(req.timestamp, req.departureDate);
                         const remainingDays = getDaysDiff(new Date(), req.departureDate);
                         const isAbandoned = remainingDays < 0 && !['RESERVADO', 'PROCESADO', 'PENDIENTE_ANALISIS_CAMBIO'].includes(req.status);
+                        const isPriority = priorityMap.get(req.requestId) || false;
 
                         return (
-                          <tr key={req.requestId} className={isAbandoned ? 'opacity-60 grayscale bg-gray-50' : ''}>
+                          <tr key={req.requestId} className={isAbandoned ? 'opacity-60 grayscale bg-gray-50' : (isPriority ? 'bg-amber-50' : '')}>
                             <td className="whitespace-nowrap px-3 py-4 text-sm font-bold text-gray-900">
+                              {isPriority && (
+                                <span
+                                  className="inline-block mr-1 text-amber-500 text-base align-middle"
+                                  title="Prioritaria — Autoaprobador (CEO/CDS/Dirección o usuario que se aprueba a sí mismo)"
+                                >⭐</span>
+                              )}
                               {req.requestId}
                               {req.relatedRequestId && (
                                 <div className="text-xs font-normal text-blue-600 mt-1">

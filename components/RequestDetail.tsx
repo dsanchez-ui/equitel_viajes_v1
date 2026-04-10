@@ -514,14 +514,29 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                 {isSelectionPhase && (
                                     <div className="bg-yellow-50 p-6 rounded-lg border-2 border-yellow-200 mt-6 shadow-md">
                                         <h4 className="text-lg font-bold text-yellow-800 mb-2">✅ Realice su Selección</h4>
-                                        <p className="text-sm text-yellow-700 mb-4">
-                                            Por favor revise las imágenes de arriba y escriba detalladamente cuál opción de vuelo y hotel desea tomar.
-                                            <br /><span className="italic opacity-80">Ej: "Elijo el vuelo de la Opción A (Avianca 8am) y el Hotel de la Opción B (Ibis)."</span>
+                                        <p className="text-sm text-yellow-700 mb-3">
+                                            Revise las imágenes de arriba y escriba detalladamente cuál opción de vuelo {request.requiresHotel ? 'y hotel ' : ''}desea tomar.
                                         </p>
+
+                                        {/* Recordatorio claro de incluir CATEGORÍA */}
+                                        <div className="bg-amber-100 border border-amber-300 rounded p-3 mb-4 text-xs text-amber-900 leading-relaxed">
+                                            <strong>⚠️ Importante:</strong> indique siempre la <strong>categoría</strong> que elige, no solo la letra de la opción.
+                                            <ul className="mt-1 ml-4 list-disc">
+                                                <li><strong>Vuelo:</strong> Económica, Economy Plus, Premium, Business...</li>
+                                                {request.requiresHotel && <li><strong>Hotel:</strong> Estándar, Superior, Suite...</li>}
+                                            </ul>
+                                            <div className="mt-2 italic">
+                                                Ej: "Opción A vuelo de ida en categoría Económica{request.returnDate ? ', Opción C vuelta en Economy Plus' : ''}{request.requiresHotel ? ', Opción B hotel habitación Estándar' : ''}."
+                                            </div>
+                                        </div>
+
+                                        <label className="block text-xs font-bold uppercase text-yellow-800 mb-1 tracking-wide">
+                                            Su selección (incluya categoría)
+                                        </label>
                                         <textarea
                                             className="w-full p-3 border border-yellow-300 rounded focus:ring-2 focus:ring-yellow-500 text-gray-900 bg-white"
-                                            rows={3}
-                                            placeholder="Escriba aquí su elección..."
+                                            rows={4}
+                                            placeholder={`Ej: Opción A vuelo de ida en categoría Económica${request.returnDate ? ', Opción C vuelta Economy Plus' : ''}${request.requiresHotel ? ', Opción B hotel habitación Estándar' : ''}...`}
                                             value={userSelectionText}
                                             onChange={(e) => setUserSelectionText(e.target.value)}
                                         />
