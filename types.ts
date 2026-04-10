@@ -169,3 +169,60 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
 }
+
+// =====================================================================
+// MÉTRICAS — admin-only dashboard
+// =====================================================================
+
+export interface MetricsFilters {
+  requestId?: string;
+  dateFrom?: string; // ISO date
+  dateTo?: string;
+}
+
+export interface ApprovalMetric {
+  role: string; // 'NORMAL' | 'CEO' | 'CDS'
+  email: string;
+  timeMinutes: number | null;
+}
+
+export interface RequestMetrics {
+  requestId: string;
+  requesterEmail: string;
+  destination: string;
+  company: string;
+  status: string;
+  created: string | null;
+  timeToOptionsMinutes: number | null;
+  timeToSelectionMinutes: number | null;
+  timeToCostConfirmMinutes: number | null;
+  timeToFullApprovalMinutes: number | null;
+  timeToReservationMinutes: number | null;
+  totalCycleMinutes: number | null;
+  approvals: ApprovalMetric[];
+  hasEvents: boolean;
+}
+
+export interface ApproverPerformance {
+  email: string;
+  role: string;
+  count: number;
+  avgTimeMinutes: number;
+}
+
+export interface MetricsAggregates {
+  count: number;
+  countWithCompleteData: number;
+  avgTimeToOptionsMinutes: number | null;
+  avgTimeToSelectionMinutes: number | null;
+  avgTimeToCostConfirmMinutes: number | null;
+  avgTimeToFullApprovalMinutes: number | null;
+  avgTimeToReservationMinutes: number | null;
+  avgTotalCycleMinutes: number | null;
+  approverPerformance: ApproverPerformance[];
+}
+
+export interface MetricsResponse {
+  perRequest: RequestMetrics[];
+  aggregates: MetricsAggregates;
+}

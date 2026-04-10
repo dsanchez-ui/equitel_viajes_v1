@@ -8,6 +8,7 @@ import { CostConfirmationModal } from './CostConfirmationModal';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { PinEntryModal } from './PinEntryModal';
 import { CancellationModal } from './CancellationModal';
+import { MetricsPanel } from './MetricsPanel';
 import { gasService } from '../services/gasService';
 import { getDaysDiff, formatToDDMMYYYY } from '../utils/dateUtils';
 
@@ -82,6 +83,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
   const [selectedRequestForCancellation, setSelectedRequestForCancellation] = useState<TravelRequest | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [showPinChangeModal, setShowPinChangeModal] = useState(false);
+  const [showMetricsPanel, setShowMetricsPanel] = useState(false);
 
   // Dialog State
   const [dialog, setDialog] = useState<{
@@ -256,6 +258,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
           <p className="mt-2 text-sm text-gray-700">Gestione cotizaciones, opciones y procesos de aprobación.</p>
         </div>
         <div className="mt-4 sm:mt-0 sm:ml-16 sm:flex-none flex gap-2">
+          <button
+            onClick={() => setShowMetricsPanel(true)}
+            disabled={isLoading}
+            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 gap-2"
+            title="Ver métricas de tiempos por etapa"
+          >
+            <span>📊</span>
+            Métricas
+          </button>
           <button
             onClick={() => setShowPinChangeModal(true)}
             disabled={isLoading}
@@ -561,6 +572,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
           onClose={() => setSelectedRequestForCancellation(null)}
           onSubmit={handleCancelRequest}
         />
+      )}
+
+      {showMetricsPanel && (
+        <MetricsPanel onClose={() => setShowMetricsPanel(false)} />
       )}
     </div>
   );

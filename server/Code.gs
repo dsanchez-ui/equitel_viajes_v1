@@ -81,7 +81,8 @@ const HEADERS_REQUESTS = [
   "ES INTERNACIONAL", "VIOLACION POLITICA",
   "APROBADO CDS", "APROBADO CEO",
   "SELECCION_TEXTO", "COSTO_FINAL_TIQUETES", "COSTO_FINAL_HOTEL",
-  "ES_CAMBIO_CON_COSTO", "FECHA_SOLICITUD_PADRE" // Nuevos headers para trazabilidad de cambios
+  "ES_CAMBIO_CON_COSTO", "FECHA_SOLICITUD_PADRE", // Nuevos headers para trazabilidad de cambios
+  "EVENTOS_JSON" // Métricas: timestamps de cada evento del ciclo (created, optionsUploaded, selectionMade, costConfirmed, approvals, fullyApproved, reservationRegistered)
 ];
 
 // --- SETUP FUNCTION ---
@@ -219,7 +220,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'getMetrics'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -245,6 +246,7 @@ function dispatch(action, payload) {
       case 'getSites': result = getSites(); break;
       case 'getCoApproverRules': result = getCoApproverRules_(); break;
       case 'getExecutiveEmails': result = getExecutiveEmails(); break;
+      case 'getMetrics': result = getMetrics(payload.filters || {}); break;
       // SECURITY: Server-side analyst check
       case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
       case 'getMyRequests': result = getRequestsByEmail(currentUserEmail); break;
@@ -1091,12 +1093,17 @@ function processApprovalFromEmail(e) {
           
           if (alreadyDecided) {
                return renderMessagePage(
-                  'Decisión Previa Detectada', 
+                  'Decisión Previa Detectada',
                   `Usted ya había registrado una decisión para esta solicitud anteriormente (Fecha: ${escapeHtml_(previousDecisionDate) || 'Desconocida'}).<br/>No se han realizado cambios.`,
                   '#374151'
               );
           }
-          
+
+          // METRICS: registrar evento de aprobación (solo si es approval, no denial)
+          if (isApproved) {
+              _recordEvent_(id, 'approval', { role: role, email: approverEmail });
+          }
+
           SpreadsheetApp.flush(); // Ensure log is written before potential denial return
 
           // CHECK IF ALREADY ADVANCED - IF SO, STOP HERE
@@ -1195,10 +1202,12 @@ function processApprovalFromEmail(e) {
           }
 
           if (isFullyApproved) {
+              // METRICS: registrar evento de "todas las aprobaciones completas"
+              _recordEvent_(id, 'fullyApproved');
               // This triggers the final status update, which also calculates Q TKT etc.
               updateRequestStatus(id, 'APROBADO', {});
               return renderMessagePage(
-                  'Aprobación Completa', 
+                  'Aprobación Completa',
                   `Su aprobación ha sido registrada. La solicitud ha completado todo el flujo de aprobaciones.`,
                   '#059669'
               );
@@ -1384,6 +1393,9 @@ function registerReservation(requestId, reservationNumber, files, creditCard) {
             htmlBody: html
         });
     } catch(e) { console.error("Error sending reservation email: " + e); }
+
+    // METRICS: registrar evento de reserva completada
+    _recordEvent_(requestId, 'reservationRegistered');
 
     return true;
 }
@@ -2528,9 +2540,12 @@ function createNewRequest(data, emailHtml) {
   sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
   // --------------------------------------------------------------------------
 
+  // METRICS: registrar evento de creación
+  _recordEvent_(id, 'created');
+
   data.approverEmail = approverEmail;
   data.approverName = approverName;
-  
+
   if (emailHtml) {
       sendRequestEmailWithHtml(data, id, emailHtml);
   } else {
@@ -2695,14 +2710,16 @@ function updateRequestStatus(id, status, payload) {
        }
    }
 
-   // EMAILS
+   // EMAILS + METRICS
    if (status === 'PENDIENTE_SELECCION') {
+      _recordEvent_(id, 'optionsUploaded'); // métricas: analista cargó opciones
       const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
       sendOptionsToRequester(fullReq.requesterEmail, fullReq, payload.analystOptions);
    }
 
    // NEW: NOTIFY ADMIN WHEN USER MAKES SELECTION
    if (status === 'PENDIENTE_CONFIRMACION_COSTO') {
+      _recordEvent_(id, 'selectionMade'); // métricas: usuario describió su selección
       const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
       // The payload contains the new selection details, ensure it's in the object for the email
       if (payload && payload.selectionDetails) {
@@ -2710,8 +2727,9 @@ function updateRequestStatus(id, status, payload) {
       }
       sendSelectionNotificationToAdmin(fullReq);
    }
-   
+
    if (status === 'PENDIENTE_APROBACION') {
+      _recordEvent_(id, 'costConfirmed'); // métricas: analista confirmó costos
       // This is now triggered AFTER Admin inputs costs
       const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
       sendApprovalRequestEmail(fullReq);
@@ -4855,5 +4873,274 @@ function usuarios_getAnomalias() {
     sinAprobador: sinAprobador,
     correoNoCorporativo: correoNoCorporativo,
     aprobadorNoResuelto: aprobadorNoResuelto
+  };
+}
+
+// =====================================================================
+// MÉTRICAS — event tracking + aggregation (admin-only panel)
+// =====================================================================
+// Eventos registrados en col EVENTOS_JSON de Nueva Base Solicitudes:
+//   created             — al crear la solicitud
+//   optionsUploaded     — analista carga opciones (PENDIENTE_SELECCION)
+//   selectionMade       — usuario describe su selección (PENDIENTE_CONFIRMACION_COSTO)
+//   costConfirmed       — analista confirma costos (PENDIENTE_APROBACION)
+//   approvals.{role}    — cada vez que un aprobador clickea (NORMAL/CEO/CDS)
+//   fullyApproved       — cuando se completan todas las aprobaciones requeridas
+//   reservationRegistered — analista registra la reserva (RESERVADO)
+//
+// Las solicitudes anteriores al deploy no tendrán EVENTOS_JSON → métricas
+// muestran "sin datos" para esos. De aquí en adelante, todo se rastrea.
+// =====================================================================
+
+const EVENTOS_JSON_HEADER = 'EVENTOS_JSON';
+
+/**
+ * Registra un evento en EVENTOS_JSON de la solicitud. Defensivo: si la
+ * columna no existe (setupDatabase no se corrió post-deploy), o si hay
+ * cualquier error, NO lanza excepción — solo loguea. Los flujos
+ * principales NUNCA deben fallar por culpa de las métricas.
+ *
+ * @param {string} requestId  ID de la solicitud
+ * @param {string} eventKey   'created' | 'optionsUploaded' | 'selectionMade' |
+ *                            'costConfirmed' | 'approval' | 'fullyApproved' |
+ *                            'reservationRegistered'
+ * @param {object} [data]     Para 'approval': { role, email }. Resto: ignorado.
+ */
+function _recordEvent_(requestId, eventKey, data) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    if (!sheet) return;
+
+    const lastCol = sheet.getLastColumn();
+    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    const eventsCol = headers.indexOf(EVENTOS_JSON_HEADER);
+    if (eventsCol < 0) {
+      console.warn('METRICS: columna ' + EVENTOS_JSON_HEADER + ' no existe. Ejecuta setupDatabase() para agregarla.');
+      return;
+    }
+
+    const idIdx = HEADERS_REQUESTS.indexOf('ID RESPUESTA');
+    const lastRow = sheet.getLastRow();
+    if (lastRow < 2) return;
+    const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
+    const rowIndex = ids.map(String).indexOf(String(requestId));
+    if (rowIndex === -1) return;
+    const rowNumber = rowIndex + 2;
+
+    const existingRaw = sheet.getRange(rowNumber, eventsCol + 1).getValue();
+    let events = {};
+    if (existingRaw) {
+      try { events = JSON.parse(existingRaw); } catch (e) { events = {}; }
+    }
+
+    const nowIso = new Date().toISOString();
+    if (eventKey === 'approval') {
+      events.approvals = events.approvals || {};
+      const role = (data && data.role) || 'UNKNOWN';
+      // Solo registra la PRIMERA aprobación de cada rol (consistente con
+      // la lógica de "first wins" del flujo de aprobación existente).
+      if (!events.approvals[role]) {
+        events.approvals[role] = {
+          email: (data && data.email) || '',
+          at: nowIso
+        };
+      }
+    } else {
+      // Solo registra la primera vez que se dispara el evento.
+      // Si el evento ya existe, no lo sobrescribe (evita falsear tiempos
+      // si una solicitud transita un estado más de una vez).
+      if (!events[eventKey]) {
+        events[eventKey] = nowIso;
+      }
+    }
+
+    sheet.getRange(rowNumber, eventsCol + 1).setValue(JSON.stringify(events));
+  } catch (e) {
+    // Nunca propagar — métricas son non-critical
+    console.error('METRICS: error registrando evento ' + eventKey + ' para ' + requestId + ': ' + e);
+  }
+}
+
+/**
+ * Lee toda la base de solicitudes, parsea EVENTOS_JSON de cada una, y
+ * devuelve métricas por solicitud + agregados. Filtros opcionales por
+ * rango de fecha (created) o por requestId (substring match).
+ *
+ * @param {object} filters  { requestId?, dateFrom?, dateTo? } — fechas en ISO
+ * @returns {{ perRequest: array, aggregates: object }}
+ */
+function getMetrics(filters) {
+  filters = filters || {};
+  const requestIdFilter = filters.requestId ? String(filters.requestId).trim().toLowerCase() : '';
+  const dateFrom = filters.dateFrom ? new Date(filters.dateFrom) : null;
+  const dateTo = filters.dateTo ? new Date(filters.dateTo) : null;
+  if (dateTo) dateTo.setHours(23, 59, 59, 999);
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return { perRequest: [], aggregates: _emptyAggregates_() };
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { perRequest: [], aggregates: _emptyAggregates_() };
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const eventsCol = headers.indexOf(EVENTOS_JSON_HEADER);
+
+  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  const idIdx = HEADERS_REQUESTS.indexOf('ID RESPUESTA');
+  const requesterIdx = HEADERS_REQUESTS.indexOf('CORREO ENCUESTADO');
+  const destinationIdx = HEADERS_REQUESTS.indexOf('CIUDAD DESTINO');
+  const companyIdx = HEADERS_REQUESTS.indexOf('EMPRESA');
+  const statusIdx = HEADERS_REQUESTS.indexOf('STATUS');
+  const dateIdx = HEADERS_REQUESTS.indexOf('FECHA SOLICITUD');
+
+  const perRequest = [];
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const requestId = String(row[idIdx] || '').trim();
+    if (!requestId) continue;
+
+    if (requestIdFilter && requestId.toLowerCase().indexOf(requestIdFilter) === -1) continue;
+
+    // Date filter usa FECHA SOLICITUD (la fecha original de creación en el sheet)
+    let requestDate = row[dateIdx];
+    if (!(requestDate instanceof Date)) requestDate = new Date(requestDate);
+    const isValidDate = requestDate instanceof Date && !isNaN(requestDate.getTime());
+    if (dateFrom && isValidDate && requestDate < dateFrom) continue;
+    if (dateTo && isValidDate && requestDate > dateTo) continue;
+
+    let events = {};
+    if (eventsCol >= 0 && row[eventsCol]) {
+      try { events = JSON.parse(row[eventsCol]); } catch (e) {}
+    }
+
+    // Fallback: si no hay 'created' en EVENTOS_JSON pero sí en FECHA SOLICITUD,
+    // usar esa para que la solicitud al menos tenga una fecha mostrable.
+    if (!events.created && isValidDate) {
+      events.created = requestDate.toISOString();
+    }
+
+    perRequest.push(_buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, companyIdx, statusIdx, events));
+  }
+
+  // Sort: más recientes primero
+  perRequest.sort(function(a, b) {
+    if (!a.created && !b.created) return 0;
+    if (!a.created) return 1;
+    if (!b.created) return -1;
+    return b.created.localeCompare(a.created);
+  });
+
+  return {
+    perRequest: perRequest,
+    aggregates: _aggregateMetrics_(perRequest)
+  };
+}
+
+function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, companyIdx, statusIdx, events) {
+  const minutesBetween = function(fromIso, toIso) {
+    if (!fromIso || !toIso) return null;
+    const from = new Date(fromIso);
+    const to = new Date(toIso);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) return null;
+    const diff = Math.round((to.getTime() - from.getTime()) / 60000);
+    return diff >= 0 ? diff : null; // negativos no tienen sentido
+  };
+
+  const approvals = [];
+  if (events.approvals) {
+    Object.keys(events.approvals).forEach(function(role) {
+      const a = events.approvals[role];
+      approvals.push({
+        role: role,
+        email: a.email || '',
+        timeMinutes: minutesBetween(events.costConfirmed, a.at)
+      });
+    });
+  }
+
+  // hasEvents = tiene algún evento real más allá del fallback 'created'
+  const eventKeysReal = Object.keys(events).filter(function(k) {
+    if (k === 'created') return false; // created suele venir del fallback
+    if (k === 'approvals') return events.approvals && Object.keys(events.approvals).length > 0;
+    return !!events[k];
+  });
+  const hasEvents = eventKeysReal.length > 0;
+
+  return {
+    requestId: requestId,
+    requesterEmail: String(row[requesterIdx] || ''),
+    destination: String(row[destinationIdx] || ''),
+    company: String(row[companyIdx] || ''),
+    status: String(row[statusIdx] || ''),
+    created: events.created || null,
+    timeToOptionsMinutes: minutesBetween(events.created, events.optionsUploaded),
+    timeToSelectionMinutes: minutesBetween(events.optionsUploaded, events.selectionMade),
+    timeToCostConfirmMinutes: minutesBetween(events.selectionMade, events.costConfirmed),
+    timeToFullApprovalMinutes: minutesBetween(events.costConfirmed, events.fullyApproved),
+    timeToReservationMinutes: minutesBetween(events.fullyApproved, events.reservationRegistered),
+    totalCycleMinutes: minutesBetween(events.created, events.reservationRegistered),
+    approvals: approvals,
+    hasEvents: hasEvents
+  };
+}
+
+function _aggregateMetrics_(metrics) {
+  const avg = function(arr) {
+    const valid = arr.filter(function(v) { return v !== null && !isNaN(v); });
+    if (valid.length === 0) return null;
+    return Math.round(valid.reduce(function(s, v) { return s + v; }, 0) / valid.length);
+  };
+
+  const countWithEvents = metrics.filter(function(m) { return m.hasEvents; }).length;
+
+  // Agregados por aprobador (qué tan rápido contesta cada uno)
+  const approverMap = {};
+  metrics.forEach(function(m) {
+    m.approvals.forEach(function(a) {
+      if (!a.email || a.timeMinutes === null) return;
+      if (!approverMap[a.email]) {
+        approverMap[a.email] = { email: a.email, role: a.role, count: 0, total: 0 };
+      }
+      approverMap[a.email].count++;
+      approverMap[a.email].total += a.timeMinutes;
+    });
+  });
+  const approverPerformance = Object.keys(approverMap).map(function(email) {
+    const a = approverMap[email];
+    return {
+      email: email,
+      role: a.role,
+      count: a.count,
+      avgTimeMinutes: Math.round(a.total / a.count)
+    };
+  }).sort(function(a, b) { return b.count - a.count; });
+
+  return {
+    count: metrics.length,
+    countWithCompleteData: countWithEvents,
+    avgTimeToOptionsMinutes: avg(metrics.map(function(m) { return m.timeToOptionsMinutes; })),
+    avgTimeToSelectionMinutes: avg(metrics.map(function(m) { return m.timeToSelectionMinutes; })),
+    avgTimeToCostConfirmMinutes: avg(metrics.map(function(m) { return m.timeToCostConfirmMinutes; })),
+    avgTimeToFullApprovalMinutes: avg(metrics.map(function(m) { return m.timeToFullApprovalMinutes; })),
+    avgTimeToReservationMinutes: avg(metrics.map(function(m) { return m.timeToReservationMinutes; })),
+    avgTotalCycleMinutes: avg(metrics.map(function(m) { return m.totalCycleMinutes; })),
+    approverPerformance: approverPerformance
+  };
+}
+
+function _emptyAggregates_() {
+  return {
+    count: 0,
+    countWithCompleteData: 0,
+    avgTimeToOptionsMinutes: null,
+    avgTimeToSelectionMinutes: null,
+    avgTimeToCostConfirmMinutes: null,
+    avgTimeToFullApprovalMinutes: null,
+    avgTimeToReservationMinutes: null,
+    avgTotalCycleMinutes: null,
+    approverPerformance: []
   };
 }

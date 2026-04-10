@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -183,6 +183,12 @@ class GasService {
     const response = await this.runGas('deleteDriveFile', { fileId });
     if (!response.success) throw new Error(response.error);
     return response.data === true;
+  }
+
+  async getMetrics(filters: MetricsFilters = {}): Promise<MetricsResponse> {
+    const response = await this.runGas('getMetrics', { filters });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
   }
 
   async closeRequest(requestId: string): Promise<void> {
