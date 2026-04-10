@@ -24,6 +24,7 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [flightDirection, setFlightDirection] = useState<'IDA' | 'VUELTA'>('IDA');
+    const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
     // Confirmed options: already in Drive (loaded from backend)
     const [confirmedOptions, setConfirmedOptions] = useState<Option[]>(request.analystOptions || []);
@@ -385,8 +386,10 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                             <img
                                                 src={getDriveImageUrl(opt.driveId)}
                                                 alt={`Opción ${opt.id}`}
-                                                className={`w-full h-40 object-cover rounded mb-2 border border-white ${isMarkedForDelete ? 'grayscale' : ''}`}
+                                                className={`w-full h-40 object-cover rounded mb-2 border border-white cursor-pointer ${isMarkedForDelete ? 'grayscale' : ''}`}
                                                 referrerPolicy="no-referrer"
+                                                onClick={() => !isMarkedForDelete && setPreviewImageUrl(`https://drive.google.com/thumbnail?id=${opt.driveId}&sz=w2000`)}
+                                                title="Click para ver imagen completa"
                                                 onError={(e) => {
                                                     const img = e.currentTarget;
                                                     if (!img.dataset.retried) {
@@ -431,7 +434,9 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                             <img
                                                 src={pending.localPreview}
                                                 alt={`Opción ${pending.letter}`}
-                                                className="w-full h-40 object-cover rounded mb-2 border border-white"
+                                                className="w-full h-40 object-cover rounded mb-2 border border-white cursor-pointer"
+                                                onClick={() => setPreviewImageUrl(pending.localPreview)}
+                                                title="Click para ver imagen completa"
                                             />
                                             <p className="text-xs text-gray-400 truncate italic">Sin confirmar</p>
                                         </div>
@@ -450,6 +455,28 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                     </div>
                 </div>
             </div>
+
+            {/* LIGHTBOX: imagen completa al hacer click */}
+            {previewImageUrl && (
+                <div
+                    className="fixed inset-0 z-[60] bg-black bg-opacity-80 flex items-center justify-center p-4 cursor-pointer"
+                    onClick={() => setPreviewImageUrl(null)}
+                >
+                    <div className="relative max-w-[95vw] max-h-[95vh]">
+                        <button
+                            onClick={() => setPreviewImageUrl(null)}
+                            className="absolute -top-3 -right-3 bg-white text-gray-800 w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-lg hover:bg-gray-100 z-10 text-lg"
+                        >&times;</button>
+                        <img
+                            src={previewImageUrl}
+                            alt="Vista completa"
+                            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                            referrerPolicy="no-referrer"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </div>
+                </div>
+            )}
         </>
     );
 };

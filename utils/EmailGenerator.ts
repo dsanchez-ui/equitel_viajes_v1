@@ -59,7 +59,7 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
     extraCostWarning = `
       <div style="background-color: #fee2e2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; text-align: center; border-left: 4px solid #ef4444;">
          <strong style="display:block; margin-bottom:4px; font-size:14px;">⚠️ CAMBIO CON COSTO EXTRA</strong>
-         La solicitud original (<strong>${escapeHtml(data.relatedRequestId)}</strong>) ya tenía tiquetes comprados (Etapa: RESERVADO).<br/>
+         La solicitud original (<strong>${escapeHtml(data.relatedRequestId)}</strong>) ya tenía ${isHotelOnly ? 'reserva de hotel' : 'tiquetes comprados'} (Etapa: RESERVADO).<br/>
          Este cambio generará penalidades o costos adicionales.
       </div>`;
   }
@@ -82,7 +82,7 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
 
     policyBlock = `<div style="background-color: #fff1f2; border: 1px solid #fecaca; color: #be123c; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 12px; text-align: center;">
          <strong style="display:block; margin-bottom:4px;">⚠️ SOLICITUD FUERA DE POLÍTICA DE ANTICIPACIÓN</strong>
-         Esta solicitud se hizo <strong>${diffDays} días</strong> antes del vuelo. <br/>
+         Esta solicitud se hizo <strong>${diffDays} días</strong> antes ${isHotelOnly ? 'del check-in' : 'del vuelo'}. <br/>
          Por ser ${data.isInternational ? 'internacional' : 'nacional'}, debería haberse hecho con al menos <strong>${required} días</strong> de anticipación.
        </div>`;
   }

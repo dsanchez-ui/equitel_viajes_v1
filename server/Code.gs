@@ -1649,14 +1649,14 @@ const HtmlTemplates = {
           <div style="display: table-cell; width: 50%; padding: 15px; text-align: center; vertical-align: top;">
             <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-bottom: 5px;">${isHotelOnlyEmail ? 'CHECK-OUT' : 'FECHA REGRESO'}</div>
             <div style="font-weight: bold; color: ${headerColor}; font-size: 14px;">📅 ${data.returnDate || 'N/A'}</div>
-            <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">${data.returnTimePreference ? '('+data.returnTimePreference+')' : ''}</div>
+            <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">${(!isHotelOnlyEmail && data.returnTimePreference) ? '('+data.returnTimePreference+')' : ''}</div>
           </div>
         </div>
 
         <!-- OBSERVATIONS (NOW PROMINENT) -->
         ${data.comments ? `
         <div style="background-color: #fefce8; border: 1px solid #fef08a; border-radius: 6px; padding: 15px; margin-bottom: 25px; border-left: 4px solid #eab308;">
-          <div style="font-size: 11px; font-weight: bold; color: #b45309; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 0.5px;">MOTIVO DEL VIAJE / OBSERVACIONES</div>
+          <div style="font-size: 11px; font-weight: bold; color: #b45309; text-transform: uppercase; margin-bottom: 5px; letter-spacing: 0.5px;">${isHotelOnlyEmail ? 'MOTIVO / OBSERVACIONES' : 'MOTIVO DEL VIAJE / OBSERVACIONES'}</div>
           <div style="font-size: 14px; color: #713f12; font-style: italic; line-height: 1.5;">"${escapeHtml_(data.comments)}"</div>
         </div>` : ''}
 
@@ -1734,7 +1734,7 @@ const HtmlTemplates = {
                                 <th align="left" style="border-bottom: 1px solid #e5e7eb;">ID</th>
                                 <th align="left" style="border-bottom: 1px solid #e5e7eb;">Solicitante</th>
                                 <th align="left" style="border-bottom: 1px solid #e5e7eb;">Ruta</th>
-                                <th align="right" style="border-bottom: 1px solid #e5e7eb;">Fecha Vuelo</th>
+                                <th align="right" style="border-bottom: 1px solid #e5e7eb;">Fecha</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -1745,7 +1745,7 @@ const HtmlTemplates = {
                     <tr>
                         <td style="border-bottom: 1px solid #f3f4f6;"><strong>${escapeHtml_(item.requestId)}</strong></td>
                         <td style="border-bottom: 1px solid #f3f4f6;">${escapeHtml_(item.requesterEmail)}</td>
-                        <td style="border-bottom: 1px solid #f3f4f6;">${escapeHtml_(item.origin)} ➝ ${escapeHtml_(item.destination)}</td>
+                        <td style="border-bottom: 1px solid #f3f4f6;">${item.requestMode === 'HOTEL_ONLY' ? '🏨 ' + escapeHtml_(item.destination) : escapeHtml_(item.origin) + ' ➝ ' + escapeHtml_(item.destination)}</td>
                         <td align="right" style="border-bottom: 1px solid #f3f4f6;">${item.departureDate}</td>
                     </tr>
                 `;
@@ -1793,7 +1793,8 @@ const HtmlTemplates = {
             `;
         }).join('');
 
-        let content = `<p style="margin-bottom: 16px; color: #4b5563;">Se han cargado las opciones de viaje para su solicitud <strong>${request.requestId}</strong>. Por favor revise las imágenes a continuación e ingrese al aplicativo para confirmar su elección.</p>`;
+        const isHotelOnlyOpt = request.requestMode === 'HOTEL_ONLY';
+        let content = `<p style="margin-bottom: 16px; color: #4b5563;">Se han cargado las opciones de ${isHotelOnlyOpt ? 'hospedaje' : 'viaje'} para su solicitud <strong>${request.requestId}</strong>. Por favor revise las imágenes a continuación e ingrese al aplicativo para confirmar su elección.</p>`;
 
         // BANNER: instrucción explícita de indicar categoría
         content += `
@@ -1801,10 +1802,13 @@ const HtmlTemplates = {
                 <strong>⚠️ Importante al describir su selección:</strong><br/>
                 Indique <strong>siempre la categoría</strong> que desea elegir (no solo la letra de la opción). Sin esto, el área de viajes no podrá tramitar su reserva.
                 <ul style="margin: 8px 0 0 18px; padding: 0;">
-                    <li><strong>Vuelo:</strong> categoría tarifaria — ej. Económica, Economy Plus, Premium, Business.</li>
-                    ${request.requiresHotel ? '<li><strong>Hotel:</strong> tipo de habitación — ej. Estándar, Superior, Suite.</li>' : ''}
+                    ${!isHotelOnlyOpt ? '<li><strong>Vuelo:</strong> categoría tarifaria — ej. Económica, Economy Plus, Premium, Business.</li>' : ''}
+                    <li><strong>Hotel:</strong> tipo de habitación — ej. Estándar, Superior, Suite.</li>
                 </ul>
-                <div style="margin-top: 8px; font-style: italic;">Ejemplo: "Opción A vuelo de ida en categoría Económica${request.returnDate ? ', Opción C vuelo de vuelta en Economy Plus' : ''}${request.requiresHotel ? ', Opción B hotel habitación Estándar' : ''}."</div>
+                <div style="margin-top: 8px; font-style: italic;">Ejemplo: "${isHotelOnlyOpt
+                    ? 'Opción A hotel habitación Estándar.'
+                    : 'Opción A vuelo de ida en categoría Económica' + (request.returnDate ? ', Opción C vuelo de vuelta en Economy Plus' : '') + (request.requiresHotel ? ', Opción B hotel habitación Estándar' : '') + '.'
+                }"</div>
             </div>
         `;
 
@@ -1826,7 +1830,7 @@ const HtmlTemplates = {
             <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;">
             ${this._getFullSummary(request)}
         `;
-        return this.layout(`${request.requestId}`, content);
+        return this.layout(`${request.requestId}`, content, undefined, isHotelOnlyOpt ? 'GESTIÓN DE HOSPEDAJE' : undefined);
     },
 
     // NEW: NOTIFICATION FOR ADMIN WHEN USER SELECTS OPTION (Updated with Full Summary)
@@ -1855,6 +1859,7 @@ const HtmlTemplates = {
 
     // APPROVAL REQUEST EMAIL (Updated with Full Summary & Banners)
     approvalRequest: function(request, selectedOption, approveLink, rejectLink) {
+        const isHotelOnlyAppr = request.requestMode === 'HOTEL_ONLY';
         let alertHtml = '';
         
         // RECOMMENDATION BANNERS
@@ -1875,7 +1880,7 @@ const HtmlTemplates = {
         
         // INTERNATIONAL BANNER
         if (request.isInternational) {
-            alertHtml += `<div style="background-color: #eff6ff; border: 1px solid #93c5fd; color: #1e3a8a; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🌍 VIAJE INTERNACIONAL:</strong> Esta solicitud requiere aprobación de Gerencia General, Gerencia de Cadena de Suministro y Aprobador de Área.</div>`;
+            alertHtml += `<div style="background-color: #eff6ff; border: 1px solid #93c5fd; color: #1e3a8a; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🌍 ${isHotelOnlyAppr ? 'HOSPEDAJE INTERNACIONAL' : 'VIAJE INTERNACIONAL'}:</strong> Esta solicitud requiere aprobación de Gerencia General, Gerencia de Cadena de Suministro y Aprobador de Área.</div>`;
         }
         
         // POLICY VIOLATION BANNER
@@ -1897,7 +1902,7 @@ const HtmlTemplates = {
             
             alertHtml += `<div style="background-color: #fff1f2; border: 1px solid #fecaca; color: #be123c; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 12px; text-align: center;">
          <strong style="display:block; margin-bottom:4px;">⚠️ SOLICITUD FUERA DE POLÍTICA DE ANTICIPACIÓN</strong>
-         Esta solicitud se hizo <strong>${diffDays} días</strong> antes del vuelo. <br/>
+         Esta solicitud se hizo <strong>${diffDays} días</strong> antes ${isHotelOnlyAppr ? 'del check-in' : 'del vuelo'}. <br/>
          Por ser ${request.isInternational ? 'internacional' : 'nacional'}, debería haberse hecho con al menos <strong>${required} días</strong> de anticipación.
        </div>`;
         }
@@ -1922,11 +1927,11 @@ const HtmlTemplates = {
         }
 
         if (request.parentWasReserved) {
-            alertHtml += `<div style="background-color: #fee2e2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; border-left: 4px solid #ef4444;"><strong style="display:block; margin-bottom:4px; font-size:14px;">⚠️ CAMBIO CON COSTO EXTRA</strong>La solicitud original ya tenía tiquetes comprados (Etapa: RESERVADO).<br/>Este cambio generará penalidades o costos adicionales que se están aprobando.</div>`;
+            alertHtml += `<div style="background-color: #fee2e2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; border-left: 4px solid #ef4444;"><strong style="display:block; margin-bottom:4px; font-size:14px;">⚠️ CAMBIO CON COSTO EXTRA</strong>La solicitud original ya tenía ${isHotelOnlyAppr ? 'reserva de hotel' : 'tiquetes comprados'} (Etapa: RESERVADO).<br/>Este cambio generará penalidades o costos adicionales que se están aprobando.</div>`;
         }
 
         const content = `
-            <p style="color: #4b5563; margin-bottom: 20px;">El usuario <strong>${escapeHtml_(request.requesterEmail)}</strong> requiere aprobación para el viaje <strong>${escapeHtml_(request.requestId)}</strong>.</p>
+            <p style="color: #4b5563; margin-bottom: 20px;">El usuario <strong>${escapeHtml_(request.requesterEmail)}</strong> requiere aprobación para ${isHotelOnlyAppr ? 'el hospedaje' : 'el viaje'} <strong>${escapeHtml_(request.requestId)}</strong>.</p>
             
             ${alertHtml}
 
@@ -1989,7 +1994,7 @@ const HtmlTemplates = {
         const content = `
             <div style="text-align: center; margin-bottom: 25px;">
                 <div style="font-size: 40px; margin-bottom: 10px;">${icon}</div>
-                <div style="font-size: 16px; color: #374151;">Su solicitud de viaje <strong>${request.requestId}</strong> ha sido <strong style="color: ${color};">${status}</strong>.</div>
+                <div style="font-size: 16px; color: #374151;">Su solicitud de ${request.requestMode === 'HOTEL_ONLY' ? 'hospedaje' : 'viaje'} <strong>${request.requestId}</strong> ha sido <strong style="color: ${color};">${status}</strong>.</div>
             </div>
             ${denialReasonBlock}
             ${isApproved ? `<div style="text-align: center; margin-bottom: 30px;"><a href="${PLATFORM_URL}" style="background-color: #111827; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-size: 12px;">Ingresar a la Plataforma</a></div>` : ''}
@@ -3365,24 +3370,24 @@ function sendPendingSelectionReminders() {
 
 function sendUserSelectionReminderEmail_(req) {
   const subject = getStandardSubject(req); // Mismo asunto = mismo hilo en Gmail
+  const isHotelOnlyRem = req.requestMode === 'HOTEL_ONLY';
 
   const banner = `
     <div style="background-color: #fff7ed; border: 1px solid #fed7aa; color: #c2410c; padding: 12px 14px; text-align: left; font-weight: bold; font-size: 14px; margin-bottom: 18px; border-radius: 6px;">
-      ⏰ RECORDATORIO: Tienes opciones de viaje pendientes de seleccionar
+      ⏰ RECORDATORIO: Tienes opciones de ${isHotelOnlyRem ? 'hospedaje' : 'viaje'} pendientes de seleccionar
     </div>
   `;
 
   const body = `
     <p style="margin-bottom: 14px; color: #4b5563; font-size: 13px; line-height: 1.55;">
-      Hola, este es un recordatorio amistoso para tu solicitud de viaje
+      Hola, este es un recordatorio amistoso para tu solicitud de ${isHotelOnlyRem ? 'hospedaje' : 'viaje'}
       <strong>${escapeHtml_(req.requestId)}</strong> con destino
       <strong>${escapeHtml_(req.destination)}</strong>.
     </p>
     <p style="margin-bottom: 14px; color: #4b5563; font-size: 13px; line-height: 1.55;">
       El área de viajes ya cargó las opciones. Por favor ingresa al portal y
-      describe cuál opción de vuelo${req.requiresHotel ? ' y hotel' : ''} deseas
-      tomar (recuerda <strong>indicar siempre la categoría</strong>: Económica,
-      Premium, Business${req.requiresHotel ? ', tipo de habitación' : ''}, etc.).
+      describe cuál opción de ${isHotelOnlyRem ? 'hotel' : ('vuelo' + (req.requiresHotel ? ' y hotel' : ''))} deseas
+      tomar (recuerda <strong>indicar siempre la categoría</strong>: ${isHotelOnlyRem ? 'tipo de habitación — Estándar, Superior, Suite' : 'Económica, Premium, Business' + (req.requiresHotel ? ', tipo de habitación' : '')}, etc.).
     </p>
     <div style="background-color: #fef3c7; border: 1px solid #fde68a; color: #92400e; padding: 10px 12px; margin-bottom: 18px; border-radius: 6px; font-size: 12px;">
       <strong>Tip:</strong> Las opciones (con sus imágenes) están en el correo
@@ -3780,15 +3785,16 @@ function generateSupportReport(requestId) {
     }
     
     // 7. Replace ALL placeholders
+    const isHotelOnlyReport = req.requestMode === 'HOTEL_ONLY';
     body.replaceText('\\{\\{SOLICITUD_ID\\}\\}', requestId);
     body.replaceText('\\{\\{ESTADO\\}\\}', req.status || 'N/A');
     body.replaceText('\\{\\{FECHA_SOLICITUD\\}\\}', String(req.timestamp || 'N/A'));
-    body.replaceText('\\{\\{TIPO_SOLICITUD\\}\\}', req.requestType || 'ORIGINAL');
+    body.replaceText('\\{\\{TIPO_SOLICITUD\\}\\}', isHotelOnlyReport ? 'SOLO HOSPEDAJE' : (req.requestType || 'ORIGINAL'));
     body.replaceText('\\{\\{SOLICITUD_PADRE\\}\\}', req.relatedRequestId || 'N/A');
     body.replaceText('\\{\\{SOLICITANTE\\}\\}', req.requesterEmail || 'N/A');
-    
-    body.replaceText('\\{\\{ORIGEN\\}\\}', req.origin || 'N/A');
-    body.replaceText('\\{\\{DESTINO\\}\\}', req.destination || 'N/A');
+
+    body.replaceText('\\{\\{ORIGEN\\}\\}', isHotelOnlyReport ? 'N/A (Solo Hospedaje)' : (req.origin || 'N/A'));
+    body.replaceText('\\{\\{DESTINO\\}\\}', (isHotelOnlyReport ? '🏨 ' : '') + (req.destination || 'N/A'));
     body.replaceText('\\{\\{FECHA_IDA\\}\\}', formatDateDisplay(req.departureDate));
     body.replaceText('\\{\\{HORA_IDA\\}\\}', req.departureTimePreference || 'N/A');
     body.replaceText('\\{\\{FECHA_VUELTA\\}\\}', req.returnDate ? formatDateDisplay(req.returnDate) : 'Solo Ida');
