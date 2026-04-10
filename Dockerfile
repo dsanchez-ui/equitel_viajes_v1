@@ -22,11 +22,14 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-# Only install production deps (just `serve`) to keep the image small
-COPY package.json package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
+# Install `serve` globally so it lives on PATH (/usr/local/bin/serve).
+# Pinned to v14 to match the version declared in package.json.
+# Doing this instead of `npm ci --omit=dev` keeps the runtime image
+# leaner (no node_modules tree, no package.json) AND ensures the
+# binary is invocable directly as `serve` from CMD.
+RUN npm install -g serve@14 && npm cache clean --force
 
-# Copy the built static assets from the builder stage
+# Copy only the built static assets from the builder stage
 COPY --from=builder /app/dist ./dist
 
 # Cloud Run injects the PORT env var (default 8080). serve must bind
