@@ -82,7 +82,8 @@ const HEADERS_REQUESTS = [
   "APROBADO CDS", "APROBADO CEO",
   "SELECCION_TEXTO", "COSTO_FINAL_TIQUETES", "COSTO_FINAL_HOTEL",
   "ES_CAMBIO_CON_COSTO", "FECHA_SOLICITUD_PADRE", // Nuevos headers para trazabilidad de cambios
-  "EVENTOS_JSON" // Métricas: timestamps de cada evento del ciclo (created, optionsUploaded, selectionMade, costConfirmed, approvals, fullyApproved, reservationRegistered)
+  "EVENTOS_JSON", // Métricas: timestamps de cada evento del ciclo
+  "MODO_SOLICITUD" // 'VIAJE' (default) o 'SOLO_HOSPEDAJE' — determina flujo visual (emails, modales, form)
 ];
 
 // --- SETUP FUNCTION ---
@@ -1444,8 +1445,10 @@ function getCreditCards() {
 // --- EMAIL HELPERS & TEMPLATES ---
 
 function getStandardSubject(data) {
-    const id = data.requestId || data.id; 
-    let subject = `Solicitud de Viaje ${id} - ${data.requesterEmail} - ${data.company} ${data.site}`;
+    const id = data.requestId || data.id;
+    const isHotelOnly = data.requestMode === 'HOTEL_ONLY';
+    const tipo = isHotelOnly ? 'Solicitud de Hospedaje' : 'Solicitud de Viaje';
+    let subject = `${tipo} ${id} - ${data.requesterEmail} - ${data.company} ${data.site}`;
     if (data.isInternational) subject += " [INTERNACIONAL]";
     return subject;
 }
@@ -1609,8 +1612,16 @@ const HtmlTemplates = {
             `<li style="margin-bottom: 4px;">${escapeHtml_(p.name)} <span style="color:#6b7280; font-size:12px;">(${escapeHtml_(p.idNumber)})</span></li>`
         ).join('');
 
+        const isHotelOnlyEmail = data.requestMode === 'HOTEL_ONLY';
+
         return `
-        <!-- ROUTE -->
+        <!-- ROUTE / LOCATION -->
+        ${isHotelOnlyEmail ? `
+        <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 20px; text-align: center;">
+          <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">🏨 CIUDAD DEL HOSPEDAJE ${internationalBadge}</div>
+          <div style="font-size: 18px; font-weight: bold; color: #111827;">${escapeHtml_(data.destination)}</div>
+        </div>
+        ` : `
         <div style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 20px; text-align: center;">
           <table width="100%">
             <tr>
@@ -1626,16 +1637,17 @@ const HtmlTemplates = {
             </tr>
           </table>
         </div>
+        `}
 
         <!-- DATES -->
         <div style="display: table; width: 100%; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 20px; border-collapse: separate; border-spacing: 0;">
           <div style="display: table-cell; width: 50%; padding: 15px; text-align: center; vertical-align: top; border-right: 1px solid #e5e7eb;">
-            <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-bottom: 5px;">FECHA IDA</div>
+            <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-bottom: 5px;">${isHotelOnlyEmail ? 'CHECK-IN' : 'FECHA IDA'}</div>
             <div style="font-weight: bold; color: ${headerColor}; font-size: 14px;">📅 ${data.departureDate}</div>
-            <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">${data.departureTimePreference ? '('+data.departureTimePreference+')' : ''}</div>
+            <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">${(!isHotelOnlyEmail && data.departureTimePreference) ? '('+data.departureTimePreference+')' : ''}</div>
           </div>
           <div style="display: table-cell; width: 50%; padding: 15px; text-align: center; vertical-align: top;">
-            <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-bottom: 5px;">FECHA REGRESO</div>
+            <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-bottom: 5px;">${isHotelOnlyEmail ? 'CHECK-OUT' : 'FECHA REGRESO'}</div>
             <div style="font-weight: bold; color: ${headerColor}; font-size: 14px;">📅 ${data.returnDate || 'N/A'}</div>
             <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">${data.returnTimePreference ? '('+data.returnTimePreference+')' : ''}</div>
           </div>
@@ -1990,6 +2002,7 @@ const HtmlTemplates = {
     
     // NEW TEMPLATE FOR RESERVATION CONFIRMATION (Updated with Full Summary)
     reservationConfirmed: function(request) {
+        const isHotelOnly = request.requestMode === 'HOTEL_ONLY';
         const reservationFiles = (request.reservationFiles && request.reservationFiles.length > 0)
             ? request.reservationFiles
             : (request.reservationUrl ? [{ name: 'Confirmación de Reserva', url: request.reservationUrl }] : []);
@@ -2023,12 +2036,15 @@ const HtmlTemplates = {
 
         const content = `
             <div style="text-align: center; margin-bottom: 25px;">
-                <div style="font-size: 40px; margin-bottom: 10px;">✈️</div>
-                <div style="font-size: 16px; color: #374151;">Los tiquetes para su viaje <strong>${request.requestId}</strong> han sido comprados.</div>
+                <div style="font-size: 40px; margin-bottom: 10px;">${isHotelOnly ? '🏨' : '✈️'}</div>
+                <div style="font-size: 16px; color: #374151;">${isHotelOnly
+                    ? 'La reserva de hotel para su solicitud <strong>' + request.requestId + '</strong> ha sido realizada.'
+                    : 'Los tiquetes para su viaje <strong>' + request.requestId + '</strong> han sido comprados.'
+                }</div>
             </div>
 
             <div style="background-color: #eff6ff; border: 1px solid #dbeafe; padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 25px;">
-                <div style="font-size: 12px; color: #60a5fa; margin-bottom: 5px; text-transform: uppercase; font-weight: bold;">NÚMERO DE RESERVA (PNR)</div>
+                <div style="font-size: 12px; color: #60a5fa; margin-bottom: 5px; text-transform: uppercase; font-weight: bold;">${isHotelOnly ? 'NÚMERO DE CONFIRMACIÓN' : 'NÚMERO DE RESERVA (PNR)'}</div>
                 <div style="font-size: 24px; font-weight: bold; color: #1e3a8a; letter-spacing: 2px;">${escapeHtml_(request.reservationNumber) || 'N/A'}</div>
             </div>
 
@@ -2045,7 +2061,7 @@ const HtmlTemplates = {
             <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;">
             ${this._getFullSummary(request)}
         `;
-        return this.layout(`${request.requestId}`, content, '#2563eb', 'TIQUETES COMPRADOS');
+        return this.layout(`${request.requestId}`, content, '#2563eb', isHotelOnly ? 'HOTEL RESERVADO' : 'TIQUETES COMPRADOS');
     },
 
     modificationResult: function(request, decision) {
@@ -2353,7 +2369,10 @@ function validateRequestInput_(data) {
   var errors = [];
   if (!data.requesterEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.requesterEmail)) errors.push('Correo del solicitante inválido.');
   if (!data.company || String(data.company).length > 100) errors.push('Empresa inválida.');
-  if (!data.origin || String(data.origin).length > 200) errors.push('Ciudad origen inválida.');
+  // Origin es vacío para solicitudes HOTEL_ONLY — solo validar si NO es hotel-only
+  if (data.requestMode !== 'HOTEL_ONLY') {
+    if (!data.origin || String(data.origin).length > 200) errors.push('Ciudad origen inválida.');
+  }
   if (!data.destination || String(data.destination).length > 200) errors.push('Ciudad destino inválida.');
   if (!data.departureDate) errors.push('Fecha de ida requerida.');
   if (!data.passengers || !Array.isArray(data.passengers) || data.passengers.length === 0 || data.passengers.length > 5) {
@@ -2494,6 +2513,9 @@ function createNewRequest(data, emailHtml) {
   // NEW INTERNATIONAL & POLICY FIELDS
   set("ES INTERNACIONAL", data.isInternational ? "SI" : "NO");
   set("VIOLACION POLITICA", data.policyViolation ? "SI" : "NO");
+
+  // MODO DE SOLICITUD: VIAJE (default) o SOLO_HOSPEDAJE
+  set("MODO_SOLICITUD", data.requestMode === 'HOTEL_ONLY' ? 'SOLO_HOSPEDAJE' : 'VIAJE');
 
   // --- AUTOMATED STATISTICS FIELDS (CREATION) ---
   set("TIPO DE TKT", data.isInternational ? "INTERNACIONAL" : "NACIONAL");
@@ -3147,7 +3169,10 @@ function mapRowToRequest(row) {
     parentTimestamp: String(get("FECHA_SOLICITUD_PADRE")),
 
     // CREDIT CARD (v2.5+)
-    creditCard: String(get("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA"))
+    creditCard: String(get("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA")),
+
+    // Request mode: 'HOTEL_ONLY' when MODO_SOLICITUD='SOLO_HOSPEDAJE', default 'FLIGHT'
+    requestMode: get("MODO_SOLICITUD") === 'SOLO_HOSPEDAJE' ? 'HOTEL_ONLY' : 'FLIGHT'
   };
 
   // Compute and attach the EFFECTIVE approval status (mirrors the rules in
@@ -3385,8 +3410,10 @@ function sendUserSelectionReminderEmail_(req) {
 // --- EMAIL HELPERS & TEMPLATES ---
 
 function getStandardSubject(data) {
-    const id = data.requestId || data.id; 
-    let subject = `Solicitud de Viaje ${id} - ${data.requesterEmail} - ${data.company} ${data.site}`;
+    const id = data.requestId || data.id;
+    const isHotelOnly = data.requestMode === 'HOTEL_ONLY';
+    const tipo = isHotelOnly ? 'Solicitud de Hospedaje' : 'Solicitud de Viaje';
+    let subject = `${tipo} ${id} - ${data.requesterEmail} - ${data.company} ${data.site}`;
     if (data.isInternational) subject += " [INTERNACIONAL]";
     return subject;
 }
@@ -3930,7 +3957,15 @@ const HR_MAESTRO_SHEET = getConfig_('HR_MAESTRO_SHEET', 'Hoja 1');
  * El único modo de cambiar el switch es manualmente desde el editor GAS.
  */
 function onOpen() {
-  if (!USE_USUARIOS_SHEET) return; // Switch apagado → menú invisible, Plan 2 inerte
+  // Menú visible si: (a) Plan 2 completamente activo, O (b) el usuario es
+  // el admin de setup (David). Esto permite crear la hoja USUARIOS, migrar,
+  // probar el sidebar, etc. SIN flipar el switch del backend. El switch
+  // USE_USUARIOS_SHEET solo controla de dónde lee el backend (INTEGRANTES
+  // vs USUARIOS) y se mantiene aparte.
+  var currentUser = '';
+  try { currentUser = Session.getActiveUser().getEmail().toLowerCase().trim(); } catch (e) {}
+  var isSetupAdmin = (currentUser === 'dsanchez@equitel.com.co');
+  if (!USE_USUARIOS_SHEET && !isSetupAdmin) return;
   SpreadsheetApp.getUi()
     .createMenu('Equitel Viajes')
     .addItem('Gestionar Usuarios (Sidebar)', 'abrirSidebarUsuarios')
@@ -4069,10 +4104,11 @@ function sincronizarConMaestroRH() {
 }
 
 function abrirSidebarUsuarios() {
-  // Defense-in-depth: el menú ya está gateado en onOpen, pero si alguien
-  // llama esta función directo del editor GAS sin haber flipado el switch,
-  // no la dejamos correr para evitar estados inconsistentes.
-  if (!USE_USUARIOS_SHEET) {
+  // Permitido si Plan 2 activo O si es el admin de setup (David).
+  var currentUser = '';
+  try { currentUser = Session.getActiveUser().getEmail().toLowerCase().trim(); } catch (e) {}
+  var isSetupAdmin = (currentUser === 'dsanchez@equitel.com.co');
+  if (!USE_USUARIOS_SHEET && !isSetupAdmin) {
     SpreadsheetApp.getUi().alert(
       'Plan 2 (USUARIOS) no está activo.\n\n' +
       'Para activarlo: Script Properties → USE_USUARIOS_SHEET = "true".'

@@ -18,6 +18,7 @@ interface RequestFormProps {
 }
 
 type TripType = 'ROUND_TRIP' | 'ONE_WAY';
+type RequestMode = 'FLIGHT' | 'HOTEL_ONLY';
 
 export const RequestForm: React.FC<RequestFormProps> = ({
   userEmail,
@@ -35,10 +36,17 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     initialData ? initialData.passengers.map(p => ({ ...p })) : [{ name: '', idNumber: '', email: '' }]
   );
 
+  // Request mode: FLIGHT (viaje normal) or HOTEL_ONLY (solo hospedaje)
+  const [requestMode, setRequestMode] = useState<RequestMode>(
+    initialData?.requestMode === 'HOTEL_ONLY' ? 'HOTEL_ONLY' : 'FLIGHT'
+  );
+  const isHotelOnly = requestMode === 'HOTEL_ONLY';
+
   const [tripType, setTripType] = useState<TripType>(
     initialData ? (initialData.returnDate ? 'ROUND_TRIP' : 'ONE_WAY') : 'ROUND_TRIP'
   );
 
+  // Hotel-only always requires hotel; for flights it's a toggle
   const [requiresHotel, setRequiresHotel] = useState(initialData ? initialData.requiresHotel : false);
   const [manualNights, setManualNights] = useState<boolean>(false);
   const [numberOfNights, setNumberOfNights] = useState<number>(initialData ? (initialData.nights || 0) : 0);
@@ -245,17 +253,39 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     }
   }, [tripType]);
 
+  // Handle Request Mode Change (HOTEL_ONLY)
+  useEffect(() => {
+    if (isHotelOnly) {
+      // Hotel-only: always requires hotel, clear flight-specific fields, no origin
+      setRequiresHotel(true);
+      setManualNights(false);
+      setFormData(prev => ({
+        ...prev,
+        origin: '',
+        departureTimePreference: '',
+        returnTimePreference: ''
+      }));
+    }
+  }, [isHotelOnly]);
+
   // AUTO-INTERNATIONAL LOGIC
   useEffect(() => {
-    const originCity = cities.find(c => `${c.city}, ${c.country}` === formData.origin);
-    const destCity = cities.find(c => `${c.city}, ${c.country}` === formData.destination);
-
-    if (originCity && destCity) {
-      // It's international if ANY of the cities is NOT in COLOMBIA
-      const autoIsInternational = originCity.country !== 'COLOMBIA' || destCity.country !== 'COLOMBIA';
-      setIsInternational(autoIsInternational);
+    if (isHotelOnly) {
+      // Hotel-only: internacional si la ciudad del hospedaje NO es colombiana
+      const destCity = cities.find(c => `${c.city}, ${c.country}` === formData.destination);
+      if (destCity) {
+        setIsInternational(destCity.country !== 'COLOMBIA');
+      }
+    } else {
+      // Viaje normal: internacional si cualquiera de las dos ciudades NO es colombiana
+      const originCity = cities.find(c => `${c.city}, ${c.country}` === formData.origin);
+      const destCity = cities.find(c => `${c.city}, ${c.country}` === formData.destination);
+      if (originCity && destCity) {
+        const autoIsInternational = originCity.country !== 'COLOMBIA' || destCity.country !== 'COLOMBIA';
+        setIsInternational(autoIsInternational);
+      }
     }
-  }, [formData.origin, formData.destination, cities]);
+  }, [formData.origin, formData.destination, cities, isHotelOnly]);
 
   // POLICY VALIDATION LOGIC
   useEffect(() => {
@@ -381,13 +411,15 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   };
 
   useEffect(() => {
-    if (requiresHotel && tripType === 'ROUND_TRIP' && !manualNights && formData.departureDate && formData.returnDate) {
+    // Auto-calcular noches: hotel-only siempre (check-in/check-out), round-trip cuando no es manual
+    const shouldAutoCalc = (isHotelOnly || (requiresHotel && tripType === 'ROUND_TRIP' && !manualNights));
+    if (shouldAutoCalc && formData.departureDate && formData.returnDate) {
       const d1 = new Date(formData.departureDate);
       const d2 = new Date(formData.returnDate);
       const diffDays = Math.ceil(Math.abs(d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
       setNumberOfNights(diffDays > 0 ? diffDays : 0);
     }
-  }, [requiresHotel, tripType, manualNights, formData.departureDate, formData.returnDate]);
+  }, [requiresHotel, tripType, manualNights, formData.departureDate, formData.returnDate, isHotelOnly]);
 
   const isPassengerInDb = (idNumber: string) => integrantes.some(i => i.idNumber === idNumber);
 
@@ -410,15 +442,21 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
     // STRICT CITY VALIDATION
     const validCityOptions = cities.map(c => `${c.city}, ${c.country}`);
-    const isOriginValid = validCityOptions.includes(formData.origin || '');
     const isDestValid = validCityOptions.includes(formData.destination || '');
 
-    if (!isOriginValid) {
-      alert(`La ciudad de origen "${formData.origin}" no es válida. Debe seleccionarla de la lista.`);
-      return;
+    // Origin solo se valida para vuelos (hotel-only no tiene origin)
+    if (!isHotelOnly) {
+      const isOriginValid = validCityOptions.includes(formData.origin || '');
+      if (!isOriginValid) {
+        alert(`La ciudad de origen "${formData.origin}" no es válida. Debe seleccionarla de la lista.`);
+        return;
+      }
     }
     if (!isDestValid) {
-      alert(`La ciudad de destino "${formData.destination}" no es válida. Debe seleccionarla de la lista.`);
+      alert(isHotelOnly
+        ? `La ciudad del hospedaje "${formData.destination}" no es válida. Debe seleccionarla de la lista.`
+        : `La ciudad de destino "${formData.destination}" no es válida. Debe seleccionarla de la lista.`
+      );
       return;
     }
 
@@ -426,17 +464,18 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       alert('Debe agregar al menos un centro de costos en la lista de VARIOS.');
       return;
     }
-    if (tripType === 'ROUND_TRIP' && (!formData.returnDate)) {
-      alert('Para vuelos de ida y regreso, la fecha de retorno es obligatoria.');
+    // Fecha de retorno obligatoria para round-trip y hotel-only (check-out)
+    if ((isHotelOnly || tripType === 'ROUND_TRIP') && !formData.returnDate) {
+      alert(isHotelOnly ? 'La fecha de check-out es obligatoria.' : 'Para vuelos de ida y regreso, la fecha de retorno es obligatoria.');
       return;
     }
-    if (tripType === 'ROUND_TRIP' && formData.departureDate && formData.returnDate) {
+    if ((isHotelOnly || tripType === 'ROUND_TRIP') && formData.departureDate && formData.returnDate) {
       if (new Date(formData.returnDate) < new Date(formData.departureDate)) {
-        alert('La fecha de regreso no puede ser anterior a la fecha de ida.');
+        alert(isHotelOnly ? 'La fecha de check-out no puede ser anterior a la de check-in.' : 'La fecha de regreso no puede ser anterior a la fecha de ida.');
         return;
       }
     }
-    if (requiresHotel) {
+    if (requiresHotel || isHotelOnly) {
       if (numberOfNights <= 0) {
         alert('El número de noches de hospedaje debe ser mayor a 0.');
         return;
@@ -496,18 +535,21 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
       const payload: Partial<TravelRequest> = {
         ...formData,
+        requestMode: requestMode,
         departureDate: formatToDDMMYYYY(formData.departureDate),
         isInternational,
         policyViolation,
         costCenterName,
         approverName,
         approverEmail,
-        returnDate: tripType === 'ONE_WAY' ? '' : formatToDDMMYYYY(formData.returnDate),
-        returnTimePreference: tripType === 'ONE_WAY' ? '' : formData.returnTimePreference,
+        origin: isHotelOnly ? '' : formData.origin,
+        returnDate: (isHotelOnly || tripType === 'ONE_WAY') ? '' : formatToDDMMYYYY(formData.returnDate),
+        returnTimePreference: (isHotelOnly || tripType === 'ONE_WAY') ? '' : formData.returnTimePreference,
+        departureTimePreference: isHotelOnly ? '' : formData.departureTimePreference,
         requesterEmail: isModification && initialData?.requesterEmail ? initialData.requesterEmail : userEmail,
         passengers,
-        requiresHotel,
-        nights: requiresHotel ? numberOfNights : 0,
+        requiresHotel: isHotelOnly ? true : requiresHotel,
+        nights: (isHotelOnly || requiresHotel) ? numberOfNights : 0,
         status: isModification ? RequestStatus.PENDING_CHANGE_APPROVAL : RequestStatus.PENDING_OPTIONS,
         variousCostCenters: getVariousCCFormatted(),
         timestamp: new Date().toISOString()
@@ -671,11 +713,12 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
         <hr />
 
-        {/* Section 3: Itinerary */}
+        {/* Section 3: Mode + Itinerary */}
         <div>
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-md font-medium text-gray-900">Itinerario</h3>
-            <div className="flex items-center gap-4">
+          <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
+            <h3 className="text-md font-medium text-gray-900">{isHotelOnly ? 'Hospedaje' : 'Itinerario'}</h3>
+            <div className="flex items-center gap-4 flex-wrap">
+              {/* International badge (auto) */}
               <div className="flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -685,29 +728,43 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                   disabled
                   className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded bg-gray-100 cursor-not-allowed"
                 />
-                <label htmlFor="isInternational" className="text-sm font-bold text-blue-900">¿Es viaje internacional? (Auto)</label>
+                <label htmlFor="isInternational" className="text-sm font-bold text-blue-900">¿Internacional? (Auto)</label>
               </div>
-              <div className="h-6 w-px bg-gray-300 mx-2"></div>
+              <div className="h-6 w-px bg-gray-300"></div>
+              {/* MODE PILLS: 3 opciones */}
               <div className="flex bg-gray-200 p-1 rounded-lg">
-                <button type="button" onClick={() => setTripType('ROUND_TRIP')} className={`px-3 py-1 text-xs font-bold rounded-md transition ${tripType === 'ROUND_TRIP' ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>Ida y Regreso</button>
-                <button type="button" onClick={() => setTripType('ONE_WAY')} className={`px-3 py-1 text-xs font-bold rounded-md transition ${tripType === 'ONE_WAY' ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>Solo Ida</button>
+                <button type="button" onClick={() => { setRequestMode('FLIGHT'); setTripType('ROUND_TRIP'); }}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition ${requestMode === 'FLIGHT' && tripType === 'ROUND_TRIP' ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>
+                  ✈️ Ida y Regreso
+                </button>
+                <button type="button" onClick={() => { setRequestMode('FLIGHT'); setTripType('ONE_WAY'); }}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition ${requestMode === 'FLIGHT' && tripType === 'ONE_WAY' ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>
+                  ✈️ Solo Ida
+                </button>
+                <button type="button" onClick={() => setRequestMode('HOTEL_ONLY')}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition ${isHotelOnly ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>
+                  🏨 Solo Hospedaje
+                </button>
               </div>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Ciudad Origen — solo para vuelos */}
+            {!isHotelOnly && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Ciudad Origen *</label>
+                <CityCombobox
+                  name="origin"
+                  value={formData.origin || ''}
+                  cities={cities}
+                  isLoading={isCitiesLoading}
+                  onChange={handleCityChange}
+                />
+              </div>
+            )}
             <div>
-              <label className="block text-sm font-medium text-gray-700">Ciudad Origen *</label>
-              <CityCombobox
-                name="origin"
-                value={formData.origin || ''}
-                cities={cities}
-                isLoading={isCitiesLoading}
-                onChange={handleCityChange}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Ciudad Destino *</label>
+              <label className="block text-sm font-medium text-gray-700">{isHotelOnly ? 'Ciudad del Hospedaje *' : 'Ciudad Destino *'}</label>
               <CityCombobox
                 name="destination"
                 value={formData.destination || ''}
@@ -717,17 +774,21 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Fecha Ida *</label>
+              <label className="block text-sm font-medium text-gray-700">{isHotelOnly ? 'Fecha Check-in *' : 'Fecha Ida *'}</label>
               <input type="date" name="departureDate" required min={new Date().toISOString().split('T')[0]} style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureDate} onChange={handleInputChange} onClick={handleOpenPicker} />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Hora Llegada Vuelo Ida (Pref.)</label>
-              <input type="time" name="departureTimePreference" style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureTimePreference} onChange={handleInputChange} onClick={handleOpenPicker} />
-            </div>
-            {tripType === 'ROUND_TRIP' && (
+            {/* Hora vuelo ida — solo para vuelos */}
+            {!isHotelOnly && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Hora Llegada Vuelo Ida (Pref.)</label>
+                <input type="time" name="departureTimePreference" style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureTimePreference} onChange={handleInputChange} onClick={handleOpenPicker} />
+              </div>
+            )}
+            {/* Fecha Check-out / Vuelta — hotel-only o round-trip */}
+            {(isHotelOnly || tripType === 'ROUND_TRIP') && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Fecha Vuelta *</label>
+                  <label className="block text-sm font-medium text-gray-700">{isHotelOnly ? 'Fecha Check-out *' : 'Fecha Vuelta *'}</label>
                   <input
                     type="date"
                     name="returnDate"
@@ -741,10 +802,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                     onClick={handleOpenPicker}
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Hora Llegada Vuelo Vuelta (Pref.)</label>
-                  <input type="time" name="returnTimePreference" style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.returnTimePreference} onChange={handleInputChange} onClick={handleOpenPicker} />
-                </div>
+                {/* Hora vuelo vuelta — solo para vuelos round-trip, NO para hotel-only */}
+                {!isHotelOnly && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Hora Llegada Vuelo Vuelta (Pref.)</label>
+                    <input type="time" name="returnTimePreference" style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.returnTimePreference} onChange={handleInputChange} onClick={handleOpenPicker} />
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -752,28 +816,38 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
         <hr />
 
-        {/* Section 4: Hotel */}
+        {/* Section 4: Hotel — siempre visible y forzado para hotel-only, toggle para vuelos */}
         <div>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-center h-5">
-              <input id="hotel" type="checkbox" className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded" checked={requiresHotel} onChange={(e) => setRequiresHotel(e.target.checked)} />
+          {!isHotelOnly && (
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center h-5">
+                <input id="hotel" type="checkbox" className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded" checked={requiresHotel} onChange={(e) => setRequiresHotel(e.target.checked)} />
+              </div>
+              <div className="text-sm"><label htmlFor="hotel" className="font-medium text-gray-700">¿Requiere Hospedaje?</label></div>
             </div>
-            <div className="text-sm"><label htmlFor="hotel" className="font-medium text-gray-700">¿Requiere Hospedaje?</label></div>
-          </div>
-          {requiresHotel && (
+          )}
+          {isHotelOnly && (
+            <h3 className="text-md font-medium text-gray-900 mb-4">Detalles del Hospedaje</h3>
+          )}
+          {(requiresHotel || isHotelOnly) && (
             <div className="bg-blue-50 p-4 rounded-md border border-blue-100 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Nombre del Hotel (Preferencia) *</label>
+                <label className="block text-sm font-medium text-gray-700">{isHotelOnly ? 'Nombre del Hotel *' : 'Nombre del Hotel (Preferencia) *'}</label>
                 <input type="text" name="hotelName" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 uppercase text-gray-900" value={formData.hotelName} onChange={handleInputChange} />
               </div>
               <div className="bg-white p-3 rounded border border-gray-200">
-                {tripType === 'ROUND_TRIP' && (
+                {/* Para hotel-only: noches se calculan automáticamente desde check-in/check-out.
+                    Para vuelos round-trip: opción de noches diferentes al vuelo.
+                    Para solo ida: noches manuales. */}
+                {!isHotelOnly && tripType === 'ROUND_TRIP' && (
                   <div className="flex items-center gap-2 mb-2">
                     <input id="manualNights" type="checkbox" className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded" checked={manualNights} onChange={(e) => setManualNights(e.target.checked)} />
                     <label htmlFor="manualNights" className="text-xs text-gray-700 font-bold">¿Fechas de hospedaje diferentes al vuelo?</label>
                   </div>
                 )}
-                {manualNights || tripType === 'ONE_WAY' ? (
+                {(isHotelOnly || (!manualNights && (tripType === 'ROUND_TRIP' || isHotelOnly))) ? (
+                  <div><span className="text-sm text-gray-600">Noches calculadas: </span><span className="font-bold text-gray-900 text-lg">{numberOfNights}</span></div>
+                ) : (manualNights || tripType === 'ONE_WAY') ? (
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Número de Noches *</label>
                     <input type="number" min="1" required className="mt-1 block w-32 bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={numberOfNights} onChange={(e) => setNumberOfNights(parseInt(e.target.value) || 0)} />

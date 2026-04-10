@@ -193,13 +193,13 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
 
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <div>
-                                <label className="block text-sm font-bold text-gray-700 mb-1">Número de Reserva (PNR)</label>
+                                <label className="block text-sm font-bold text-gray-700 mb-1">{request.requestMode === 'HOTEL_ONLY' ? 'Número de Confirmación del Hotel' : 'Número de Reserva (PNR)'}</label>
                                 <input
                                     type="text"
                                     value={reservationNumber}
                                     onChange={(e) => setReservationNumber(e.target.value)}
                                     className="w-full border border-gray-300 rounded p-2 text-gray-900 bg-white uppercase focus:ring-brand-red focus:border-brand-red"
-                                    placeholder="Ej: BZQYX"
+                                    placeholder={request.requestMode === 'HOTEL_ONLY' ? 'Ej: HC-123456' : 'Ej: BZQYX'}
                                     disabled={loading}
                                 />
                             </div>
@@ -281,7 +281,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                             <div className="mt-6 flex justify-end gap-3 border-t pt-4">
                                 <button type="button" onClick={onClose} className="px-4 py-2 border rounded text-gray-700 bg-white hover:bg-gray-50">Cancelar</button>
                                 <button type="submit" disabled={loading} className="px-4 py-2 bg-brand-red text-white rounded font-bold hover:bg-red-700 disabled:opacity-50">
-                                    {loading ? 'Procesando...' : 'Confirmar Compra'}
+                                    {loading ? 'Procesando...' : (request.requestMode === 'HOTEL_ONLY' ? 'Confirmar Reserva Hotel' : 'Confirmar Compra')}
                                 </button>
                             </div>
                         </form>

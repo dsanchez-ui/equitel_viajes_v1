@@ -26,20 +26,38 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
 
   const closeDialog = () => setDialog({ ...dialog, isOpen: false });
 
+  const isHotelOnly = request.requestMode === 'HOTEL_ONLY';
+
   const handleSubmit = async () => {
-      if (costTickets <= 0) {
-          setDialog({
-            isOpen: true,
-            title: 'Validación',
-            message: "El costo de los tiquetes es obligatorio.",
-            type: 'ALERT',
-            onConfirm: closeDialog
-          });
-          return;
+      // Hotel-only: solo hotel es obligatorio. Vuelos: tiquetes obligatorio.
+      if (isHotelOnly) {
+          if (costHotel <= 0) {
+              setDialog({
+                isOpen: true,
+                title: 'Validación',
+                message: "El costo del hotel es obligatorio para solicitudes de solo hospedaje.",
+                type: 'ALERT',
+                onConfirm: closeDialog
+              });
+              return;
+          }
+      } else {
+          if (costTickets <= 0) {
+              setDialog({
+                isOpen: true,
+                title: 'Validación',
+                message: "El costo de los tiquetes es obligatorio.",
+                type: 'ALERT',
+                onConfirm: closeDialog
+              });
+              return;
+          }
       }
 
       const total = costTickets + costHotel;
-      let message = `Se registrarán los siguientes costos:\n\nTiquetes: $${costTickets.toLocaleString()}\nHotel: $${costHotel.toLocaleString()}\nTotal: $${total.toLocaleString()}\n\n`;
+      let message = isHotelOnly
+          ? `Se registrará el costo del hospedaje:\n\nHotel: $${costHotel.toLocaleString()}\nTotal: $${total.toLocaleString()}\n\n`
+          : `Se registrarán los siguientes costos:\n\nTiquetes: $${costTickets.toLocaleString()}\nHotel: $${costHotel.toLocaleString()}\nTotal: $${total.toLocaleString()}\n\n`;
       
       // Check for High Cost Threshold (1.2M) for National Trips
       // Note: If it's already international, the backend handles it, but we can still warn if we want.
@@ -124,25 +142,28 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
             </div>
 
             <div className="space-y-4">
-                 <div>
+                  {/* Tiquetes — solo para solicitudes de vuelo (no hotel-only) */}
+                  {request.requestMode !== 'HOTEL_ONLY' && (
+                  <div>
                       <label className="block text-sm font-bold text-gray-700 mb-1">Costo Final Tiquetes *</label>
-                      <input 
-                          type="number" 
+                      <input
+                          type="number"
                           className="w-full border border-gray-300 rounded p-2 text-gray-900 font-bold bg-white focus:ring-purple-500 focus:border-purple-500"
                           value={costTickets}
                           onChange={(e) => setCostTickets(Number(e.target.value))}
                       />
                   </div>
+                  )}
                   <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1">Costo Final Hotel</label>
-                      <input 
-                          type="number" 
+                      <label className="block text-sm font-bold text-gray-700 mb-1">{request.requestMode === 'HOTEL_ONLY' ? 'Costo Final Hotel *' : 'Costo Final Hotel'}</label>
+                      <input
+                          type="number"
                           className="w-full border border-gray-300 rounded p-2 text-gray-900 font-bold bg-white focus:ring-purple-500 focus:border-purple-500"
                           value={costHotel}
                           onChange={(e) => setCostHotel(Number(e.target.value))}
                       />
                   </div>
-                  
+
                   <div className="flex justify-between items-center bg-gray-100 p-3 rounded mt-2">
                       <span className="font-bold text-gray-700">Total a Aprobar:</span>
                       <span className="text-xl font-bold text-brand-red">$ {(costTickets + costHotel).toLocaleString()}</span>

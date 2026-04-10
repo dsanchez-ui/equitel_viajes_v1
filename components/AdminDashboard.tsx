@@ -376,6 +376,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
                                     ABANDONADA
                                   </span>
                                 )}
+                                {req.requestMode === 'HOTEL_ONLY' && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-teal-100 text-teal-800" title="Solo Hospedaje">
+                                    🏨 HOTEL
+                                  </span>
+                                )}
                                 {req.isInternational && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800" title="Viaje Internacional">
                                     INTL

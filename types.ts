@@ -136,6 +136,9 @@ export interface TravelRequest {
   parentTimestamp?: string;
   daysInAdvance?: number;
 
+  // Request mode: 'FLIGHT' (default, viaje normal) or 'HOTEL_ONLY' (solo hospedaje)
+  requestMode?: 'FLIGHT' | 'HOTEL_ONLY';
+
   // EFFECTIVE approval status (computed by backend, mirrors the dedup rules
   // applied in sendApprovalRequestEmail / processApprovalFromEmail).
   // Possible values: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA'.

@@ -251,8 +251,8 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                             {/* UPLOAD ZONES */}
                             <div className="lg:w-1/3 space-y-6 overflow-y-auto pr-2">
 
-                                {/* FLIGHT DROPZONE */}
-                                <div
+                                {/* FLIGHT DROPZONE — hidden for hotel-only requests */}
+                                {request.requestMode !== 'HOTEL_ONLY' && (<div
                                     tabIndex={0}
                                     onPaste={(e) => handlePaste(e, 'FLIGHT')}
                                     className="bg-blue-50 p-4 rounded-lg border-2 border-dashed border-blue-200 text-center outline-none focus:ring-2 focus:ring-blue-400 focus:bg-blue-100 transition-colors cursor-pointer group relative"
@@ -293,10 +293,10 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                     >
                                         {uploading ? 'Procesando...' : 'Seleccionar Imagen'}
                                     </button>
-                                </div>
+                                </div>)}
 
-                                {/* HOTEL DROPZONE */}
-                                {request.requiresHotel && (
+                                {/* HOTEL DROPZONE — always shown for hotel-only, conditional for flights */}
+                                {(request.requiresHotel || request.requestMode === 'HOTEL_ONLY') && (
                                     <div
                                         tabIndex={0}
                                         onPaste={(e) => handlePaste(e, 'HOTEL')}
