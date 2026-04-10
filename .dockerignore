@@ -1,0 +1,33 @@
+# Exclude things from the Docker build context that aren't needed for the build,
+# could leak secrets, or would just bloat the image.
+
+.git
+.gitignore
+.github
+
+# Node deps — re-installed inside the image
+node_modules
+
+# Build output — re-generated inside the image
+dist
+
+# Local-only env files (gitignored, but defense-in-depth)
+.env.local
+.env.*.local
+
+# IDE / editor / agent state
+.vscode
+.idea
+.claude
+
+# Docs
+*.md
+README*
+
+# Server-side code (Apps Script) — not part of the frontend image
+server
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
