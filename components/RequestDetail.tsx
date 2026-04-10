@@ -242,24 +242,31 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                 {/* --- SECTION 1: DETAILED INFO GRID --- */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                                    {/* Left Col: Trip Details */}
+                                    {/* Left Col: Trip / Hotel Details */}
                                     <div className="bg-gray-50 rounded-lg p-4 text-sm border border-gray-200">
-                                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 border-b border-gray-200 pb-2">Información del Viaje</h4>
+                                        <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 border-b border-gray-200 pb-2">
+                                            {request.requestMode === 'HOTEL_ONLY' ? 'Información del Hospedaje' : 'Información del Viaje'}
+                                        </h4>
                                         <div className="space-y-3">
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <div><span className="block text-xs text-gray-500">Origen</span><span className="font-semibold text-gray-900">{request.origin}</span></div>
-                                                <div><span className="block text-xs text-gray-500">Destino</span><span className="font-semibold text-gray-900">{request.destination}</span></div>
+                                            <div className={`grid gap-2 ${request.requestMode === 'HOTEL_ONLY' ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                                                {request.requestMode !== 'HOTEL_ONLY' && (
+                                                    <div><span className="block text-xs text-gray-500">Origen</span><span className="font-semibold text-gray-900">{request.origin}</span></div>
+                                                )}
+                                                <div>
+                                                    <span className="block text-xs text-gray-500">{request.requestMode === 'HOTEL_ONLY' ? 'Ciudad del Hospedaje' : 'Destino'}</span>
+                                                    <span className="font-semibold text-gray-900">{request.destination}</span>
+                                                </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2">
                                                 <div>
-                                                    <span className="block text-xs text-gray-500">Fecha Ida</span>
+                                                    <span className="block text-xs text-gray-500">{request.requestMode === 'HOTEL_ONLY' ? 'Check-in' : 'Fecha Ida'}</span>
                                                     <span className="font-medium">{formatToDDMMYYYY(request.departureDate)}</span>
-                                                    <span className="text-xs text-gray-400 block">{request.departureTimePreference}</span>
+                                                    {request.requestMode !== 'HOTEL_ONLY' && <span className="text-xs text-gray-400 block">{request.departureTimePreference}</span>}
                                                 </div>
                                                 <div>
-                                                    <span className="block text-xs text-gray-500">Fecha Regreso</span>
-                                                    <span className="font-medium">{request.returnDate ? formatToDDMMYYYY(request.returnDate) : 'Solo Ida'}</span>
-                                                    <span className="text-xs text-gray-400 block">{request.returnTimePreference}</span>
+                                                    <span className="block text-xs text-gray-500">{request.requestMode === 'HOTEL_ONLY' ? 'Check-out' : 'Fecha Regreso'}</span>
+                                                    <span className="font-medium">{request.returnDate ? formatToDDMMYYYY(request.returnDate) : (request.requestMode === 'HOTEL_ONLY' ? 'N/A' : 'Solo Ida')}</span>
+                                                    {request.requestMode !== 'HOTEL_ONLY' && <span className="text-xs text-gray-400 block">{request.returnTimePreference}</span>}
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded border border-gray-100">

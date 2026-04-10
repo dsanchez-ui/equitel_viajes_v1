@@ -1944,10 +1944,10 @@ const HtmlTemplates = {
                     Resumen de Costos (Aprobados por Analista)
                 </div>
                 <table width="100%" cellpadding="10" cellspacing="0">
-                    <tr>
+                    ${request.requestMode !== 'HOTEL_ONLY' ? `<tr>
                         <td style="border-bottom: 1px solid #e5e7eb; color: #6b7280;">Valor Tiquetes:</td>
                         <td style="border-bottom: 1px solid #e5e7eb; font-weight: bold; text-align: right;">$${Number(request.finalCostTickets || 0).toLocaleString()}</td>
-                    </tr>
+                    </tr>` : ''}
                     <tr>
                         <td style="border-bottom: 1px solid #e5e7eb; color: #6b7280;">Valor Hotel:</td>
                         <td style="border-bottom: 1px solid #e5e7eb; font-weight: bold; text-align: right;">$${Number(request.finalCostHotel || 0).toLocaleString()}</td>

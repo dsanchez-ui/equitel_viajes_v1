@@ -543,7 +543,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         approverName,
         approverEmail,
         origin: isHotelOnly ? '' : formData.origin,
-        returnDate: (isHotelOnly || tripType === 'ONE_WAY') ? '' : formatToDDMMYYYY(formData.returnDate),
+        // Hotel-only: returnDate = check-out (PRESERVAR). Solo ida: returnDate vacío.
+        returnDate: (!isHotelOnly && tripType === 'ONE_WAY') ? '' : formatToDDMMYYYY(formData.returnDate),
         returnTimePreference: (isHotelOnly || tripType === 'ONE_WAY') ? '' : formData.returnTimePreference,
         departureTimePreference: isHotelOnly ? '' : formData.departureTimePreference,
         requesterEmail: isModification && initialData?.requesterEmail ? initialData.requesterEmail : userEmail,

@@ -18,7 +18,8 @@ function escapeHtml(unsafe: string | undefined | null): string {
  * Generates a modern HTML email template mimicking the "Gestión de Viajes" card style.
  */
 export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModification: boolean): string => {
-  const title = isModification ? "SOLICITUD DE MODIFICACIÓN" : "GESTIÓN DE VIAJES";
+  const isHotelOnly = data.requestMode === 'HOTEL_ONLY';
+  const title = isModification ? "SOLICITUD DE MODIFICACIÓN" : (isHotelOnly ? "GESTIÓN DE HOSPEDAJE" : "GESTIÓN DE VIAJES");
   const headerColor = isModification ? "#F59E0B" : "#D71920"; // Amber for mod, Red for new
 
   // Helper for dates
@@ -152,11 +153,17 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
         ${policyBlock}
         
         <div class="intro">
-          Se ha registrado un ${isModification ? 'requerimiento de cambio' : 'nuevo requerimiento de viaje'} para 
+          Se ha registrado un ${isModification ? 'requerimiento de cambio' : (isHotelOnly ? 'nuevo requerimiento de hospedaje' : 'nuevo requerimiento de viaje')} para
           <strong>${escapeHtml(data.requesterEmail)}</strong>.
         </div>
 
-        <!-- ROUTE -->
+        <!-- ROUTE / LOCATION -->
+        ${isHotelOnly ? `
+        <div class="route-box" style="text-align: center;">
+          <div class="route-label">🏨 CIUDAD DEL HOSPEDAJE ${internationalBadge}</div>
+          <div class="route-city">${escapeHtml(data.destination)}</div>
+        </div>
+        ` : `
         <div class="route-box">
           <table width="100%">
             <tr>
@@ -172,18 +179,19 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
             </tr>
           </table>
         </div>
+        `}
 
         <!-- DATES -->
         <div class="dates-box">
           <div class="date-cell">
-            <div class="date-label">FECHA IDA</div>
+            <div class="date-label">${isHotelOnly ? 'CHECK-IN' : 'FECHA IDA'}</div>
             <div class="date-value">📅 ${formatDate(data.departureDate)}</div>
-            <div class="time-value">${formatTime(data.departureTimePreference)}</div>
+            ${!isHotelOnly ? `<div class="time-value">${formatTime(data.departureTimePreference)}</div>` : ''}
           </div>
           <div class="date-cell">
-            <div class="date-label">FECHA REGRESO</div>
+            <div class="date-label">${isHotelOnly ? 'CHECK-OUT' : 'FECHA REGRESO'}</div>
             <div class="date-value">📅 ${formatDate(data.returnDate)}</div>
-            <div class="time-value">${formatTime(data.returnTimePreference)}</div>
+            ${!isHotelOnly ? `<div class="time-value">${formatTime(data.returnTimePreference)}</div>` : ''}
           </div>
         </div>
 
