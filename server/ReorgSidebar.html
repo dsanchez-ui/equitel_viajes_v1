@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      color: #1f2937;
+      margin: 0;
+      padding: 12px;
+      background: #f9fafb;
+    }
+    h2 { font-size: 14px; margin: 0 0 4px; color: #111827; font-weight: 600; }
+    .subtitle { font-size: 11px; color: #6b7280; margin-bottom: 12px; }
+    h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; margin: 14px 0 6px; font-weight: 600; }
+    button {
+      padding: 6px 10px; border: 1px solid #d1d5db; background: white; border-radius: 4px;
+      cursor: pointer; font-size: 12px; font-weight: 500; color: #374151;
+    }
+    button:hover { background: #f3f4f6; }
+    button.primary { background: #D71920; color: white; border-color: #D71920; }
+    button.primary:hover { background: #b8141a; }
+    button.success { background: #059669; color: white; border-color: #059669; }
+    button.success:hover { background: #047857; }
+    button.danger { background: white; color: #b91c1c; border-color: #fca5a5; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    input[type="text"], select {
+      width: 100%; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px;
+    }
+    .step {
+      background: white; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; margin-bottom: 10px;
+    }
+    .step.done { border-color: #a7f3d0; background: #f0fdf4; }
+    .step.active { border-color: #D71920; box-shadow: 0 0 0 2px rgba(215,25,32,0.1); }
+    .step.locked { opacity: 0.55; }
+    .step-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .step-number {
+      flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+      background: #e5e7eb; color: #6b7280; font-weight: bold; font-size: 11px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .step.done .step-number { background: #059669; color: white; }
+    .step.active .step-number { background: #D71920; color: white; }
+    .step-title { font-weight: 600; color: #111827; font-size: 13px; }
+    .step-body { font-size: 12px; color: #4b5563; line-height: 1.5; }
+    .field { margin-bottom: 8px; }
+    .field label { display: block; font-size: 10px; font-weight: 600; color: #374151; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .actions { display: flex; gap: 6px; margin-top: 8px; }
+    .actions button { flex: 1; }
+    .status {
+      margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 11px; display: none;
+    }
+    .status.success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; display: block; }
+    .status.error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; display: block; }
+    .status.warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; display: block; }
+    .status.info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; display: block; }
+    .stat-row {
+      display: flex; justify-content: space-between; padding: 4px 0;
+      border-bottom: 1px solid #f3f4f6; font-size: 11px;
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-key { color: #6b7280; }
+    .stat-value { font-weight: 600; color: #111827; }
+    .col-list {
+      max-height: 120px; overflow-y: auto;
+      background: white; border: 1px solid #e5e7eb; border-radius: 4px; padding: 6px;
+      font-size: 11px; color: #374151;
+    }
+    .col-list .col-item { padding: 2px 0; }
+    .col-list .col-item.missing { color: #b91c1c; font-weight: 600; }
+    .col-list .col-item.extra { color: #d97706; }
+    .help-text { font-size: 10px; color: #6b7280; margin-top: 3px; line-height: 1.4; }
+    .options-checks { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+    .options-checks label { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #374151; cursor: pointer; }
+    .preview-detail {
+      max-height: 280px; overflow-y: auto;
+      background: white; border: 1px solid #e5e7eb; border-radius: 4px; padding: 6px;
+      font-size: 11px; margin-top: 8px;
+    }
+    .preview-detail .pair {
+      display: grid; grid-template-columns: 130px 1fr; gap: 6px; padding: 3px 4px;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .preview-detail .pair:last-child { border-bottom: none; }
+    .preview-detail .ph { color: #6b7280; font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .preview-detail .pv { color: #111827; word-break: break-word; }
+    .danger-zone {
+      border: 2px dashed #fca5a5; background: #fef2f2; padding: 10px; border-radius: 6px; margin-top: 8px;
+    }
+    .danger-zone .warn { color: #991b1b; font-size: 11px; font-weight: 600; margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <h2>Reorganizar Base Principal</h2>
+  <div class="subtitle">Workflow seguro: la hoja activa NO se toca hasta el paso 6.</div>
+
+  <!-- PASO 1: Crear hoja de trabajo -->
+  <div id="step1" class="step active">
+    <div class="step-header">
+      <div class="step-number">1</div>
+      <div class="step-title">Crear hoja de trabajo</div>
+    </div>
+    <div class="step-body">
+      <div class="field">
+        <label>Nombre de la nueva hoja</label>
+        <input type="text" id="targetName" value="Nueva Base 1" />
+        <div class="help-text">Una hoja paralela con todos los headers canónicos en orden default. Tú la reorganizas después manualmente.</div>
+      </div>
+      <div class="actions">
+        <button id="btnCreate" class="primary">Crear hoja</button>
+      </div>
+      <div id="status1" class="status"></div>
+    </div>
+  </div>
+
+  <!-- PASO 2: Reorganizar (manual) -->
+  <div id="step2" class="step locked">
+    <div class="step-header">
+      <div class="step-number">2</div>
+      <div class="step-title">Reorganizar columnas (manual)</div>
+    </div>
+    <div class="step-body">
+      <p>Ve a la hoja recién creada y reorganiza, agrega o quita columnas como prefieras. Cuando termines, vuelve aquí y avanza al paso 3.</p>
+      <div class="actions">
+        <button id="btnStep2Done">Listo, continuar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PASO 3: Verificar headers -->
+  <div id="step3" class="step locked">
+    <div class="step-header">
+      <div class="step-number">3</div>
+      <div class="step-title">Verificar estructura</div>
+    </div>
+    <div class="step-body">
+      <p>Comprueba que todos los headers canónicos requeridos estén presentes en tu hoja reorganizada.</p>
+      <div class="actions">
+        <button id="btnVerify" class="primary">Verificar headers</button>
+      </div>
+      <div id="status3" class="status"></div>
+      <div id="verifyResult" style="display:none; margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <!-- PASO 4: Migrar datos -->
+  <div id="step4" class="step locked">
+    <div class="step-header">
+      <div class="step-number">4</div>
+      <div class="step-title">Migrar datos + validaciones</div>
+    </div>
+    <div class="step-body">
+      <p>Copia las filas de la hoja activa a la nueva, mapeando por nombre de columna.</p>
+      <div class="options-checks">
+        <label><input type="checkbox" id="optValidations" checked /> Migrar validaciones (dropdowns)</label>
+        <label><input type="checkbox" id="optColors" checked /> Aplicar fondo amarillo a columnas editables</label>
+      </div>
+      <div class="actions">
+        <button id="btnMigrate" class="primary">Migrar ahora</button>
+      </div>
+      <div id="status4" class="status"></div>
+      <div id="migrateResult" style="display:none; margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <!-- PASO 5: Verificar migración -->
+  <div id="step5" class="step locked">
+    <div class="step-header">
+      <div class="step-number">5</div>
+      <div class="step-title">Verificar migración</div>
+    </div>
+    <div class="step-body">
+      <p>Selecciona una solicitud para ver su detalle y confirmar que los datos llegaron bien.</p>
+      <div class="field">
+        <label>Solicitud</label>
+        <select id="reqSelect"><option value="">— Cargando... —</option></select>
+      </div>
+      <div id="reqDetail"></div>
+      <div class="actions">
+        <button id="btnStep5Done" class="success">Migración OK, continuar →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PASO 6: Switch -->
+  <div id="step6" class="step locked">
+    <div class="step-header">
+      <div class="step-number">6</div>
+      <div class="step-title">Activar nueva hoja</div>
+    </div>
+    <div class="step-body">
+      <p>Renombra la hoja activa a <strong>Nueva Base Solicitudes_OLD_&lt;fecha&gt;</strong> (queda como respaldo) y activa la hoja reorganizada como la nueva principal.</p>
+      <div class="danger-zone">
+        <div class="warn">⚠️ Acción reversible solo manualmente</div>
+        <div style="font-size:11px;color:#7f1d1d;">Si algo sale mal, puedes volver renombrando manualmente. La hoja vieja queda intacta como respaldo.</div>
+      </div>
+      <div class="actions">
+        <button id="btnSwitch" class="primary">Activar nueva hoja</button>
+      </div>
+      <div id="status6" class="status"></div>
+    </div>
+  </div>
+
+  <script>
+    var state = {
+      targetName: 'Nueva Base 1',
+      sourceName: 'Nueva Base Solicitudes',
+      step1Done: false,
+      step3Done: false,
+      step4Done: false
+    };
+
+    function setStepState(stepNum, mode) {
+      // mode: 'locked' | 'active' | 'done'
+      var el = document.getElementById('step' + stepNum);
+      el.classList.remove('locked', 'active', 'done');
+      el.classList.add(mode);
+    }
+
+    function showStatus(id, msg, type) {
+      var s = document.getElementById(id);
+      s.textContent = msg;
+      s.className = 'status ' + type;
+    }
+    function hideStatus(id) {
+      var s = document.getElementById(id);
+      s.className = 'status';
+      s.textContent = '';
+    }
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+    }
+
+    // ============ STEP 1 ============
+    document.getElementById('btnCreate').addEventListener('click', function() {
+      var name = document.getElementById('targetName').value.trim();
+      if (!name) { showStatus('status1', 'Nombre requerido.', 'error'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Creando...';
+      hideStatus('status1');
+      google.script.run
+        .withSuccessHandler(function(r) {
+          btn.disabled = false; btn.textContent = 'Crear hoja';
+          state.targetName = r.name;
+          state.step1Done = true;
+          showStatus('status1', '✓ Hoja "' + r.name + '" creada con ' + r.columns + ' columnas canónicas.', 'success');
+          setStepState(1, 'done');
+          setStepState(2, 'active');
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = 'Crear hoja';
+          showStatus('status1', 'Error: ' + err.message, 'error');
+        })
+        .nbs_createWorkSheet(name);
+    });
+
+    // ============ STEP 2 ============
+    document.getElementById('btnStep2Done').addEventListener('click', function() {
+      setStepState(2, 'done');
+      setStepState(3, 'active');
+    });
+
+    // ============ STEP 3 ============
+    document.getElementById('btnVerify').addEventListener('click', function() {
+      var btn = this; btn.disabled = true; btn.textContent = 'Verificando...';
+      hideStatus('status3');
+      document.getElementById('verifyResult').style.display = 'none';
+      google.script.run
+        .withSuccessHandler(function(r) {
+          btn.disabled = false; btn.textContent = 'Verificar headers';
+          var html = '';
+          html += '<div class="stat-row"><span class="stat-key">Headers canónicos requeridos</span><span class="stat-value">' + r.totalCanonical + '</span></div>';
+          html += '<div class="stat-row"><span class="stat-key">Headers en la hoja</span><span class="stat-value">' + r.totalInSheet + '</span></div>';
+          html += '<div class="stat-row"><span class="stat-key">Faltantes</span><span class="stat-value" style="color:' + (r.missing.length > 0 ? '#b91c1c' : '#059669') + '">' + r.missing.length + '</span></div>';
+          html += '<div class="stat-row"><span class="stat-key">Extras</span><span class="stat-value" style="color:#d97706">' + r.extra.length + '</span></div>';
+
+          if (r.missing.length > 0) {
+            html += '<h3 style="color:#b91c1c">Faltan estos headers:</h3>';
+            html += '<div class="col-list">';
+            r.missing.forEach(function(c) { html += '<div class="col-item missing">• ' + escapeHtml(c) + '</div>'; });
+            html += '</div>';
+          }
+          if (r.extra.length > 0) {
+            html += '<h3 style="color:#d97706">Headers extras (preservados, no se borran):</h3>';
+            html += '<div class="col-list">';
+            r.extra.forEach(function(c) { html += '<div class="col-item extra">• ' + escapeHtml(c) + '</div>'; });
+            html += '</div>';
+          }
+
+          document.getElementById('verifyResult').innerHTML = html;
+          document.getElementById('verifyResult').style.display = 'block';
+
+          if (r.ok) {
+            showStatus('status3', '✓ Estructura OK. Puedes continuar al paso 4.', 'success');
+            state.step3Done = true;
+            setStepState(3, 'done');
+            setStepState(4, 'active');
+          } else {
+            showStatus('status3', 'Faltan ' + r.missing.length + ' headers. Agrégalos a la hoja y vuelve a verificar.', 'error');
+            setStepState(3, 'active');
+          }
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = 'Verificar headers';
+          showStatus('status3', 'Error: ' + err.message, 'error');
+        })
+        .nbs_verifyWorkSheet(state.targetName);
+    });
+
+    // ============ STEP 4 ============
+    document.getElementById('btnMigrate').addEventListener('click', function() {
+      if (!confirm('¿Migrar todos los datos de "' + state.sourceName + '" a "' + state.targetName + '"?\n\nLa hoja origen NO se modifica.')) return;
+      var btn = this; btn.disabled = true; btn.textContent = 'Migrando...';
+      hideStatus('status4');
+      document.getElementById('migrateResult').style.display = 'none';
+      var opts = {
+        migrateValidations: document.getElementById('optValidations').checked,
+        applyEditableColors: document.getElementById('optColors').checked
+      };
+      google.script.run
+        .withSuccessHandler(function(r) {
+          btn.disabled = false; btn.textContent = 'Migrar ahora';
+          var html = '';
+          html += '<div class="stat-row"><span class="stat-key">Filas migradas</span><span class="stat-value">' + r.rowsCopied + '</span></div>';
+          html += '<div class="stat-row"><span class="stat-key">Columnas mapeadas</span><span class="stat-value">' + r.columnsMapped + '</span></div>';
+          html += '<div class="stat-row"><span class="stat-key">Validaciones copiadas</span><span class="stat-value">' + r.validationsCopied + '</span></div>';
+          html += '<div class="stat-row"><span class="stat-key">Cols pintadas amarillo</span><span class="stat-value">' + r.coloredColumns + '</span></div>';
+          if (r.droppedFromSource && r.droppedFromSource.length > 0) {
+            html += '<div class="status warning" style="margin-top:6px;">⚠️ Columnas perdidas (estaban en origen, NO en destino): ' + r.droppedFromSource.join(', ') + '</div>';
+          }
+          if (r.extraInTarget && r.extraInTarget.length > 0) {
+            html += '<div class="status info" style="margin-top:6px;">ℹ️ Columnas extras en destino (preservadas): ' + r.extraInTarget.join(', ') + '</div>';
+          }
+          document.getElementById('migrateResult').innerHTML = html;
+          document.getElementById('migrateResult').style.display = 'block';
+          showStatus('status4', '✓ Migración completa.', 'success');
+          state.step4Done = true;
+          setStepState(4, 'done');
+          setStepState(5, 'active');
+          loadRequestList();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = 'Migrar ahora';
+          showStatus('status4', 'Error: ' + err.message, 'error');
+        })
+        .nbs_migrateData(state.sourceName, state.targetName, opts);
+    });
+
+    // ============ STEP 5 ============
+    function loadRequestList() {
+      var sel = document.getElementById('reqSelect');
+      sel.innerHTML = '<option value="">— Cargando... —</option>';
+      google.script.run
+        .withSuccessHandler(function(list) {
+          sel.innerHTML = '<option value="">— Selecciona una solicitud —</option>';
+          list.forEach(function(r) {
+            var opt = document.createElement('option');
+            opt.value = r.id;
+            opt.textContent = r.id + (r.status ? ' (' + r.status + ')' : '');
+            sel.appendChild(opt);
+          });
+        })
+        .withFailureHandler(function(err) {
+          sel.innerHTML = '<option>Error: ' + err.message + '</option>';
+        })
+        .nbs_listRequests(state.targetName, 100);
+    }
+    document.getElementById('reqSelect').addEventListener('change', function() {
+      var id = this.value;
+      var detailDiv = document.getElementById('reqDetail');
+      if (!id) { detailDiv.innerHTML = ''; return; }
+      detailDiv.innerHTML = '<div class="status info">Cargando...</div>';
+      google.script.run
+        .withSuccessHandler(function(r) {
+          if (!r) { detailDiv.innerHTML = '<div class="status error">No se encontró la solicitud.</div>'; return; }
+          var html = '<div class="preview-detail">';
+          r.pairs.forEach(function(p) {
+            html += '<div class="pair"><span class="ph">' + escapeHtml(p.header) + '</span><span class="pv">' + escapeHtml(p.value) + '</span></div>';
+          });
+          html += '</div>';
+          detailDiv.innerHTML = html;
+        })
+        .withFailureHandler(function(err) {
+          detailDiv.innerHTML = '<div class="status error">Error: ' + err.message + '</div>';
+        })
+        .nbs_getRequestRow(state.targetName, id);
+    });
+    document.getElementById('btnStep5Done').addEventListener('click', function() {
+      setStepState(5, 'done');
+      setStepState(6, 'active');
+    });
+
+    // ============ STEP 6 ============
+    document.getElementById('btnSwitch').addEventListener('click', function() {
+      var msg = '¿ACTIVAR la hoja "' + state.targetName + '" como nueva principal?\n\n'
+        + 'Esto:\n'
+        + '  1. Renombra "' + state.sourceName + '" a "' + state.sourceName + '_OLD_<fecha>" (respaldo)\n'
+        + '  2. Renombra "' + state.targetName + '" a "' + state.sourceName + '" (activa)\n\n'
+        + 'A partir de este momento la app leerá de la nueva hoja.';
+      if (!confirm(msg)) return;
+
+      var btn = this; btn.disabled = true; btn.textContent = 'Activando...';
+      hideStatus('status6');
+      google.script.run
+        .withSuccessHandler(function(r) {
+          btn.textContent = 'Activado ✓';
+          showStatus('status6', '✓ Activación completa. Hoja antigua: "' + r.oldSheetName + '". Hoja activa: "' + r.newActiveSheet + '".', 'success');
+          setStepState(6, 'done');
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = 'Activar nueva hoja';
+          showStatus('status6', 'Error: ' + err.message, 'error');
+        })
+        .nbs_switchMain(state.sourceName, state.targetName);
+    });
+  </script>
+</body>
+</html>

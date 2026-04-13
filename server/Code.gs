@@ -97,6 +97,53 @@ const HEADERS_REQUESTS = [
   "MODO_SOLICITUD" // 'VIAJE' (default) o 'SOLO_HOSPEDAJE' — determina flujo visual (emails, modales, form)
 ];
 
+// =====================================================================
+// RUNTIME HEADER LOOKUP — soporta cualquier orden de columnas en la hoja
+// =====================================================================
+// HEADERS_REQUESTS sigue siendo la "schema canónica" (qué columnas DEBEN existir).
+// Pero las posiciones reales en la hoja se leen runtime via H(name).
+// Esto permite que el admin reorganice columnas sin romper el código.
+// El cache se invalida por ejecución (cada doPost/doGet empieza limpio).
+// =====================================================================
+var _REQ_HEADERS_CACHE = null;
+
+function _getReqHeaders_(sheet) {
+  if (_REQ_HEADERS_CACHE) return _REQ_HEADERS_CACHE;
+  if (!sheet) {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    if (!sheet) {
+      // Fallback al schema canónico si no se puede leer la hoja
+      var fallback = {};
+      HEADERS_REQUESTS.forEach(function(h, i) { fallback[h] = i; });
+      return fallback;
+    }
+  }
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return {};
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var map = {};
+  headers.forEach(function(h, i) {
+    var name = String(h || '').trim();
+    if (name) map[name] = i;
+  });
+  _REQ_HEADERS_CACHE = map;
+  return map;
+}
+
+/**
+ * Retorna el índice 0-based de la columna con el header dado, leyendo
+ * de la hoja real (no del array canónico). Retorna -1 si no existe.
+ * Equivalente a H(name) pero respeta reorganizaciones.
+ */
+function H(name) {
+  var headers = _getReqHeaders_();
+  return headers[name] !== undefined ? headers[name] : -1;
+}
+
+/** Limpia el cache de headers (útil después de migraciones de hoja) */
+function _clearReqHeadersCache_() { _REQ_HEADERS_CACHE = null; }
+
 // --- SETUP FUNCTION ---
 function setupDatabase() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -865,10 +912,10 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
    if (!sheet) throw new Error("Base de datos no encontrada");
 
-   const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-   const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
-   const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
-   const dateIdx = HEADERS_REQUESTS.indexOf("FECHA SOLICITUD");
+   const idIdx = H("ID RESPUESTA");
+   const statusIdx = H("STATUS");
+   const obsIdx = H("OBSERVACIONES");
+   const dateIdx = H("FECHA SOLICITUD");
 
    const lastRow = sheet.getLastRow();
    const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
@@ -926,10 +973,10 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
 function _applyChangeDecision_(childRequestId, decision, reason) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-  const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
-  const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
-  const requesterEmailIdx = HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO");
+  const idIdx = H("ID RESPUESTA");
+  const statusIdx = H("STATUS");
+  const obsIdx = H("OBSERVACIONES");
+  const requesterEmailIdx = H("CORREO ENCUESTADO");
 
   const lastRow = sheet.getLastRow();
   const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
@@ -937,7 +984,7 @@ function _applyChangeDecision_(childRequestId, decision, reason) {
   if (rowIndex === -1) throw new Error("Solicitud no encontrada");
   const rowNumber = rowIndex + 2;
 
-  const rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+  const rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
   const req = mapRowToRequest(rowData);
   const requesterEmail = req.requesterEmail || sheet.getRange(rowNumber, requesterEmailIdx + 1).getValue();
 
@@ -1096,8 +1143,8 @@ function _startUserConsultOnParent_(parentRequestId, childRequestId, denialReaso
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   if (!sheet) throw new Error("Hoja de solicitudes no encontrada");
 
-  const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-  const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+  const idIdx = H("ID RESPUESTA");
+  const obsIdx = H("OBSERVACIONES");
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) throw new Error("Hoja vacía");
 
@@ -1118,7 +1165,7 @@ function _startUserConsultOnParent_(parentRequestId, childRequestId, denialReaso
   SpreadsheetApp.flush();
 
   // Mapear la fila completa para construir el correo
-  const rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+  const rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
   const parentReq = mapRowToRequest(rowData);
   sendUserConsultEmail_(parentReq, childRequestId, denialReason);
 }
@@ -1217,9 +1264,9 @@ function processUserConsultResponse(e) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-    const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-    const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
-    const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
+    const idIdx = H("ID RESPUESTA");
+    const obsIdx = H("OBSERVACIONES");
+    const statusIdx = H("STATUS");
 
     const lastRow = sheet.getLastRow();
     const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
@@ -1256,7 +1303,7 @@ function processUserConsultResponse(e) {
 
       // Notificar al admin del equipo que el usuario desea continuar
       try {
-        const rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+        const rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
         const req = mapRowToRequest(rowData);
         const adminSubject = getStandardSubject(req) + " [CONTINÚA TRAS CONSULTA]";
         const adminBody = HtmlTemplates.layout(
@@ -1343,9 +1390,9 @@ function processApprovalFromEmail(e) {
           const ss = SpreadsheetApp.getActiveSpreadsheet();
           const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
           const lastRow = sheet.getLastRow();
-          const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-          const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
-          const internationalIdx = HEADERS_REQUESTS.indexOf("ES INTERNACIONAL");
+          const idIdx = H("ID RESPUESTA");
+          const statusIdx = H("STATUS");
+          const internationalIdx = H("ES INTERNACIONAL");
           
           const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
           const rowIndex = ids.map(String).indexOf(String(id));
@@ -1355,7 +1402,7 @@ function processApprovalFromEmail(e) {
 
           const currentStatus = sheet.getRange(rowNumber, statusIdx + 1).getValue();
           const isInternational = sheet.getRange(rowNumber, internationalIdx + 1).getValue() === "SI";
-          const costIdx = HEADERS_REQUESTS.indexOf("COSTO COTIZADO PARA VIAJE");
+          const costIdx = H("COSTO COTIZADO PARA VIAJE");
           const totalCost = Number(sheet.getRange(rowNumber, costIdx + 1).getValue()) || 0;
 
           // Determine if High Cost Logic applies (National > 1.2M)
@@ -1377,7 +1424,7 @@ function processApprovalFromEmail(e) {
           else if (role === 'CDS') approverEmail = DIRECTOR_EMAIL;
           else {
               // Use expected approver from sheet; only use actor if it matches to prevent impersonation
-              const expectedApprover = String(sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)") + 1).getValue()).toLowerCase().trim();
+              const expectedApprover = String(sheet.getRange(rowNumber, H("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)") + 1).getValue()).toLowerCase().trim();
               if (actor && String(actor).toLowerCase().trim() === expectedApprover) {
                 approverEmail = actor;
               } else {
@@ -1394,27 +1441,27 @@ function processApprovalFromEmail(e) {
           let previousDecisionDate = "";
 
           if (role === 'CEO') {
-              const currentVal = sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO CEO") + 1).getValue();
+              const currentVal = sheet.getRange(rowNumber, H("APROBADO CEO") + 1).getValue();
               if (currentVal && String(currentVal).trim() !== "") {
                   alreadyDecided = true;
                   // Extract date from "Sí_email_date time"
                   const parts = String(currentVal).split('_');
                   if (parts.length >= 3) previousDecisionDate = parts[2];
               } else {
-                  sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO CEO") + 1).setValue(logStringFull);
+                  sheet.getRange(rowNumber, H("APROBADO CEO") + 1).setValue(logStringFull);
               }
           } else if (role === 'CDS') {
-              const currentVal = sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO CDS") + 1).getValue();
+              const currentVal = sheet.getRange(rowNumber, H("APROBADO CDS") + 1).getValue();
               if (currentVal && String(currentVal).trim() !== "") {
                   alreadyDecided = true;
                   const parts = String(currentVal).split('_');
                   if (parts.length >= 3) previousDecisionDate = parts[2];
               } else {
-                  sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO CDS") + 1).setValue(logStringFull);
+                  sheet.getRange(rowNumber, H("APROBADO CDS") + 1).setValue(logStringFull);
               }
           } else {
               // Normal Approver
-              const currentVal = sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA? (AUTOMÁTICO)") + 1).getValue();
+              const currentVal = sheet.getRange(rowNumber, H("APROBADO POR ÁREA? (AUTOMÁTICO)") + 1).getValue();
               
               // Check if THIS specific actor already approved (or if anyone approved and we want to block)
               // Requirement: "si alguno de los dos aprueba, pues ya el proceso avanza"
@@ -1426,11 +1473,11 @@ function processApprovalFromEmail(e) {
               
               if (currentVal && String(currentVal).trim() !== "") {
                   alreadyDecided = true;
-                  previousDecisionDate = sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("FECHA/HORA (AUTOMÁTICO)") + 1).getValue();
+                  previousDecisionDate = sheet.getRange(rowNumber, H("FECHA/HORA (AUTOMÁTICO)") + 1).getValue();
               } else {
-                  sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA? (AUTOMÁTICO)") + 1).setValue(logStringArea);
-                  sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("FECHA/HORA (AUTOMÁTICO)") + 1).setValue(timestamp);
-                  sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA?") + 1).setValue(decisionPrefix);
+                  sheet.getRange(rowNumber, H("APROBADO POR ÁREA? (AUTOMÁTICO)") + 1).setValue(logStringArea);
+                  sheet.getRange(rowNumber, H("FECHA/HORA (AUTOMÁTICO)") + 1).setValue(timestamp);
+                  sheet.getRange(rowNumber, H("APROBADO POR ÁREA?") + 1).setValue(decisionPrefix);
               }
           }
           
@@ -1463,7 +1510,7 @@ function processApprovalFromEmail(e) {
               // Save denial reason to observations if provided
               const denialReason = e.parameter.reason ? decodeURIComponent(e.parameter.reason) : '';
               if (denialReason) {
-                  const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+                  const obsIdx = H("OBSERVACIONES");
                   const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
                   const denialNote = `[DENEGACIÓN - ${approverEmail}]: ${denialReason}`;
                   sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + denialNote);
@@ -1484,10 +1531,10 @@ function processApprovalFromEmail(e) {
           const rowValues = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
 
           // Check CEO & CDS columns
-          const cdsVal = rowValues[HEADERS_REQUESTS.indexOf("APROBADO CDS")];
-          const ceoVal = rowValues[HEADERS_REQUESTS.indexOf("APROBADO CEO")];
+          const cdsVal = rowValues[H("APROBADO CDS")];
+          const ceoVal = rowValues[H("APROBADO CEO")];
           // For area, we check the (AUTOMÁTICO) column we just wrote to or legacy
-          const areaVal = rowValues[HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA? (AUTOMÁTICO)")];
+          const areaVal = rowValues[H("APROBADO POR ÁREA? (AUTOMÁTICO)")];
 
           const cdsApproved = String(cdsVal).startsWith("Sí");
           const ceoApproved = String(ceoVal).startsWith("Sí");
@@ -1496,14 +1543,14 @@ function processApprovalFromEmail(e) {
           // Detect special cases: requester is CEO/CDS, or the assigned area approver
           // happens to be CEO/CDS (so a single click on the deduped email implicitly
           // covers both the area and the executive role).
-          const requesterEmailRaw = rowValues[HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO")];
+          const requesterEmailRaw = rowValues[H("CORREO ENCUESTADO")];
           const requesterLowerHere = String(requesterEmailRaw || '').toLowerCase().trim();
           const ceoLowerHere = String(CEO_EMAIL).toLowerCase().trim();
           const cdsLowerHere = String(DIRECTOR_EMAIL).toLowerCase().trim();
           const requesterIsCeo = requesterLowerHere === ceoLowerHere;
           const requesterIsCds = requesterLowerHere === cdsLowerHere;
 
-          const assignedAreaApproversRaw = rowValues[HEADERS_REQUESTS.indexOf("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)")];
+          const assignedAreaApproversRaw = rowValues[H("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)")];
           const assignedAreaApprovers = String(assignedAreaApproversRaw || '').toLowerCase()
               .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
           const ceoIsAreaApprover = assignedAreaApprovers.indexOf(ceoLowerHere) !== -1;
@@ -1602,12 +1649,12 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
 
     // Find Row
-    const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-    const resNoIdx = HEADERS_REQUESTS.indexOf("No RESERVA");
-    const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
-    const creditCardIdx = HEADERS_REQUESTS.indexOf("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA");
-    const departureDateIdx = HEADERS_REQUESTS.indexOf("FECHA IDA");
-    const parentIdIdx = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
+    const idIdx = H("ID RESPUESTA");
+    const resNoIdx = H("No RESERVA");
+    const statusIdx = H("STATUS");
+    const creditCardIdx = H("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA");
+    const departureDateIdx = H("FECHA IDA");
+    const parentIdIdx = H("ID SOLICITUD PADRE");
 
     const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
     const rowIndex = ids.map(String).indexOf(String(requestId));
@@ -1700,14 +1747,14 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     }
 
     // Fecha de compra del tiquete (nueva, viene del frontend; default: hoy)
-    var purchaseDateIdx = HEADERS_REQUESTS.indexOf("FECHA DE COMPRA DE TIQUETE");
+    var purchaseDateIdx = H("FECHA DE COMPRA DE TIQUETE");
     if (purchaseDateIdx > -1) {
         var dateValue = purchaseDate || Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy");
         sheet.getRange(rowNumber, purchaseDateIdx + 1).setValue(dateValue);
     }
 
     // 4. Update JSON Support Data — push ALL uploaded files
-    const supportIdx = HEADERS_REQUESTS.indexOf("SOPORTES (JSON)");
+    const supportIdx = H("SOPORTES (JSON)");
     const jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
     let supportData = jsonStr ? JSON.parse(jsonStr) : { folderId: folder.getId(), folderUrl: folder.getUrl(), files: [] };
 
@@ -1777,13 +1824,13 @@ function amendReservation(payload) {
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-    var idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-    var resNoIdx = HEADERS_REQUESTS.indexOf("No RESERVA");
-    var creditCardIdx = HEADERS_REQUESTS.indexOf("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA");
-    var purchaseDateIdx = HEADERS_REQUESTS.indexOf("FECHA DE COMPRA DE TIQUETE");
-    var supportIdx = HEADERS_REQUESTS.indexOf("SOPORTES (JSON)");
-    var parentIdIdx = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
-    var departureDateIdx = HEADERS_REQUESTS.indexOf("FECHA IDA");
+    var idIdx = H("ID RESPUESTA");
+    var resNoIdx = H("No RESERVA");
+    var creditCardIdx = H("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA");
+    var purchaseDateIdx = H("FECHA DE COMPRA DE TIQUETE");
+    var supportIdx = H("SOPORTES (JSON)");
+    var parentIdIdx = H("ID SOLICITUD PADRE");
+    var departureDateIdx = H("FECHA IDA");
 
     var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
     var rowIndex = ids.map(String).indexOf(requestId);
@@ -1906,7 +1953,7 @@ function amendReservation(payload) {
 
     // 6. Send correction email to user
     try {
-        var rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+        var rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
         var req = mapRowToRequest(rowData);
         req.reservationNumber = newPnr;
         var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
@@ -2766,8 +2813,8 @@ function getRequestsByEmail(email) {
   if (lastRow < 2) return [];
   
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  const emailIdx = HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO");
-  const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+  const emailIdx = H("CORREO ENCUESTADO");
+  const idIdx = H("ID RESPUESTA");
   const targetEmail = String(email).toLowerCase().trim();
   
   const uniqueRequests = new Map();
@@ -2797,7 +2844,7 @@ function getAllRequests() {
   if (lastRow < 2) return [];
   
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+  const idIdx = H("ID RESPUESTA");
   
   const uniqueRequests = new Map();
   
@@ -3001,7 +3048,7 @@ function createNewRequest(data, emailHtml) {
   validateRequestInput_(data);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  const idColIndex = HEADERS_REQUESTS.indexOf("ID RESPUESTA") + 1; 
+  const idColIndex = H("ID RESPUESTA") + 1; 
   
   // Calculate ID
   const lastRow = sheet.getLastRow();
@@ -3068,8 +3115,10 @@ function createNewRequest(data, emailHtml) {
       }
   }
 
-  const row = new Array(HEADERS_REQUESTS.length).fill('');
-  const set = (header, val) => { const i = HEADERS_REQUESTS.indexOf(header); if(i>-1) row[i] = val; };
+  // Solo trackea columnas que escribiremos (skip extras en el sheet).
+  // Esto preserva validaciones, formatos y datos en columnas no canónicas.
+  const writes = {}; // { 0-based-col-idx: value }
+  const set = (header, val) => { const i = H(header); if(i>-1) writes[i] = val; };
 
   set("FECHA SOLICITUD", new Date());
   set("EMPRESA", data.company);
@@ -3165,8 +3214,13 @@ function createNewRequest(data, emailHtml) {
      sheet.insertRowAfter(maxRows);
   }
   
-  // Write the row data to the target row
-  sheet.getRange(targetRow, 1, 1, row.length).setValues([row]);
+  // Write ONLY the columns we know about. Extra columns in the sheet
+  // (added by admin manually) are NOT touched — preserves their data,
+  // validations, and formats. Uses individual setValue calls.
+  Object.keys(writes).forEach(function(idxStr) {
+    var colIdx = Number(idxStr);
+    sheet.getRange(targetRow, colIdx + 1).setValue(writes[colIdx]);
+  });
   // --------------------------------------------------------------------------
 
   // METRICS: registrar evento de creación
@@ -3226,7 +3280,7 @@ function uploadOptionImage(requestId, fileData, fileName, type, optionLetter, di
     if (!/^[A-Z]$/.test(optionLetter)) throw new Error('Letra de opción inválida.');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-    const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+    const idIdx = H("ID RESPUESTA");
     const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
     const rowIndex = ids.map(String).indexOf(String(requestId));
     if (rowIndex === -1) throw new Error("Solicitud no encontrada");
@@ -3274,8 +3328,8 @@ function deleteDriveFile(fileId) {
 function updateRequestStatus(id, status, payload) {
    const ss = SpreadsheetApp.getActiveSpreadsheet();
    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-   const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-   const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
+   const idIdx = H("ID RESPUESTA");
+   const statusIdx = H("STATUS");
    const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
    const rowIndex = ids.map(String).indexOf(String(id));
    if (rowIndex === -1) throw new Error("ID no encontrado");
@@ -3285,16 +3339,16 @@ function updateRequestStatus(id, status, payload) {
    
    // --- STATISTICS ---
    if (status === 'APROBADO') {
-       // sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA?") + 1).setValue("SÍ"); // REMOVED TO PRESERVE DETAILED LOGS
-       const paxCountStr = sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("# PERSONAS QUE VIAJAN") + 1).getValue();
+       // sheet.getRange(rowNumber, H("APROBADO POR ÁREA?") + 1).setValue("SÍ"); // REMOVED TO PRESERVE DETAILED LOGS
+       const paxCountStr = sheet.getRange(rowNumber, H("# PERSONAS QUE VIAJAN") + 1).getValue();
        const paxCount = parseInt(paxCountStr) || 1;
-       const retDate = sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("FECHA VUELTA") + 1).getValue();
+       const retDate = sheet.getRange(rowNumber, H("FECHA VUELTA") + 1).getValue();
        const hasReturn = retDate && String(retDate).trim() !== '';
        const legs = hasReturn ? 2 : 1;
-       sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("Q TKT") + 1).setValue(paxCount * legs);
+       sheet.getRange(rowNumber, H("Q TKT") + 1).setValue(paxCount * legs);
 
        // CANCEL PARENT: When a modification is approved, the original request is cancelled
-       const parentIdIdx = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
+       const parentIdIdx = H("ID SOLICITUD PADRE");
        const parentId = sheet.getRange(rowNumber, parentIdIdx + 1).getValue();
 
        if (parentId && String(parentId).trim() !== '') {
@@ -3305,7 +3359,7 @@ function updateRequestStatus(id, status, payload) {
                const parentRowNum = parentRowIdx + 2;
                sheet.getRange(parentRowNum, statusIdx + 1).setValue('ANULADO');
 
-               const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+               const obsIdx = H("OBSERVACIONES");
                const pObs = sheet.getRange(parentRowNum, obsIdx + 1).getValue();
                const cancelNote = `[SISTEMA]: Anulada automáticamente por aprobación del cambio ${id}.`;
                sheet.getRange(parentRowNum, obsIdx + 1).setValue((pObs ? pObs + "\n" : "") + cancelNote);
@@ -3313,29 +3367,29 @@ function updateRequestStatus(id, status, payload) {
        }
 
    } else if (status === 'DENEGADO') {
-       // sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA?") + 1).setValue("NO"); // REMOVED TO PRESERVE DETAILED LOGS
+       // sheet.getRange(rowNumber, H("APROBADO POR ÁREA?") + 1).setValue("NO"); // REMOVED TO PRESERVE DETAILED LOGS
    }
 
    // --- HANDLING NEW COLUMNS ---
    if (payload) {
        if (payload.analystOptions) {
-           const optIdx = HEADERS_REQUESTS.indexOf("OPCIONES (JSON)");
+           const optIdx = H("OPCIONES (JSON)");
            sheet.getRange(rowNumber, optIdx + 1).setValue(JSON.stringify(payload.analystOptions));
        }
        if (payload.selectionDetails) {
-           const selIdx = HEADERS_REQUESTS.indexOf("SELECCION_TEXTO");
+           const selIdx = H("SELECCION_TEXTO");
            sheet.getRange(rowNumber, selIdx + 1).setValue(payload.selectionDetails);
        }
        if (payload.finalCostTickets !== undefined) {
-           sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("COSTO_FINAL_TIQUETES") + 1).setValue(payload.finalCostTickets);
+           sheet.getRange(rowNumber, H("COSTO_FINAL_TIQUETES") + 1).setValue(payload.finalCostTickets);
        }
        if (payload.finalCostHotel !== undefined) {
-           sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("COSTO_FINAL_HOTEL") + 1).setValue(payload.finalCostHotel);
+           sheet.getRange(rowNumber, H("COSTO_FINAL_HOTEL") + 1).setValue(payload.finalCostHotel);
        }
        if (payload.totalCost !== undefined) {
            // We have a COSTO COTIZADO column, can use that or TOTAL FACTURA? 
            // Let's use COSTO COTIZADO PARA VIAJE as the estimated approved cost
-           sheet.getRange(rowNumber, HEADERS_REQUESTS.indexOf("COSTO COTIZADO PARA VIAJE") + 1).setValue(payload.totalCost);
+           sheet.getRange(rowNumber, H("COSTO COTIZADO PARA VIAJE") + 1).setValue(payload.totalCost);
        }
    }
 
@@ -3379,12 +3433,12 @@ function uploadSupportFile(requestId, fileData, fileName, mimeType, correctionNo
   var sanitizedName = validateFileUpload_(fileData, fileName, mimeType);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+  const idIdx = H("ID RESPUESTA");
   const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
   const rowIndex = ids.map(String).indexOf(String(requestId));
   if (rowIndex === -1) throw new Error("Solicitud no encontrada");
   const rowNumber = rowIndex + 2;
-  const supportIdx = HEADERS_REQUESTS.indexOf("SOPORTES (JSON)");
+  const supportIdx = H("SOPORTES (JSON)");
 
   const jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
   let supportData = jsonStr ? JSON.parse(jsonStr) : { folderId: null, folderUrl: null, files: [] };
@@ -3408,7 +3462,7 @@ function uploadSupportFile(requestId, fileData, fileName, mimeType, correctionNo
   // Si es corrección de reserva, notificar al usuario por correo
   if (correctionNote) {
     try {
-      var rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+      var rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
       var req = mapRowToRequest(rowData);
       var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
       var fileUrl = 'https://drive.google.com/file/d/' + file.getId() + '/view?usp=sharing';
@@ -3720,7 +3774,7 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
 }
 
 function mapRowToRequest(row) {
-  const get = (h) => { const i = HEADERS_REQUESTS.indexOf(h); return (i>-1 && i<row.length) ? row[i] : ''; };
+  const get = (h) => { const i = H(h); return (i>-1 && i<row.length) ? row[i] : ''; };
   const safeDate = (v) => { if(!v)return ''; if(v instanceof Date) return v.toISOString().split('T')[0]; return String(v).split('T')[0]; };
   const safeTime = (v) => {
       if (!v) return '';
@@ -3868,10 +3922,10 @@ function mapRowToRequest(row) {
  */
 function _computePausedParentIds_(data) {
   const parents = new Set();
-  const idCol = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-  const parentIdCol = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
-  const statusCol = HEADERS_REQUESTS.indexOf("STATUS");
-  const obsCol = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+  const idCol = H("ID RESPUESTA");
+  const parentIdCol = H("ID SOLICITUD PADRE");
+  const statusCol = H("STATUS");
+  const obsCol = H("OBSERVACIONES");
   if (idCol < 0 || parentIdCol < 0 || statusCol < 0 || obsCol < 0) return parents;
 
   for (let i = 0; i < data.length; i++) {
@@ -3903,10 +3957,10 @@ function sendPendingApprovalReminders() {
   // Asumimos fila 1 headers, datos desde fila 2
 
   // Indices
-  const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
-  const areaApproveIdx = HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA?");
-  const cdsApproveIdx = HEADERS_REQUESTS.indexOf("APROBADO CDS");
-  const ceoApproveIdx = HEADERS_REQUESTS.indexOf("APROBADO CEO");
+  const statusIdx = H("STATUS");
+  const areaApproveIdx = H("APROBADO POR ÁREA?");
+  const cdsApproveIdx = H("APROBADO CDS");
+  const ceoApproveIdx = H("APROBADO CEO");
 
   // Calcula qué padres están pausadas por una solicitud de cambio activa
   const pausedParentIds = _computePausedParentIds_(data.slice(1));
@@ -4034,7 +4088,7 @@ function sendPendingSelectionReminders() {
   if (lastRow < 2) return;
 
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
+  const statusIdx = H("STATUS");
 
   // Calcula qué padres están pausadas por una solicitud de cambio activa
   const pausedParentIds = _computePausedParentIds_(data);
@@ -4134,10 +4188,10 @@ function sendPendingConsultReminders() {
   if (lastRow < 2) return;
 
   var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  var idCol = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-  var statusCol = HEADERS_REQUESTS.indexOf("STATUS");
-  var obsCol = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
-  var parentIdCol = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
+  var idCol = H("ID RESPUESTA");
+  var statusCol = H("STATUS");
+  var obsCol = H("OBSERVACIONES");
+  var parentIdCol = H("ID SOLICITUD PADRE");
 
   var remindersSent = 0;
 
@@ -4465,7 +4519,7 @@ function generateSupportReport(requestId) {
     // 2. Get request data
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-    const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+    const idIdx = H("ID RESPUESTA");
     const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
     const rowIndex = ids.map(String).indexOf(String(requestId));
     if (rowIndex === -1) throw new Error("Solicitud no encontrada: " + requestId);
@@ -4627,10 +4681,10 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
   if (!requestId || !reason || !reason.trim()) throw new Error('ID y motivo son requeridos.');
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  var idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-  var statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
-  var obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
-  var emailIdx = HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO");
+  var idIdx = H("ID RESPUESTA");
+  var statusIdx = H("STATUS");
+  var obsIdx = H("OBSERVACIONES");
+  var emailIdx = H("CORREO ENCUESTADO");
 
   var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
   var rowIndex = ids.map(String).indexOf(String(requestId));
@@ -4657,7 +4711,7 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
 
   // Notify ADMIN (not user — user already knows, they initiated it)
   try {
-    var rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+    var rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
     var req = mapRowToRequest(rowData);
     var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
     var content = '<p style="color:#111827; font-size:14px; margin-bottom:12px;">El usuario <strong>' + escapeHtml_(currentUserEmail) + '</strong> ha anulado su propia solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
@@ -4675,10 +4729,10 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
 function anularSolicitud(requestId, reason) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-  const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
-  const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
-  const emailIdx = HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO");
+  const idIdx = H("ID RESPUESTA");
+  const statusIdx = H("STATUS");
+  const obsIdx = H("OBSERVACIONES");
+  const emailIdx = H("CORREO ENCUESTADO");
   
   const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
   const rowIndex = ids.map(String).indexOf(String(requestId));
@@ -4770,6 +4824,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Equitel Viajes')
     .addItem('Gestionar Usuarios (Sidebar)', 'abrirSidebarUsuarios')
+    .addItem('Reorganizar Base Principal (Sidebar)', 'abrirSidebarReorg')
     .addSeparator()
     .addItem(modoLabel, 'mostrarModoActivo')
     .addSeparator()
@@ -5738,6 +5793,331 @@ function usuarios_bulkUpdate(payload) {
 }
 
 // =====================================================================
+// REORGANIZACIÓN DE LA HOJA PRINCIPAL "Nueva Base Solicitudes"
+// =====================================================================
+// Workflow seguro de 6 pasos:
+//   1. Crear hoja de trabajo paralela con headers canónicos
+//   2. (Manual) Admin reorganiza columnas en la hoja
+//   3. Verificar headers (¿están todos los requeridos?)
+//   4. Migrar datos + validaciones + formatos + colores editables
+//   5. Verificar (preview de filas migradas)
+//   6. Switch: renombrar hoja vieja a *_OLD_<fecha>, hoja nueva a canónica
+//
+// Diseño defensivo: NUNCA toca la hoja original hasta el paso 6 (switch).
+// Si algo falla, la hoja vieja sigue activa y la nueva queda como respaldo.
+// =====================================================================
+
+// Columnas que Wendy puede editar — fondo amarillo claro tras la migración.
+// Definidas explícitamente por David (ver memoria del proyecto).
+const NBS_EDITABLE_COLUMNS = [
+  'NOMBRE HOTEL',
+  'PERSONA QUE TRAMITA EL TIQUETE /HOTEL',
+  'TIPO DE COMPRA DE TKT',
+  'FECHA DE FACTURA',
+  '# DE FACTURA',
+  'VALOR PAGADO A AEROLINEA Y/O HOTEL',
+  'VALOR PAGADO A AVIATUR Y/O IVA',
+  'TOTAL FACTURA',
+  'TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA',
+  'COSTO_FINAL_TIQUETES',
+  'COSTO_FINAL_HOTEL'
+];
+const NBS_EDITABLE_BG = '#FFF9C4'; // amarillo claro
+
+/**
+ * Paso 1: Crea una hoja de trabajo paralela con todos los headers canónicos
+ * en orden default. El admin puede luego reorganizar las columnas a mano.
+ */
+function nbs_createWorkSheet(targetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var name = String(targetName || '').trim();
+  if (!name) throw new Error('Nombre de hoja requerido.');
+  if (name === SHEET_NAME_REQUESTS) throw new Error('No puedes usar el nombre de la hoja activa. Usa otro temporal (ej: "Nueva Base 1").');
+  if (ss.getSheetByName(name)) throw new Error('Ya existe una hoja con ese nombre.');
+
+  var sheet = ss.insertSheet(name);
+  sheet.getRange(1, 1, 1, HEADERS_REQUESTS.length).setValues([HEADERS_REQUESTS]);
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, HEADERS_REQUESTS.length)
+    .setFontWeight('bold').setBackground('#D71920').setFontColor('white');
+  return { ok: true, name: name, columns: HEADERS_REQUESTS.length };
+}
+
+/**
+ * Paso 3: Verifica la estructura de la hoja de trabajo.
+ * Retorna {ok, missing[], extra[], total}.
+ *  - missing: headers canónicos que faltan
+ *  - extra: headers que existen en el sheet pero NO en el canónico (preservados, no se borran)
+ */
+function nbs_verifyWorkSheet(targetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(targetName);
+  if (!sheet) throw new Error('No existe la hoja "' + targetName + '".');
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) throw new Error('La hoja no tiene columnas.');
+
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(function(h) { return String(h || '').trim(); });
+  var present = {};
+  headers.forEach(function(h) { if (h) present[h] = true; });
+
+  var missing = [];
+  HEADERS_REQUESTS.forEach(function(canonical) {
+    if (!present[canonical]) missing.push(canonical);
+  });
+
+  var canonicalSet = {};
+  HEADERS_REQUESTS.forEach(function(c) { canonicalSet[c] = true; });
+  var extra = headers.filter(function(h) { return h && !canonicalSet[h]; });
+
+  return {
+    ok: missing.length === 0,
+    missing: missing,
+    extra: extra,
+    totalCanonical: HEADERS_REQUESTS.length,
+    totalInSheet: headers.filter(function(h) { return h; }).length
+  };
+}
+
+/**
+ * Paso 4: Migra los datos de la hoja activa (Nueva Base Solicitudes) a la
+ * hoja de trabajo. Mapea columnas por NOMBRE de header. Preserva validaciones
+ * de datos (dropdowns) de la hoja original copiándolas a la nueva.
+ *
+ * Si una columna existe en la fuente pero NO en la destino, sus datos se
+ * pierden (advertir al usuario antes). Si existe en destino pero no en fuente,
+ * queda vacía (las validaciones agregadas manualmente se preservan).
+ */
+function nbs_migrateData(sourceName, targetName, options) {
+  options = options || {};
+  var migrateValidations = options.migrateValidations !== false;
+  var applyEditableColors = options.applyEditableColors !== false;
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var source = ss.getSheetByName(sourceName);
+  var target = ss.getSheetByName(targetName);
+  if (!source) throw new Error('Hoja fuente "' + sourceName + '" no encontrada.');
+  if (!target) throw new Error('Hoja destino "' + targetName + '" no encontrada.');
+  if (sourceName === targetName) throw new Error('Fuente y destino son la misma hoja.');
+
+  // Build header maps
+  var srcLastCol = source.getLastColumn();
+  var srcHeaders = source.getRange(1, 1, 1, srcLastCol).getValues()[0]
+    .map(function(h) { return String(h || '').trim(); });
+  var tgtLastCol = target.getLastColumn();
+  var tgtHeaders = target.getRange(1, 1, 1, tgtLastCol).getValues()[0]
+    .map(function(h) { return String(h || '').trim(); });
+
+  var srcMap = {}; srcHeaders.forEach(function(h, i) { if (h) srcMap[h] = i; });
+  var tgtMap = {}; tgtHeaders.forEach(function(h, i) { if (h) tgtMap[h] = i; });
+
+  // Read source data
+  var srcLastRow = source.getLastRow();
+  if (srcLastRow < 2) {
+    return { rowsCopied: 0, validationsCopied: 0, columnsMapped: 0 };
+  }
+  var srcData = source.getRange(2, 1, srcLastRow - 1, srcLastCol).getValues();
+
+  // Build column mapping: srcCol → tgtCol (only for headers that exist in both)
+  var colMappings = []; // [{ srcCol, tgtCol, name }]
+  Object.keys(srcMap).forEach(function(name) {
+    if (tgtMap[name] !== undefined) {
+      colMappings.push({ srcCol: srcMap[name], tgtCol: tgtMap[name], name: name });
+    }
+  });
+
+  // Build target data array — column by column to respect target's order
+  var numRows = srcData.length;
+  // Initialize all rows with empty arrays of size tgtLastCol
+  var tgtData = [];
+  for (var r = 0; r < numRows; r++) {
+    tgtData.push(new Array(tgtLastCol).fill(''));
+  }
+  // Fill in the values for mapped columns only
+  colMappings.forEach(function(m) {
+    for (var r = 0; r < numRows; r++) {
+      tgtData[r][m.tgtCol] = srcData[r][m.srcCol];
+    }
+  });
+
+  // Ensure target has enough rows
+  var tgtMaxRows = target.getMaxRows();
+  if (tgtMaxRows < numRows + 1) {
+    target.insertRowsAfter(tgtMaxRows, (numRows + 1) - tgtMaxRows);
+  }
+
+  // Write data to target (rows 2 to N+1, all target columns)
+  target.getRange(2, 1, numRows, tgtLastCol).setValues(tgtData);
+
+  // Migrate data validations (dropdowns) for mapped columns
+  var validationsCopied = 0;
+  if (migrateValidations) {
+    colMappings.forEach(function(m) {
+      try {
+        var srcValidations = source.getRange(2, m.srcCol + 1, srcLastRow - 1, 1).getDataValidations();
+        // Find first non-null validation as the column-wide one
+        var colValidation = null;
+        for (var i = 0; i < srcValidations.length; i++) {
+          if (srcValidations[i][0]) { colValidation = srcValidations[i][0]; break; }
+        }
+        if (colValidation) {
+          var tgtRange = target.getRange(2, m.tgtCol + 1, target.getMaxRows() - 1, 1);
+          tgtRange.setDataValidation(colValidation);
+          validationsCopied++;
+        }
+      } catch (e) {
+        console.warn('Validation copy failed for ' + m.name + ': ' + e);
+      }
+    });
+  }
+
+  // Apply yellow background to editable columns
+  var coloredColumns = 0;
+  if (applyEditableColors) {
+    NBS_EDITABLE_COLUMNS.forEach(function(name) {
+      if (tgtMap[name] !== undefined) {
+        var col = tgtMap[name] + 1;
+        target.getRange(2, col, target.getMaxRows() - 1, 1).setBackground(NBS_EDITABLE_BG);
+        coloredColumns++;
+      }
+    });
+  }
+
+  SpreadsheetApp.flush();
+  return {
+    rowsCopied: numRows,
+    columnsMapped: colMappings.length,
+    validationsCopied: validationsCopied,
+    coloredColumns: coloredColumns,
+    extraInTarget: tgtHeaders.filter(function(h) { return h && !srcMap[h]; }),
+    droppedFromSource: srcHeaders.filter(function(h) { return h && !tgtMap[h]; })
+  };
+}
+
+/**
+ * Paso 5 (helper): Lista los IDs de solicitudes en la hoja dada (para preview).
+ */
+function nbs_listRequests(sheetName, limit) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('Hoja "' + sheetName + '" no encontrada.');
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(function(h) { return String(h || '').trim(); });
+  var idCol = headers.indexOf('ID RESPUESTA');
+  var dateCol = headers.indexOf('FECHA SOLICITUD');
+  var statusCol = headers.indexOf('STATUS');
+  if (idCol < 0) throw new Error('La hoja "' + sheetName + '" no tiene columna ID RESPUESTA.');
+
+  var data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var out = [];
+  for (var i = 0; i < data.length; i++) {
+    var id = String(data[i][idCol] || '').trim();
+    if (!id) continue;
+    out.push({
+      id: id,
+      date: dateCol >= 0 ? String(data[i][dateCol] || '') : '',
+      status: statusCol >= 0 ? String(data[i][statusCol] || '') : ''
+    });
+  }
+  // Sort newest first by ID (assuming SOL-NNNNNN format)
+  out.sort(function(a, b) { return b.id.localeCompare(a.id); });
+  if (limit && limit > 0) out = out.slice(0, limit);
+  return out;
+}
+
+/**
+ * Paso 5 (helper): Retorna todos los pares {header, value} de una solicitud
+ * para que el admin verifique la migración celda por celda.
+ */
+function nbs_getRequestRow(sheetName, requestId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('Hoja "' + sheetName + '" no encontrada.');
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(function(h) { return String(h || '').trim(); });
+  var idCol = headers.indexOf('ID RESPUESTA');
+  if (idCol < 0) throw new Error('No hay columna ID RESPUESTA en "' + sheetName + '".');
+
+  var data = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][idCol] || '').trim() === String(requestId).trim()) {
+      var row = data[i];
+      var pairs = [];
+      headers.forEach(function(h, j) {
+        if (h) {
+          var val = row[j];
+          if (val instanceof Date) val = val.toISOString();
+          pairs.push({ header: h, value: String(val !== undefined && val !== null ? val : '') });
+        }
+      });
+      return { id: requestId, pairs: pairs, rowNumber: i + 2 };
+    }
+  }
+  return null;
+}
+
+/**
+ * Paso 6: Switch atómico. Renombra la hoja activa a *_OLD_<fecha>, y
+ * renombra la hoja de trabajo al nombre canónico.
+ *
+ * Tras este paso, el backend leerá automáticamente de la nueva hoja
+ * (porque busca por SHEET_NAME_REQUESTS = 'Nueva Base Solicitudes').
+ *
+ * Reversible: si algo falla, basta con revertir los nombres manualmente.
+ */
+function nbs_switchMain(currentName, newName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (currentName !== SHEET_NAME_REQUESTS) {
+    throw new Error('Solo puedes hacer switch desde la hoja activa "' + SHEET_NAME_REQUESTS + '".');
+  }
+  var current = ss.getSheetByName(currentName);
+  var target = ss.getSheetByName(newName);
+  if (!current) throw new Error('Hoja activa "' + currentName + '" no encontrada.');
+  if (!target) throw new Error('Hoja de trabajo "' + newName + '" no encontrada.');
+
+  // Renombrar activa a _OLD_<fecha>
+  var dateStr = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyyMMdd_HHmm');
+  var oldName = currentName + '_OLD_' + dateStr;
+  // Si por algún motivo ya existe (re-intento), añade un sufijo
+  var attempt = 0;
+  while (ss.getSheetByName(oldName)) {
+    attempt++;
+    oldName = currentName + '_OLD_' + dateStr + '_' + attempt;
+    if (attempt > 10) throw new Error('No se pudo encontrar un nombre disponible para la hoja antigua.');
+  }
+  current.setName(oldName);
+
+  // Renombrar trabajo a canónica
+  target.setName(currentName);
+
+  // Limpiar cache de headers porque el "active" sheet cambió
+  _clearReqHeadersCache_();
+
+  return {
+    ok: true,
+    oldSheetName: oldName,
+    newActiveSheet: currentName
+  };
+}
+
+/**
+ * Abre el sidebar de reorganización (separado del sidebar de USUARIOS).
+ */
+function abrirSidebarReorg() {
+  var html = HtmlService.createHtmlOutputFromFile('ReorgSidebar')
+    .setTitle('Reorganizar Base Principal');
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+// =====================================================================
 // VISTA DE ANOMALÍAS
 // =====================================================================
 
@@ -5863,7 +6243,7 @@ function _recordEvent_(requestId, eventKey, data) {
       return;
     }
 
-    const idIdx = HEADERS_REQUESTS.indexOf('ID RESPUESTA');
+    const idIdx = H('ID RESPUESTA');
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return;
     const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
@@ -5994,12 +6374,12 @@ function getMetrics(filters) {
   var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   var eventsCol = headers.indexOf(EVENTOS_JSON_HEADER);
   var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  var idIdx = HEADERS_REQUESTS.indexOf('ID RESPUESTA');
-  var requesterIdx = HEADERS_REQUESTS.indexOf('CORREO ENCUESTADO');
-  var destinationIdx = HEADERS_REQUESTS.indexOf('CIUDAD DESTINO');
-  var companyIdx = HEADERS_REQUESTS.indexOf('EMPRESA');
-  var statusIdx = HEADERS_REQUESTS.indexOf('STATUS');
-  var dateIdx = HEADERS_REQUESTS.indexOf('FECHA SOLICITUD');
+  var idIdx = H('ID RESPUESTA');
+  var requesterIdx = H('CORREO ENCUESTADO');
+  var destinationIdx = H('CIUDAD DESTINO');
+  var companyIdx = H('EMPRESA');
+  var statusIdx = H('STATUS');
+  var dateIdx = H('FECHA SOLICITUD');
 
   // --- CACHE LAYER ---
   var cache = _loadMetricsCache_();
