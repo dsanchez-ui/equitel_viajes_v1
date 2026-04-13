@@ -209,7 +209,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'deleteDriveFile', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'processChangeDecision'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'processChangeDecision'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -236,7 +236,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'getMetrics', 'processChangeDecision'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -273,9 +273,19 @@ function dispatch(action, payload) {
            result = getAllRequests();
         }
         break;
-      case 'createRequest': result = createNewRequest(payload.data || payload, payload.emailHtml); break;
+      case 'createRequest': {
+        // Normalize: strip internal fields (sessionToken, userEmail) that the frontend
+        // sends at the payload root so they don't leak into createNewRequest as data fields.
+        var reqData = payload.data || payload;
+        var cleanData = {};
+        Object.keys(reqData).forEach(function(k) {
+          if (k !== 'sessionToken' && k !== 'userEmail' && k !== 'action') cleanData[k] = reqData[k];
+        });
+        result = createNewRequest(cleanData, payload.emailHtml);
+        break;
+      }
       case 'updateRequest': result = updateRequestStatus(payload.id, payload.status, payload.payload); break;
-      case 'uploadSupportFile': result = uploadSupportFile(payload.requestId, payload.fileData, payload.fileName, payload.mimeType); break;
+      case 'uploadSupportFile': result = uploadSupportFile(payload.requestId, payload.fileData, payload.fileName, payload.mimeType, payload.correctionNote); break;
       
       // NEW: UPLOAD OPTION IMAGE (UPDATED v2.7)
       case 'uploadOptionImage': result = uploadOptionImage(payload.requestId, payload.fileData, payload.fileName, payload.type, payload.optionLetter, payload.direction); break;
@@ -302,7 +312,8 @@ function dispatch(action, payload) {
       case 'logout': result = logout(payload.email, payload.token); break;
 
       // NEW: RESERVATION LOGIC
-      case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard); break;
+      case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard, payload.purchaseDate); break;
+      case 'amendReservation': result = amendReservation(payload); break;
 
       // NEW: DRIVE DELETION
       case 'deleteDriveFile': result = deleteDriveFile(payload.fileId); break;
@@ -1558,7 +1569,7 @@ function processApprovalFromEmail(e) {
 
 // --- NEW RESERVATION FUNCTION ---
 
-function registerReservation(requestId, reservationNumber, files, creditCard) {
+function registerReservation(requestId, reservationNumber, files, creditCard, purchaseDate) {
     // Backward compatibility: if old clients still pass (fileData, fileName, creditCard) positionally,
     // wrap into a single-element files array.
     if (typeof files === 'string') {
@@ -1684,6 +1695,13 @@ function registerReservation(requestId, reservationNumber, files, creditCard) {
         sheet.getRange(rowNumber, creditCardIdx + 1).setValue(creditCard);
     }
 
+    // Fecha de compra del tiquete (nueva, viene del frontend; default: hoy)
+    var purchaseDateIdx = HEADERS_REQUESTS.indexOf("FECHA DE COMPRA DE TIQUETE");
+    if (purchaseDateIdx > -1) {
+        var dateValue = purchaseDate || Utilities.formatDate(new Date(), "America/Bogota", "dd/MM/yyyy");
+        sheet.getRange(rowNumber, purchaseDateIdx + 1).setValue(dateValue);
+    }
+
     // 4. Update JSON Support Data — push ALL uploaded files
     const supportIdx = HEADERS_REQUESTS.indexOf("SOPORTES (JSON)");
     const jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
@@ -1732,6 +1750,203 @@ function registerReservation(requestId, reservationNumber, files, creditCard) {
  * Get sites (sedes) from MISC sheet column D.
  * Header "SEDES" is in row 2, data starts at row 3.
  */
+/**
+ * Amend an existing reservation: update PNR, credit card, purchase date,
+ * delete specified files from Drive + SOPORTES JSON, upload new files,
+ * rename the Drive folder, and send a correction email to the user.
+ *
+ * @param {Object} payload { requestId, reservationNumber, creditCard,
+ *   purchaseDate, fileIdsToDelete: string[], newFiles: [{fileData, fileName}],
+ *   correctionNote?: string }
+ */
+function amendReservation(payload) {
+    if (!payload || !payload.requestId) throw new Error('requestId requerido.');
+    var requestId = String(payload.requestId);
+    var newPnr = String(payload.reservationNumber || '').trim();
+    var newCard = String(payload.creditCard || '').trim();
+    var newPurchaseDate = payload.purchaseDate || '';
+    var fileIdsToDelete = payload.fileIdsToDelete || [];
+    var newFilesData = payload.newFiles || [];
+    var correctionNote = payload.correctionNote || '';
+
+    if (!newPnr) throw new Error('Número de reserva requerido.');
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    var idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+    var resNoIdx = HEADERS_REQUESTS.indexOf("No RESERVA");
+    var creditCardIdx = HEADERS_REQUESTS.indexOf("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA");
+    var purchaseDateIdx = HEADERS_REQUESTS.indexOf("FECHA DE COMPRA DE TIQUETE");
+    var supportIdx = HEADERS_REQUESTS.indexOf("SOPORTES (JSON)");
+    var parentIdIdx = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
+    var departureDateIdx = HEADERS_REQUESTS.indexOf("FECHA IDA");
+
+    var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
+    var rowIndex = ids.map(String).indexOf(requestId);
+    if (rowIndex === -1) throw new Error("Solicitud no encontrada");
+    var rowNumber = rowIndex + 2;
+
+    // 1. Update PNR, card, purchase date
+    sheet.getRange(rowNumber, resNoIdx + 1).setValue(newPnr);
+    if (creditCardIdx > -1) sheet.getRange(rowNumber, creditCardIdx + 1).setValue(newCard);
+    if (purchaseDateIdx > -1 && newPurchaseDate) {
+        sheet.getRange(rowNumber, purchaseDateIdx + 1).setValue(newPurchaseDate);
+    }
+
+    // 2. Load current support data
+    var jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
+    var supportData = jsonStr ? JSON.parse(jsonStr) : { folderId: null, folderUrl: null, files: [] };
+
+    // 3. Delete files from Drive + remove from JSON
+    var deleteSet = {};
+    fileIdsToDelete.forEach(function(id) { deleteSet[id] = true; });
+
+    if (fileIdsToDelete.length > 0) {
+        supportData.files = supportData.files.filter(function(f) {
+            if (deleteSet[f.id]) {
+                try { DriveApp.getFileById(f.id).setTrashed(true); } catch (e) {
+                    console.error("Error borrando archivo " + f.id + ": " + e);
+                }
+                return false; // remove from array
+            }
+            return true; // keep
+        });
+    }
+
+    // 3b. Rename surviving reservation files to reflect new PNR
+    supportData.files.forEach(function(f) {
+        if (f.isReservation) {
+            try {
+                var driveFile = DriveApp.getFileById(f.id);
+                var newLabel = 'Reserva_' + newPnr + '_' + requestId;
+                driveFile.setName(newLabel);
+                f.name = newLabel; // update JSON too
+            } catch (e) {
+                console.error("Error renombrando archivo " + f.id + ": " + e);
+            }
+        }
+    });
+
+    // 4. Upload new files
+    var root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+    var folder;
+    if (supportData.folderId) {
+        try { folder = DriveApp.getFolderById(supportData.folderId); } catch (e) {}
+    }
+    if (!folder) {
+        var allFolders = root.getFolders();
+        while (allFolders.hasNext()) {
+            var f = allFolders.next();
+            if (f.getName().indexOf(requestId) === 0) { folder = f; break; }
+        }
+    }
+    if (!folder) folder = root.createFolder(requestId);
+
+    var uploadedFiles = [];
+    if (newFilesData.length > 0) {
+        newFilesData.forEach(function(nf) {
+            if (!nf || !nf.fileData || !nf.fileName) return;
+            validateFileUpload_(nf.fileData, nf.fileName, 'application/pdf');
+            var safeName = String(nf.fileName).replace(/[\/\\:*?"<>|]/g, '_').substring(0, 200);
+            var lower = safeName.toLowerCase();
+            var mime = lower.endsWith('.pdf') ? MimeType.PDF
+                     : (lower.endsWith('.png') ? MimeType.PNG
+                     : (lower.endsWith('.jpg') || lower.endsWith('.jpeg') ? MimeType.JPEG
+                     : MimeType.PDF));
+            var blob = Utilities.newBlob(Utilities.base64Decode(nf.fileData), mime, safeName);
+            var label = 'Reserva_' + newPnr + '_' + requestId;
+            blob.setName(label);
+            var driveFile = folder.createFile(blob);
+            driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+            var fileEntry = {
+                id: driveFile.getId(),
+                name: label,
+                url: 'https://drive.google.com/file/d/' + driveFile.getId() + '/view?usp=sharing',
+                mimeType: mime,
+                date: new Date().toISOString(),
+                isReservation: true
+            };
+            supportData.files.push(fileEntry);
+            uploadedFiles.push({ name: safeName, url: fileEntry.url });
+        });
+    }
+
+    // Update support data and folder ID
+    supportData.folderId = folder.getId();
+    supportData.folderUrl = folder.getUrl();
+    sheet.getRange(rowNumber, supportIdx + 1).setValue(JSON.stringify(supportData));
+
+    // 5. Rename folder to reflect new PNR / card
+    var MONTH_NAMES_ES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+    var tcShort = '';
+    if (newCard) {
+        var match = String(newCard).match(/TC[- ]?(\d+)/i);
+        tcShort = match ? 'TC ' + match[1] : String(newCard).split(' ')[0];
+    }
+    var depDate = sheet.getRange(rowNumber, departureDateIdx + 1).getValue();
+    var monthYear = '';
+    if (depDate instanceof Date) {
+        monthYear = MONTH_NAMES_ES[depDate.getMonth()] + ' ' + String(depDate.getFullYear()).slice(-2);
+    }
+    var parentId = String(sheet.getRange(rowNumber, parentIdIdx + 1).getValue() || '').trim();
+    var isModification = parentId && parentId !== '' && parentId !== 'undefined';
+
+    var newFolderName = requestId;
+    if (isModification) newFolderName += ' - CAMBIO DE ' + parentId;
+    if (newPnr) newFolderName += ' - ' + newPnr;
+    if (tcShort) newFolderName += ' - ' + tcShort;
+    if (monthYear) newFolderName += ' - ' + monthYear;
+    folder.setName(newFolderName);
+
+    SpreadsheetApp.flush();
+
+    // 6. Send correction email to user
+    try {
+        var rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+        var req = mapRowToRequest(rowData);
+        req.reservationNumber = newPnr;
+        var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
+
+        // Build list of remaining reservation files for the email
+        var remainingResFiles = supportData.files.filter(function(f) { return f.isReservation; });
+
+        var filesHtml = '';
+        if (remainingResFiles.length > 0) {
+            var itemsHtml = remainingResFiles.map(function(f, i) {
+                return '<table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#ffffff; border:1px solid #dbeafe; border-radius:6px; margin-bottom:8px; border-collapse:separate;"><tr>'
+                    + '<td style="padding:12px 14px; font-size:13px; color:#1e3a8a; word-break:break-word;">📄 ' + escapeHtml_(f.name || ('Archivo ' + (i+1))) + '</td>'
+                    + '<td width="110" style="padding:12px 14px 12px 6px; text-align:right;"><a href="' + escapeHtml_(f.url) + '" style="background-color:#2563eb; color:#ffffff; padding:8px 16px; text-decoration:none; border-radius:4px; font-size:12px; font-weight:bold; display:inline-block;">Descargar</a></td>'
+                    + '</tr></table>';
+            }).join('');
+            filesHtml = '<div style="background-color:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:15px; margin-bottom:20px;">'
+                + '<div style="font-size:11px; color:#6b7280; text-transform:uppercase; font-weight:bold; margin-bottom:10px;">📎 Archivos de Reserva (' + remainingResFiles.length + ')</div>'
+                + itemsHtml + '</div>';
+        }
+
+        var content = '<p style="color:#111827; font-size:14px; margin-bottom:12px;">El área de viajes ha <strong>corregido la reserva</strong> para su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
+
+        content += '<div style="background-color:#eff6ff; border:1px solid #dbeafe; padding:20px; border-radius:8px; text-align:center; margin-bottom:20px;">'
+            + '<div style="font-size:12px; color:#60a5fa; margin-bottom:5px; text-transform:uppercase; font-weight:bold;">' + (isHotelOnly ? 'NÚMERO DE CONFIRMACIÓN' : 'NÚMERO DE RESERVA (PNR)') + '</div>'
+            + '<div style="font-size:24px; font-weight:bold; color:#1e3a8a; letter-spacing:2px;">' + escapeHtml_(newPnr) + '</div>'
+            + '</div>';
+
+        if (correctionNote) {
+            content += '<div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:12px 14px; border-radius:6px; font-size:13px; margin-bottom:16px;"><strong>Nota de corrección:</strong> ' + escapeHtml_(correctionNote) + '</div>';
+        }
+
+        content += filesHtml;
+        content += '<hr style="border:0; border-top:1px solid #e5e7eb; margin:24px 0;">' + HtmlTemplates._getFullSummary(req);
+
+        var html = HtmlTemplates.layout(requestId, content, '#f59e0b', isHotelOnly ? 'CORRECCIÓN DE RESERVA' : 'CORRECCIÓN DE TIQUETE');
+        var subject = getStandardSubject(req); // same thread
+        sendEmailRich(req.requesterEmail, subject, html, getCCList(req));
+    } catch (e) {
+        console.error("Error enviando correo de corrección de reserva: " + e);
+    }
+
+    return true;
+}
+
 function getSites() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName('MISC');
@@ -3156,7 +3371,7 @@ function updateRequestStatus(id, status, payload) {
    return true;
 }
 
-function uploadSupportFile(requestId, fileData, fileName, mimeType) {
+function uploadSupportFile(requestId, fileData, fileName, mimeType, correctionNote) {
   var sanitizedName = validateFileUpload_(fileData, fileName, mimeType);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -3180,9 +3395,36 @@ function uploadSupportFile(requestId, fileData, fileName, mimeType) {
 
   const blob = Utilities.newBlob(Utilities.base64Decode(fileData), mimeType, fileName);
   const file = folder.createFile(blob);
-  supportData.files.push({ id: file.getId(), name: file.getName(), url: file.getUrl(), mimeType, date: new Date().toISOString() });
-  
+  var fileEntry = { id: file.getId(), name: file.getName(), url: file.getUrl(), mimeType: mimeType, date: new Date().toISOString() };
+  if (correctionNote) fileEntry.isCorrection = true;
+  supportData.files.push(fileEntry);
+
   sheet.getRange(rowNumber, supportIdx + 1).setValue(JSON.stringify(supportData));
+
+  // Si es corrección de reserva, notificar al usuario por correo
+  if (correctionNote) {
+    try {
+      var rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+      var req = mapRowToRequest(rowData);
+      var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
+      var fileUrl = 'https://drive.google.com/file/d/' + file.getId() + '/view?usp=sharing';
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+      var content = '<p style="color:#111827; font-size:14px; margin-bottom:12px;">El área de viajes ha cargado un <strong>documento corregido</strong> para su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
+      if (correctionNote) {
+        content += '<div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:12px 14px; border-radius:6px; font-size:13px; margin-bottom:16px;"><strong>Nota:</strong> ' + escapeHtml_(correctionNote) + '</div>';
+      }
+      content += '<div style="text-align:center; margin:20px 0;"><a href="' + escapeHtml_(fileUrl) + '" style="background-color:#2563eb; color:white; padding:10px 20px; text-decoration:none; border-radius:4px; font-weight:bold; font-size:13px; display:inline-block;">Descargar Archivo Corregido</a></div>';
+      content += '<hr style="border:0; border-top:1px solid #e5e7eb; margin:24px 0;">' + HtmlTemplates._getFullSummary(req);
+
+      var html = HtmlTemplates.layout(requestId, content, '#f59e0b', isHotelOnly ? 'CORRECCIÓN DE RESERVA' : 'CORRECCIÓN DE TIQUETE');
+      var subject = getStandardSubject(req); // same thread
+      sendEmailRich(req.requesterEmail, subject, html, getCCList(req));
+    } catch (e) {
+      console.error("Error enviando correo de corrección: " + e);
+    }
+  }
+
   return supportData;
 }
 
@@ -5489,15 +5731,73 @@ function getMetrics(filters) {
   };
 }
 
+/**
+ * Calcula minutos transcurridos entre dos timestamps ISO contando SOLO
+ * horario laboral Equitel (Bogotá GMT-5):
+ *   L-V: 07:00 – 17:00 (600 min/día)
+ *   Sáb: 08:00 – 12:00 (240 min/día)
+ *   Dom: 0 min
+ *
+ * Avanza minuto a minuto en bloques de 15 min para mantener precisión
+ * razonable sin ser O(N) por cada minuto real (máx ~6700 iteraciones
+ * para un rango de 7 días, suficiente para métricas no críticas).
+ *
+ * Si el rango excede 30 días, hace fallback a minutos brutos para
+ * evitar timeouts en GAS (6 min max execution).
+ */
+function _workingMinutesBetween_(fromIso, toIso) {
+  if (!fromIso || !toIso) return null;
+  var from = new Date(fromIso);
+  var to = new Date(toIso);
+  if (isNaN(from.getTime()) || isNaN(to.getTime())) return null;
+  if (to.getTime() <= from.getTime()) return 0;
+
+  // Fallback para rangos enormes (>30 días): minutos brutos
+  var totalRawMs = to.getTime() - from.getTime();
+  if (totalRawMs > 30 * 24 * 60 * 60 * 1000) {
+    return Math.round(totalRawMs / 60000);
+  }
+
+  // Offset Bogotá: UTC-5 (no hay DST en Colombia)
+  var BOG_OFFSET_MS = -5 * 60 * 60 * 1000;
+  var toBogota = function(d) { return new Date(d.getTime() + BOG_OFFSET_MS); };
+
+  var STEP_MS = 15 * 60 * 1000; // 15 min
+  var workingMinutes = 0;
+  var cursor = from.getTime();
+  var endMs = to.getTime();
+
+  while (cursor < endMs) {
+    var bog = toBogota(new Date(cursor));
+    var dow = bog.getUTCDay(); // 0=Sun, 6=Sat
+    var h = bog.getUTCHours();
+    var m = bog.getUTCMinutes();
+    var minuteOfDay = h * 60 + m;
+
+    var isWorking = false;
+    if (dow >= 1 && dow <= 5) {
+      // L-V: 7:00 (420) a 17:00 (1020)
+      if (minuteOfDay >= 420 && minuteOfDay < 1020) isWorking = true;
+    } else if (dow === 6) {
+      // Sáb: 8:00 (480) a 12:00 (720)
+      if (minuteOfDay >= 480 && minuteOfDay < 720) isWorking = true;
+    }
+
+    if (isWorking) {
+      // Contar los minutos efectivos de este bloque (puede ser menos de STEP si el rango termina antes)
+      var blockEnd = Math.min(cursor + STEP_MS, endMs);
+      workingMinutes += Math.round((blockEnd - cursor) / 60000);
+    }
+
+    cursor += STEP_MS;
+  }
+
+  return workingMinutes > 0 ? workingMinutes : 0;
+}
+
 function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, companyIdx, statusIdx, events) {
-  const minutesBetween = function(fromIso, toIso) {
-    if (!fromIso || !toIso) return null;
-    const from = new Date(fromIso);
-    const to = new Date(toIso);
-    if (isNaN(from.getTime()) || isNaN(to.getTime())) return null;
-    const diff = Math.round((to.getTime() - from.getTime()) / 60000);
-    return diff >= 0 ? diff : null; // negativos no tienen sentido
-  };
+  // Usa horario laboral para todas las métricas de tiempo
+  var minutesBetween = _workingMinutesBetween_;
 
   const approvals = [];
   if (events.approvals) {

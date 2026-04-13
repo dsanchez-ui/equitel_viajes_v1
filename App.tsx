@@ -411,7 +411,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {role === UserRole.ANALYST && (
+      {role === UserRole.ANALYST && view === 'LIST' && (
         <AdminDashboard requests={requests} integrantes={integrantes} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={setSelectedRequest} />
       )}
 
@@ -422,6 +422,7 @@ const App: React.FC = () => {
           onClose={() => setSelectedRequest(null)}
           onRefresh={handleManualRefresh}
           onModify={handleRequestModification}
+          isAdmin={role === UserRole.ANALYST}
         />
       )}
       <div className="fixed bottom-2 left-4 text-xs text-gray-400 font-mono font-bold z-[9999] pointer-events-none drop-shadow-sm">

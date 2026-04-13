@@ -197,8 +197,33 @@ class GasService {
   }
 
   // --- RESERVATION ---
-  async registerReservation(requestId: string, reservationNumber: string, files: { fileData: string, fileName: string }[], creditCard: string): Promise<void> {
-    const response = await this.runGas('registerReservation', { requestId, reservationNumber, files, creditCard });
+  async registerReservation(requestId: string, reservationNumber: string, files: { fileData: string, fileName: string }[], creditCard: string, purchaseDate?: string): Promise<void> {
+    const response = await this.runGas('registerReservation', { requestId, reservationNumber, files, creditCard, purchaseDate });
+    if (!response.success) throw new Error(response.error);
+  }
+
+  /**
+   * Amend an existing reservation: update PNR/card/date, delete old files,
+   * upload new files, and send a correction email to the user.
+   */
+  async amendReservation(
+    requestId: string,
+    reservationNumber: string,
+    creditCard: string,
+    purchaseDate: string,
+    fileIdsToDelete: string[],
+    newFiles: { fileData: string, fileName: string }[],
+    correctionNote?: string
+  ): Promise<void> {
+    const response = await this.runGas('amendReservation', {
+      requestId,
+      reservationNumber,
+      creditCard,
+      purchaseDate,
+      fileIdsToDelete,
+      newFiles,
+      correctionNote
+    });
     if (!response.success) throw new Error(response.error);
   }
 

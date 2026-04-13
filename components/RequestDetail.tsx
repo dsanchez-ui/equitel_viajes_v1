@@ -109,7 +109,7 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
         onConfirm: () => { },
     });
 
-    const closeDialog = () => setDialog({ ...dialog, isOpen: false });
+    const closeDialog = () => setDialog(prev => ({ ...prev, isOpen: false }));
 
     // Determine Actions based on State
     const isSelectionPhase = request.status === RequestStatus.PENDING_SELECTION;
@@ -647,18 +647,38 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                         </div>
 
                         <div className="mt-5 sm:mt-6 border-t pt-4 flex justify-between items-center">
-                            {/* MODIFY BUTTON */}
-                            {isEditable ? (
-                                <button
-                                    type="button"
-                                    className="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-orange-600 text-base font-medium text-white hover:bg-orange-700 focus:outline-none sm:text-sm"
-                                    onClick={handleModifyClick}
-                                >
-                                    Solicitar Cambio
-                                </button>
-                            ) : (
-                                <div></div>
-                            )}
+                            <div className="flex gap-2">
+                                {/* MODIFY BUTTON */}
+                                {isEditable && (
+                                    <button
+                                        type="button"
+                                        className="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-orange-600 text-base font-medium text-white hover:bg-orange-700 focus:outline-none sm:text-sm"
+                                        onClick={handleModifyClick}
+                                    >
+                                        Solicitar Cambio
+                                    </button>
+                                )}
+
+                                {/* REPORT BUTTON — admin only, for RESERVED/PROCESSED */}
+                                {isAdmin && (request.status === RequestStatus.RESERVED || request.status === RequestStatus.PROCESSED) && (
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1 rounded-md border border-indigo-200 shadow-sm px-3 py-2 bg-indigo-50 text-xs font-bold text-indigo-700 hover:bg-indigo-100 focus:outline-none"
+                                        onClick={async () => {
+                                            try {
+                                                setDialog({ isOpen: true, title: 'Generando...', message: 'Creando reporte PDF. Esto puede tardar unos segundos.', type: 'ALERT', onConfirm: () => {} });
+                                                const pdfUrl = await gasService.generateReport(request.requestId);
+                                                closeDialog();
+                                                if (pdfUrl) window.open(pdfUrl, '_blank');
+                                            } catch (err) {
+                                                setDialog({ isOpen: true, title: 'Error', message: 'Error generando reporte: ' + err, type: 'ALERT', onConfirm: closeDialog });
+                                            }
+                                        }}
+                                    >
+                                        Generar Reporte PDF
+                                    </button>
+                                )}
+                            </div>
 
                             <button
                                 type="button"

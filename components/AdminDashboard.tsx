@@ -103,7 +103,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
     onConfirm: () => { },
   });
 
-  const closeDialog = () => setDialog({ ...dialog, isOpen: false });
+  const closeDialog = () => setDialog(prev => ({ ...prev, isOpen: false }));
 
   const filteredRequests = requests.filter(r => {
     if (showOnlyPriority && !priorityMap.get(r.requestId)) return false;
@@ -309,7 +309,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
       {/* Filters — PENDIENTE_CONFIRMACION_COSTO removido del filtro visual */}
       {/* (el estado sigue existiendo en el flujo, solo no aparece como pill) */}
       <div className="flex gap-2 pb-4 overflow-x-auto">
-        {['ALL', ...Object.values(RequestStatus).filter(s => s !== RequestStatus.PENDING_CONFIRMACION_COSTO)].map(s => (
+        {['ALL', ...Object.values(RequestStatus)].map(s => (
           <button
             key={s}
             onClick={() => setFilter(s)}
@@ -497,15 +497,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
                                       {req.status === RequestStatus.RESERVED ? (req.supportData?.files?.length ? 'Cargar Facturas (+)' : 'Cargar Facturas') : 'Ver Soportes'}
                                     </button>
 
-                                    {/* Export Report Button */}
-                                    <button
-                                      onClick={() => handleGenerateReport(req)}
-                                      disabled={processingId === req.requestId}
-                                      className="text-xs font-bold px-2 py-1 rounded border text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 disabled:opacity-50"
-                                      title="Exportar Reporte PDF a Drive"
-                                    >
-                                      {processingId === req.requestId ? '...' : '📄 Reporte'}
-                                    </button>
+                                    {/* Amend Reservation (only RESERVED) */}
+                                    {req.status === RequestStatus.RESERVED && (
+                                      <button
+                                        onClick={() => setSelectedRequestForReservation(req)}
+                                        className="text-xs font-bold px-2 py-1 rounded border text-amber-700 border-amber-300 bg-amber-50 hover:bg-amber-100"
+                                        title="Corregir PNR, tarjeta, archivos de reserva"
+                                      >
+                                        Corregir Reserva
+                                      </button>
+                                    )}
+
+                                    {/* Export Report Button — moved to VER detail for cleaner row */}
 
                                     {/* Finalize Button (Only if Reserved and has at least one file) */}
                                     {req.status === RequestStatus.RESERVED && req.supportData && req.supportData.files.length > 0 && (

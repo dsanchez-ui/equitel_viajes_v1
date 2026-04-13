@@ -48,7 +48,7 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
         onCancel?: () => void;
     }>({ isOpen: false, title: '', message: '', type: 'ALERT', onConfirm: () => { } });
 
-    const closeDialog = () => setDialog({ ...dialog, isOpen: false });
+    const closeDialog = () => setDialog(prev => ({ ...prev, isOpen: false }));
 
     const getDriveImageUrl = (driveId: string) => `https://drive.google.com/uc?export=view&id=${driveId}`;
 

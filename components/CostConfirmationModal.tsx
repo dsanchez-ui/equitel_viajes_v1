@@ -24,7 +24,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
     onCancel?: () => void;
   }>({ isOpen: false, title: '', message: '', type: 'ALERT', onConfirm: () => {} });
 
-  const closeDialog = () => setDialog({ ...dialog, isOpen: false });
+  const closeDialog = () => setDialog(prev => ({ ...prev, isOpen: false }));
 
   const isHotelOnly = request.requestMode === 'HOTEL_ONLY';
 

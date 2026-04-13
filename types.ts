@@ -56,6 +56,8 @@ export interface SupportFile {
   url: string;
   mimeType: string;
   date: string;
+  isReservation?: boolean;
+  isCorrection?: boolean;
 }
 
 export interface SupportData {
