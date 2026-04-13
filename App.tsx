@@ -397,6 +397,7 @@ const App: React.FC = () => {
           isSyncing={isSyncing}
           onNewRequest={() => setView('NEW')}
           onViewRequest={setSelectedRequest}
+          onRefresh={handleManualRefresh}
         />
       )}
 

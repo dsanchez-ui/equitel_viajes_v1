@@ -209,7 +209,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'processChangeDecision'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -319,6 +319,7 @@ function dispatch(action, payload) {
       case 'deleteDriveFile': result = deleteDriveFile(payload.fileId); break;
 
       case 'anularSolicitud': result = anularSolicitud(payload.requestId, payload.reason); break;
+      case 'cancelOwnRequest': result = cancelOwnRequest(payload.requestId, payload.reason, currentUserEmail); break;
 
       // REPORT GENERATION (v2.6)
       case 'generateReport': result = generateSupportReport(payload.requestId); break;
@@ -4104,6 +4105,76 @@ function sendUserSelectionReminderEmail_(req) {
  * PERIODIC TASK: Send reminders to Admin for pending actions (v1.9)
  * Should be triggered every 2 hours manually via Triggers.
  */
+/**
+ * RECORDATORIO DE CONSULTA AL USUARIO.
+ *
+ * Recorre solicitudes que tengan el marcador USER_CONSULT_MARKER en
+ * OBSERVACIONES y reenvía el correo de consulta (CONTINUAR/ANULAR) al
+ * solicitante. Útil cuando el usuario no respondió al primer correo.
+ *
+ * Diseñado para ejecutarse por Trigger de Tiempo (cada 2 horas).
+ *   Triggers → + Add Trigger → función `sendPendingConsultReminders`,
+ *   event source = Time-driven, type = Hours timer, every 2 hours.
+ *
+ * Respeta horario laboral y no reenvía si la solicitud ya fue anulada/procesada.
+ */
+function sendPendingConsultReminders() {
+  if (!isWorkingHour()) return;
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  var idCol = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+  var statusCol = HEADERS_REQUESTS.indexOf("STATUS");
+  var obsCol = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+  var parentIdCol = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
+
+  var remindersSent = 0;
+
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var obs = String(row[obsCol] || '');
+    if (obs.indexOf(USER_CONSULT_MARKER) === -1) continue;
+
+    var status = String(row[statusCol] || '').trim();
+    if (status === 'ANULADO' || status === 'PROCESADO') continue;
+
+    var requestId = String(row[idCol] || '').trim();
+    if (!requestId) continue;
+
+    var req = mapRowToRequest(row);
+    if (!req.requesterEmail) continue;
+
+    // Rebuild the consult email (same as original, threaded by subject)
+    var subject = getStandardSubject(req);
+    var continueLink = WEB_APP_URL + '?action=user_consult&id=' + encodeURIComponent(requestId) + '&decision=continue';
+    var cancelLink = WEB_APP_URL + '?action=user_consult&id=' + encodeURIComponent(requestId) + '&decision=anulate';
+    var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
+
+    var content = '<div style="background-color:#fff7ed; border:1px solid #fed7aa; color:#c2410c; padding:12px 14px; text-align:center; font-weight:bold; font-size:14px; margin-bottom:15px; border-radius:4px;">⏰ RECORDATORIO: Necesitamos su respuesta</div>';
+    content += '<p style="color:#111827; font-size:14px; margin-bottom:12px;">Le recordamos que el área de viajes le consultó si desea <strong>continuar</strong> o <strong>anular</strong> su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
+    content += '<div style="text-align:center; margin:20px 0;">';
+    content += '<a href="' + continueLink + '" style="background-color:#059669; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px; display:inline-block; margin-right:10px;">CONTINUAR</a>';
+    content += '<a href="' + cancelLink + '" style="background-color:#dc2626; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px; display:inline-block; margin-top:10px;">ANULAR</a>';
+    content += '</div>';
+
+    var html = HtmlTemplates.layout(requestId, content, '#c2410c', isHotelOnly ? 'RECORDATORIO - HOSPEDAJE' : 'RECORDATORIO - VIAJE');
+
+    try {
+      MailApp.sendEmail({ to: req.requesterEmail, subject: subject, htmlBody: html });
+      remindersSent++;
+    } catch (e) {
+      console.error('Error enviando recordatorio de consulta a ' + req.requesterEmail + ': ' + e);
+    }
+  }
+
+  console.log('Recordatorios de consulta enviados: ' + remindersSent);
+}
+
 function processAdminReminders() {
     if (!isWorkingHour()) return;
     
@@ -4525,6 +4596,60 @@ function generateSupportReport(requestId) {
  * MANUAL CANCELLATION (v2.4)
  * Updates status to ANULADO and records the reason in observations.
  */
+/**
+ * User self-cancellation: the requester cancels their own request.
+ * Security: validates that currentUserEmail matches the requester on the row.
+ * Notifies admin (not the user, since the user is the one cancelling).
+ */
+function cancelOwnRequest(requestId, reason, currentUserEmail) {
+  if (!requestId || !reason || !reason.trim()) throw new Error('ID y motivo son requeridos.');
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  var idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+  var statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
+  var obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+  var emailIdx = HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO");
+
+  var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
+  var rowIndex = ids.map(String).indexOf(String(requestId));
+  if (rowIndex === -1) throw new Error("Solicitud no encontrada.");
+  var rowNumber = rowIndex + 2;
+
+  // Security: verify the caller IS the requester
+  var rowEmail = String(sheet.getRange(rowNumber, emailIdx + 1).getValue()).toLowerCase().trim();
+  if (rowEmail !== String(currentUserEmail).toLowerCase().trim()) {
+    throw new Error("No puede anular una solicitud que no le pertenece.");
+  }
+
+  // Cannot cancel terminal states
+  var currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue());
+  if (['ANULADO', 'PROCESADO', 'DENEGADO'].indexOf(currentStatus) !== -1) {
+    throw new Error("Esta solicitud ya está en estado " + currentStatus + " y no se puede anular.");
+  }
+
+  // Apply cancellation
+  sheet.getRange(rowNumber, statusIdx + 1).setValue('ANULADO');
+  var currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
+  var note = '[ANULACIÓN POR USUARIO]: ' + reason.trim();
+  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + note);
+
+  // Notify ADMIN (not user — user already knows, they initiated it)
+  try {
+    var rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+    var req = mapRowToRequest(rowData);
+    var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
+    var content = '<p style="color:#111827; font-size:14px; margin-bottom:12px;">El usuario <strong>' + escapeHtml_(currentUserEmail) + '</strong> ha anulado su propia solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
+    content += '<div style="background-color:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:12px 14px; border-radius:6px; font-size:13px; margin-bottom:16px;"><strong>Motivo:</strong> ' + escapeHtml_(reason.trim()) + '</div>';
+    content += '<hr style="border:0; border-top:1px solid #e5e7eb; margin:20px 0;">' + HtmlTemplates._getFullSummary(req);
+    var html = HtmlTemplates.layout(requestId, content, '#D71920', isHotelOnly ? 'HOSPEDAJE ANULADO POR USUARIO' : 'VIAJE ANULADO POR USUARIO');
+    sendEmailRich(ADMIN_EMAIL, getStandardSubject(req) + ' [ANULADA POR USUARIO]', html, null);
+  } catch (e) {
+    console.error("Error notificando admin sobre auto-anulación: " + e);
+  }
+
+  return true;
+}
+
 function anularSolicitud(requestId, reason) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);

@@ -268,6 +268,12 @@ class GasService {
     if (!response.success) throw new Error(response.error);
   }
 
+  /** User self-cancellation: cancel own request (no admin required). */
+  async cancelOwnRequest(requestId: string, reason: string): Promise<void> {
+    const response = await this.runGas('cancelOwnRequest', { requestId, reason });
+    if (!response.success) throw new Error(response.error);
+  }
+
   async generateReport(requestId: string): Promise<string> {
     const response = await this.runGas('generateReport', { requestId });
     if (!response.success) throw new Error(response.error);

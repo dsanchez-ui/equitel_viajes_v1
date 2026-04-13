@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Project management docs (local only)
+CHECKLIST_PENDIENTES.md
+BUG_REPORT.md
