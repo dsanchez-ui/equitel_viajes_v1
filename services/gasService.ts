@@ -215,6 +215,27 @@ class GasService {
     if (!response.success) throw new Error(response.error);
   }
 
+  /**
+   * Admin: resolve a pending change request (PENDIENTE_ANALISIS_CAMBIO) from the app.
+   * - decision 'study' → pass the change to PENDIENTE_OPCIONES (same as the email button)
+   * - decision 'deny'  → deny the change with a required reason. `parentAction` controls
+   *   what happens to the original request: 'keep' (default) or 'anulate'.
+   */
+  async processChangeDecision(
+    childRequestId: string,
+    decision: 'study' | 'deny',
+    options?: { reason?: string; parentAction?: 'keep' | 'anulate' | 'consult' }
+  ): Promise<{ childId: string; action: string; parentAction?: string; parentId?: string | null }> {
+    const response = await this.runGas('processChangeDecision', {
+      childRequestId,
+      decision,
+      reason: options?.reason || '',
+      parentAction: options?.parentAction || 'keep',
+    });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
   // --- ADMIN SECURITY ---
 
   async cancelRequest(requestId: string, reason: string): Promise<void> {

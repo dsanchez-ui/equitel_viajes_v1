@@ -114,8 +114,13 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
     // Determine Actions based on State
     const isSelectionPhase = request.status === RequestStatus.PENDING_SELECTION;
     const isCostPhase = request.status === RequestStatus.PENDING_CONFIRMACION_COSTO;
-    // Allow edit if not processed/cancelled. RESERVED is now allowed but with warning.
-    const isEditable = request.status !== RequestStatus.PROCESSED && request.status !== RequestStatus.CANCELLED;
+    // Allow edit if not processed/cancelled/rejected. RESERVED is now allowed but with warning.
+    // Also block edits on a change request that is itself awaiting admin decision (limbo).
+    const isEditable =
+        request.status !== RequestStatus.PROCESSED &&
+        request.status !== RequestStatus.CANCELLED &&
+        request.status !== RequestStatus.REJECTED &&
+        request.status !== RequestStatus.PENDING_CHANGE_APPROVAL;
 
     // Custom Status Display for User Peace of Mind
     const getDisplayStatus = (status: RequestStatus) => {

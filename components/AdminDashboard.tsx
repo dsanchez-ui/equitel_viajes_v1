@@ -9,6 +9,7 @@ import { ConfirmationDialog } from './ConfirmationDialog';
 import { PinEntryModal } from './PinEntryModal';
 import { CancellationModal } from './CancellationModal';
 import { MetricsPanel } from './MetricsPanel';
+import { ChangeRequestModal } from './ChangeRequestModal';
 import { gasService } from '../services/gasService';
 import { getDaysDiff, formatToDDMMYYYY } from '../utils/dateUtils';
 
@@ -81,6 +82,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
   const [selectedRequestForReservation, setSelectedRequestForReservation] = useState<TravelRequest | null>(null);
   const [selectedRequestForCosts, setSelectedRequestForCosts] = useState<TravelRequest | null>(null);
   const [selectedRequestForCancellation, setSelectedRequestForCancellation] = useState<TravelRequest | null>(null);
+  const [selectedRequestForChange, setSelectedRequestForChange] = useState<TravelRequest | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [showPinChangeModal, setShowPinChangeModal] = useState(false);
   const [showMetricsPanel, setShowMetricsPanel] = useState(false);
@@ -115,6 +117,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
       case RequestStatus.PENDING_SELECTION: return 'bg-blue-100 text-blue-800';
       case RequestStatus.PENDING_CONFIRMACION_COSTO: return 'bg-purple-100 text-purple-800';
       case RequestStatus.PENDING_APPROVAL: return 'bg-purple-100 text-purple-800';
+      case RequestStatus.PENDING_CHANGE_APPROVAL: return 'bg-amber-100 text-amber-800';
       case RequestStatus.APPROVED: return 'bg-green-100 text-green-800';
       case RequestStatus.RESERVED: return 'bg-indigo-100 text-indigo-800';
       case RequestStatus.REJECTED: return 'bg-red-100 text-red-800';
@@ -442,6 +445,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
                                   </button>
                                 )}
 
+                                {/* CHANGE REQUEST REVIEW (study / deny) */}
+                                {req.status === RequestStatus.PENDING_CHANGE_APPROVAL && (
+                                  <button
+                                    onClick={() => setSelectedRequestForChange(req)}
+                                    className="text-amber-800 hover:text-amber-900 bg-amber-100 px-3 py-1 rounded border border-amber-300 text-xs font-bold flex items-center gap-1"
+                                    title="Revisar y pasar a estudio o denegar este cambio"
+                                  >
+                                    🔄 Revisar Cambio
+                                  </button>
+                                )}
+
                                 {/* OPTION UPLOAD & CORRECTION */}
                                 {(req.status === RequestStatus.PENDING_OPTIONS || req.status === RequestStatus.PENDING_SELECTION) && (
                                   <button
@@ -581,6 +595,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
 
       {showMetricsPanel && (
         <MetricsPanel onClose={() => setShowMetricsPanel(false)} />
+      )}
+
+      {selectedRequestForChange && (
+        <ChangeRequestModal
+          request={selectedRequestForChange}
+          onClose={() => setSelectedRequestForChange(null)}
+          onSuccess={() => {
+            setSelectedRequestForChange(null);
+            onRefresh();
+          }}
+        />
       )}
     </div>
   );

@@ -57,6 +57,14 @@ function escapeHtml_(unsafe) {
     .replace(/'/g, '&#039;');
 }
 
+// Marcador único en OBSERVACIONES para indicar que la solicitud padre está
+// esperando que el usuario responda si desea continuar o anular (tras una
+// consulta iniciada por el admin después de denegar un cambio). Mientras el
+// marcador esté presente, los recordatorios de la padre se pausan. El
+// marcador se oculta del campo `comments` del mapper para no aparecer en
+// correos ni en la UI.
+const USER_CONSULT_MARKER = '[[CONSULTA_USUARIO_PENDIENTE]]';
+
 // HEADERS - ACTUALIZADOS
 const HEADERS_REQUESTS = [
   "FECHA SOLICITUD", "EMPRESA", "CIUDAD ORIGEN", "CIUDAD DESTINO", "# ORDEN TRABAJO", 
@@ -152,7 +160,14 @@ function doGet(e) {
   if (action === 'study_decision') {
     return processStudyDecision(e);
   }
-  
+
+  // 3b. Handle User Consultation Response (Returns HTML)
+  // Triggered when the user clicks CONTINUAR or ANULAR in the consultation
+  // email that Wendy sends after denying a change request.
+  if (action === 'user_consult') {
+    return processUserConsultResponse(e);
+  }
+
   // 4. API Action via GET (Returns JSON)
   if (action) {
     const result = dispatch(action, e.parameter);
@@ -194,7 +209,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'deleteDriveFile', 'anularSolicitud', 'generateReport', 'createReportTemplate'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'deleteDriveFile', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'processChangeDecision'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -221,7 +236,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'getMetrics'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'getMetrics', 'processChangeDecision'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -274,6 +289,7 @@ function dispatch(action, payload) {
       
       // REFACTORED MODIFICATION LOGIC
       case 'requestModification': result = requestModification(payload.requestId, payload.modifiedRequest, payload.changeReason, payload.emailHtml); break;
+      case 'processChangeDecision': result = processChangeDecision(payload); break;
       
       // PIN FEATURES
       case 'verifyAdminPin': result = verifyAdminPin(payload.pin, payload.email); break;
@@ -882,6 +898,75 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
    return childRequestId;
 }
 
+/**
+ * Lógica compartida de decisión sobre una solicitud de cambio.
+ * Llamada tanto por el flujo de correo (processStudyDecision) como por
+ * el endpoint de la app (processChangeDecision).
+ *
+ * @param {string} childRequestId ID de la solicitud de cambio (hija)
+ * @param {string} decision 'study' | 'reject'
+ * @param {string} [reason] Motivo (requerido para 'reject' desde la app)
+ * @returns {{childId:string, req:Object}} Info de la hija procesada
+ */
+function _applyChangeDecision_(childRequestId, decision, reason) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+  const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
+  const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+  const requesterEmailIdx = HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO");
+
+  const lastRow = sheet.getLastRow();
+  const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
+  const rowIndex = ids.map(String).indexOf(String(childRequestId));
+  if (rowIndex === -1) throw new Error("Solicitud no encontrada");
+  const rowNumber = rowIndex + 2;
+
+  const rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+  const req = mapRowToRequest(rowData);
+  const requesterEmail = req.requesterEmail || sheet.getRange(rowNumber, requesterEmailIdx + 1).getValue();
+
+  // Guardado: solo aplicar si la hija está en PENDIENTE_ANALISIS_CAMBIO
+  if (req.status !== 'PENDIENTE_ANALISIS_CAMBIO') {
+    throw new Error("Esta solicitud ya no está pendiente de decisión (estado: " + req.status + ")");
+  }
+
+  const ccList = getCCList(req);
+  const baseSubject = getStandardSubject(req);
+
+  if (decision === 'study') {
+    sheet.getRange(rowNumber, statusIdx + 1).setValue('PENDIENTE_OPCIONES');
+    SpreadsheetApp.flush();
+    sendEmailRich(
+      requesterEmail,
+      baseSubject + " [CAMBIO EN ESTUDIO]",
+      HtmlTemplates.modificationResult(req, 'study'),
+      ccList
+    );
+  } else if (decision === 'reject') {
+    sheet.getRange(rowNumber, statusIdx + 1).setValue('DENEGADO');
+    // Guardar el motivo en observaciones (si viene)
+    if (reason) {
+      const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
+      const note = `[CAMBIO DENEGADO]: ${reason}`;
+      sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + note);
+    }
+    SpreadsheetApp.flush();
+    // Inyecta el motivo temporalmente para el template
+    const reqForEmail = Object.assign({}, req, { denialReason: reason || '' });
+    sendEmailRich(
+      requesterEmail,
+      baseSubject + " [CAMBIO RECHAZADO]",
+      HtmlTemplates.modificationResult(reqForEmail, 'reject'),
+      ccList
+    );
+  } else {
+    throw new Error("Decisión inválida: " + decision);
+  }
+
+  return { childId: childRequestId, req: req };
+}
+
 function processStudyDecision(e) {
   const id = e.parameter.id;
   const decision = e.parameter.decision; // 'study' or 'reject'
@@ -900,49 +985,11 @@ function processStudyDecision(e) {
           decisionColor
       );
   }
-  
+
   const lock = LockService.getScriptLock();
   if (lock.tryLock(LOCK_WAIT_MS)) {
      try {
-        const ss = SpreadsheetApp.getActiveSpreadsheet();
-        const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-        const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
-        const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
-        const requesterEmailIdx = HEADERS_REQUESTS.indexOf("CORREO ENCUESTADO");
-        
-        const lastRow = sheet.getLastRow();
-        const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-        const rowIndex = ids.map(String).indexOf(String(id));
-        
-        if (rowIndex === -1) throw new Error("Solicitud no encontrada");
-        const rowNumber = rowIndex + 2;
-        const requesterEmail = sheet.getRange(rowNumber, requesterEmailIdx + 1).getValue();
-
-        const rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
-        const req = mapRowToRequest(rowData);
-        const ccList = getCCList(req);
-        const baseSubject = getStandardSubject(req);
-
-        if (decision === 'study') {
-             // Change status to PENDIENTE_OPCIONES so Wendy can see it in dashboard
-             sheet.getRange(rowNumber, statusIdx + 1).setValue('PENDIENTE_OPCIONES');
-             
-             SpreadsheetApp.flush(); 
-
-             // Notify Requester
-             sendEmailRich(requesterEmail, baseSubject + " [CAMBIO EN ESTUDIO]", 
-                 HtmlTemplates.modificationResult(req, 'study'), ccList
-             );
-        } else {
-             // Reject the modification
-             sheet.getRange(rowNumber, statusIdx + 1).setValue('DENEGADO');
-             
-             SpreadsheetApp.flush(); 
-
-             sendEmailRich(requesterEmail, baseSubject + " [CAMBIO RECHAZADO]", 
-                 HtmlTemplates.modificationResult(req, 'reject'), ccList
-             );
-        }
+        _applyChangeDecision_(id, decision, null);
         return renderMessagePage("Acción Completada", decision === 'study' ? 'Solicitud pasada a estudio (pend. opciones).' : 'Solicitud de cambio rechazada.', decisionColor);
      } catch(err) {
         return renderMessagePage("Error", escapeHtml_(err.toString()), '#D71920');
@@ -951,6 +998,286 @@ function processStudyDecision(e) {
      }
   } else {
       return renderMessagePage("Sistema Ocupado", "El sistema está ocupado. Intente nuevamente.", '#D71920');
+  }
+}
+
+/**
+ * Endpoint usado por el dashboard del admin para gestionar solicitudes de
+ * cambio sin tener que buscar el correo original.
+ *
+ * Acciones soportadas:
+ *   - 'study': pasa la hija a PENDIENTE_OPCIONES (igual que el correo)
+ *   - 'deny': deniega la hija (requiere motivo). Luego decide qué hacer con
+ *     la solicitud original según `parentAction`:
+ *       - 'keep': la original queda activa y sus recordatorios se reanudan
+ *       - 'anulate': la original se anula (reusa anularSolicitud)
+ *       - 'consult': marca la original con USER_CONSULT_MARKER en observaciones
+ *                    y envía un correo al solicitante con botones CONTINUAR/ANULAR.
+ *                    Los recordatorios de la padre quedan pausados mientras el
+ *                    marcador esté presente, y sólo se limpia cuando el usuario
+ *                    responde (o el admin lo hace manualmente).
+ *
+ * @param {Object} payload { childRequestId, decision, reason?, parentAction? }
+ */
+function processChangeDecision(payload) {
+  if (!payload || !payload.childRequestId || !payload.decision) {
+    throw new Error("Payload inválido: falta childRequestId o decision");
+  }
+  const childRequestId = String(payload.childRequestId);
+  const decision = payload.decision; // 'study' | 'deny'
+  const reason = payload.reason || '';
+  const parentAction = payload.parentAction || 'keep'; // solo aplica en 'deny'
+
+  if (decision === 'study') {
+    _applyChangeDecision_(childRequestId, 'study', null);
+    return { childId: childRequestId, action: 'study' };
+  }
+
+  if (decision === 'deny') {
+    if (!reason || !reason.trim()) {
+      throw new Error("Debe indicar un motivo para denegar la solicitud de cambio.");
+    }
+    const result = _applyChangeDecision_(childRequestId, 'reject', reason.trim());
+    const parentId = result.req && result.req.relatedRequestId;
+
+    if (parentId && parentAction === 'anulate') {
+      try {
+        const parentReason = `Anulada a raíz de la denegación del cambio ${childRequestId}. ${reason.trim()}`;
+        anularSolicitud(parentId, parentReason);
+      } catch (err) {
+        console.error("Error anulando solicitud padre: " + err);
+        throw new Error("Cambio denegado, pero falló la anulación de la solicitud original: " + err);
+      }
+    } else if (parentId && parentAction === 'consult') {
+      try {
+        _startUserConsultOnParent_(parentId, childRequestId, reason.trim());
+      } catch (err) {
+        console.error("Error iniciando consulta al usuario sobre la solicitud padre: " + err);
+        throw new Error("Cambio denegado, pero falló la consulta al usuario sobre la solicitud original: " + err);
+      }
+    }
+    // 'keep' no requiere acción extra sobre la padre
+
+    return { childId: childRequestId, action: 'deny', parentAction: parentAction, parentId: parentId || null };
+  }
+
+  throw new Error("Decisión desconocida: " + decision);
+}
+
+/**
+ * Inicia una consulta al usuario sobre la solicitud padre: marca la fila
+ * con USER_CONSULT_MARKER en OBSERVACIONES y envía un correo threaded
+ * (mismo asunto) al solicitante con botones CONTINUAR / ANULAR.
+ *
+ * Idempotente: si el marcador ya existe, no lo duplica y tampoco reenvía
+ * el correo (para evitar spam si se llama por error).
+ *
+ * @param {string} parentRequestId ID de la solicitud padre
+ * @param {string} childRequestId ID del cambio denegado que motivó la consulta
+ * @param {string} denialReason Motivo de la denegación (va en el correo)
+ */
+function _startUserConsultOnParent_(parentRequestId, childRequestId, denialReason) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error("Hoja de solicitudes no encontrada");
+
+  const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+  const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) throw new Error("Hoja vacía");
+
+  const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
+  const rowIndex = ids.map(String).indexOf(String(parentRequestId));
+  if (rowIndex === -1) throw new Error("Solicitud padre " + parentRequestId + " no encontrada");
+  const rowNumber = rowIndex + 2;
+
+  const currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
+  if (currentObs.indexOf(USER_CONSULT_MARKER) !== -1) {
+    console.log("Consulta al usuario ya estaba activa sobre " + parentRequestId + ". No se reenvía correo.");
+    return;
+  }
+
+  // Append marcador + nota legible
+  const note = `[CONSULTA AL USUARIO]: El cambio ${childRequestId} fue denegado ("${denialReason}"). Se consultó al solicitante si desea continuar o anular. ${USER_CONSULT_MARKER}`;
+  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + note);
+  SpreadsheetApp.flush();
+
+  // Mapear la fila completa para construir el correo
+  const rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+  const parentReq = mapRowToRequest(rowData);
+  sendUserConsultEmail_(parentReq, childRequestId, denialReason);
+}
+
+/**
+ * Envía al solicitante el correo de consulta (threaded con el hilo original
+ * gracias a `getStandardSubject`). Incluye dos botones con links al web
+ * app: CONTINUAR (reanuda la solicitud) y ANULAR (la cancela).
+ */
+function sendUserConsultEmail_(parentReq, childRequestId, denialReason) {
+  const subject = getStandardSubject(parentReq); // Mismo asunto = mismo hilo
+  const continueLink = `${WEB_APP_URL}?action=user_consult&id=${encodeURIComponent(parentReq.requestId)}&decision=continue`;
+  const cancelLink = `${WEB_APP_URL}?action=user_consult&id=${encodeURIComponent(parentReq.requestId)}&decision=anulate`;
+  const isHotelOnly = parentReq.requestMode === 'HOTEL_ONLY';
+
+  const content = `
+    <div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:14px 16px; border-radius:6px; font-size:13px; margin-bottom:18px; line-height:1.55;">
+      <strong style="display:block; font-size:14px; margin-bottom:4px;">Su solicitud de cambio ${escapeHtml_(childRequestId)} no fue aprobada</strong>
+      El área de viajes no pudo proceder con el cambio solicitado.
+    </div>
+    <p style="color:#111827; font-size:14px; margin-bottom:10px;">
+      <strong>Motivo indicado:</strong>
+    </p>
+    <div style="background-color:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:10px 12px; border-radius:6px; font-size:13px; font-style:italic; margin-bottom:20px;">
+      "${escapeHtml_(denialReason)}"
+    </div>
+    <p style="color:#111827; font-size:14px; margin-bottom:8px;">
+      Su solicitud original <strong>${escapeHtml_(parentReq.requestId)}</strong> sigue activa. Necesitamos que nos indique cómo continuar:
+    </p>
+    <div style="background-color:#f3f4f6; border:1px solid #e5e7eb; padding:14px 16px; border-radius:6px; font-size:13px; color:#374151; margin-bottom:22px;">
+      <p style="margin:0 0 6px 0;"><strong>✅ Continuar</strong> — si todavía necesita ${isHotelOnly ? 'el hospedaje' : 'el viaje'} tal como lo pidió originalmente. El proceso se reanudará y recibirá los recordatorios habituales.</p>
+      <p style="margin:0;"><strong>🚫 Anular</strong> — si ya no necesita ${isHotelOnly ? 'el hospedaje' : 'el viaje'}. La solicitud original quedará cancelada.</p>
+    </div>
+    <div style="text-align:center; margin:24px 0 10px;">
+      <a href="${continueLink}" style="background-color:#059669; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px; display:inline-block; margin-right:10px;">CONTINUAR CON LA SOLICITUD</a>
+      <a href="${cancelLink}" style="background-color:#dc2626; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px; display:inline-block; margin-top:10px;">ANULAR SOLICITUD</a>
+    </div>
+    <p style="font-size:11px; color:#9ca3af; text-align:center; margin-top:16px;">Si no responde, el área de viajes le enviará un recordatorio más adelante.</p>
+    <hr style="border:0; border-top:1px solid #e5e7eb; margin:28px 0;">
+    ${HtmlTemplates._getFullSummary(parentReq)}
+  `;
+
+  const html = HtmlTemplates.layout(parentReq.requestId, content, '#f59e0b', '¿DESEA CONTINUAR O ANULAR?');
+
+  try {
+    MailApp.sendEmail({
+      to: parentReq.requesterEmail,
+      subject: subject,
+      htmlBody: html
+    });
+  } catch (e) {
+    console.error("Error enviando correo de consulta al usuario para " + parentReq.requestId + ": " + e);
+    throw e;
+  }
+}
+
+/**
+ * Handler GET para action=user_consult. El usuario llega aquí desde los
+ * botones del correo de consulta. Acepta decision=continue | anulate.
+ *
+ *   - continue: limpia el marcador de la solicitud padre; los recordatorios
+ *     se reanudan automáticamente en el próximo tick.
+ *   - anulate: llama a anularSolicitud() sobre la padre (que ya envía el
+ *     correo de anulación al usuario). El marcador queda en observaciones
+ *     junto con la nota de anulación — no hace falta limpiarlo porque el
+ *     estado ANULADO ya excluye a la solicitud de todos los recordatorios.
+ */
+function processUserConsultResponse(e) {
+  const id = e.parameter.id;
+  const decision = e.parameter.decision; // 'continue' | 'anulate'
+  const confirm = e.parameter.confirm;
+
+  if (!id || !decision) {
+    return renderMessagePage("Error", "Parámetros inválidos.", '#D71920');
+  }
+
+  const decisionLabel = decision === 'continue' ? 'CONTINUAR CON LA SOLICITUD' : 'ANULAR LA SOLICITUD';
+  const decisionColor = decision === 'continue' ? '#059669' : '#dc2626';
+
+  if (confirm !== 'true') {
+    const url = `${WEB_APP_URL}?action=user_consult&id=${encodeURIComponent(id)}&decision=${encodeURIComponent(decision)}&confirm=true`;
+    return renderConfirmationPage(
+      `Confirmar Decisión`,
+      `¿Está seguro de <strong>${decisionLabel}</strong> para la solicitud <strong>${escapeHtml_(id)}</strong>?`,
+      `SÍ, ${decisionLabel}`,
+      url,
+      decisionColor
+    );
+  }
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) {
+    return renderMessagePage("Sistema Ocupado", "El sistema está ocupado. Intente nuevamente.", '#D71920');
+  }
+
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    const idIdx = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+    const obsIdx = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+    const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
+
+    const lastRow = sheet.getLastRow();
+    const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
+    const rowIndex = ids.map(String).indexOf(String(id));
+    if (rowIndex === -1) {
+      return renderMessagePage("No encontrada", "La solicitud no existe.", '#D71920');
+    }
+    const rowNumber = rowIndex + 2;
+
+    const currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
+    if (currentObs.indexOf(USER_CONSULT_MARKER) === -1) {
+      return renderMessagePage(
+        "Ya procesada",
+        "Esta consulta ya fue respondida previamente. Gracias.",
+        '#6b7280'
+      );
+    }
+
+    const currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '');
+    if (currentStatus === 'ANULADO' || currentStatus === 'PROCESADO') {
+      return renderMessagePage(
+        "Ya procesada",
+        "Esta solicitud ya no está activa (estado: " + escapeHtml_(currentStatus) + ").",
+        '#6b7280'
+      );
+    }
+
+    if (decision === 'continue') {
+      // Limpiar marcador y agregar nota de continuación
+      const cleaned = currentObs.replace(USER_CONSULT_MARKER, '').replace(/\s+$/g, '');
+      const note = `[CONTINUAR]: El solicitante confirmó que desea continuar con esta solicitud tras la consulta del área de viajes.`;
+      sheet.getRange(rowNumber, obsIdx + 1).setValue(cleaned + "\n" + note);
+      SpreadsheetApp.flush();
+
+      // Notificar al admin del equipo que el usuario desea continuar
+      try {
+        const rowData = sheet.getRange(rowNumber, 1, 1, HEADERS_REQUESTS.length).getValues()[0];
+        const req = mapRowToRequest(rowData);
+        const adminSubject = getStandardSubject(req) + " [CONTINÚA TRAS CONSULTA]";
+        const adminBody = HtmlTemplates.layout(
+          req.requestId,
+          `<p style="font-size:14px;">El solicitante <strong>${escapeHtml_(req.requesterEmail)}</strong> confirmó que <strong>desea continuar</strong> con la solicitud tras la consulta enviada desde el área de viajes. El proceso se reanuda con normalidad.</p>${HtmlTemplates._getFullSummary(req)}`,
+          '#059669',
+          'EL USUARIO DESEA CONTINUAR'
+        );
+        sendEmailRich(ADMIN_EMAIL, adminSubject, adminBody, null);
+      } catch (err) {
+        console.error("Error notificando al admin tras continue: " + err);
+      }
+
+      return renderMessagePage(
+        "Gracias",
+        "Su solicitud continuará su proceso normal. Recibirá las notificaciones correspondientes.",
+        '#059669'
+      );
+    }
+
+    if (decision === 'anulate') {
+      // Usa anularSolicitud que ya envía el correo al usuario
+      anularSolicitud(id, "Anulada por decisión del solicitante tras consulta del área de viajes.");
+      return renderMessagePage(
+        "Solicitud Anulada",
+        "Su solicitud ha sido anulada. Gracias por confirmar.",
+        '#dc2626'
+      );
+    }
+
+    return renderMessagePage("Error", "Decisión desconocida.", '#D71920');
+  } catch (err) {
+    console.error("Error en processUserConsultResponse: " + err);
+    return renderMessagePage("Error", escapeHtml_(String(err)), '#D71920');
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -1720,9 +2047,10 @@ const HtmlTemplates = {
     },
     
     // ADMIN REMINDERS SUMMARY (v1.9)
-    adminReminderSummary: function(pendingOptionsRows, pendingCostRows, approvedRows) {
+    adminReminderSummary: function(pendingOptionsRows, pendingCostRows, approvedRows, pendingChangesRows) {
+        pendingChangesRows = pendingChangesRows || [];
         let content = `<p style="color: #4b5563; margin-bottom: 20px;">Este es un recordatorio automático de las solicitudes que requieren su acción inmediata.</p>`;
-        
+
         const renderTable = (title, items, color) => {
             if (items.length === 0) return '';
             let html = `
@@ -1739,7 +2067,7 @@ const HtmlTemplates = {
                         </thead>
                         <tbody>
             `;
-            
+
             items.forEach(item => {
                 html += `
                     <tr>
@@ -1750,11 +2078,47 @@ const HtmlTemplates = {
                     </tr>
                 `;
             });
-            
+
             html += `</tbody></table></div>`;
             return html;
         };
 
+        // Sección especial para solicitudes de cambio: muestra también la solicitud padre
+        // y una nota explícita indicando que debe gestionarse desde el dashboard.
+        const renderChangesSection = (items) => {
+            if (items.length === 0) return '';
+            let html = `
+                <div style="margin-bottom: 30px;">
+                    <h3 style="color: #f59e0b; border-bottom: 2px solid #f59e0b; padding-bottom: 5px; margin-bottom: 10px;">🔄 SOLICITUDES DE CAMBIO PENDIENTES DE REVISIÓN (${items.length})</h3>
+                    <div style="background-color: #fffbeb; border: 1px solid #fde68a; color: #92400e; padding: 10px 12px; margin-bottom: 14px; border-radius: 6px; font-size: 12px;">
+                        Estas solicitudes están esperando que usted las <strong>pase a estudio</strong> o las <strong>deniegue</strong>. Para hacerlo rápido, ingrese al <strong>Panel de Administración</strong> y haga clic en el botón <strong>Revisar Cambio</strong> de cada una (también puede usar los botones del correo original de la solicitud).
+                    </div>
+                    <table width="100%" cellpadding="8" cellspacing="0" style="font-size: 13px; border: 1px solid #e5e7eb; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #f9fafb;">
+                                <th align="left" style="border-bottom: 1px solid #e5e7eb;">ID Cambio</th>
+                                <th align="left" style="border-bottom: 1px solid #e5e7eb;">Reemplaza</th>
+                                <th align="left" style="border-bottom: 1px solid #e5e7eb;">Solicitante</th>
+                                <th align="left" style="border-bottom: 1px solid #e5e7eb;">Ruta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            items.forEach(item => {
+                html += `
+                    <tr>
+                        <td style="border-bottom: 1px solid #f3f4f6;"><strong>${escapeHtml_(item.requestId)}</strong></td>
+                        <td style="border-bottom: 1px solid #f3f4f6;">${escapeHtml_(item.relatedRequestId || '—')}</td>
+                        <td style="border-bottom: 1px solid #f3f4f6;">${escapeHtml_(item.requesterEmail)}</td>
+                        <td style="border-bottom: 1px solid #f3f4f6;">${item.requestMode === 'HOTEL_ONLY' ? '🏨 ' + escapeHtml_(item.destination) : escapeHtml_(item.origin) + ' ➝ ' + escapeHtml_(item.destination)}</td>
+                    </tr>
+                `;
+            });
+            html += `</tbody></table></div>`;
+            return html;
+        };
+
+        content += renderChangesSection(pendingChangesRows);
         content += renderTable('📥 SOLICITUDES PENDIENTES DE COTIZAR', pendingOptionsRows, '#D71920');
         content += renderTable('💰 PENDIENTES DE CONFIRMAR COSTOS', pendingCostRows, '#7c3aed'); // Violet for cost confirmation
         content += renderTable('✅ SOLICITUDES APROBADAS (POR RESERVAR)', approvedRows, '#059669');
@@ -2073,17 +2437,36 @@ const HtmlTemplates = {
         const isStudy = decision === 'study';
         const title = isStudy ? 'CAMBIO EN ESTUDIO' : 'CAMBIO RECHAZADO';
         const color = isStudy ? '#059669' : '#dc2626';
-        const msg = isStudy ? 'Su solicitud ha pasado a etapa de cotización (Estudio). Pronto recibirá opciones.' : 'No fue posible realizar el cambio solicitado.';
-        
-        let content = `<p style="text-align:center; font-size:16px;">${msg}</p>`;
-        
+        const parentId = request.relatedRequestId || '';
+
+        let content = '';
         if (isStudy) {
             content += `
-                <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+                <p style="font-size:15px; color:#111827; margin-bottom:10px;">
+                    Su solicitud de cambio <strong>${escapeHtml_(request.requestId)}</strong>
+                    ${parentId ? '(que reemplaza a <strong>' + escapeHtml_(parentId) + '</strong>) ' : ''}ha sido <strong>aceptada para gestión</strong>.
+                </p>
+                <p style="font-size:13px; color:#4b5563; margin-bottom:16px;">
+                    A partir de ahora, esta nueva solicitud seguirá el flujo normal: el equipo de viajes cargará opciones, usted seleccionará la que prefiera y se solicitará la aprobación correspondiente. Recibirá los correos del proceso como en cualquier solicitud.
+                </p>
+                ${parentId ? '<div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 12px; border-radius:6px; font-size:12px; margin-bottom:10px;">La solicitud original <strong>' + escapeHtml_(parentId) + '</strong> quedará activa hasta que el área de viajes decida qué hacer con ella (normalmente queda reemplazada por este cambio).</div>' : ''}
+                <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 24px 0;">
                 ${this._getFullSummary(request)}
             `;
+        } else {
+            const reason = request.denialReason || '';
+            content += `
+                <p style="font-size:15px; color:#111827; margin-bottom:10px;">
+                    Su solicitud de cambio <strong>${escapeHtml_(request.requestId)}</strong>
+                    ${parentId ? '(que pretendía reemplazar a <strong>' + escapeHtml_(parentId) + '</strong>) ' : ''}<strong>no fue aprobada</strong>.
+                </p>
+                ${reason ? '<div style="background-color:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:12px 14px; border-radius:6px; font-size:13px; margin-bottom:14px;"><strong>Motivo:</strong> ' + escapeHtml_(reason) + '</div>' : ''}
+                <p style="font-size:13px; color:#4b5563; margin-bottom:8px;">
+                    Si su solicitud original <strong>${escapeHtml_(parentId || 'anterior')}</strong> sigue activa, el proceso continuará sobre ella con normalidad. Si tiene dudas, responda a este correo o contacte al área de viajes.
+                </p>
+            `;
         }
-        
+
         return this.layout(`${request.requestId}`, content, color, title);
     }
 };
@@ -2810,6 +3193,9 @@ function sendRequestEmailWithHtml(data, requestId, htmlTemplate) {
     if (isModification) {
         // --- 1. EMAIL FOR ADMIN (WITH BUTTONS) ---
         let adminActions = `
+           <div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 12px; border-radius:6px; font-size:12px; margin-bottom:14px; text-align:left;">
+               Puede pasarla a estudio o denegarla con los botones de abajo, o desde el <strong>Panel de Administración</strong> (botón "Revisar Cambio" en la fila de la solicitud). Mientras tanto, los recordatorios de la solicitud original <strong>${escapeHtml_(data.relatedRequestId || '')}</strong> quedan pausados.
+           </div>
            <div style="margin-bottom: 15px;">
                <a href="${WEB_APP_URL}?action=study_decision&id=${requestId}&decision=study" style="background-color: #059669; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; margin-right: 10px; display: inline-block;">PASAR A ESTUDIO</a>
                <a href="${WEB_APP_URL}?action=study_decision&id=${requestId}&decision=reject" style="background-color: #dc2626; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin-right: 10px;">RECHAZAR CAMBIO</a>
@@ -2819,11 +3205,11 @@ function sendRequestEmailWithHtml(data, requestId, htmlTemplate) {
            </div>
         `;
         const adminHtml = baseHtml.replace("{{ACTION_BUTTONS}}", adminActions);
-        
+
         // Subject for Admin
         const adminSubject = getStandardSubject({ ...data, requestId }) + " [MODIFICACIÓN REQUERIDA]";
-        
-        try { 
+
+        try {
             // Send to Admin ONLY (No CC to user to avoid leaking buttons)
             sendEmailRich(ADMIN_EMAIL, adminSubject, adminHtml, null);
         } catch (e) { console.error("Error sending admin mod email: " + e); }
@@ -2831,13 +3217,15 @@ function sendRequestEmailWithHtml(data, requestId, htmlTemplate) {
 
         // --- 2. EMAIL FOR USER (INFORMATIVE ONLY) ---
         let userActions = `
-            <div style="background-color: #f3f4f6; border: 1px solid #e5e7eb; padding: 15px; border-radius: 6px; text-align: center; color: #4b5563;">
-                <p style="margin: 0; font-weight: bold;">Solicitud de Cambio Enviada</p>
-                <p style="margin-top: 5px; font-size: 13px;">El área de compras evaluará su solicitud. Recibirá una notificación si el cambio pasa a etapa de cotización.</p>
+            <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 15px; border-radius: 6px; text-align: left; color: #1e3a8a;">
+                <p style="margin: 0 0 6px 0; font-weight: bold; font-size: 14px;">Solicitud de cambio enviada</p>
+                <p style="margin: 0; font-size: 13px; line-height: 1.55;">
+                    El área de viajes evaluará el cambio solicitado. Mientras tanto, <strong>los recordatorios de su solicitud original ${escapeHtml_(data.relatedRequestId || '')} quedan pausados</strong> para evitarle confusión. Recibirá un correo cuando el cambio sea aceptado o rechazado, y a partir de ahí el proceso continuará normalmente sobre esta nueva solicitud.
+                </p>
             </div>
         `;
         const userHtml = baseHtml.replace("{{ACTION_BUTTONS}}", userActions);
-        
+
         // Subject for User
         const userSubject = getStandardSubject({ ...data, requestId }) + " [SOLICITUD ENVIADA]";
         const ccList = getCCList(data);
@@ -3149,7 +3537,8 @@ function mapRowToRequest(row) {
     analystOptions, selectedOption, supportData,
     departureTimePreference: safeTime(get("HORA LLEGADA VUELO IDA")),
     returnTimePreference: safeTime(get("HORA LLEGADA VUELO VUELTA")),
-    comments: String(get("OBSERVACIONES")),
+    // Oculta el marcador interno de consulta para que no aparezca en correos/UI.
+    comments: String(get("OBSERVACIONES")).split(USER_CONSULT_MARKER).join('').replace(/\n{3,}/g, '\n\n'),
     changeReason: String(get("TEXTO_CAMBIO")),
     hasChangeFlag: get("FLAG_CAMBIO_REALIZADO") === "CAMBIO GENERADO",
     isInternational: get("ES INTERNACIONAL") === "SI",
@@ -3216,6 +3605,49 @@ function mapRowToRequest(row) {
  * Función para ser ejecutada por un Trigger de Tiempo (ej. cada 2 horas).
  * Revisa solicitudes PENDIENTE_APROBACION y envía recordatorios solo a quienes faltan.
  */
+/**
+ * Devuelve un Set con los IDs de solicitudes cuyos recordatorios deben
+ * pausarse. Una solicitud queda en pausa si:
+ *   1. Tiene al menos una solicitud de cambio (hija) en estado NO terminal
+ *      — el usuario ya señaló que no la quiere más y está esperando la
+ *      decisión del admin sobre el cambio.
+ *   2. Tiene el marcador USER_CONSULT_MARKER en OBSERVACIONES — el admin
+ *      consultó al usuario si desea continuar o anular, y se está esperando
+ *      esa respuesta.
+ *
+ * Estados terminales de hija (no cuentan): DENEGADO, ANULADO.
+ *
+ * @param {Array<Array>} data Filas de la hoja (sin headers)
+ * @returns {Set<string>} Set de IDs de solicitudes pausadas
+ */
+function _computePausedParentIds_(data) {
+  const parents = new Set();
+  const idCol = HEADERS_REQUESTS.indexOf("ID RESPUESTA");
+  const parentIdCol = HEADERS_REQUESTS.indexOf("ID SOLICITUD PADRE");
+  const statusCol = HEADERS_REQUESTS.indexOf("STATUS");
+  const obsCol = HEADERS_REQUESTS.indexOf("OBSERVACIONES");
+  if (idCol < 0 || parentIdCol < 0 || statusCol < 0 || obsCol < 0) return parents;
+
+  for (let i = 0; i < data.length; i++) {
+    const r = data[i];
+    // (1) Hija activa → pausa al padre
+    const parentId = String(r[parentIdCol] || '').trim();
+    if (parentId) {
+      const status = String(r[statusCol] || '').trim();
+      if (status !== 'DENEGADO' && status !== 'ANULADO') {
+        parents.add(parentId);
+      }
+    }
+    // (2) Marcador de consulta al usuario en observaciones → pausa a sí misma
+    const obs = String(r[obsCol] || '');
+    if (obs.indexOf(USER_CONSULT_MARKER) !== -1) {
+      const ownId = String(r[idCol] || '').trim();
+      if (ownId) parents.add(ownId);
+    }
+  }
+  return parents;
+}
+
 function sendPendingApprovalReminders() {
   if (!isWorkingHour()) return;
 
@@ -3223,13 +3655,16 @@ function sendPendingApprovalReminders() {
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const data = sheet.getDataRange().getValues();
   // Asumimos fila 1 headers, datos desde fila 2
-  
+
   // Indices
   const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
   const areaApproveIdx = HEADERS_REQUESTS.indexOf("APROBADO POR ÁREA?");
   const cdsApproveIdx = HEADERS_REQUESTS.indexOf("APROBADO CDS");
   const ceoApproveIdx = HEADERS_REQUESTS.indexOf("APROBADO CEO");
-  
+
+  // Calcula qué padres están pausadas por una solicitud de cambio activa
+  const pausedParentIds = _computePausedParentIds_(data.slice(1));
+
   // Contadores para log
   let remindersSent = 0;
   const today = Utilities.formatDate(new Date(), "America/Bogota", "yyyy-MM-dd");
@@ -3241,9 +3676,14 @@ function sendPendingApprovalReminders() {
 
     if (status === 'PENDIENTE_APROBACION') {
       const request = mapRowToRequest(row); // Reutilizamos el mapper existente
-      
+
       // SKIP IF FLIGHT DATE PASSED (v2.1)
       if (request.departureDate && request.departureDate < today) {
+          continue;
+      }
+
+      // SKIP si esta solicitud tiene una solicitud de cambio activa
+      if (pausedParentIds.has(String(request.requestId))) {
           continue;
       }
       let recipients = [];
@@ -3348,6 +3788,9 @@ function sendPendingSelectionReminders() {
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
   const statusIdx = HEADERS_REQUESTS.indexOf("STATUS");
 
+  // Calcula qué padres están pausadas por una solicitud de cambio activa
+  const pausedParentIds = _computePausedParentIds_(data);
+
   const today = Utilities.formatDate(new Date(), "America/Bogota", "yyyy-MM-dd");
   let remindersSent = 0;
 
@@ -3360,6 +3803,9 @@ function sendPendingSelectionReminders() {
 
     // Skip si la fecha de vuelo ya pasó (solicitud abandonada)
     if (request.departureDate && request.departureDate < today) continue;
+
+    // Skip si tiene una solicitud de cambio activa
+    if (pausedParentIds.has(String(request.requestId))) continue;
 
     sendUserSelectionReminderEmail_(request);
     remindersSent++;
@@ -3412,52 +3858,6 @@ function sendUserSelectionReminderEmail_(req) {
   }
 }
 
-// --- EMAIL HELPERS & TEMPLATES ---
-
-function getStandardSubject(data) {
-    const id = data.requestId || data.id;
-    const isHotelOnly = data.requestMode === 'HOTEL_ONLY';
-    const tipo = isHotelOnly ? 'Solicitud de Hospedaje' : 'Solicitud de Viaje';
-    let subject = `${tipo} ${id} - ${data.requesterEmail} - ${data.company} ${data.site}`;
-    if (data.isInternational) subject += " [INTERNACIONAL]";
-    return subject;
-}
-
-function sendEmailRich(to, subject, htmlBody, cc) {
-    try {
-        const filterEmails = (str) => (str || "").split(',').map(e=>e.trim()).filter(e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).join(',');
-        
-        const ccAddress = (cc === undefined) ? ADMIN_EMAIL : cc;
-        let validTo = filterEmails(to);
-        let validCc = filterEmails(ccAddress);
-        
-        if (!validTo && validCc) {
-            validTo = validCc;
-            validCc = '';
-        }
-        
-        if (!validTo) {
-            console.error("No valid recipients for email: " + subject);
-            return;
-        }
-
-        const options = {
-            to: validTo,
-            subject: subject,
-            htmlBody: htmlBody,
-            body: "Este correo contiene elementos ricos en HTML. Por favor use un cliente compatible.\n\n" + (htmlBody ? htmlBody.replace(/<[^>]+>/g, ' ') : '')
-        };
-        
-        if (validCc) {
-            options.cc = validCc;
-        }
-        
-        MailApp.sendEmail(options);
-    } catch(e) {
-        console.error("Error sending email to " + to + ": " + e);
-    }
-}
-
 /**
  * PERIODIC TASK: Send reminders to Admin for pending actions (v1.9)
  * Should be triggered every 2 hours manually via Triggers.
@@ -3472,21 +3872,28 @@ function processAdminReminders() {
 
     const dataRows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
     const requests = dataRows.map(mapRowToRequest);
-    
+
     const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd");
 
-    // Filter by status AND ensure the flight hasn't happened yet (not abandoned)
-    const pendingOptions = requests.filter(r => r.status === 'PENDIENTE_OPCIONES' && r.departureDate >= today);
-    const pendingCost = requests.filter(r => r.status === 'PENDIENTE_CONFIRMACION_COSTO' && r.departureDate >= today);
-    const approved = requests.filter(r => (r.status === 'APROBADO' || r.status === 'RESERVADO_PARCIAL') && r.departureDate >= today);
+    // Calcula qué padres están pausadas por una solicitud de cambio activa
+    const pausedParentIds = _computePausedParentIds_(dataRows);
+    const isPaused = (r) => pausedParentIds.has(String(r.requestId));
 
-    if (pendingOptions.length === 0 && pendingCost.length === 0 && approved.length === 0) {
+    // Filter by status AND ensure the flight hasn't happened yet (not abandoned)
+    // AND skip originals paused by an active change request
+    const pendingOptions = requests.filter(r => r.status === 'PENDIENTE_OPCIONES' && r.departureDate >= today && !isPaused(r));
+    const pendingCost = requests.filter(r => r.status === 'PENDIENTE_CONFIRMACION_COSTO' && r.departureDate >= today && !isPaused(r));
+    const approved = requests.filter(r => (r.status === 'APROBADO' || r.status === 'RESERVADO_PARCIAL') && r.departureDate >= today && !isPaused(r));
+    // Solicitudes de cambio esperando que Wendy las pase a estudio o las deniegue
+    const pendingChanges = requests.filter(r => r.status === 'PENDIENTE_ANALISIS_CAMBIO' && r.departureDate >= today);
+
+    if (pendingOptions.length === 0 && pendingCost.length === 0 && approved.length === 0 && pendingChanges.length === 0) {
         console.log("No pending tasks for admin. Skipping email.");
         return;
     }
 
-    const html = HtmlTemplates.adminReminderSummary(pendingOptions, pendingCost, approved);
-    const totalCount = pendingOptions.length + pendingCost.length + approved.length;
+    const html = HtmlTemplates.adminReminderSummary(pendingOptions, pendingCost, approved, pendingChanges);
+    const totalCount = pendingOptions.length + pendingCost.length + approved.length + pendingChanges.length;
     const subject = `⚠️ RECORDATORIO: ${totalCount} Solicitudes Pendientes de Acción`;
 
     try {
@@ -3963,15 +4370,11 @@ const HR_MAESTRO_SHEET = getConfig_('HR_MAESTRO_SHEET', 'Hoja 1');
  * El único modo de cambiar el switch es manualmente desde el editor GAS.
  */
 function onOpen() {
-  // Menú visible si: (a) Plan 2 completamente activo, O (b) el usuario es
-  // el admin de setup (David). Esto permite crear la hoja USUARIOS, migrar,
-  // probar el sidebar, etc. SIN flipar el switch del backend. El switch
-  // USE_USUARIOS_SHEET solo controla de dónde lee el backend (INTEGRANTES
-  // vs USUARIOS) y se mantiene aparte.
-  var currentUser = '';
-  try { currentUser = Session.getActiveUser().getEmail().toLowerCase().trim(); } catch (e) {}
-  var isSetupAdmin = (currentUser === 'dsanchez@equitel.com.co');
-  if (!USE_USUARIOS_SHEET && !isSetupAdmin) return;
+  // El menú siempre se muestra. Cada función individual valida permisos
+  // cuando se ejecuta (donde Session.getActiveUser() funciona de forma
+  // fiable, a diferencia de onOpen que es un simple trigger).
+  // En producción, el menú es inofensivo: el sidebar y las funciones de
+  // migración validan USE_USUARIOS_SHEET o isSetupAdmin antes de actuar.
   SpreadsheetApp.getUi()
     .createMenu('Equitel Viajes')
     .addItem('Gestionar Usuarios (Sidebar)', 'abrirSidebarUsuarios')
@@ -4110,17 +4513,10 @@ function sincronizarConMaestroRH() {
 }
 
 function abrirSidebarUsuarios() {
-  // Permitido si Plan 2 activo O si es el admin de setup (David).
-  var currentUser = '';
-  try { currentUser = Session.getActiveUser().getEmail().toLowerCase().trim(); } catch (e) {}
-  var isSetupAdmin = (currentUser === 'dsanchez@equitel.com.co');
-  if (!USE_USUARIOS_SHEET && !isSetupAdmin) {
-    SpreadsheetApp.getUi().alert(
-      'Plan 2 (USUARIOS) no está activo.\n\n' +
-      'Para activarlo: Script Properties → USE_USUARIOS_SHEET = "true".'
-    );
-    return;
-  }
+  // Permitido siempre que el sheet USUARIOS exista. El sidebar es de
+  // preparación (Fase A) — no requiere que el switch de backend esté activo.
+  // Cualquier editor del sheet puede abrir el sidebar para gestionar la
+  // tabla USUARIOS sin afectar el flujo de producción.
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss.getSheetByName(SHEET_NAME_USUARIOS)) {
     SpreadsheetApp.getUi().alert(
@@ -4256,7 +4652,7 @@ function migrarIntegrantesAUsuarios() {
       cedula: cedula,
       nombre: nombre,
       correo: correo,
-      empresa: idxEmpresa > -1 ? String(data[i][idxEmpresa] || '').trim() : '',
+      empresa: _mapEmpresaCode_(idxEmpresa > -1 ? String(data[i][idxEmpresa] || '').trim() : ''),
       sede: idxSede > -1 ? String(data[i][idxSede] || '').trim() : '',
       centroCosto: idxCC > -1 ? String(data[i][idxCC] || '').trim() : '',
       pinHash: idxPin > -1 ? String(data[i][idxPin] || '').trim() : '',
@@ -4656,6 +5052,18 @@ function usuarios_getSedes() {
 
 function usuarios_getEmpresas() {
   return ['Cumandes', 'Equitel', 'Ingenergía', 'LAP'];
+}
+
+/**
+ * Traduce códigos abreviados de empresa (usados en INTEGRANTES) a nombres
+ * completos (usados en USUARIOS y en el frontend). Si el valor ya es un
+ * nombre completo o no se reconoce, se devuelve tal cual.
+ */
+function _mapEmpresaCode_(raw) {
+  if (!raw) return '';
+  var lookup = { 'CU': 'Cumandes', 'ET': 'Equitel', 'IG': 'Ingenergía', 'LI': 'LAP' };
+  var upper = raw.toUpperCase().trim();
+  return lookup[upper] || raw;
 }
 
 function usuarios_create(data) {
