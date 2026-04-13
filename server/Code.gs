@@ -4764,11 +4764,14 @@ function onOpen() {
   // fiable, a diferencia de onOpen que es un simple trigger).
   // En producción, el menú es inofensivo: el sidebar y las funciones de
   // migración validan USE_USUARIOS_SHEET o isSetupAdmin antes de actuar.
+  var modoLabel = USE_USUARIOS_SHEET
+    ? 'Modo activo: ⚡ USUARIOS'
+    : 'Modo activo: 📋 INTEGRANTES (legacy)';
   SpreadsheetApp.getUi()
     .createMenu('Equitel Viajes')
     .addItem('Gestionar Usuarios (Sidebar)', 'abrirSidebarUsuarios')
     .addSeparator()
-    .addItem('Modo activo: ⚡ USUARIOS', 'mostrarModoActivo')
+    .addItem(modoLabel, 'mostrarModoActivo')
     .addSeparator()
     .addItem('1. Crear hoja USUARIOS', 'crearHojaUsuarios')
     .addItem('2. Migrar desde INTEGRANTES', 'migrarIntegrantesAUsuarios')
@@ -5902,70 +5905,172 @@ function _recordEvent_(requestId, eventKey, data) {
   }
 }
 
+// =====================================================================
+// METRICS CACHE — Drive JSON file for precomputed metrics
+// =====================================================================
+
+function _getMetricsCacheFile_() {
+  var folder = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+  var files = folder.getFilesByName('metricas_cache.json');
+  if (files.hasNext()) return files.next();
+  return folder.createFile('metricas_cache.json', JSON.stringify({
+    version: 1, lastBuild: new Date().toISOString(), entries: {}
+  }), 'application/json');
+}
+
+function _loadMetricsCache_() {
+  try {
+    var file = _getMetricsCacheFile_();
+    var content = file.getBlob().getDataAsString();
+    var cache = JSON.parse(content);
+    if (!cache || !cache.entries || cache.version !== 1) {
+      return { version: 1, lastBuild: new Date().toISOString(), entries: {} };
+    }
+    return cache;
+  } catch (e) {
+    console.warn('METRICS CACHE: failed to load, starting fresh: ' + e);
+    return { version: 1, lastBuild: new Date().toISOString(), entries: {} };
+  }
+}
+
+function _saveMetricsCache_(cache) {
+  try {
+    cache.lastBuild = new Date().toISOString();
+    var file = _getMetricsCacheFile_();
+    file.setContent(JSON.stringify(cache));
+  } catch (e) {
+    console.error('METRICS CACHE: failed to save: ' + e);
+  }
+}
+
+function _buildEventsHash_(events) {
+  var keys = [];
+  Object.keys(events).forEach(function(k) {
+    if (k === 'approvals') {
+      var roles = events.approvals ? Object.keys(events.approvals).sort() : [];
+      if (roles.length > 0) keys.push('approvals:' + roles.join(':'));
+    } else if (events[k]) {
+      keys.push(k);
+    }
+  });
+  return keys.sort().join(',');
+}
+
+function _needsRecompute_(cacheEntry, currentStatus, currentEventsHash) {
+  if (!cacheEntry) return true;
+  if (cacheEntry.status !== currentStatus) return true;
+  if (cacheEntry.eventsHash !== currentEventsHash) return true;
+  return false;
+}
+
+// =====================================================================
+// METRICS — main entry point (cached)
+// =====================================================================
+
 /**
- * Lee toda la base de solicitudes, parsea EVENTOS_JSON de cada una, y
- * devuelve métricas por solicitud + agregados. Filtros opcionales por
- * rango de fecha (created) o por requestId (substring match).
+ * Lee toda la base de solicitudes, usa cache para evitar recalcular
+ * métricas de solicitudes que no han cambiado. Almacena el cache en
+ * metricas_cache.json dentro de la carpeta raíz de Drive.
  *
- * @param {object} filters  { requestId?, dateFrom?, dateTo? } — fechas en ISO
- * @returns {{ perRequest: array, aggregates: object }}
+ * @param {object} filters  { requestId?, dateFrom?, dateTo?, excludeStatuses?: string[], hideNoEvents?: boolean }
+ * @returns {{ perRequest: array, aggregates: object, analystPerformance: array }}
  */
 function getMetrics(filters) {
   filters = filters || {};
-  const requestIdFilter = filters.requestId ? String(filters.requestId).trim().toLowerCase() : '';
-  const dateFrom = filters.dateFrom ? new Date(filters.dateFrom) : null;
-  const dateTo = filters.dateTo ? new Date(filters.dateTo) : null;
-  if (dateTo) dateTo.setHours(23, 59, 59, 999);
+  var requestIdFilter = filters.requestId ? String(filters.requestId).trim().toLowerCase() : '';
+  // FIX: parse dates with explicit Bogotá offset to prevent timezone mismatch
+  var dateFrom = filters.dateFrom ? new Date(filters.dateFrom + 'T00:00:00-05:00') : null;
+  var dateTo = filters.dateTo ? new Date(filters.dateTo + 'T23:59:59.999-05:00') : null;
+  var excludeStatuses = filters.excludeStatuses || [];
+  var hideNoEvents = filters.hideNoEvents !== undefined ? filters.hideNoEvents : true;
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  if (!sheet) return { perRequest: [], aggregates: _emptyAggregates_() };
+  var emptyResult = { perRequest: [], aggregates: _emptyAggregates_(), analystPerformance: _emptyAnalystPerformance_() };
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return emptyResult;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return emptyResult;
 
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { perRequest: [], aggregates: _emptyAggregates_() };
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var eventsCol = headers.indexOf(EVENTOS_JSON_HEADER);
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  var idIdx = HEADERS_REQUESTS.indexOf('ID RESPUESTA');
+  var requesterIdx = HEADERS_REQUESTS.indexOf('CORREO ENCUESTADO');
+  var destinationIdx = HEADERS_REQUESTS.indexOf('CIUDAD DESTINO');
+  var companyIdx = HEADERS_REQUESTS.indexOf('EMPRESA');
+  var statusIdx = HEADERS_REQUESTS.indexOf('STATUS');
+  var dateIdx = HEADERS_REQUESTS.indexOf('FECHA SOLICITUD');
 
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  const eventsCol = headers.indexOf(EVENTOS_JSON_HEADER);
+  // --- CACHE LAYER ---
+  var cache = _loadMetricsCache_();
+  var cacheChanged = false;
+  var allEntries = [];
 
-  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  const idIdx = HEADERS_REQUESTS.indexOf('ID RESPUESTA');
-  const requesterIdx = HEADERS_REQUESTS.indexOf('CORREO ENCUESTADO');
-  const destinationIdx = HEADERS_REQUESTS.indexOf('CIUDAD DESTINO');
-  const companyIdx = HEADERS_REQUESTS.indexOf('EMPRESA');
-  const statusIdx = HEADERS_REQUESTS.indexOf('STATUS');
-  const dateIdx = HEADERS_REQUESTS.indexOf('FECHA SOLICITUD');
-
-  const perRequest = [];
-
-  for (let i = 0; i < data.length; i++) {
-    const row = data[i];
-    const requestId = String(row[idIdx] || '').trim();
+  for (var i = 0; i < data.length; i++) {
+    var row = data[i];
+    var requestId = String(row[idIdx] || '').trim();
     if (!requestId) continue;
 
-    if (requestIdFilter && requestId.toLowerCase().indexOf(requestIdFilter) === -1) continue;
-
-    // Date filter usa FECHA SOLICITUD (la fecha original de creación en el sheet)
-    let requestDate = row[dateIdx];
-    if (!(requestDate instanceof Date)) requestDate = new Date(requestDate);
-    const isValidDate = requestDate instanceof Date && !isNaN(requestDate.getTime());
-    if (dateFrom && isValidDate && requestDate < dateFrom) continue;
-    if (dateTo && isValidDate && requestDate > dateTo) continue;
-
-    let events = {};
+    var currentStatus = String(row[statusIdx] || '');
+    var events = {};
     if (eventsCol >= 0 && row[eventsCol]) {
       try { events = JSON.parse(row[eventsCol]); } catch (e) {}
     }
 
-    // Fallback: si no hay 'created' en EVENTOS_JSON pero sí en FECHA SOLICITUD,
-    // usar esa para que la solicitud al menos tenga una fecha mostrable.
+    var requestDate = row[dateIdx];
+    if (!(requestDate instanceof Date)) requestDate = new Date(requestDate);
+    var isValidDate = requestDate instanceof Date && !isNaN(requestDate.getTime());
+
     if (!events.created && isValidDate) {
       events.created = requestDate.toISOString();
     }
 
-    perRequest.push(_buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, companyIdx, statusIdx, events));
+    var eventsHash = _buildEventsHash_(events);
+    var cached = cache.entries[requestId];
+    var metrics;
+
+    if (_needsRecompute_(cached, currentStatus, eventsHash)) {
+      metrics = _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, companyIdx, statusIdx, events);
+      cache.entries[requestId] = {
+        status: currentStatus,
+        eventsHash: eventsHash,
+        computedAt: new Date().toISOString(),
+        metrics: metrics
+      };
+      cacheChanged = true;
+    } else {
+      metrics = cached.metrics;
+      // Refresh volatile display fields from sheet (cheap, might have changed)
+      metrics.status = currentStatus;
+      metrics.requesterEmail = String(row[requesterIdx] || '');
+      metrics.destination = String(row[destinationIdx] || '');
+      metrics.company = String(row[companyIdx] || '');
+    }
+
+    // Attach requestDate for filtering (not stored in cache)
+    metrics._requestDate = isValidDate ? requestDate : null;
+    allEntries.push(metrics);
   }
 
-  // Sort: más recientes primero
+  if (cacheChanged) {
+    _saveMetricsCache_(cache);
+  }
+
+  // --- APPLY FILTERS ---
+  var perRequest = [];
+  for (var j = 0; j < allEntries.length; j++) {
+    var m = allEntries[j];
+    if (requestIdFilter && m.requestId.toLowerCase().indexOf(requestIdFilter) === -1) continue;
+    if (dateFrom && m._requestDate && m._requestDate < dateFrom) continue;
+    if (dateTo && m._requestDate && m._requestDate > dateTo) continue;
+    if (excludeStatuses.length > 0 && excludeStatuses.indexOf(m.status) >= 0) continue;
+    if (hideNoEvents && !m.hasEvents) continue;
+
+    var clean = {};
+    Object.keys(m).forEach(function(k) { if (k !== '_requestDate') clean[k] = m[k]; });
+    perRequest.push(clean);
+  }
+
   perRequest.sort(function(a, b) {
     if (!a.created && !b.created) return 0;
     if (!a.created) return 1;
@@ -5975,9 +6080,14 @@ function getMetrics(filters) {
 
   return {
     perRequest: perRequest,
-    aggregates: _aggregateMetrics_(perRequest)
+    aggregates: _aggregateMetrics_(perRequest),
+    analystPerformance: _buildAnalystPerformance_(perRequest)
   };
 }
+
+// =====================================================================
+// METRICS — working minutes + cross-day calculations
+// =====================================================================
 
 /**
  * Calcula minutos transcurridos entre dos timestamps ISO contando SOLO
@@ -5986,12 +6096,7 @@ function getMetrics(filters) {
  *   Sáb: 08:00 – 12:00 (240 min/día)
  *   Dom: 0 min
  *
- * Avanza minuto a minuto en bloques de 15 min para mantener precisión
- * razonable sin ser O(N) por cada minuto real (máx ~6700 iteraciones
- * para un rango de 7 días, suficiente para métricas no críticas).
- *
- * Si el rango excede 30 días, hace fallback a minutos brutos para
- * evitar timeouts en GAS (6 min max execution).
+ * Para rangos >90 días, aproxima con ~3240 min laborales/semana.
  */
 function _workingMinutesBetween_(fromIso, toIso) {
   if (!fromIso || !toIso) return null;
@@ -6000,57 +6105,81 @@ function _workingMinutesBetween_(fromIso, toIso) {
   if (isNaN(from.getTime()) || isNaN(to.getTime())) return null;
   if (to.getTime() <= from.getTime()) return 0;
 
-  // Fallback para rangos enormes (>30 días): minutos brutos
+  // Safety cap: rangos >90 días → aproximación para evitar timeout
   var totalRawMs = to.getTime() - from.getTime();
-  if (totalRawMs > 30 * 24 * 60 * 60 * 1000) {
-    return Math.round(totalRawMs / 60000);
+  if (totalRawMs > 90 * 24 * 60 * 60 * 1000) {
+    var weeks = totalRawMs / (7 * 24 * 60 * 60 * 1000);
+    return Math.round(weeks * 3240);
   }
 
-  // Offset Bogotá: UTC-5 (no hay DST en Colombia)
   var BOG_OFFSET_MS = -5 * 60 * 60 * 1000;
   var toBogota = function(d) { return new Date(d.getTime() + BOG_OFFSET_MS); };
 
-  var STEP_MS = 15 * 60 * 1000; // 15 min
+  var STEP_MS = 15 * 60 * 1000;
   var workingMinutes = 0;
   var cursor = from.getTime();
   var endMs = to.getTime();
 
   while (cursor < endMs) {
     var bog = toBogota(new Date(cursor));
-    var dow = bog.getUTCDay(); // 0=Sun, 6=Sat
-    var h = bog.getUTCHours();
-    var m = bog.getUTCMinutes();
-    var minuteOfDay = h * 60 + m;
+    var dow = bog.getUTCDay();
+    var minuteOfDay = bog.getUTCHours() * 60 + bog.getUTCMinutes();
 
     var isWorking = false;
     if (dow >= 1 && dow <= 5) {
-      // L-V: 7:00 (420) a 17:00 (1020)
       if (minuteOfDay >= 420 && minuteOfDay < 1020) isWorking = true;
     } else if (dow === 6) {
-      // Sáb: 8:00 (480) a 12:00 (720)
       if (minuteOfDay >= 480 && minuteOfDay < 720) isWorking = true;
     }
 
     if (isWorking) {
-      // Contar los minutos efectivos de este bloque (puede ser menos de STEP si el rango termina antes)
       var blockEnd = Math.min(cursor + STEP_MS, endMs);
       workingMinutes += Math.round((blockEnd - cursor) / 60000);
     }
-
     cursor += STEP_MS;
   }
 
   return workingMinutes > 0 ? workingMinutes : 0;
 }
 
-function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, companyIdx, statusIdx, events) {
-  // Usa horario laboral para todas las métricas de tiempo
-  var minutesBetween = _workingMinutesBetween_;
+/**
+ * Cuenta cuántos días hábiles separan dos timestamps (zona Bogotá).
+ * Retorna 0 si mismo día calendario, 1 si día siguiente hábil, etc.
+ */
+function _businessDaysBetween_(fromIso, toIso) {
+  if (!fromIso || !toIso) return null;
+  var BOG_OFFSET_MS = -5 * 60 * 60 * 1000;
+  var toBogDate = function(iso) {
+    var d = new Date(new Date(iso).getTime() + BOG_OFFSET_MS);
+    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  };
+  var fromDate = toBogDate(fromIso);
+  var toDate = toBogDate(toIso);
+  if (fromDate.getTime() === toDate.getTime()) return 0;
 
-  const approvals = [];
+  var count = 0;
+  var cursor = new Date(fromDate);
+  cursor.setDate(cursor.getDate() + 1);
+  while (cursor <= toDate) {
+    var dow = cursor.getDay();
+    if (dow >= 1 && dow <= 6) count++; // Mon-Sat
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
+// =====================================================================
+// METRICS — per-request builder
+// =====================================================================
+
+function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, companyIdx, statusIdx, events) {
+  var minutesBetween = _workingMinutesBetween_;
+  var daysBetween = _businessDaysBetween_;
+
+  var approvals = [];
   if (events.approvals) {
     Object.keys(events.approvals).forEach(function(role) {
-      const a = events.approvals[role];
+      var a = events.approvals[role];
       approvals.push({
         role: role,
         email: a.email || '',
@@ -6059,13 +6188,12 @@ function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, com
     });
   }
 
-  // hasEvents = tiene algún evento real más allá del fallback 'created'
-  const eventKeysReal = Object.keys(events).filter(function(k) {
-    if (k === 'created') return false; // created suele venir del fallback
+  var eventKeysReal = Object.keys(events).filter(function(k) {
+    if (k === 'created') return false;
     if (k === 'approvals') return events.approvals && Object.keys(events.approvals).length > 0;
     return !!events[k];
   });
-  const hasEvents = eventKeysReal.length > 0;
+  var hasEvents = eventKeysReal.length > 0;
 
   return {
     requestId: requestId,
@@ -6081,23 +6209,34 @@ function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, com
     timeToReservationMinutes: minutesBetween(events.fullyApproved, events.reservationRegistered),
     totalCycleMinutes: minutesBetween(events.created, events.reservationRegistered),
     approvals: approvals,
-    hasEvents: hasEvents
+    hasEvents: hasEvents,
+    crossDays: {
+      toOptions: daysBetween(events.created, events.optionsUploaded),
+      toSelection: daysBetween(events.optionsUploaded, events.selectionMade),
+      toCostConfirm: daysBetween(events.selectionMade, events.costConfirmed),
+      toFullApproval: daysBetween(events.costConfirmed, events.fullyApproved),
+      toReservation: daysBetween(events.fullyApproved, events.reservationRegistered),
+      totalCycle: daysBetween(events.created, events.reservationRegistered)
+    }
   };
 }
 
+// =====================================================================
+// METRICS — aggregation + analyst performance
+// =====================================================================
+
 function _aggregateMetrics_(metrics) {
-  const avg = function(arr) {
-    const valid = arr.filter(function(v) { return v !== null && !isNaN(v); });
+  var avg = function(arr) {
+    var valid = arr.filter(function(v) { return v !== null && !isNaN(v); });
     if (valid.length === 0) return null;
     return Math.round(valid.reduce(function(s, v) { return s + v; }, 0) / valid.length);
   };
 
-  const countWithEvents = metrics.filter(function(m) { return m.hasEvents; }).length;
+  var countWithEvents = metrics.filter(function(m) { return m.hasEvents; }).length;
 
-  // Agregados por aprobador (qué tan rápido contesta cada uno)
-  const approverMap = {};
+  var approverMap = {};
   metrics.forEach(function(m) {
-    m.approvals.forEach(function(a) {
+    (m.approvals || []).forEach(function(a) {
       if (!a.email || a.timeMinutes === null) return;
       if (!approverMap[a.email]) {
         approverMap[a.email] = { email: a.email, role: a.role, count: 0, total: 0 };
@@ -6106,14 +6245,9 @@ function _aggregateMetrics_(metrics) {
       approverMap[a.email].total += a.timeMinutes;
     });
   });
-  const approverPerformance = Object.keys(approverMap).map(function(email) {
-    const a = approverMap[email];
-    return {
-      email: email,
-      role: a.role,
-      count: a.count,
-      avgTimeMinutes: Math.round(a.total / a.count)
-    };
+  var approverPerformance = Object.keys(approverMap).map(function(email) {
+    var a = approverMap[email];
+    return { email: email, role: a.role, count: a.count, avgTimeMinutes: Math.round(a.total / a.count) };
   }).sort(function(a, b) { return b.count - a.count; });
 
   return {
@@ -6129,16 +6263,64 @@ function _aggregateMetrics_(metrics) {
   };
 }
 
+/**
+ * Performance del analista (Wendy). Calcula tiempos de las 3 etapas que
+ * le corresponden: cotización, confirmación de costos, compra de tiquetes.
+ */
+function _buildAnalystPerformance_(metrics) {
+  var stages = {
+    cotizacion: { label: 'Cotización (Crear → Opciones)', count: 0, total: 0, values: [] },
+    confirmacion: { label: 'Confirmación costos (Selección → Costo)', count: 0, total: 0, values: [] },
+    compra: { label: 'Compra tiquetes (Aprobado → Reserva)', count: 0, total: 0, values: [] }
+  };
+
+  metrics.forEach(function(m) {
+    if (m.timeToOptionsMinutes !== null && m.timeToOptionsMinutes !== undefined && !isNaN(m.timeToOptionsMinutes)) {
+      stages.cotizacion.count++;
+      stages.cotizacion.total += m.timeToOptionsMinutes;
+      stages.cotizacion.values.push(m.timeToOptionsMinutes);
+    }
+    if (m.timeToCostConfirmMinutes !== null && m.timeToCostConfirmMinutes !== undefined && !isNaN(m.timeToCostConfirmMinutes)) {
+      stages.confirmacion.count++;
+      stages.confirmacion.total += m.timeToCostConfirmMinutes;
+      stages.confirmacion.values.push(m.timeToCostConfirmMinutes);
+    }
+    if (m.timeToReservationMinutes !== null && m.timeToReservationMinutes !== undefined && !isNaN(m.timeToReservationMinutes)) {
+      stages.compra.count++;
+      stages.compra.total += m.timeToReservationMinutes;
+      stages.compra.values.push(m.timeToReservationMinutes);
+    }
+  });
+
+  var result = [];
+  ['cotizacion', 'confirmacion', 'compra'].forEach(function(key) {
+    var s = stages[key];
+    result.push({
+      stage: key,
+      label: s.label,
+      count: s.count,
+      avgMinutes: s.count > 0 ? Math.round(s.total / s.count) : null,
+      minMinutes: s.values.length > 0 ? Math.min.apply(null, s.values) : null,
+      maxMinutes: s.values.length > 0 ? Math.max.apply(null, s.values) : null
+    });
+  });
+  return result;
+}
+
 function _emptyAggregates_() {
   return {
-    count: 0,
-    countWithCompleteData: 0,
-    avgTimeToOptionsMinutes: null,
-    avgTimeToSelectionMinutes: null,
-    avgTimeToCostConfirmMinutes: null,
-    avgTimeToFullApprovalMinutes: null,
-    avgTimeToReservationMinutes: null,
-    avgTotalCycleMinutes: null,
+    count: 0, countWithCompleteData: 0,
+    avgTimeToOptionsMinutes: null, avgTimeToSelectionMinutes: null,
+    avgTimeToCostConfirmMinutes: null, avgTimeToFullApprovalMinutes: null,
+    avgTimeToReservationMinutes: null, avgTotalCycleMinutes: null,
     approverPerformance: []
   };
+}
+
+function _emptyAnalystPerformance_() {
+  return [
+    { stage: 'cotizacion', label: 'Cotización (Crear → Opciones)', count: 0, avgMinutes: null, minMinutes: null, maxMinutes: null },
+    { stage: 'confirmacion', label: 'Confirmación costos (Selección → Costo)', count: 0, avgMinutes: null, minMinutes: null, maxMinutes: null },
+    { stage: 'compra', label: 'Compra tiquetes (Aprobado → Reserva)', count: 0, avgMinutes: null, minMinutes: null, maxMinutes: null }
+  ];
 }

@@ -183,6 +183,8 @@ export interface MetricsFilters {
   requestId?: string;
   dateFrom?: string; // ISO date
   dateTo?: string;
+  excludeStatuses?: string[];
+  hideNoEvents?: boolean;
 }
 
 export interface ApprovalMetric {
@@ -206,6 +208,14 @@ export interface RequestMetrics {
   totalCycleMinutes: number | null;
   approvals: ApprovalMetric[];
   hasEvents: boolean;
+  crossDays?: {
+    toOptions: number | null;
+    toSelection: number | null;
+    toCostConfirm: number | null;
+    toFullApproval: number | null;
+    toReservation: number | null;
+    totalCycle: number | null;
+  };
 }
 
 export interface ApproverPerformance {
@@ -227,7 +237,17 @@ export interface MetricsAggregates {
   approverPerformance: ApproverPerformance[];
 }
 
+export interface AnalystStagePerformance {
+  stage: string;
+  label: string;
+  count: number;
+  avgMinutes: number | null;
+  minMinutes: number | null;
+  maxMinutes: number | null;
+}
+
 export interface MetricsResponse {
   perRequest: RequestMetrics[];
   aggregates: MetricsAggregates;
+  analystPerformance: AnalystStagePerformance[];
 }

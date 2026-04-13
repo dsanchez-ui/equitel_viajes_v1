@@ -19,17 +19,6 @@ const formatMinutes = (m: number | null | undefined): string => {
   return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
 };
 
-const formatDate = (iso: string | null | undefined): string => {
-  if (!iso) return '—';
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  } catch {
-    return '—';
-  }
-};
-
 const presetToRange = (preset: DatePreset): { dateFrom?: string; dateTo?: string } => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -50,6 +39,30 @@ const presetToRange = (preset: DatePreset): { dateFrom?: string; dateTo?: string
   return {};
 };
 
+const statusLabel = (s: string): string => {
+  const map: Record<string, string> = {
+    'PENDIENTE_OPCIONES': 'P. Opciones',
+    'PENDIENTE_SELECCION': 'P. Selección',
+    'PENDIENTE_CONFIRMACION_COSTO': 'P. Costo',
+    'PENDIENTE_APROBACION': 'P. Aprobación',
+    'PENDIENTE_ANALISIS_CAMBIO': 'P. Cambio',
+    'APROBADO': 'Aprobado',
+    'RESERVADO': 'Reservado',
+    'PROCESADO': 'Procesado',
+    'DENEGADO': 'Denegado',
+    'ANULADO': 'Anulado',
+  };
+  return map[s] || s;
+};
+
+const statusColor = (s: string): string => {
+  if (s === 'PROCESADO' || s === 'RESERVADO') return 'bg-green-100 text-green-700';
+  if (s === 'APROBADO') return 'bg-emerald-100 text-emerald-700';
+  if (s === 'DENEGADO') return 'bg-red-100 text-red-700';
+  if (s === 'ANULADO') return 'bg-gray-200 text-gray-500';
+  return 'bg-gray-100 text-gray-600';
+};
+
 export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +71,9 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [requestIdFilter, setRequestIdFilter] = useState('');
+  const [excludeAnulado, setExcludeAnulado] = useState(true);
+  const [excludeDenegado, setExcludeDenegado] = useState(true);
+  const [hideNoEvents, setHideNoEvents] = useState(true);
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -71,6 +87,13 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
         filters = { ...filters, ...presetToRange(preset) };
       }
       if (requestIdFilter.trim()) filters.requestId = requestIdFilter.trim();
+
+      const excludeStatuses: string[] = [];
+      if (excludeAnulado) excludeStatuses.push('ANULADO');
+      if (excludeDenegado) excludeStatuses.push('DENEGADO');
+      if (excludeStatuses.length > 0) filters.excludeStatuses = excludeStatuses;
+      filters.hideNoEvents = hideNoEvents;
+
       const response = await gasService.getMetrics(filters);
       setData(response);
     } catch (e: any) {
@@ -81,7 +104,6 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
     }
   };
 
-  // Cargar al montar
   useEffect(() => {
     fetchMetrics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -102,7 +124,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
             <span>📊</span> Métricas de tiempos
           </h3>
           <p className="text-xs text-gray-500 mb-4">
-            Diagnóstico de cuánto tiempo toma cada etapa del flujo. Las solicitudes anteriores al despliegue de métricas no tienen datos de eventos y aparecerán como "—".
+            Diagnóstico de cuánto tiempo toma cada etapa del flujo. Tiempos calculados en horario laboral (L-V 7-17, Sáb 8-12).
           </p>
 
           {/* Filtros */}
@@ -133,41 +155,39 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
                 <>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Desde</label>
-                    <input
-                      type="date"
-                      value={customFrom}
-                      onChange={(e) => setCustomFrom(e.target.value)}
-                      className="px-2 py-1 border border-gray-300 rounded text-xs"
-                    />
+                    <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="px-2 py-1 border border-gray-300 rounded text-xs" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hasta</label>
-                    <input
-                      type="date"
-                      value={customTo}
-                      onChange={(e) => setCustomTo(e.target.value)}
-                      className="px-2 py-1 border border-gray-300 rounded text-xs"
-                    />
+                    <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="px-2 py-1 border border-gray-300 rounded text-xs" />
                   </div>
                 </>
               )}
 
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">ID de solicitud</label>
-                <input
-                  type="text"
-                  value={requestIdFilter}
-                  onChange={(e) => setRequestIdFilter(e.target.value)}
-                  placeholder="Ej: SOL-000023"
-                  className="px-2 py-1 border border-gray-300 rounded text-xs w-40"
-                />
+                <input type="text" value={requestIdFilter} onChange={(e) => setRequestIdFilter(e.target.value)} placeholder="Ej: SOL-000023" className="px-2 py-1 border border-gray-300 rounded text-xs w-40" />
               </div>
 
-              <button
-                onClick={fetchMetrics}
-                disabled={loading}
-                className="px-4 py-1.5 bg-brand-red text-white text-xs font-bold rounded hover:bg-red-700 disabled:opacity-50"
-              >
+              <div>
+                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Excluir</label>
+                <div className="flex gap-3 items-center">
+                  <label className="flex items-center gap-1 text-[11px] text-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={excludeAnulado} onChange={(e) => setExcludeAnulado(e.target.checked)} className="rounded accent-brand-red" />
+                    Anuladas
+                  </label>
+                  <label className="flex items-center gap-1 text-[11px] text-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={excludeDenegado} onChange={(e) => setExcludeDenegado(e.target.checked)} className="rounded accent-brand-red" />
+                    Denegadas
+                  </label>
+                  <label className="flex items-center gap-1 text-[11px] text-gray-600 cursor-pointer">
+                    <input type="checkbox" checked={hideNoEvents} onChange={(e) => setHideNoEvents(e.target.checked)} className="rounded accent-brand-red" />
+                    Sin datos
+                  </label>
+                </div>
+              </div>
+
+              <button onClick={fetchMetrics} disabled={loading} className="px-4 py-1.5 bg-brand-red text-white text-xs font-bold rounded hover:bg-red-700 disabled:opacity-50">
                 {loading ? 'Cargando...' : 'Aplicar filtros'}
               </button>
             </div>
@@ -193,16 +213,39 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
               {/* Cards de agregados */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
                 <AggregateCard label="Total solicitudes" value={String(data.aggregates.count)} sub={`${data.aggregates.countWithCompleteData} con datos`} accent="gray" />
-                <AggregateCard label="⏱️ Tiempo cotización" value={formatMinutes(data.aggregates.avgTimeToOptionsMinutes)} sub="Crear → opciones" accent="red" />
-                <AggregateCard label="⏱️ Tiempo selección" value={formatMinutes(data.aggregates.avgTimeToSelectionMinutes)} sub="Opciones → selección" accent="yellow" />
-                <AggregateCard label="⏱️ Confirmar costo" value={formatMinutes(data.aggregates.avgTimeToCostConfirmMinutes)} sub="Selección → costo" accent="purple" />
-                <AggregateCard label="⏱️ Aprobación total" value={formatMinutes(data.aggregates.avgTimeToFullApprovalMinutes)} sub="Costo → aprobado" accent="green" />
-                <AggregateCard label="⏱️ Compra tiquetes" value={formatMinutes(data.aggregates.avgTimeToReservationMinutes)} sub="Aprobado → reserva" accent="blue" />
+                <AggregateCard label="Tiempo cotización" value={formatMinutes(data.aggregates.avgTimeToOptionsMinutes)} sub="Crear → opciones" accent="red" />
+                <AggregateCard label="Tiempo selección" value={formatMinutes(data.aggregates.avgTimeToSelectionMinutes)} sub="Opciones → selección" accent="yellow" />
+                <AggregateCard label="Confirmar costo" value={formatMinutes(data.aggregates.avgTimeToCostConfirmMinutes)} sub="Selección → costo" accent="purple" />
+                <AggregateCard label="Aprobación total" value={formatMinutes(data.aggregates.avgTimeToFullApprovalMinutes)} sub="Costo → aprobado" accent="green" />
+                <AggregateCard label="Compra tiquetes" value={formatMinutes(data.aggregates.avgTimeToReservationMinutes)} sub="Aprobado → reserva" accent="blue" />
               </div>
 
               <div className="text-xs text-gray-500 mb-4 italic">
                 Ciclo total promedio (creación → reserva): <strong className="text-gray-700">{formatMinutes(data.aggregates.avgTotalCycleMinutes)}</strong>
               </div>
+
+              {/* Performance del analista */}
+              {data.analystPerformance && data.analystPerformance.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-4">
+                  <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
+                    <h4 className="text-xs font-bold text-gray-700 uppercase">Performance del analista (etapas de Wendy)</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3">
+                    {data.analystPerformance.map(stage => (
+                      <div key={stage.stage} className="border border-gray-200 rounded-lg p-3">
+                        <div className="text-[10px] font-bold uppercase text-gray-500 mb-1">{stage.label}</div>
+                        <div className="text-lg font-bold text-gray-900">{formatMinutes(stage.avgMinutes)}</div>
+                        <div className="text-[9px] text-gray-400 mt-1">
+                          {stage.count} solicitud{stage.count !== 1 ? 'es' : ''}
+                          {stage.minMinutes !== null && stage.maxMinutes !== null && (
+                            <> · Min: {formatMinutes(stage.minMinutes)} · Max: {formatMinutes(stage.maxMinutes)}</>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Tabla de métricas por solicitud */}
               <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-4">
@@ -216,6 +259,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
                         <th className="px-2 py-2 text-left font-medium text-gray-500">ID</th>
                         <th className="px-2 py-2 text-left font-medium text-gray-500">Solicitante</th>
                         <th className="px-2 py-2 text-left font-medium text-gray-500">Destino</th>
+                        <th className="px-2 py-2 text-left font-medium text-gray-500">Estado</th>
                         <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo de Wendy en cargar opciones">Cotizar</th>
                         <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo del usuario en describir su selección">Seleccionar</th>
                         <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo de Wendy en confirmar costos">Confirmar</th>
@@ -227,7 +271,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
                     <tbody className="divide-y divide-gray-100">
                       {data.perRequest.length === 0 && (
                         <tr>
-                          <td colSpan={9} className="text-center py-8 text-gray-400">Sin solicitudes en este filtro</td>
+                          <td colSpan={10} className="text-center py-8 text-gray-400">Sin solicitudes en este filtro</td>
                         </tr>
                       )}
                       {data.perRequest.map(r => (
@@ -302,21 +346,45 @@ const AggregateCard: React.FC<AggregateCardProps> = ({ label, value, sub, accent
   </div>
 );
 
+const CrossDayBadge: React.FC<{ days: number | null | undefined; isAnalystStage: boolean }> = ({ days, isAnalystStage }) => {
+  if (!days || days === 0) return null;
+  const color = isAnalystStage ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700';
+  return (
+    <span className={`ml-1 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold ${color}`} title={`Cruzó ${days} día(s) hábil(es) — ${isAnalystStage ? 'etapa del analista' : 'etapa del usuario/aprobador'}`}>
+      +{days}d
+    </span>
+  );
+};
+
 const RequestMetricsRow: React.FC<{ r: RequestMetrics }> = ({ r }) => {
   const noEvents = !r.hasEvents;
+  const cd = r.crossDays;
   return (
     <tr className={noEvents ? 'bg-gray-50' : ''}>
       <td className="px-2 py-2 font-medium text-gray-900 whitespace-nowrap">
         {r.requestId}
-        {noEvents && <span className="ml-1 text-[9px] text-gray-400" title="Solicitud anterior al despliegue de métricas">(sin datos)</span>}
+        {noEvents && <span className="ml-1 text-[9px] text-gray-400">(sin datos)</span>}
       </td>
       <td className="px-2 py-2 text-gray-600 truncate max-w-[140px]" title={r.requesterEmail}>{r.requesterEmail}</td>
       <td className="px-2 py-2 text-gray-600 whitespace-nowrap">{r.destination}</td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">{formatMinutes(r.timeToOptionsMinutes)}</td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">{formatMinutes(r.timeToSelectionMinutes)}</td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">{formatMinutes(r.timeToCostConfirmMinutes)}</td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">{formatMinutes(r.timeToFullApprovalMinutes)}</td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">{formatMinutes(r.timeToReservationMinutes)}</td>
+      <td className="px-2 py-2 whitespace-nowrap">
+        <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${statusColor(r.status)}`}>{statusLabel(r.status)}</span>
+      </td>
+      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
+        {formatMinutes(r.timeToOptionsMinutes)}<CrossDayBadge days={cd?.toOptions} isAnalystStage={true} />
+      </td>
+      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
+        {formatMinutes(r.timeToSelectionMinutes)}<CrossDayBadge days={cd?.toSelection} isAnalystStage={false} />
+      </td>
+      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
+        {formatMinutes(r.timeToCostConfirmMinutes)}<CrossDayBadge days={cd?.toCostConfirm} isAnalystStage={true} />
+      </td>
+      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
+        {formatMinutes(r.timeToFullApprovalMinutes)}<CrossDayBadge days={cd?.toFullApproval} isAnalystStage={false} />
+      </td>
+      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
+        {formatMinutes(r.timeToReservationMinutes)}<CrossDayBadge days={cd?.toReservation} isAnalystStage={true} />
+      </td>
       <td className="px-2 py-2 text-right text-gray-900 font-bold whitespace-nowrap">{formatMinutes(r.totalCycleMinutes)}</td>
     </tr>
   );

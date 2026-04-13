@@ -40,7 +40,7 @@ export const SupportUploadModal: React.FC<SupportUploadModalProps> = ({ request,
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const incoming = Array.from(e.target.files);
+    const incoming: File[] = Array.from(e.target.files);
 
     // Validate size
     for (const f of incoming) {
