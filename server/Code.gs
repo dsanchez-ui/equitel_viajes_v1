@@ -22,6 +22,9 @@ const GEMINI_API_KEY = getConfig_('GEMINI_API_KEY', '');
 // TIMEOUT PARA BLOQUEOS (CONCURRENCIA)
 const LOCK_WAIT_MS = 30000;
 
+// Máximo de correos de recordatorio por ejecución de trigger (protege cuota diaria)
+const MAX_REMINDER_EMAILS_PER_RUN = 100;
+
 const SHEET_NAME_REQUESTS = 'Nueva Base Solicitudes';
 const SHEET_NAME_MASTERS = 'MAESTROS';
 const SHEET_NAME_RELATIONS = 'CDS vs UDEN';
@@ -3958,13 +3961,15 @@ function sendPendingApprovalReminders() {
       // Enviar correos a los identificados
       if (recipients.length > 0) {
          recipients.forEach(target => {
+             if (remindersSent >= MAX_REMINDER_EMAILS_PER_RUN) return;
              sendReminderEmail(request, target.email, target.role);
              remindersSent++;
          });
       }
+      if (remindersSent >= MAX_REMINDER_EMAILS_PER_RUN) break;
     }
   }
-  console.log(`Ejecución de recordatorios finalizada. Correos enviados: ${remindersSent}`);
+  console.log(`Ejecución de recordatorios finalizada. Correos enviados: ${remindersSent}` + (remindersSent >= MAX_REMINDER_EMAILS_PER_RUN ? ' (CAP alcanzado)' : ''));
 }
 
 function sendReminderEmail(req, toEmail, role) {
@@ -4052,9 +4057,10 @@ function sendPendingSelectionReminders() {
 
     sendUserSelectionReminderEmail_(request);
     remindersSent++;
+    if (remindersSent >= MAX_REMINDER_EMAILS_PER_RUN) break;
   }
 
-  console.log('Recordatorios de selección enviados: ' + remindersSent);
+  console.log('Recordatorios de selección enviados: ' + remindersSent + (remindersSent >= MAX_REMINDER_EMAILS_PER_RUN ? ' (CAP alcanzado)' : ''));
 }
 
 function sendUserSelectionReminderEmail_(req) {
@@ -4170,9 +4176,10 @@ function sendPendingConsultReminders() {
     } catch (e) {
       console.error('Error enviando recordatorio de consulta a ' + req.requesterEmail + ': ' + e);
     }
+    if (remindersSent >= MAX_REMINDER_EMAILS_PER_RUN) break;
   }
 
-  console.log('Recordatorios de consulta enviados: ' + remindersSent);
+  console.log('Recordatorios de consulta enviados: ' + remindersSent + (remindersSent >= MAX_REMINDER_EMAILS_PER_RUN ? ' (CAP alcanzado)' : ''));
 }
 
 function processAdminReminders() {
@@ -4436,10 +4443,25 @@ function formatTable(table) {
  * Returns the URL of the generated PDF.
  */
 function generateSupportReport(requestId) {
+    // 0. Check if report already exists (cache) — avoids regenerating every click
+    const rootForCache = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+    const foldersForCache = rootForCache.getFolders();
+    while (foldersForCache.hasNext()) {
+      const f = foldersForCache.next();
+      if (f.getName().indexOf(requestId) === 0) {
+        const existing = f.getFilesByName('Soporte_' + requestId + '.pdf');
+        if (existing.hasNext()) {
+          const cached = existing.next();
+          return 'https://drive.google.com/file/d/' + cached.getId() + '/view?usp=sharing';
+        }
+        break;
+      }
+    }
+
     // 1. Get template ID
     const templateId = PropertiesService.getScriptProperties().getProperty('REPORT_TEMPLATE_ID');
     if (!templateId) throw new Error('Plantilla de reporte no configurada. Ejecute createReportTemplate() primero.');
-    
+
     // 2. Get request data
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -5608,6 +5630,107 @@ function usuarios_replaceApprover(oldCedula, newCedula) {
   });
   SpreadsheetApp.flush();
 
+  return { affected: affected };
+}
+
+// =====================================================================
+// EDICIÓN MASIVA
+// =====================================================================
+
+/**
+ * Aplica un cambio masivo a un conjunto de usuarios seleccionados.
+ *
+ * @param {Object} payload
+ *   - action: 'setApprovers' | 'addApprover' | 'empresa' | 'sede' | 'centroCosto'
+ *   - cedulas: string[]  — cédulas de los usuarios a modificar
+ *   - value: string      — nuevo valor (cédulas de aprobadores separadas por coma, o texto según acción)
+ * @returns {{ affected: number }}
+ */
+function usuarios_bulkUpdate(payload) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) throw new Error('Hoja USUARIOS no encontrada.');
+
+  var action = String(payload.action || '');
+  var targetCedulas = payload.cedulas;
+  var value = String(payload.value || '').trim();
+
+  if (!targetCedulas || !targetCedulas.length) throw new Error('No se seleccionaron usuarios.');
+  if (!action) throw new Error('Acción no especificada.');
+
+  var validActions = ['setApprovers', 'addApprover', 'empresa', 'sede', 'centroCosto'];
+  if (validActions.indexOf(action) === -1) throw new Error('Acción inválida: ' + action);
+
+  // Para acciones de propiedad simple, value no puede estar vacío
+  if (['empresa', 'sede', 'centroCosto'].indexOf(action) > -1 && !value) {
+    throw new Error('El valor no puede estar vacío.');
+  }
+
+  var lookup = _buildCedulaLookup_(sheet);
+
+  // Validar aprobadores si aplica
+  if (action === 'setApprovers' || action === 'addApprover') {
+    if (!value) throw new Error('Debe especificar al menos un aprobador.');
+    var approverCedulas = value.split(',').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
+    approverCedulas.forEach(function(ced) {
+      if (!lookup[ced]) throw new Error('Cédula de aprobador ' + ced + ' no existe en USUARIOS.');
+    });
+  }
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) throw new Error('No hay usuarios.');
+  var data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+
+  // Build target set for O(1) lookups
+  var targetSet = {};
+  targetCedulas.forEach(function(c) { targetSet[String(c).trim()] = true; });
+
+  // Column indices (1-based for sheet.getRange): A=1..J=10
+  var COL_G = 7; // Cedulas Aprobadores
+  var COL_H = 8; // Correos Aprobadores (auto)
+  var COL_I = 9; // Nombres Aprobadores (auto)
+  var colMap = { empresa: 4, sede: 5, centroCosto: 6 };
+
+  var affected = 0;
+
+  data.forEach(function(row, idx) {
+    var ced = String(row[0]).trim();
+    if (!targetSet[ced]) return;
+    var rowNumber = idx + 2;
+
+    switch (action) {
+      case 'setApprovers': {
+        var resolved = _resolveAprobadores_(sheet, value, lookup);
+        sheet.getRange(rowNumber, COL_G).setValue(value);
+        sheet.getRange(rowNumber, COL_H).setValue(resolved.correos);
+        sheet.getRange(rowNumber, COL_I).setValue(resolved.nombres);
+        break;
+      }
+      case 'addApprover': {
+        var existing = String(row[6] || '').trim();
+        var existingArr = existing ? existing.split(',').map(function(c) { return c.trim(); }).filter(function(c) { return c; }) : [];
+        var toAdd = value.split(',').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
+        toAdd.forEach(function(a) {
+          if (existingArr.indexOf(a) === -1) existingArr.push(a);
+        });
+        var newG = existingArr.join(', ');
+        var resolved = _resolveAprobadores_(sheet, newG, lookup);
+        sheet.getRange(rowNumber, COL_G).setValue(newG);
+        sheet.getRange(rowNumber, COL_H).setValue(resolved.correos);
+        sheet.getRange(rowNumber, COL_I).setValue(resolved.nombres);
+        break;
+      }
+      case 'empresa':
+      case 'sede':
+      case 'centroCosto': {
+        sheet.getRange(rowNumber, colMap[action]).setValue(value);
+        break;
+      }
+    }
+    affected++;
+  });
+
+  SpreadsheetApp.flush();
   return { affected: affected };
 }
 

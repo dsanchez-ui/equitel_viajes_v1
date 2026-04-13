@@ -376,6 +376,58 @@
     .preview-list .row:last-child { border-bottom: none; }
     /* PIN row */
     #pinRow { display: flex; align-items: center; gap: 8px; }
+    /* BULK EDIT */
+    .bulk-filter-btn {
+      flex: 1;
+      padding: 5px 4px;
+      font-size: 10px;
+      font-weight: 600;
+      border: 1px solid #d1d5db;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+      text-align: center;
+      color: #6b7280;
+    }
+    .bulk-filter-btn:hover { background: #f3f4f6; }
+    .bulk-filter-btn.active {
+      background: #fef2f2;
+      border-color: #D71920;
+      color: #D71920;
+    }
+    .bulk-check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 6px 10px;
+      border-bottom: 1px solid #f3f4f6;
+      cursor: pointer;
+    }
+    .bulk-check-item:last-child { border-bottom: none; }
+    .bulk-check-item:hover { background: #f9fafb; }
+    .bulk-check-item.checked { background: #fef2f2; }
+    .bulk-check-item input[type="checkbox"] {
+      margin-top: 3px;
+      flex-shrink: 0;
+      accent-color: #D71920;
+    }
+    .bulk-check-item .info { flex: 1; min-width: 0; }
+    .bulk-check-item .name {
+      font-weight: 500;
+      color: #111827;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .bulk-check-item .meta {
+      font-size: 10px;
+      color: #6b7280;
+      margin-top: 1px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   </style>
 </head>
 <body>
@@ -385,6 +437,7 @@
     <button class="tab active" data-tab="users">Usuarios</button>
     <button class="tab" data-tab="anomalies">Anomalías <span id="anomalyBadge" class="badge" style="display:none;">0</span></button>
     <button class="tab" data-tab="replace">Reemplazar</button>
+    <button class="tab" data-tab="bulk">Ed. Masiva</button>
   </div>
 
   <!-- ============ TAB: USUARIOS ============ -->
@@ -508,6 +561,88 @@
     </div>
   </div>
 
+  <!-- ============ TAB: ED. MASIVA ============ -->
+  <div id="tab-bulk" class="tab-content">
+    <!-- PASO 1: Filtrar y Seleccionar -->
+    <div id="bulkStep1">
+      <h3 style="margin-top:0;">1. Seleccionar usuarios</h3>
+
+      <div class="field" style="margin-bottom:8px;">
+        <div style="display:flex;gap:4px;">
+          <button class="bulk-filter-btn active" data-mode="noApprover">Sin aprob.</button>
+          <button class="bulk-filter-btn" data-mode="byApprover">Por aprob.</button>
+          <button class="bulk-filter-btn" data-mode="search">Búsqueda</button>
+        </div>
+      </div>
+
+      <!-- Picker de aprobador (modo byApprover) -->
+      <div id="bulkApproverFilter" style="display:none;margin-bottom:8px;">
+        <div class="approver-search">
+          <input type="text" id="bulkFilterApproverSearch" placeholder="Buscar aprobador por nombre o cédula..." />
+          <div class="approver-results" id="bulkFilterApproverResults" style="display:none;"></div>
+        </div>
+        <div id="bulkFilterApproverSelected" style="margin-top:4px;"></div>
+      </div>
+
+      <!-- Búsqueda libre (modo search) -->
+      <div id="bulkSearchFilter" style="display:none;margin-bottom:8px;">
+        <input type="text" id="bulkSearchBox" placeholder="Nombre, cédula o correo..."
+               style="width:100%;padding:6px 8px;border:1px solid #d1d5db;border-radius:4px;font-size:13px;" />
+      </div>
+
+      <!-- Toolbar de selección -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+        <div style="display:flex;gap:4px;">
+          <button id="bulkSelectAll" style="font-size:10px;padding:3px 6px;">Todos</button>
+          <button id="bulkSelectNone" style="font-size:10px;padding:3px 6px;">Ninguno</button>
+        </div>
+        <span id="bulkSelectionCount" style="font-size:11px;color:#6b7280;">0 seleccionados</span>
+      </div>
+
+      <!-- Lista con checkboxes -->
+      <div id="bulkUserList" class="list" style="max-height:300px;">
+        <div class="empty">Usa los filtros para buscar usuarios.</div>
+      </div>
+
+      <div style="margin-top:10px;">
+        <button id="btnBulkNext" class="primary" disabled style="width:100%;">Siguiente →</button>
+      </div>
+    </div>
+
+    <!-- PASO 2: Acción y Aplicar -->
+    <div id="bulkStep2" style="display:none;">
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
+        <button id="btnBulkBack" style="font-size:11px;padding:4px 8px;">← Volver</button>
+        <span style="font-size:12px;color:#6b7280;" id="bulkStep2Summary">0 usuarios seleccionados</span>
+      </div>
+
+      <div class="form">
+        <h3 style="margin-top:0;">2. ¿Qué cambiar?</h3>
+
+        <div class="field">
+          <label>Acción</label>
+          <select id="bulkAction" style="width:100%;">
+            <option value="">— Seleccionar —</option>
+            <option value="setApprovers">Asignar aprobador(es)</option>
+            <option value="addApprover">Agregar aprobador (sin borrar existentes)</option>
+            <option value="empresa">Cambiar empresa</option>
+            <option value="sede">Cambiar sede</option>
+            <option value="centroCosto">Cambiar centro de costo</option>
+          </select>
+        </div>
+
+        <!-- Área dinámica de valor -->
+        <div id="bulkValueArea" style="display:none;"></div>
+
+        <div class="form-actions">
+          <button id="btnBulkApply" class="primary" disabled style="width:100%;">Aplicar cambios</button>
+        </div>
+
+        <div id="bulkStatus" class="status"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ============ STATE ============
     var allUsers = [];
@@ -520,6 +655,12 @@
     var replOld = null;
     var replNew = null;
     var replPreviewRows = [];
+    // Bulk edit state
+    var bulkFilterMode = 'noApprover';
+    var bulkFilterApprover = null;
+    var bulkChecked = {};
+    var bulkFilteredList = [];
+    var bulkSelectedApprovers = [];
 
     // ============ INIT ============
     function init() {
@@ -551,12 +692,29 @@
       document.getElementById('btnReplPreview').addEventListener('click', previewReplace);
       document.getElementById('btnReplConfirm').addEventListener('click', confirmReplace);
 
+      // Bulk edit tab
+      Array.prototype.forEach.call(document.querySelectorAll('.bulk-filter-btn'), function(btn) {
+        btn.addEventListener('click', function() { bulkSetFilterMode(btn.dataset.mode); });
+      });
+      document.getElementById('bulkFilterApproverSearch').addEventListener('input', bulkSearchFilterApprover);
+      document.getElementById('bulkFilterApproverSearch').addEventListener('focus', bulkSearchFilterApprover);
+      document.getElementById('bulkSearchBox').addEventListener('input', function() { bulkApplyFilter(); });
+      document.getElementById('bulkSelectAll').addEventListener('click', bulkSelectAll);
+      document.getElementById('bulkSelectNone').addEventListener('click', bulkSelectNone);
+      document.getElementById('btnBulkNext').addEventListener('click', bulkShowStep2);
+      document.getElementById('btnBulkBack').addEventListener('click', bulkShowStep1);
+      document.getElementById('bulkAction').addEventListener('change', bulkOnActionChange);
+      document.getElementById('btnBulkApply').addEventListener('click', bulkApply);
+
       // Click outside picker
       document.addEventListener('click', function(e) {
         if (!e.target.closest('.approver-search')) {
           document.getElementById('approverResults').style.display = 'none';
           document.getElementById('replOldResults').style.display = 'none';
           document.getElementById('replNewResults').style.display = 'none';
+          document.getElementById('bulkFilterApproverResults').style.display = 'none';
+          var bulkPickResults = document.getElementById('bulkApproverPickResults');
+          if (bulkPickResults) bulkPickResults.style.display = 'none';
         }
       });
     }
@@ -572,6 +730,10 @@
       if (name === 'anomalies' && anomalies === null) {
         loadAnomalies();
       }
+      // Apply bulk filter when switching to bulk tab
+      if (name === 'bulk') {
+        bulkApplyFilter();
+      }
     }
 
     // ============ LOAD ALL ============
@@ -580,6 +742,10 @@
         .withSuccessHandler(function(users) {
           allUsers = users || [];
           renderList();
+          // Re-apply bulk filter if that tab is active
+          if (document.getElementById('tab-bulk').classList.contains('active')) {
+            bulkApplyFilter();
+          }
           // Auto-load anomalies in background to update badge
           loadAnomaliesSilently();
         })
@@ -1167,6 +1333,380 @@
     }
     function hideReplStatus() {
       var s = document.getElementById('replStatus');
+      s.className = 'status';
+      s.textContent = '';
+    }
+
+    // ============ BULK EDIT ============
+
+    function bulkSetFilterMode(mode) {
+      bulkFilterMode = mode;
+      bulkChecked = {};
+      bulkFilterApprover = null;
+      Array.prototype.forEach.call(document.querySelectorAll('.bulk-filter-btn'), function(b) {
+        b.classList.toggle('active', b.dataset.mode === mode);
+      });
+      document.getElementById('bulkApproverFilter').style.display = (mode === 'byApprover') ? 'block' : 'none';
+      document.getElementById('bulkSearchFilter').style.display = (mode === 'search') ? 'block' : 'none';
+      document.getElementById('bulkFilterApproverSelected').innerHTML = '';
+      document.getElementById('bulkSearchBox').value = '';
+      bulkApplyFilter();
+    }
+
+    function bulkApplyFilter() {
+      if (bulkFilterMode === 'noApprover') {
+        bulkFilteredList = allUsers.filter(function(u) {
+          return !u.cedulasAprobadores || !u.cedulasAprobadores.trim();
+        });
+      } else if (bulkFilterMode === 'byApprover') {
+        if (!bulkFilterApprover) { bulkFilteredList = []; bulkRenderList(); return; }
+        var targetCed = bulkFilterApprover.cedula;
+        bulkFilteredList = allUsers.filter(function(u) {
+          if (!u.cedulasAprobadores) return false;
+          var cedulas = u.cedulasAprobadores.split(',').map(function(c) { return c.trim(); });
+          return cedulas.indexOf(targetCed) > -1;
+        });
+      } else {
+        var q = document.getElementById('bulkSearchBox').value.toLowerCase().trim();
+        if (!q) { bulkFilteredList = []; bulkRenderList(); return; }
+        bulkFilteredList = allUsers.filter(function(u) {
+          return u.nombre.toLowerCase().indexOf(q) > -1
+            || u.cedula.toLowerCase().indexOf(q) > -1
+            || u.correo.toLowerCase().indexOf(q) > -1;
+        });
+      }
+      bulkRenderList();
+    }
+
+    function bulkRenderList() {
+      var container = document.getElementById('bulkUserList');
+      if (bulkFilteredList.length === 0) {
+        var msg = bulkFilterMode === 'noApprover' ? 'Todos los usuarios tienen aprobador asignado.'
+          : bulkFilterMode === 'byApprover' && !bulkFilterApprover ? 'Selecciona un aprobador arriba.'
+          : 'Sin resultados.';
+        container.innerHTML = '<div class="empty">' + msg + '</div>';
+        bulkUpdateSelectionCount();
+        return;
+      }
+
+      var html = '';
+      bulkFilteredList.slice(0, 200).forEach(function(u) {
+        var checked = bulkChecked[u.cedula] ? true : false;
+        html += '<div class="bulk-check-item' + (checked ? ' checked' : '') + '" data-cedula="' + escapeAttr(u.cedula) + '">'
+          + '<input type="checkbox"' + (checked ? ' checked' : '') + ' />'
+          + '<div class="info">'
+          + '<div class="name">' + escapeHtml(u.nombre) + '</div>'
+          + '<div class="meta">' + escapeHtml(u.cedula) + ' · ' + escapeHtml(u.correo)
+          + (u.nombresAprobadores ? ' · Aprob: ' + escapeHtml(u.nombresAprobadores) : '')
+          + '</div></div></div>';
+      });
+      if (bulkFilteredList.length > 200) {
+        html += '<div style="text-align:center;padding:6px;font-size:10px;color:#9ca3af;">Mostrando 200 de ' + bulkFilteredList.length + '. Refina la búsqueda.</div>';
+      }
+      container.innerHTML = html;
+
+      Array.prototype.forEach.call(container.querySelectorAll('.bulk-check-item'), function(item) {
+        item.addEventListener('click', function(e) {
+          if (e.target.tagName === 'INPUT') return; // handled below
+          var ced = item.dataset.cedula;
+          bulkToggleCheck(ced);
+        });
+        var cb = item.querySelector('input[type="checkbox"]');
+        cb.addEventListener('change', function() {
+          bulkToggleCheck(item.dataset.cedula);
+        });
+      });
+      bulkUpdateSelectionCount();
+    }
+
+    function bulkToggleCheck(cedula) {
+      if (bulkChecked[cedula]) {
+        delete bulkChecked[cedula];
+      } else {
+        bulkChecked[cedula] = true;
+      }
+      // Update visual state
+      var container = document.getElementById('bulkUserList');
+      Array.prototype.forEach.call(container.querySelectorAll('.bulk-check-item'), function(item) {
+        var ced = item.dataset.cedula;
+        var isChecked = !!bulkChecked[ced];
+        item.classList.toggle('checked', isChecked);
+        item.querySelector('input[type="checkbox"]').checked = isChecked;
+      });
+      bulkUpdateSelectionCount();
+    }
+
+    function bulkSelectAll() {
+      bulkFilteredList.slice(0, 200).forEach(function(u) { bulkChecked[u.cedula] = true; });
+      bulkRenderList();
+    }
+
+    function bulkSelectNone() {
+      bulkChecked = {};
+      bulkRenderList();
+    }
+
+    function bulkUpdateSelectionCount() {
+      var count = Object.keys(bulkChecked).length;
+      document.getElementById('bulkSelectionCount').textContent = count + ' seleccionado' + (count !== 1 ? 's' : '');
+      document.getElementById('btnBulkNext').disabled = (count === 0);
+    }
+
+    // --- Approver picker for filter ---
+    function bulkSearchFilterApprover() {
+      var query = document.getElementById('bulkFilterApproverSearch').value.toLowerCase().trim();
+      var resultsDiv = document.getElementById('bulkFilterApproverResults');
+      if (!query) { resultsDiv.style.display = 'none'; return; }
+
+      var matches = allUsers.filter(function(u) {
+        return u.nombre.toLowerCase().indexOf(query) > -1
+          || u.cedula.toLowerCase().indexOf(query) > -1
+          || u.correo.toLowerCase().indexOf(query) > -1;
+      }).slice(0, 8);
+
+      if (matches.length === 0) {
+        resultsDiv.innerHTML = '<div class="result"><span class="ced">Sin resultados</span></div>';
+        resultsDiv.style.display = 'block';
+        return;
+      }
+
+      var html = '';
+      matches.forEach(function(u) {
+        html += '<div class="result" data-cedula="' + escapeAttr(u.cedula) + '">'
+          + '<div class="name">' + escapeHtml(u.nombre) + '</div>'
+          + '<div class="ced">' + escapeHtml(u.cedula) + ' · ' + escapeHtml(u.correo) + '</div>'
+          + '</div>';
+      });
+      resultsDiv.innerHTML = html;
+      resultsDiv.style.display = 'block';
+
+      Array.prototype.forEach.call(resultsDiv.querySelectorAll('.result'), function(r) {
+        r.addEventListener('click', function() {
+          var cedula = r.dataset.cedula;
+          if (!cedula) return;
+          var u = allUsers.find(function(x) { return x.cedula === cedula; });
+          if (!u) return;
+          bulkFilterApprover = u;
+          document.getElementById('bulkFilterApproverSearch').value = '';
+          resultsDiv.style.display = 'none';
+          document.getElementById('bulkFilterApproverSelected').innerHTML =
+            '<span class="chip" style="background:#dbeafe;border-color:#bfdbfe;color:#1e40af;">'
+            + escapeHtml(u.nombre) + ' · ' + escapeHtml(u.cedula)
+            + ' <button id="bulkClearFilterApprover">×</button></span>';
+          document.getElementById('bulkClearFilterApprover').addEventListener('click', function() {
+            bulkFilterApprover = null;
+            document.getElementById('bulkFilterApproverSelected').innerHTML = '';
+            bulkApplyFilter();
+          });
+          bulkChecked = {};
+          bulkApplyFilter();
+        });
+      });
+    }
+
+    // --- Step navigation ---
+    function bulkShowStep2() {
+      var count = Object.keys(bulkChecked).length;
+      if (count === 0) return;
+      document.getElementById('bulkStep1').style.display = 'none';
+      document.getElementById('bulkStep2').style.display = 'block';
+      document.getElementById('bulkStep2Summary').textContent = count + ' usuario' + (count !== 1 ? 's' : '') + ' seleccionado' + (count !== 1 ? 's' : '');
+      document.getElementById('bulkAction').value = '';
+      document.getElementById('bulkValueArea').style.display = 'none';
+      document.getElementById('btnBulkApply').disabled = true;
+      document.getElementById('btnBulkApply').textContent = 'Aplicar cambios';
+      hideBulkStatus();
+    }
+
+    function bulkShowStep1() {
+      document.getElementById('bulkStep2').style.display = 'none';
+      document.getElementById('bulkStep1').style.display = 'block';
+    }
+
+    // --- Action change ---
+    function bulkOnActionChange() {
+      var action = document.getElementById('bulkAction').value;
+      var area = document.getElementById('bulkValueArea');
+      bulkSelectedApprovers = [];
+
+      if (!action) {
+        area.style.display = 'none';
+        document.getElementById('btnBulkApply').disabled = true;
+        return;
+      }
+
+      area.style.display = 'block';
+      var count = Object.keys(bulkChecked).length;
+
+      if (action === 'setApprovers' || action === 'addApprover') {
+        area.innerHTML = '<div class="field">'
+          + '<label>' + (action === 'setApprovers' ? 'Nuevo(s) aprobador(es)' : 'Aprobador a agregar') + '</label>'
+          + '<div class="approver-chips" id="bulkApproverChips"><span style="color:#9ca3af;font-size:11px;">Ninguno seleccionado</span></div>'
+          + '<div class="approver-search">'
+          + '<input type="text" id="bulkApproverPick" placeholder="Buscar aprobador por nombre o cédula..." />'
+          + '<div class="approver-results" id="bulkApproverPickResults" style="display:none;"></div>'
+          + '</div>'
+          + '<div class="help-text">' + (action === 'setApprovers' ? 'Reemplaza los aprobadores actuales de los usuarios seleccionados.' : 'Se agrega sin borrar los aprobadores existentes.') + '</div>'
+          + '</div>';
+        document.getElementById('bulkApproverPick').addEventListener('input', bulkSearchApproverForAction);
+        document.getElementById('bulkApproverPick').addEventListener('focus', bulkSearchApproverForAction);
+        bulkUpdateApplyButton();
+      } else if (action === 'empresa') {
+        var opts = empresas.map(function(e) { return '<option value="' + escapeAttr(e) + '">' + escapeHtml(e) + '</option>'; }).join('');
+        area.innerHTML = '<div class="field"><label>Nueva empresa</label>'
+          + '<select id="bulkPropertyValue"><option value="">— Seleccionar —</option>' + opts + '</select></div>';
+        document.getElementById('bulkPropertyValue').addEventListener('change', bulkUpdateApplyButton);
+        bulkUpdateApplyButton();
+      } else if (action === 'sede') {
+        var opts = sedes.map(function(s) { return '<option value="' + escapeAttr(s) + '">' + escapeHtml(s) + '</option>'; }).join('');
+        area.innerHTML = '<div class="field"><label>Nueva sede</label>'
+          + '<select id="bulkPropertyValue"><option value="">— Seleccionar —</option>' + opts + '</select></div>';
+        document.getElementById('bulkPropertyValue').addEventListener('change', bulkUpdateApplyButton);
+        bulkUpdateApplyButton();
+      } else if (action === 'centroCosto') {
+        area.innerHTML = '<div class="field"><label>Nuevo centro de costo</label>'
+          + '<input type="text" id="bulkPropertyValue" placeholder="Ej: 12345" /></div>';
+        document.getElementById('bulkPropertyValue').addEventListener('input', bulkUpdateApplyButton);
+        bulkUpdateApplyButton();
+      }
+    }
+
+    function bulkUpdateApplyButton() {
+      var action = document.getElementById('bulkAction').value;
+      var btn = document.getElementById('btnBulkApply');
+      var count = Object.keys(bulkChecked).length;
+      var valid = false;
+
+      if (action === 'setApprovers' || action === 'addApprover') {
+        valid = bulkSelectedApprovers.length > 0;
+      } else {
+        var el = document.getElementById('bulkPropertyValue');
+        valid = el && el.value.trim() !== '';
+      }
+
+      btn.disabled = !valid;
+      btn.textContent = valid ? 'Aplicar a ' + count + ' usuario' + (count !== 1 ? 's' : '') : 'Aplicar cambios';
+    }
+
+    // --- Approver picker for action ---
+    function bulkSearchApproverForAction() {
+      var query = document.getElementById('bulkApproverPick').value.toLowerCase().trim();
+      var resultsDiv = document.getElementById('bulkApproverPickResults');
+      if (!query) { resultsDiv.style.display = 'none'; return; }
+
+      var matches = allUsers.filter(function(u) {
+        if (bulkSelectedApprovers.some(function(a) { return a.cedula === u.cedula; })) return false;
+        return u.nombre.toLowerCase().indexOf(query) > -1
+          || u.cedula.toLowerCase().indexOf(query) > -1
+          || u.correo.toLowerCase().indexOf(query) > -1;
+      }).slice(0, 8);
+
+      if (matches.length === 0) {
+        resultsDiv.innerHTML = '<div class="result"><span class="ced">Sin resultados</span></div>';
+        resultsDiv.style.display = 'block';
+        return;
+      }
+
+      var html = '';
+      matches.forEach(function(u) {
+        html += '<div class="result" data-cedula="' + escapeAttr(u.cedula) + '">'
+          + '<div class="name">' + escapeHtml(u.nombre) + '</div>'
+          + '<div class="ced">' + escapeHtml(u.cedula) + ' · ' + escapeHtml(u.correo) + '</div>'
+          + '</div>';
+      });
+      resultsDiv.innerHTML = html;
+      resultsDiv.style.display = 'block';
+
+      Array.prototype.forEach.call(resultsDiv.querySelectorAll('.result'), function(r) {
+        r.addEventListener('click', function() {
+          var cedula = r.dataset.cedula;
+          if (!cedula) return;
+          var u = allUsers.find(function(x) { return x.cedula === cedula; });
+          if (u) {
+            bulkSelectedApprovers.push({ cedula: u.cedula, nombre: u.nombre, correo: u.correo });
+            bulkRenderApproverChips();
+            document.getElementById('bulkApproverPick').value = '';
+            resultsDiv.style.display = 'none';
+            bulkUpdateApplyButton();
+          }
+        });
+      });
+    }
+
+    function bulkRenderApproverChips() {
+      var chipsDiv = document.getElementById('bulkApproverChips');
+      if (bulkSelectedApprovers.length === 0) {
+        chipsDiv.innerHTML = '<span style="color:#9ca3af;font-size:11px;">Ninguno seleccionado</span>';
+        return;
+      }
+      chipsDiv.innerHTML = '';
+      bulkSelectedApprovers.forEach(function(a, idx) {
+        var chip = document.createElement('span');
+        chip.className = 'chip';
+        chip.innerHTML = escapeHtml(a.nombre) + ' <button data-idx="' + idx + '">×</button>';
+        chipsDiv.appendChild(chip);
+      });
+      Array.prototype.forEach.call(chipsDiv.querySelectorAll('button'), function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var idx = Number(btn.dataset.idx);
+          bulkSelectedApprovers.splice(idx, 1);
+          bulkRenderApproverChips();
+          bulkUpdateApplyButton();
+        });
+      });
+    }
+
+    // --- Apply ---
+    function bulkApply() {
+      var action = document.getElementById('bulkAction').value;
+      var cedulas = Object.keys(bulkChecked);
+      if (cedulas.length === 0) return;
+
+      var value = '';
+      var actionLabel = '';
+      if (action === 'setApprovers' || action === 'addApprover') {
+        value = bulkSelectedApprovers.map(function(a) { return a.cedula; }).join(', ');
+        var names = bulkSelectedApprovers.map(function(a) { return a.nombre; }).join(', ');
+        actionLabel = (action === 'setApprovers' ? 'Asignar aprobador(es): ' : 'Agregar aprobador: ') + names;
+      } else {
+        var el = document.getElementById('bulkPropertyValue');
+        value = el ? el.value.trim() : '';
+        var labels = { empresa: 'Empresa', sede: 'Sede', centroCosto: 'Centro de Costo' };
+        actionLabel = 'Cambiar ' + (labels[action] || action) + ' a: ' + value;
+      }
+
+      if (!confirm('¿' + actionLabel + '?\n\nSe aplicará a ' + cedulas.length + ' usuario' + (cedulas.length !== 1 ? 's' : '') + '.\n\nEsta acción NO se puede deshacer automáticamente.')) return;
+
+      var btn = document.getElementById('btnBulkApply');
+      btn.disabled = true;
+      btn.textContent = 'Aplicando...';
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          btn.textContent = 'Aplicar cambios';
+          showBulkStatus(result.affected + ' usuario' + (result.affected !== 1 ? 's' : '') + ' actualizado' + (result.affected !== 1 ? 's' : '') + '.', 'success');
+          // Reset and reload
+          bulkChecked = {};
+          bulkSelectedApprovers = [];
+          loadAll();
+          setTimeout(function() { bulkShowStep1(); }, 1200);
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Aplicar cambios';
+          showBulkStatus('Error: ' + err.message, 'error');
+        })
+        .usuarios_bulkUpdate({ action: action, cedulas: cedulas, value: value });
+    }
+
+    function showBulkStatus(msg, type) {
+      var s = document.getElementById('bulkStatus');
+      s.textContent = msg;
+      s.className = 'status ' + type;
+    }
+    function hideBulkStatus() {
+      var s = document.getElementById('bulkStatus');
       s.className = 'status';
       s.textContent = '';
     }
