@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "serve -s dist"
+    "start": "serve -s dist",
+    "build:guia": "node scripts/build-guia.cjs"
   },
   "dependencies": {
     "react": "^19.2.4",

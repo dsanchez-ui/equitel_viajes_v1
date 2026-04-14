@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guía del Administrador — Equitel Viajes</title>
+  <style>
+  :root {
+    --brand: #D71920;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --bg-light: #f9fafb;
+    --bg-code: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: white;
+    line-height: 1.6;
+    font-size: 13px;
+  }
+  .wrapper { max-width: 820px; margin: 0 auto; padding: 40px 50px; }
+  h1 {
+    color: var(--brand); font-size: 28px; margin: 0 0 8px;
+    letter-spacing: -0.5px; border-bottom: 3px solid var(--brand); padding-bottom: 12px;
+  }
+  h2 {
+    color: #111827; font-size: 20px; margin: 32px 0 12px;
+    border-top: 1px solid var(--border); padding-top: 18px;
+  }
+  h3 { color: #374151; font-size: 15px; margin: 20px 0 8px; font-weight: 600; }
+  p { margin: 10px 0; }
+  ul, ol { margin: 10px 0; padding-left: 26px; }
+  li { margin: 4px 0; }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--bg-code); padding: 1px 5px; border-radius: 3px;
+    font-size: 12px; font-family: Consolas, "Courier New", monospace;
+  }
+  pre {
+    background: #1f2937; color: #e5e7eb; padding: 14px 18px;
+    border-radius: 6px; overflow-x: auto; font-size: 11px; line-height: 1.5;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; font-size: 11px; }
+  blockquote {
+    border-left: 4px solid var(--brand); background: #fef2f2;
+    padding: 10px 16px; margin: 14px 0; color: #7f1d1d; border-radius: 0 4px 4px 0;
+  }
+  blockquote p { margin: 4px 0; }
+  table { border-collapse: collapse; margin: 14px 0; width: 100%; font-size: 12px; }
+  th, td {
+    border: 1px solid var(--border); padding: 7px 10px;
+    text-align: left; vertical-align: top;
+  }
+  th { background: var(--bg-light); font-weight: 600; color: #111827; }
+  tr:nth-child(even) td { background: #fafafa; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+  strong { color: #111827; }
+  @page { size: Letter; margin: 18mm; }
+  @media print {
+    body { font-size: 11.5px; }
+    .wrapper { max-width: 100%; padding: 0; margin: 0; }
+    h1 { font-size: 22px; page-break-before: avoid; }
+    h2 { page-break-after: avoid; font-size: 16px; }
+    h3 { page-break-after: avoid; font-size: 13px; }
+    table, pre, blockquote { page-break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>Guía del Administrador — Equitel Viajes</h1>
+<blockquote>
+<p><strong>Para quién es esta guía:</strong> la persona que opera el Portal de Viajes día a día — cotizar opciones, confirmar costos, registrar reservas, resolver cambios, y gestionar la base de usuarios. También sirve para el administrador técnico del sistema.</p>
+<p><strong>Lo que NO cubre:</strong> detalles internos del código (eso está en el repo). Esta guía es operativa.</p>
+</blockquote>
+<hr>
+<h2>1. Vista general</h2>
+<h3>¿Qué es el sistema?</h3>
+<p>Una plataforma web donde los empleados piden viajes y hospedajes corporativos, sus jefes aprueban, y el área de viajes gestiona la compra. Todo el estado vive en un Google Sheets, la lógica en un proyecto Apps Script, y el frontend en React desplegado en Cloud Run.</p>
+<h3>Los tres tipos de usuario</h3>
+<table>
+<thead>
+<tr>
+<th>Tipo</th>
+<th>Qué hace</th>
+<th>Dónde ingresa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Solicitante</strong></td>
+<td>Crea solicitudes de viaje/hospedaje, selecciona opciones, sube soportes post-viaje.</td>
+<td>Botón rojo <strong>INGRESAR</strong> con su correo corporativo + PIN.</td>
+</tr>
+<tr>
+<td><strong>Aprobador</strong></td>
+<td>Recibe correo de aprobación, click en APROBAR o DENEGAR. NO necesita iniciar sesión en la app.</td>
+<td>Botones en el correo.</td>
+</tr>
+<tr>
+<td><strong>Analista / Admin</strong></td>
+<td>Cotiza opciones, confirma costos, registra reservas, gestiona usuarios, consulta métricas.</td>
+<td>Botón negro <strong>ADMINISTRADOR</strong> → PIN admin de 8 dígitos.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>2. Arquitectura a alto nivel</h2>
+<pre><code> ┌───────────────┐          ┌──────────────────┐         ┌─────────────────┐
+ │  Solicitante  │ ──POST──&gt;│  Apps Script     │ ──rw──&gt; │  Google Sheets  │
+ │  (navegador)  │          │  (Web App)       │         │  (base de datos)│
+ └───────────────┘          │                  │         └─────────────────┘
+                            │                  │         ┌─────────────────┐
+ ┌───────────────┐          │                  │ ──rw──&gt; │  Google Drive   │
+ │   Aprobador   │ ──GET───&gt;│                  │         │ (imgs + PDFs)   │
+ │   (email)     │          │                  │         └─────────────────┘
+ └───────────────┘          │                  │         ┌─────────────────┐
+                            │                  │ ──send─&gt;│  Gmail          │
+ ┌───────────────┐          │                  │         └─────────────────┘
+ │   Analista    │ ──POST──&gt;│                  │
+ │  (navegador)  │          └──────────────────┘
+ └───────────────┘
+</code></pre>
+<h3>Los archivos clave en Google Drive</h3>
+<ul>
+<li><strong>Sistema Tiquetes Equitel V2</strong> (Google Sheets) — la base de datos completa. Todas las hojas viven aquí.</li>
+<li><strong>Carpeta raíz de archivos</strong> (<code>ROOT_DRIVE_FOLDER_ID</code> en Script Properties) — Drive folder donde se crea una subcarpeta por solicitud (PNRs, facturas, reportes PDF).</li>
+<li><strong>Carpeta de respaldos</strong> (<code>BACKUP_FOLDER_ID</code> opcional) — donde se guardan los respaldos completos del sheet.</li>
+<li><strong>Proyecto Apps Script</strong> ligado al sheet — código backend.</li>
+</ul>
+<hr>
+<h2>3. Las hojas del spreadsheet</h2>
+<table>
+<thead>
+<tr>
+<th>Hoja</th>
+<th>Propósito</th>
+<th>¿Se puede reorganizar?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Nueva Base Solicitudes</strong></td>
+<td>Tabla principal con TODAS las solicitudes (una fila por solicitud). 75 columnas canónicas.</td>
+<td>✅ Sí, con el workflow de reorganización (ver §6). El código lee las columnas por nombre, no por posición.</td>
+</tr>
+<tr>
+<td><strong>USUARIOS</strong></td>
+<td>Directorio de usuarios: cédula, correo, empresa, aprobadores, hash de PIN.</td>
+<td>⚠️ No reorganizar. Las posiciones de columnas están hardcoded en el sidebar.</td>
+</tr>
+<tr>
+<td><strong>CDS vs UDEN</strong></td>
+<td>Catálogo de centros de costo → unidad de negocio.</td>
+<td>⚠️ No reorganizar.</td>
+</tr>
+<tr>
+<td><strong>CIUDADES DEL MUNDO</strong></td>
+<td>Ciudades con país y flag de internacional.</td>
+<td>⚠️ No reorganizar.</td>
+</tr>
+<tr>
+<td><strong>MISC</strong></td>
+<td>Sedes y tarjetas de crédito (catálogos).</td>
+<td>⚠️ No reorganizar.</td>
+</tr>
+<tr>
+<td><strong>REGLAS_COAPROBADOR</strong></td>
+<td>Reglas de co-aprobadores (ej. internacional requiere CDS).</td>
+<td>⚠️ No reorganizar.</td>
+</tr>
+<tr>
+<td><strong>INTEGRANTES_OLD</strong></td>
+<td>Antigua hoja de usuarios (legacy, antes de Plan 2).</td>
+<td>✅ Ignorar o borrar tras 1-2 meses de uso normal del nuevo modo.</td>
+</tr>
+</tbody>
+</table>
+<h3>Columnas importantes en “Nueva Base Solicitudes”</h3>
+<p>No es necesario memorizar las 75, pero estas son las más relevantes día a día:</p>
+<table>
+<thead>
+<tr>
+<th>Columna</th>
+<th>Qué guarda</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ID RESPUESTA</code></td>
+<td>Identificador único (<code>SOL-000123</code>).</td>
+</tr>
+<tr>
+<td><code>STATUS</code></td>
+<td>Estado actual (ver §4).</td>
+</tr>
+<tr>
+<td><code>CORREO ENCUESTADO</code></td>
+<td>Quién solicita.</td>
+</tr>
+<tr>
+<td><code>OPCIONES (JSON)</code></td>
+<td>Array de URLs de imágenes que subió el analista.</td>
+</tr>
+<tr>
+<td><code>SELECCION_TEXTO</code></td>
+<td>Descripción libre que escribió el usuario de su selección.</td>
+</tr>
+<tr>
+<td><code>COSTO_FINAL_TIQUETES</code>, <code>COSTO_FINAL_HOTEL</code>, <code>COSTO COTIZADO PARA VIAJE</code></td>
+<td>Costos confirmados por el analista (formato pesos colombianos).</td>
+</tr>
+<tr>
+<td><code>No RESERVA</code></td>
+<td>PNR / número de confirmación.</td>
+</tr>
+<tr>
+<td><code>SOPORTES (JSON)</code></td>
+<td>Array de archivos (factura reserva, etc.) con sus URLs de Drive.</td>
+</tr>
+<tr>
+<td><code>APROBADO POR ÁREA? (AUTOMÁTICO)</code>, <code>APROBADO CDS</code>, <code>APROBADO CEO</code></td>
+<td>Log de quién aprobó y cuándo.</td>
+</tr>
+<tr>
+<td><code>EVENTOS_JSON</code></td>
+<td>Timestamps de cada evento del ciclo (para métricas).</td>
+</tr>
+<tr>
+<td><code>OBSERVACIONES</code></td>
+<td>Texto libre. Puede tener marcadores internos como <code>[CONSULTA_USUARIO_PENDIENTE]</code>.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>4. Ciclo de vida de una solicitud (estados)</h2>
+<pre><code>  CREAR
+    ↓
+  PENDIENTE_APROBACION       ← aprobadores pueden aprobar/denegar por correo
+    ↓ (aprobado)
+  PENDIENTE_OPCIONES          ← analista debe subir opciones de vuelo/hotel
+    ↓ (opciones subidas)
+  PENDIENTE_SELECCION         ← usuario debe describir su selección
+    ↓ (usuario escribe)
+  PENDIENTE_CONFIRMACION_COSTO ← analista debe confirmar costos finales
+    ↓ (costos confirmados)
+  PENDIENTE_APROBACION         ← nueva aprobación si &gt;$1.2M o internacional
+    ↓
+  APROBADO                    ← todas las aprobaciones completas
+    ↓ (analista registra reserva)
+  RESERVADO                   ← PNR + archivos de confirmación subidos
+    ↓ (post-viaje, soportes subidos)
+  PROCESADO                   ← estado final
+</code></pre>
+<p><strong>Estados terminales</strong> (no pueden volver):</p>
+<ul>
+<li><code>DENEGADO</code> — algún aprobador dijo no</li>
+<li><code>ANULADO</code> — cancelada manualmente por admin o usuario</li>
+<li><code>PROCESADO</code> — ciclo completo</li>
+</ul>
+<p><strong>Estado especial de cambios:</strong></p>
+<ul>
+<li><code>PENDIENTE_ANALISIS_CAMBIO</code> — una solicitud “hija” que reemplaza a otra. El admin decide pasarla a estudio (entra al flujo normal) o denegarla (y decidir qué hacer con la original).</li>
+</ul>
+<hr>
+<h2>5. Workflows del analista (día a día)</h2>
+<h3>5.1 Cotizar opciones (PENDIENTE_OPCIONES → PENDIENTE_SELECCION)</h3>
+<ol>
+<li>Panel admin → fila con status <code>PENDIENTE_OPCIONES</code></li>
+<li>Abre el detalle → <strong>“Subir imágenes de opciones”</strong></li>
+<li>Para vuelos: sube una imagen por opción (A, B, C…). Si hay ida y vuelta, indica dirección IDA o VUELTA. Para hoteles: sube una imagen por opción.</li>
+<li>Al guardar, el sistema envía automáticamente un correo al solicitante con las imágenes.</li>
+</ol>
+<h3>5.2 Revisar selección y confirmar costos (PENDIENTE_CONFIRMACION_COSTO → PENDIENTE_APROBACION)</h3>
+<ol>
+<li>Fila con status <code>PENDIENTE_CONFIRMACION_COSTO</code></li>
+<li>Abre el detalle → verás el texto libre que escribió el usuario (“Opción A, categoría Económica…”)</li>
+<li><strong>“Confirmar costos”</strong> → ingresa <code>finalCostTickets</code> y <code>finalCostHotel</code> (si aplica)</li>
+<li>Al guardar, si el total ≤ $1.2M y no es internacional → pasa a <code>APROBADO</code> directo. Si no → pasa a <code>PENDIENTE_APROBACION</code> y se envía correo a CEO + CDS + aprobador de área.</li>
+</ol>
+<h3>5.3 Registrar reserva (APROBADO → RESERVADO)</h3>
+<ol>
+<li>Fila con status <code>APROBADO</code></li>
+<li>Abre el detalle → <strong>“Registrar reserva”</strong></li>
+<li>Ingresa:
+<ul>
+<li><strong>No. reserva / PNR</strong> (texto libre, 3-10 caracteres usualmente)</li>
+<li><strong>Tarjeta de crédito</strong> usada (del dropdown)</li>
+<li><strong>Fecha de compra</strong> (hoy por default)</li>
+<li><strong>Archivos de confirmación</strong> (PDF de la aerolínea / hotel — puedes subir varios)</li>
+</ul>
+</li>
+<li>Al guardar:
+<ul>
+<li>La carpeta en Drive se renombra a <code>SOL-000123 - PNR12345 - TC 1234 - MAY 26</code></li>
+<li>Se envía correo al usuario con el PNR y los archivos adjuntos</li>
+</ul>
+</li>
+</ol>
+<h3>5.4 Corregir una reserva ya registrada (RESERVADO → RESERVADO)</h3>
+<p>Si algo salió mal (PNR equivocado, archivo erróneo, cambió la tarjeta):</p>
+<ol>
+<li>Fila con status <code>RESERVADO</code></li>
+<li>Abre el detalle → <strong>“Corregir reserva”</strong></li>
+<li>Puedes:
+<ul>
+<li>Editar PNR / tarjeta / fecha</li>
+<li>Eliminar archivos existentes</li>
+<li>Subir archivos nuevos</li>
+<li>Agregar nota de corrección (explicación libre)</li>
+</ul>
+</li>
+<li>El usuario recibe un correo “Corrección de reserva” con los nuevos datos.</li>
+</ol>
+<h3>5.5 Cerrar la solicitud (RESERVADO → PROCESADO)</h3>
+<p>Cuando los soportes post-viaje están listos:</p>
+<ol>
+<li>Fila con status <code>RESERVADO</code></li>
+<li><strong>“Finalizar solicitud”</strong> → se genera automáticamente el reporte PDF de soporte</li>
+<li>Estado final: <code>PROCESADO</code></li>
+</ol>
+<h3>5.6 Gestionar solicitudes de cambio</h3>
+<p>Cuando un usuario pide modificar una solicitud ya en curso, se crea una solicitud “hija” con status <code>PENDIENTE_ANALISIS_CAMBIO</code>. El correo que te llega tiene botones directos <strong>PASAR A ESTUDIO</strong> y <strong>RECHAZAR CAMBIO</strong>. Pero también puedes gestionarlo desde el panel:</p>
+<ol>
+<li>Fila con status <code>PENDIENTE_ANALISIS_CAMBIO</code></li>
+<li>Abre el detalle → <strong>“Revisar cambio”</strong></li>
+<li>Opciones:
+<ul>
+<li><strong>Pasar a estudio</strong> → la hija entra al flujo normal como cualquier solicitud (empieza en <code>PENDIENTE_OPCIONES</code>). La solicitud original se anula automáticamente cuando la hija se apruebe.</li>
+<li><strong>Denegar cambio</strong> → requiere motivo. Luego decides qué hacer con la original:
+<ul>
+<li><strong>Mantener activa</strong> (default): la original sigue su curso.</li>
+<li><strong>Anular</strong>: la original también se cancela.</li>
+<li><strong>Consultar al usuario</strong>: envía un correo al solicitante con botones CONTINUAR / ANULAR para que él decida. Mientras responde, los recordatorios de la original quedan pausados.</li>
+</ul>
+</li>
+</ul>
+</li>
+</ol>
+<h3>5.7 Anular una solicitud</h3>
+<ol>
+<li>Fila con cualquier status activo</li>
+<li>Detalle → <strong>“Anular”</strong></li>
+<li>Requiere motivo → queda en el campo <code>OBSERVACIONES</code> + correo al usuario</li>
+</ol>
+<hr>
+<h2>6. Sidebars (paneles laterales)</h2>
+<p>Hay dos sidebars, ambos en el menú <strong>Equitel Viajes</strong> dentro del Google Sheet:</p>
+<h3>6.1 Gestionar Usuarios (sidebar de USUARIOS)</h3>
+<p><strong>Cuándo usarlo:</strong> agregar usuarios nuevos, cambiar aprobadores, detectar problemas.</p>
+<p><strong>Tabs:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Tab</th>
+<th>Para qué</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Usuarios</strong></td>
+<td>CRUD básico. Buscar, crear, editar, eliminar, borrar PIN.</td>
+</tr>
+<tr>
+<td><strong>Anomalías</strong></td>
+<td>Diagnóstico: correos no corporativos, usuarios sin aprobador, aprobadores huérfanos (cédula no existe en USUARIOS).</td>
+</tr>
+<tr>
+<td><strong>Reemplazar</strong></td>
+<td>Si un aprobador sale de la empresa: reemplazar su cédula por la de otro en TODOS los usuarios que lo tienen como aprobador. Vista previa antes de aplicar.</td>
+</tr>
+<tr>
+<td><strong>Ed. Masiva</strong></td>
+<td>Cambios masivos: asignar/agregar aprobador, cambiar empresa/sede/CC a un grupo filtrado de usuarios.</td>
+</tr>
+<tr>
+<td><strong>Duplicados</strong></td>
+<td>Detecta filas con cédula, correo, o nombre repetido. Compara cada grupo lado-a-lado (datos + estado del PIN) y elimina las que sobran.</td>
+</tr>
+</tbody>
+</table>
+<h3>6.2 Reorganizar Base Principal (sidebar de REORG)</h3>
+<p><strong>Cuándo usarlo:</strong> una vez cada pocos meses (o nunca). Cambiar el orden de columnas de la hoja principal, agregar columnas extras personales, o limpiar el layout.</p>
+<p>Ver guía completa en <a href="./guia-reorganizar-base.md">guia-reorganizar-base.md</a>.</p>
+<hr>
+<h2>7. Métricas</h2>
+<p>Panel accesible desde el dashboard admin → botón <strong>Métricas</strong>.</p>
+<p><strong>Qué muestra:</strong></p>
+<ul>
+<li>Tiempos promedio por etapa (en minutos hábiles):
+<ul>
+<li>Cotización (creación → opciones cargadas)</li>
+<li>Selección (opciones → usuario describe)</li>
+<li>Confirmación costos (selección → costos finales)</li>
+<li>Aprobación completa (costos → todas las aprobaciones)</li>
+<li>Reserva (aprobación → PNR registrado)</li>
+<li>Ciclo total (creación → reserva)</li>
+</ul>
+</li>
+<li>Performance del analista en 3 etapas que le corresponden (cotización, confirmación costos, compra).</li>
+<li>Performance de cada aprobador (cuánto tarda en aprobar).</li>
+<li>Badges de cruce de día (ej. <code>+1d</code> si la etapa cruzó a día siguiente hábil).</li>
+</ul>
+<p><strong>Filtros:</strong></p>
+<ul>
+<li>Rango de fechas (últimos 30d, 90d, todo, personalizado)</li>
+<li>ID específico</li>
+<li>Excluir: Anuladas, Denegadas, Sin datos (pre-deploy)</li>
+</ul>
+<p><strong>Notas:</strong></p>
+<ul>
+<li>Usa un cache JSON en Drive (<code>metricas_cache.json</code>) — recalcula solo las solicitudes cuyos eventos cambiaron desde la última carga.</li>
+<li>Solicitudes creadas antes del deploy de métricas no tienen <code>EVENTOS_JSON</code> y aparecen como “sin datos”.</li>
+<li>Horario hábil: L-V 07:00–17:00, Sáb 08:00–12:00. Fuera de horario se excluye.</li>
+</ul>
+<hr>
+<h2>8. Triggers programados (4 triggers cada 2h)</h2>
+<p>Estos se ejecutan automáticamente en horario laboral. Ya están configurados.</p>
+<table>
+<thead>
+<tr>
+<th>Función</th>
+<th>Qué hace</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sendPendingApprovalReminders</code></td>
+<td>Recordatorio a aprobadores que no han aprobado. Respeta pausa si hay cambio activo. Cap 100 correos/run.</td>
+</tr>
+<tr>
+<td><code>sendPendingSelectionReminders</code></td>
+<td>Recordatorio al usuario que no ha descrito su selección. Mismo asunto = mismo hilo en Gmail.</td>
+</tr>
+<tr>
+<td><code>processAdminReminders</code></td>
+<td>Resumen diario/periódico al admin de pendientes (cotizar, confirmar costos, reservar, cambios).</td>
+</tr>
+<tr>
+<td><code>sendPendingConsultReminders</code></td>
+<td>Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Trigger opcional (recomendado):</strong></p>
+<ul>
+<li><code>cleanupExpiredSessions</code> (mensual) — borra sesiones <code>SESSION_*</code> expiradas de Script Properties. Previene acumulación.</li>
+</ul>
+<hr>
+<h2>9. Script Properties (configuración)</h2>
+<p>Son variables de configuración en el proyecto Apps Script. <strong>NO editar desde la GUI</strong> (se bloquea cuando hay &gt;50 propiedades, caso de este proyecto). Usar funciones helper.</p>
+<table>
+<thead>
+<tr>
+<th>Propiedad</th>
+<th>Valor</th>
+<th>¿Cómo editar?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ANALYST_EMAILS</code></td>
+<td>JSON array: <code>[&quot;apcompras@equitel.com.co&quot;,&quot;dsanchez@equitel.com.co&quot;]</code></td>
+<td>Ejecutar <code>actualizarAnalystEmails()</code> después de editar el array en código.</td>
+</tr>
+<tr>
+<td><code>ADMIN_PIN_HASH</code></td>
+<td>SHA-256 del PIN admin.</td>
+<td><code>updateAdminPin(nuevoPin)</code> desde el editor. Primera vez: <code>configurarPinInicial()</code> tras poner <code>INITIAL_ADMIN_PIN</code>.</td>
+</tr>
+<tr>
+<td><code>USE_USUARIOS_SHEET</code></td>
+<td><code>'true'</code> (activa modo USUARIOS) / <code>'false'</code></td>
+<td>Ejecutar <code>toggleUsuariosMode()</code> — cambia entre los dos modos. Rollback = ejecutar de nuevo.</td>
+</tr>
+<tr>
+<td><code>WEB_APP_URL</code></td>
+<td>URL del deploy Apps Script.</td>
+<td>Default hardcoded. Si cambia el deploy, actualizar via editor → propiedades.</td>
+</tr>
+<tr>
+<td><code>PLATFORM_URL</code></td>
+<td>URL del frontend Cloud Run.</td>
+<td>Default hardcoded.</td>
+</tr>
+<tr>
+<td><code>ROOT_DRIVE_FOLDER_ID</code></td>
+<td>Carpeta raíz de archivos.</td>
+<td>Default hardcoded.</td>
+</tr>
+<tr>
+<td><code>BACKUP_FOLDER_ID</code></td>
+<td>Carpeta de respaldos (opcional).</td>
+<td>Desde el sidebar de reorganización → sección Respaldo → pegar URL/ID.</td>
+</tr>
+<tr>
+<td><code>REPORT_TEMPLATE_ID</code></td>
+<td>ID del Google Doc template de reportes.</td>
+<td>Generado automáticamente por <code>createReportTemplate()</code> (ejecutar una vez).</td>
+</tr>
+<tr>
+<td><code>CEO_EMAIL</code>, <code>DIRECTOR_EMAIL</code>, <code>ADMIN_EMAIL</code></td>
+<td>Correos ejecutivos.</td>
+<td>Default hardcoded.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Diagnóstico de propiedades:</strong> ejecuta <code>verPropiedadesDelScript()</code> desde el editor para ver el estado de todas.</p>
+<hr>
+<h2>10. Funciones admin útiles (ejecutar desde el editor Apps Script)</h2>
+<table>
+<thead>
+<tr>
+<th>Función</th>
+<th>Cuándo usarla</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>verPropiedadesDelScript()</code></td>
+<td>Ver qué Script Properties están configuradas.</td>
+</tr>
+<tr>
+<td><code>actualizarAnalystEmails()</code></td>
+<td>Actualizar el whitelist de analistas.</td>
+</tr>
+<tr>
+<td><code>diagnosticarAuth()</code></td>
+<td>Debuggear “Acción no autorizada” — muestra qué correo detecta el script.</td>
+</tr>
+<tr>
+<td><code>verificarMigracionUsuarios()</code></td>
+<td>Pre-flight check antes de activar modo USUARIOS. Lista usuarios faltantes, PINs perdidos.</td>
+</tr>
+<tr>
+<td><code>toggleUsuariosMode()</code></td>
+<td>Cambiar entre modo INTEGRANTES y USUARIOS. Rollback = ejecutar de nuevo.</td>
+</tr>
+<tr>
+<td><code>cleanupExpiredSessions()</code></td>
+<td>Limpiar sesiones expiradas de Script Properties.</td>
+</tr>
+<tr>
+<td><code>crearHojaUsuarios()</code></td>
+<td>Crear la hoja USUARIOS vacía (primera vez).</td>
+</tr>
+<tr>
+<td><code>migrarIntegrantesAUsuarios()</code></td>
+<td>Poblar USUARIOS desde INTEGRANTES + Maestro RH.</td>
+</tr>
+<tr>
+<td><code>sincronizarConMaestroRH()</code></td>
+<td>Agregar a USUARIOS los empleados nuevos del Maestro RH.</td>
+</tr>
+<tr>
+<td><code>recargarResolucionesUsuarios()</code></td>
+<td>Re-resolver col H/I de USUARIOS tras edición manual de col G.</td>
+</tr>
+<tr>
+<td><code>createReportTemplate()</code></td>
+<td>Regenerar el template del PDF de reporte (raro).</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>11. Troubleshooting</h2>
+<h3>El usuario dice que no le llega el PIN</h3>
+<ol>
+<li>Verifica que el correo esté en USUARIOS (tab Usuarios del sidebar, o busca en la hoja).</li>
+<li>Verifica que el correo tenga dominio corporativo (<code>@equitel.com.co</code>). Si no, el filtro de validación puede rechazarlo — revisa el tab “Anomalías”.</li>
+<li>El PIN se envía vía Gmail desde el correo del dueño del script. Si Gmail bloqueó al usuario, no llega.</li>
+<li>Fuerza un nuevo PIN: en el login del usuario, que pulse “Reenviar PIN”.</li>
+</ol>
+<h3>El aprobador dice que no le llega el correo</h3>
+<ol>
+<li>Busca la solicitud en el sheet, campo <code>CORREO DE QUIEN APRUEBA (AUTOMÁTICO)</code> — confirma el correo.</li>
+<li>Si viajan pasajeros corporativos, el aprobador del primer pasajero es quien aprueba. Si ese correo está mal, la solicitud no puede aprobarse.</li>
+<li>Si es internacional o &gt;$1.2M, también se envía a CEO y CDS — ver <code>CEO_EMAIL</code> / <code>DIRECTOR_EMAIL</code> en Script Properties.</li>
+</ol>
+<h3>La sesión expira muy seguido</h3>
+<p>Las sesiones duran 30 días. Si expiran antes:</p>
+<ul>
+<li>Script Properties puede estar lleno (limit 500KB total). Ejecuta <code>cleanupExpiredSessions()</code>.</li>
+<li>El usuario cambió de navegador / dispositivo — normal.</li>
+</ul>
+<h3>Métricas muestran “sin datos” para solicitudes viejas</h3>
+<p>Antes del deploy de métricas (Plan 4), las solicitudes no tenían <code>EVENTOS_JSON</code>. Quedan como “sin datos” para siempre. Filtra “Excluir sin datos” (default) para ocultarlas.</p>
+<h3>Se duplicó un usuario en USUARIOS</h3>
+<p>Ve al sidebar → tab <strong>Duplicados</strong> → escanear. Compara las filas lado-a-lado (incluye estado del PIN) y elimina las que sobren. El sistema te advierte si borras una fila con PIN.</p>
+<h3>Quiero revertir el switch a USUARIOS</h3>
+<p>Ejecuta <code>toggleUsuariosMode()</code> desde el editor → vuelve a modo INTEGRANTES. <strong>Importante:</strong> si renombraste INTEGRANTES a INTEGRANTES_OLD, debes renombrarla de vuelta para que el modo legacy funcione.</p>
+<h3>El sidebar de Reorganizar no abre (“Acción no autorizada”)</h3>
+<p>Tu correo no está en <code>ANALYST_EMAILS</code>. Actualiza el array en <code>actualizarAnalystEmails()</code> y ejecuta.</p>
+<h3>Un trigger falló / no corrió</h3>
+<p>Revisa <code>Triggers</code> en el editor GAS. Si un trigger se eliminó manualmente, debes recrearlo (click en +, seleccionar la función, fuente=Time-driven, intervalo 2h).</p>
+<hr>
+<h2>12. Backup y recuperación</h2>
+<p><strong>Antes de cualquier cambio estructural</strong> (reorganizar, migrar USUARIOS, etc.):</p>
+<ol>
+<li>Menú <strong>Equitel Viajes → Reorganizar Base Principal (Sidebar)</strong></li>
+<li>Sección “🛡️ Respaldo completo del archivo” (arriba de todo)</li>
+<li>Si es primera vez: pega la URL/ID de tu carpeta privada de Drive → <strong>Guardar carpeta</strong></li>
+<li><strong>📋 Crear respaldo ahora</strong> → ~30-60s → copia completa en tu Drive</li>
+</ol>
+<p>Recuperación: si algo sale MUY mal, abres la copia respaldada, la descargas como .xlsx, o la copias encima del sheet activo (requiere re-vincular Apps Script).</p>
+<hr>
+<h2>13. Contacto y mantenimiento</h2>
+<ul>
+<li><strong>Código en:</strong> <a href="http://github.com/dsanchez-ui/equitel_viajes_v1">github.com/dsanchez-ui/equitel_viajes_v1</a></li>
+<li><strong>Deploy frontend:</strong> Cloud Run <code>sistematiquetesequitel-302740316698.us-west1.run.app</code></li>
+<li><strong>Deploy backend:</strong> Apps Script Web App, URL en <code>WEB_APP_URL</code></li>
+<li><strong>Modelo de deploy:</strong>
+<ul>
+<li>Frontend: push a <code>main</code> → Cloud Build auto-despliega.</li>
+<li>Backend: copiar <code>server/Code.gs</code>, <code>server/AdminSidebar.html</code>, <code>server/ReorgSidebar.html</code> al editor GAS manualmente → redesplegar Web App.</li>
+</ul>
+</li>
+</ul>
+<hr>
+<p><em>Última actualización: 2026-04-13</em></p>
+
+  </div>
+</body>
+</html>

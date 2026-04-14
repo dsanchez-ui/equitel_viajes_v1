@@ -1,23 +1,24 @@
 # Documentación — Equitel Viajes
 
-Carpeta con borradores y piezas de documentación que se integrarán en la **Guía del Administrador** (ítem A7 del checklist).
-
 ## Archivos
 
 | Archivo | Contenido |
 |---|---|
-| [guia-reorganizar-base.md](./guia-reorganizar-base.md) | Cómo usar el wizard de reorganización de la base principal (6 pasos) |
+| [guia-administrador.md](./guia-administrador.md) | **Fuente editable** de la guía general del administrador. |
+| [guia-administrador.html](./guia-administrador.html) | Render HTML con estilos. Se puede abrir en navegador y Ctrl+P → Guardar como PDF. |
+| [guia-administrador.pdf](./guia-administrador.pdf) | PDF final para compartir con el admin del área. |
+| [guia-reorganizar-base.md](./guia-reorganizar-base.md) | Guía específica del workflow de reorganización de columnas del sheet principal. |
 
-## Pendiente: Guía General del Administrador
+## Regenerar el PDF
 
-Esta guía consolidará todo lo que un administrador nuevo debe saber para operar la aplicación:
+Si editas `guia-administrador.md`, regenera el HTML + PDF con:
 
-- Vista general del sistema (arquitectura, hojas, flujos)
-- Estados de solicitud y transiciones
-- Cómo usar cada sidebar (Usuarios, Reorganizar)
-- Triggers configurados y su propósito
-- Script Properties que no se deben tocar
-- Troubleshooting común
-- Cómo obtener soporte técnico
+```bash
+npm run build:guia
+```
 
-**Estado:** Pendiente (ítem A7 del checklist). Los archivos de esta carpeta son piezas que se integrarán cuando se construya.
+Esto ejecuta:
+1. Convierte el `.md` a `.html` con estilos de impresión (usa `markdown-it` vía `npx --yes`).
+2. Usa Chrome headless para imprimir el HTML a PDF.
+
+Requiere Chrome instalado en `C:/Program Files/Google/Chrome/Application/chrome.exe`. Si está en otra ruta, edita `scripts/build-guia.cjs`.
