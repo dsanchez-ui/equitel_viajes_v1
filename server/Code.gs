@@ -5617,6 +5617,113 @@ function usuarios_delete(cedula) {
   return { success: true };
 }
 
+/**
+ * Borra una fila específica de USUARIOS por su rowNumber físico.
+ * Necesario para casos de cédulas duplicadas donde _findUsuarioRowByCedula_
+ * siempre retorna la primera. LockService evita condiciones de carrera
+ * (otro sidebar o script podría estar escribiendo).
+ *
+ * @param {number} rowNumber Fila 1-indexed (con headers en fila 1).
+ * @param {string} [expectedCedula] Opcional: si se provee, valida que la
+ *   cédula actual en esa fila coincide antes de borrar. Previene borrar
+ *   la fila equivocada si el sheet fue modificado entre load y delete.
+ */
+function usuarios_deleteByRow(rowNumber, expectedCedula) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) {
+    throw new Error('Sistema ocupado. Intente de nuevo en unos segundos.');
+  }
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+    if (!sheet) throw new Error('Hoja USUARIOS no encontrada.');
+    var row = Number(rowNumber);
+    if (!row || row < 2 || row > sheet.getLastRow()) {
+      throw new Error('Número de fila inválido: ' + rowNumber);
+    }
+    if (expectedCedula !== undefined && expectedCedula !== null) {
+      var actualCedula = String(sheet.getRange(row, 1).getValue() || '').trim();
+      if (actualCedula !== String(expectedCedula).trim()) {
+        throw new Error('La fila ' + row + ' contiene "' + actualCedula + '", no "' + expectedCedula + '". El sheet cambió — recarga e intenta de nuevo.');
+      }
+    }
+    sheet.deleteRow(row);
+    SpreadsheetApp.flush();
+    return { success: true, deletedRow: row };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// =====================================================================
+// DETECTOR DE DUPLICADOS
+// =====================================================================
+
+/**
+ * Encuentra filas de USUARIOS duplicadas por cédula, correo o nombre.
+ * Para cada grupo retorna todas las filas con la clave repetida, incluyendo
+ * rowNumber físico en el sheet (útil para feedback visual). Permite al admin
+ * comparar y decidir cuál conservar.
+ *
+ * Estrategia: comparación case-insensitive + trim para detectar variantes
+ * (ej: "JUAN PEREZ" y "juan perez" como el mismo nombre).
+ *
+ * @returns {{ byCedula: Array, byCorreo: Array, byNombre: Array }}
+ */
+function usuarios_findDuplicates() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet || sheet.getLastRow() < 2) {
+    return { byCedula: [], byCorreo: [], byNombre: [] };
+  }
+
+  var lastRow = sheet.getLastRow();
+  var data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+
+  // Normaliza y captura rowNumber
+  var rows = [];
+  data.forEach(function(r, i) {
+    var cedula = String(r[0] || '').trim();
+    var nombre = String(r[1] || '').trim();
+    var correo = String(r[2] || '').toLowerCase().trim();
+    // Solo considera filas con al menos un campo (saltar filas totalmente vacías)
+    if (!cedula && !nombre && !correo) return;
+    rows.push({
+      rowNumber: i + 2, // 1-indexed en sheet
+      cedula: cedula,
+      nombre: nombre,
+      correo: correo,
+      empresa: String(r[3] || '').trim(),
+      sede: String(r[4] || '').trim(),
+      centroCosto: String(r[5] || '').trim(),
+      cedulasAprobadores: String(r[6] || '').trim(),
+      nombresAprobadores: String(r[8] || '').trim(),
+      hasPin: !!String(r[9] || '').trim()
+    });
+  });
+
+  function groupBy(keyFn) {
+    var groups = {};
+    rows.forEach(function(r) {
+      var k = keyFn(r);
+      if (!k) return;
+      if (!groups[k]) groups[k] = [];
+      groups[k].push(r);
+    });
+    return Object.keys(groups)
+      .filter(function(k) { return groups[k].length > 1; })
+      .sort()
+      .map(function(k) { return { key: k, users: groups[k] }; });
+  }
+
+  return {
+    byCedula: groupBy(function(r) { return r.cedula; }),
+    byCorreo: groupBy(function(r) { return r.correo; }),
+    byNombre: groupBy(function(r) { return r.nombre.toLowerCase(); })
+  };
+}
+
+
 // =====================================================================
 // REEMPLAZO MASIVO DE APROBADOR
 // =====================================================================
