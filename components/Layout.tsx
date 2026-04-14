@@ -37,11 +37,6 @@ export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, r
                   Equitel Viajes
                 </span>
               </div>
-              <div className="hidden sm:ml-10 sm:flex sm:space-x-8">
-                <span className="border-brand-red text-white inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium tracking-wide">
-                  DASHBOARD
-                </span>
-              </div>
             </div>
             <div className="flex items-center gap-4">
               <div className="text-right hidden sm:block">
