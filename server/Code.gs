@@ -155,11 +155,22 @@ function setupDatabase() {
     sheet.setFrozenRows(1);
     sheet.getRange(1, 1, 1, HEADERS_REQUESTS.length).setFontWeight("bold").setBackground("#D71920").setFontColor("white");
   } else {
-    // Check if headers need update (append new columns if needed)
-    const currentHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-    if (currentHeaders.length < HEADERS_REQUESTS.length) {
-       // Append missing headers
-       sheet.getRange(1, 1, 1, HEADERS_REQUESTS.length).setValues([HEADERS_REQUESTS]);
+    // SAFETY: nunca sobreescribe headers existentes (podrían estar reorganizados).
+    // Solo APPEND headers canónicos faltantes al final de la última columna usada.
+    // Esto preserva cualquier reorganización hecha vía nbs_* workflow y también
+    // preserva columnas extras agregadas manualmente por el admin.
+    const lastCol = sheet.getLastColumn();
+    const currentHeaders = lastCol > 0
+      ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function(h){ return String(h || '').trim(); })
+      : [];
+    const present = {};
+    currentHeaders.forEach(function(h){ if (h) present[h] = true; });
+    const missing = HEADERS_REQUESTS.filter(function(h){ return !present[h]; });
+    if (missing.length > 0) {
+      // Append missing headers después de la última columna actual
+      const startCol = lastCol + 1;
+      sheet.getRange(1, startCol, 1, missing.length).setValues([missing])
+        .setFontWeight('bold').setBackground('#D71920').setFontColor('white');
     }
   }
 
@@ -3216,11 +3227,27 @@ function createNewRequest(data, emailHtml) {
   
   // Write ONLY the columns we know about. Extra columns in the sheet
   // (added by admin manually) are NOT touched — preserves their data,
-  // validations, and formats. Uses individual setValue calls.
-  Object.keys(writes).forEach(function(idxStr) {
-    var colIdx = Number(idxStr);
-    sheet.getRange(targetRow, colIdx + 1).setValue(writes[colIdx]);
-  });
+  // validations, and formats. Optimización: agrupa columnas contiguas en
+  // batches setValues para minimizar llamadas API. Para sheet canónica
+  // (sin extras) → 1 solo batch (misma velocidad que código original).
+  var indices = Object.keys(writes).map(Number).sort(function(a, b) { return a - b; });
+  if (indices.length > 0) {
+    var runStart = indices[0];
+    var runValues = [writes[runStart]];
+    for (var k = 1; k < indices.length; k++) {
+      if (indices[k] === indices[k - 1] + 1) {
+        // Continuación del run actual
+        runValues.push(writes[indices[k]]);
+      } else {
+        // Gap detectado → flush run actual y empieza uno nuevo
+        sheet.getRange(targetRow, runStart + 1, 1, runValues.length).setValues([runValues]);
+        runStart = indices[k];
+        runValues = [writes[runStart]];
+      }
+    }
+    // Flush último run
+    sheet.getRange(targetRow, runStart + 1, 1, runValues.length).setValues([runValues]);
+  }
   // --------------------------------------------------------------------------
 
   // METRICS: registrar evento de creación
