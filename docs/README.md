@@ -4,21 +4,24 @@
 
 | Archivo | Contenido |
 |---|---|
-| [guia-administrador.md](./guia-administrador.md) | **Fuente editable** de la guía general del administrador. |
-| [guia-administrador.html](./guia-administrador.html) | Render HTML con estilos. Se puede abrir en navegador y Ctrl+P → Guardar como PDF. |
-| [guia-administrador.pdf](./guia-administrador.pdf) | PDF final para compartir con el admin del área. |
-| [guia-reorganizar-base.md](./guia-reorganizar-base.md) | Guía específica del workflow de reorganización de columnas del sheet principal. |
+| [guia-administrador.md](./guia-administrador.md) | **Guía técnica completa** del administrador — arquitectura, workflows, Script Properties, triggers, troubleshooting. |
+| [guia-administrador.pdf](./guia-administrador.pdf) | PDF de la guía técnica (11 páginas). |
+| [guia-hoja-calculo.md](./guia-hoja-calculo.md) | **Guía simple del Google Sheets** — explicación no-técnica de cada hoja, cada botón del menú, qué editar y qué no. |
+| [guia-hoja-calculo.pdf](./guia-hoja-calculo.pdf) | PDF de la guía del Sheets (7 páginas). Recomendada para admins nuevos. |
+| [guia-reorganizar-base.md](./guia-reorganizar-base.md) | Guía específica del workflow de reorganización de columnas de la hoja principal. |
 
-## Regenerar el PDF
+**Versiones HTML** (`.html`) se generan automáticamente y se pueden abrir en navegador.
 
-Si editas `guia-administrador.md`, regenera el HTML + PDF con:
+## Regenerar los PDFs
+
+Si editas alguno de los `.md`, regenera con:
 
 ```bash
-npm run build:guia
+npm run build:guia                 # construye AMBAS guías
+node scripts/build-guia.cjs administrador    # solo la técnica
+node scripts/build-guia.cjs hoja-calculo     # solo la del Sheets
 ```
 
-Esto ejecuta:
-1. Convierte el `.md` a `.html` con estilos de impresión (usa `markdown-it` vía `npx --yes`).
-2. Usa Chrome headless para imprimir el HTML a PDF.
+Esto genera HTML + PDF para cada guía. Usa Chrome headless para el PDF.
 
 Requiere Chrome instalado en `C:/Program Files/Google/Chrome/Application/chrome.exe`. Si está en otra ruta, edita `scripts/build-guia.cjs`.

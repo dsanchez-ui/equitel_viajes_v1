@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guía del Google Sheets — Portal de Viajes Equitel</title>
+  <style>
+  :root {
+    --brand: #D71920;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --bg-light: #f9fafb;
+    --bg-code: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: white;
+    line-height: 1.6;
+    font-size: 13px;
+  }
+  .wrapper { max-width: 820px; margin: 0 auto; padding: 40px 50px; }
+  h1 {
+    color: var(--brand); font-size: 28px; margin: 0 0 8px;
+    letter-spacing: -0.5px; border-bottom: 3px solid var(--brand); padding-bottom: 12px;
+  }
+  h2 {
+    color: #111827; font-size: 20px; margin: 32px 0 12px;
+    border-top: 1px solid var(--border); padding-top: 18px;
+  }
+  h3 { color: #374151; font-size: 15px; margin: 20px 0 8px; font-weight: 600; }
+  p { margin: 10px 0; }
+  ul, ol { margin: 10px 0; padding-left: 26px; }
+  li { margin: 4px 0; }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--bg-code); padding: 1px 5px; border-radius: 3px;
+    font-size: 12px; font-family: Consolas, "Courier New", monospace;
+  }
+  pre {
+    background: #1f2937; color: #e5e7eb; padding: 14px 18px;
+    border-radius: 6px; overflow-x: auto; font-size: 11px; line-height: 1.5;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; font-size: 11px; }
+  blockquote {
+    border-left: 4px solid var(--brand); background: #fef2f2;
+    padding: 10px 16px; margin: 14px 0; color: #7f1d1d; border-radius: 0 4px 4px 0;
+  }
+  blockquote p { margin: 4px 0; }
+  table { border-collapse: collapse; margin: 14px 0; width: 100%; font-size: 12px; }
+  th, td {
+    border: 1px solid var(--border); padding: 7px 10px;
+    text-align: left; vertical-align: top;
+  }
+  th { background: var(--bg-light); font-weight: 600; color: #111827; }
+  tr:nth-child(even) td { background: #fafafa; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+  strong { color: #111827; }
+  @page { size: Letter; margin: 18mm; }
+  @media print {
+    body { font-size: 11.5px; }
+    .wrapper { max-width: 100%; padding: 0; margin: 0; }
+    h1 { font-size: 22px; page-break-before: avoid; }
+    h2 { page-break-after: avoid; font-size: 16px; }
+    h3 { page-break-after: avoid; font-size: 13px; }
+    table, pre, blockquote { page-break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>Guía del Google Sheets — Portal de Viajes Equitel</h1>
+<blockquote>
+<p><strong>Para quién es esta guía:</strong> cualquier persona del área de viajes que vaya a manejar el Google Sheets que está detrás del portal.</p>
+<p><strong>En qué se enfoca:</strong> solo en la hoja de cálculo. Qué tiene, qué se puede tocar y qué no, y cómo usar el menú <strong>Equitel Viajes</strong> que aparece arriba del sheet.</p>
+</blockquote>
+<hr>
+<h2>¿Qué es este Google Sheets?</h2>
+<p>Es la <strong>base de datos</strong> de todo el portal. Cada solicitud, cada usuario, cada PIN, cada reserva — todo vive aquí.</p>
+<p>Cuando un empleado crea una solicitud desde el portal, se agrega una fila en este sheet. Cuando un jefe aprueba por correo, se actualiza una celda de esa fila. Cuando el analista registra una reserva, el número de PNR queda guardado acá.</p>
+<p>El portal (la página web) y este Sheets están conectados todo el tiempo: <strong>lo que pasa en uno se refleja en el otro.</strong></p>
+<hr>
+<h2>Las hojas y qué hay en cada una</h2>
+<p>El archivo tiene varias pestañas abajo. Aquí explico qué hay en cada una:</p>
+<h3>Nueva Base Solicitudes (la más importante)</h3>
+<p>Una fila por cada solicitud de viaje u hospedaje que se haya creado. Tiene 75 columnas con todo: quién solicita, destino, fechas, pasajeros, costos, número de reserva, observaciones, aprobaciones, archivos adjuntos.</p>
+<p><strong>¿Puedo editar a mano?</strong> Sí, pero con mucho cuidado. Las columnas con fondo amarillo claro son las “editables” (nombre de hotel, tarjeta de crédito, tipo de compra, número de factura, etc). El resto se llena automático desde el portal.</p>
+<p><strong>Lo que NO debes hacer aquí:</strong></p>
+<ul>
+<li>Borrar filas (eso rompe los IDs y la trazabilidad)</li>
+<li>Cambiar el status a mano (usa el portal — los correos automáticos no saldrán si lo haces a mano)</li>
+<li>Cambiar el ID RESPUESTA de una solicitud</li>
+<li>Eliminar columnas</li>
+</ul>
+<h3>USUARIOS</h3>
+<p>Directorio de todas las personas que pueden usar el portal. Cada fila es una persona con:</p>
+<ul>
+<li>Cédula</li>
+<li>Nombre</li>
+<li>Correo corporativo</li>
+<li>Empresa (Cumandes, Equitel, Ingenergía, LAP)</li>
+<li>Sede</li>
+<li>Centro de costo</li>
+<li>Aprobadores asignados (quiénes le aprueban las solicitudes)</li>
+<li>PIN (automático — no se edita a mano)</li>
+</ul>
+<p><strong>Tip:</strong> puedes convertir esta hoja a una <strong>tabla de Google Sheets</strong> (menú Formato → Convertir a tabla) para tener filtros por columna, formato bonito, y poder referenciar columnas por nombre en otras fórmulas. No afecta el portal.</p>
+<p><strong>Lo que NO debes hacer:</strong></p>
+<ul>
+<li>Editar la columna PIN a mano (borraría el PIN del usuario)</li>
+<li>Cambiar el orden de columnas</li>
+<li>Escribir directamente en las columnas “Correos Aprobadores (auto)” o “Nombres Aprobadores (auto)” — esas se llenan solas con base en las cédulas de la columna G</li>
+</ul>
+<p><strong>Lo que SÍ puedes hacer, pero es mejor desde el sidebar</strong> (ver más abajo):</p>
+<ul>
+<li>Agregar usuarios nuevos</li>
+<li>Cambiar aprobadores</li>
+<li>Corregir empresa/sede/centro de costo</li>
+<li>Borrar PINs viejos</li>
+</ul>
+<h3>CDS vs UDEN</h3>
+<p>Catálogo de centros de costo con su descripción y la unidad de negocio a la que pertenecen. El portal lo usa para mostrar el nombre del centro de costo cuando alguien selecciona un código.</p>
+<p><strong>Lo que SÍ puedes hacer:</strong> agregar nuevos centros de costo al final.</p>
+<p><strong>Lo que NO debes hacer:</strong> cambiar las columnas.</p>
+<h3>CIUDADES DEL MUNDO</h3>
+<p>Listado de ciudades con país. Se usa para el autocompletar de origen/destino en el portal, y para detectar si un viaje es internacional.</p>
+<p><strong>Lo que SÍ puedes hacer:</strong> agregar ciudades nuevas al final. Columna A = país, Columna B = ciudad.</p>
+<p><strong>Lo que NO debes hacer:</strong> cambiar el nombre de las columnas.</p>
+<h3>MISC</h3>
+<p>Hoja con dos catálogos pequeños:</p>
+<ul>
+<li>Tarjetas de crédito disponibles (las que aparecen en el dropdown cuando registras una reserva)</li>
+<li>Sedes (para el formulario de nueva solicitud)</li>
+</ul>
+<p><strong>Lo que SÍ puedes hacer:</strong> agregar sedes o tarjetas nuevas al final.</p>
+<h3>REGLAS_COAPROBADOR</h3>
+<p>Define reglas especiales de co-aprobación. Por ejemplo: “si alguien internacional tiene a Juan Pérez como aprobador, también debe aprobarlo María García”. Útil para viajes internacionales que requieren doble aprobación.</p>
+<p><strong>Lo que SÍ puedes hacer:</strong> agregar reglas nuevas con la misma estructura.</p>
+<h3>INTEGRANTES_OLD</h3>
+<p>La antigua hoja de usuarios, antes de la migración a USUARIOS. Está ahí como respaldo histórico.</p>
+<p><strong>Lo que NO debes hacer:</strong> borrarla todavía. Déjala al menos 1-2 meses más por si acaso.</p>
+<h3>Hojas con <code>_OLD_</code> en el nombre</h3>
+<p>Son respaldos de reorganizaciones anteriores de la hoja principal. <strong>Déjalas quietas</strong> hasta que hayas confirmado que la versión activa funciona bien (usualmente 1-2 semanas) y luego puedes borrarlas.</p>
+<hr>
+<h2>El menú Equitel Viajes (la barra de herramientas)</h2>
+<p>Arriba del sheet, al lado de los menús estándar (Archivo, Editar, Ver…), aparece un menú llamado <strong>Equitel Viajes</strong>. Este es tu centro de control.</p>
+<h3>Gestionar Usuarios (Sidebar)</h3>
+<p>Abre un panel lateral a la derecha con <strong>5 pestañas</strong>. Esta es la herramienta principal para manejar la lista de empleados sin tener que tocar la hoja directamente.</p>
+<h4>Pestaña “Usuarios”</h4>
+<p><strong>Para qué sirve:</strong> ver, crear, editar o eliminar usuarios.</p>
+<p><strong>Botones y qué hacen:</strong></p>
+<ul>
+<li><strong>Buscar</strong> (arriba): escribe un nombre, cédula o correo y filtra en tiempo real.</li>
+<li><strong>+ Nuevo</strong> (botón rojo): abre el formulario para crear un usuario nuevo.</li>
+<li><strong>Click en un usuario de la lista</strong>: abre el formulario con sus datos para editar.</li>
+<li><strong>Eliminar</strong> (solo cuando estás editando): borra al usuario.</li>
+<li><strong>Borrar PIN</strong> (solo cuando estás editando): borra el PIN del usuario para forzarle a generar uno nuevo en su próximo login.</li>
+<li><strong>Cancelar / Guardar</strong>: descartar o guardar los cambios.</li>
+</ul>
+<p><strong>Cómo agregar aprobadores a un usuario:</strong></p>
+<ol>
+<li>Edita el usuario</li>
+<li>En el campo “Aprobadores” escribe el nombre o cédula del aprobador</li>
+<li>Te aparece una lista — los que ya son aprobadores de alguien tienen un chip azul “aprobador” al lado</li>
+<li>Haz click en la persona que quieres → se agrega como chip amarillo arriba</li>
+<li>Puedes agregar varios</li>
+<li>Para quitar uno, click en la “×” de su chip</li>
+<li><strong>Guardar</strong></li>
+</ol>
+<h4>Pestaña “Anomalías”</h4>
+<p><strong>Para qué sirve:</strong> diagnóstico rápido de problemas en la hoja USUARIOS.</p>
+<p>Hace click en <strong>Recargar</strong> y te muestra en rojo/amarillo:</p>
+<ul>
+<li><strong>Aprobadores huérfanos</strong> 🚨 — un usuario tiene como aprobador a alguien cuya cédula no está en USUARIOS. Esto impide que le lleguen los correos de aprobación.</li>
+<li><strong>Sin aprobador</strong> ⚠️ — usuarios que no tienen a nadie asignado como aprobador. Sus solicitudes no pueden avanzar.</li>
+<li><strong>Correo no corporativo</strong> 📧 — usuarios con un correo que no es @equitel.com.co. No los bloquea, pero conviene actualizarlos.</li>
+</ul>
+<p><strong>Click en cualquier fila</strong> → te lleva directo a editar ese usuario en la pestaña Usuarios.</p>
+<p>Si el badge al lado de “Anomalías” muestra un número rojo (ej: “3”), son problemas que debes atender.</p>
+<h4>Pestaña “Reemplazar”</h4>
+<p><strong>Para qué sirve:</strong> cambiar a un aprobador por otro en todos los usuarios que lo tienen asignado. Útil cuando alguien sale de la empresa.</p>
+<p><strong>Cómo usarlo:</strong></p>
+<ol>
+<li>En “Aprobador a reemplazar (viejo)” busca a la persona que sale</li>
+<li>En “Aprobador nuevo” busca a quien va a reemplazarla</li>
+<li><strong>Vista previa</strong> → te dice cuántos usuarios serán afectados y te muestra la lista</li>
+<li>Si todo se ve bien → <strong>Confirmar reemplazo</strong></li>
+</ol>
+<p><strong>Seguro porque:</strong> solo cambia la columna de aprobadores (col G). No borra a nadie ni toca PINs.</p>
+<h4>Pestaña “Ed. Masiva”</h4>
+<p><strong>Para qué sirve:</strong> cambios masivos a varios usuarios al mismo tiempo (ej: asignarle a 50 personas el mismo aprobador de una sola vez).</p>
+<p><strong>Cómo usarlo:</strong></p>
+<p><strong>Paso 1 — Seleccionar usuarios:</strong></p>
+<ul>
+<li>Escoge un filtro: “Sin aprob.” (los que no tienen aprobador asignado), “Por aprob.” (busca por aprobador específico), o “Búsqueda” (por nombre/cédula/correo)</li>
+<li>Marca los checkboxes de los usuarios que quieres cambiar (o usa “Todos” / “Ninguno”)</li>
+<li><strong>Siguiente →</strong></li>
+</ul>
+<p><strong>Paso 2 — Qué cambiar:</strong></p>
+<ul>
+<li>Escoge la acción del dropdown:
+<ul>
+<li><em>Asignar aprobador(es)</em> — reemplaza los aprobadores actuales por los que selecciones</li>
+<li><em>Agregar aprobador</em> — suma un aprobador sin borrar los que ya tenían</li>
+<li><em>Cambiar empresa / sede / centro de costo</em></li>
+</ul>
+</li>
+<li>Completa el valor nuevo</li>
+<li><strong>Aplicar cambios</strong></li>
+</ul>
+<p><strong>Advertencia:</strong> los cambios masivos no se pueden deshacer automáticamente. Usa este tab con calma y siempre revisa a quiénes vas a afectar antes de confirmar.</p>
+<h4>Pestaña “Duplicados”</h4>
+<p><strong>Para qué sirve:</strong> detectar y limpiar filas repetidas en USUARIOS.</p>
+<p><strong>Cómo usarlo:</strong></p>
+<ol>
+<li><strong>Escanear duplicados</strong> → busca filas con cédula, correo o nombre repetido</li>
+<li>Cada grupo muestra las filas duplicadas lado a lado con toda su información (datos + si tiene PIN configurado)</li>
+<li>Compara y decide cuál dejar. La que quieres borrar → botón <strong>Eliminar</strong>.</li>
+<li>Si la que borras tenía un PIN, el sistema te advierte primero.</li>
+</ol>
+<p><strong>Orden recomendado:</strong></p>
+<ul>
+<li>Primero elimina los duplicados por <strong>cédula</strong> (los más graves — rompen lookups)</li>
+<li>Luego los de <strong>correo</strong> (el PIN siempre se lee de la primera fila, las demás quedan huérfanas)</li>
+<li>Los de <strong>nombre</strong> son informativos — no siempre son errores, a veces son dos personas distintas con el mismo nombre</li>
+</ul>
+<hr>
+<h3>Reorganizar Base Principal (Sidebar)</h3>
+<p><strong>⚠️ ADVERTENCIA IMPORTANTE:</strong> Esta es una herramienta avanzada. Úsala solo si realmente necesitas cambiar el orden de las columnas de la hoja principal. Si no sabes qué hace o por qué la necesitarías, <strong>no la abras</strong>. Déjala quieta.</p>
+<p><strong>Para qué sirve (si es necesario):</strong> permite al admin reorganizar el orden de las 75 columnas de “Nueva Base Solicitudes” sin romper el portal. El proceso es un workflow de 6 pasos que:</p>
+<ol>
+<li>Crea una hoja paralela con los headers canónicos</li>
+<li>Te deja reorganizar las columnas a mano</li>
+<li>Verifica que no falten columnas</li>
+<li>Migra todos los datos (con validaciones, colores, formatos)</li>
+<li>Te permite comparar fila por fila</li>
+<li>Hace el “switch” final: renombra la hoja vieja a <code>_OLD_&lt;fecha&gt;</code> y activa la nueva</li>
+</ol>
+<p><strong>Incluye también</strong> una sección para:</p>
+<ul>
+<li>Crear respaldo completo del archivo antes de hacer cambios</li>
+<li>Ocultar/mostrar columnas (sin afectar el portal)</li>
+</ul>
+<p><strong>Sugerencia:</strong> si alguna vez quieres usarla, léete primero la guía detallada en <code>docs/guia-reorganizar-base.md</code> antes.</p>
+<hr>
+<h3>Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)</h3>
+<p>Un item del menú que al hacer click te muestra un diálogo diciendo <strong>qué hoja está leyendo el portal en este momento</strong>. No cambia nada, solo te informa.</p>
+<p>En producción debe decir “Modo activo: USUARIOS”. Si dice “INTEGRANTES” significa que alguien revirtió el flag.</p>
+<hr>
+<h3>Opciones de migración (1-4)</h3>
+<p>Estas opciones (<code>Crear hoja USUARIOS</code>, <code>Migrar desde INTEGRANTES</code>, <code>Sincronizar con Maestro RH</code>, <code>Recargar resoluciones</code>) se usaron durante la migración inicial a USUARIOS. <strong>Hoy día casi no las necesitas</strong>, salvo:</p>
+<ul>
+<li>
+<p><strong>“Sincronizar con Maestro RH”</strong>: si Recursos Humanos actualiza su base con empleados nuevos, ejecuta esto para traerlos a USUARIOS como filas stub (solo cédula, nombre, correo). Después les asignas aprobador manualmente desde la pestaña Usuarios del sidebar.</p>
+</li>
+<li>
+<p><strong>“Recargar resoluciones”</strong>: si editaste manualmente la columna G (cédulas aprobadores) de USUARIOS, ejecuta esto para que las columnas H e I (correos/nombres auto) se actualicen.</p>
+</li>
+</ul>
+<p>Las otras dos (Crear / Migrar) ya se ejecutaron. No las corras de nuevo a menos que sepas exactamente lo que haces.</p>
+<hr>
+<h2>Reglas de oro</h2>
+<ol>
+<li>
+<p><strong>Siempre haz respaldo antes de cambios grandes.</strong> Menú → Reorganizar Base Principal → “Crear respaldo ahora”. Tarda 30 segundos y te guarda una copia completa en tu Drive privado.</p>
+</li>
+<li>
+<p><strong>No edites la columna PIN a mano.</strong> Si necesitas borrar un PIN, usa el botón “Borrar PIN” en la pestaña Usuarios del sidebar.</p>
+</li>
+<li>
+<p><strong>Para agregar, editar o eliminar usuarios, prefiere el sidebar.</strong> Es más rápido y evita errores comunes.</p>
+</li>
+<li>
+<p><strong>Nunca cambies el nombre de las columnas.</strong> El portal las busca por nombre exacto. Si cambias “CORREO ENCUESTADO” a “CORREO SOLICITANTE”, el portal se rompe.</p>
+</li>
+<li>
+<p><strong>No cambies los IDs de solicitud.</strong> La trazabilidad depende de ellos.</p>
+</li>
+<li>
+<p><strong>Si ves algo raro, primero busca en Anomalías.</strong> La mitad de los problemas del portal se detectan ahí.</p>
+</li>
+<li>
+<p><strong>Para cambios masivos, usa Ed. Masiva — pero con vista previa.</strong> Nunca confirmes sin haber revisado la lista de afectados.</p>
+</li>
+<li>
+<p><strong>Antes de borrar un usuario, busca duplicados.</strong> Quizás hay dos filas del mismo y puedes consolidar en vez de borrar el “bueno”.</p>
+</li>
+<li>
+<p><strong>No toques la hoja REGLAS_COAPROBADOR salvo que sepas qué estás haciendo.</strong> Un cambio mal hecho ahí rompe las aprobaciones ejecutivas.</p>
+</li>
+<li>
+<p><strong>Si todo falla, siempre puedes restaurar el respaldo.</strong> Los respaldos están en tu carpeta privada de Drive (la que configuraste en el sidebar de Reorganizar).</p>
+</li>
+</ol>
+<hr>
+<h2>Preguntas frecuentes</h2>
+<p><strong>¿Puedo filtrar la hoja USUARIOS con la herramienta de filtro de Sheets?</strong>
+Sí, no afecta el portal. Los filtros son solo visuales para ti.</p>
+<p><strong>¿Puedo ordenar las filas de USUARIOS?</strong>
+Sí, pero procura no cortar filas a la mitad. Ordena rangos completos, no columnas sueltas.</p>
+<p><strong>¿Puedo convertir USUARIOS a tabla de Google Sheets (Formato → Convertir a tabla)?</strong>
+Sí, te da filtros nativos y referencias por nombre de columna en otras fórmulas. Las filas nuevas que se creen desde el sidebar se absorben automáticamente en la tabla (si la tabla tiene “Extender automáticamente” activado, que es el default). Si vas a hacerlo, haz respaldo antes y prueba creando un usuario después para confirmar.</p>
+<p><strong>¿Puedo dar permisos a otra persona para que edite el sheet?</strong>
+Sí, usa <strong>Compartir</strong> (botón azul arriba a la derecha del sheet). Pero <strong>solo da permisos a personas de confianza</strong> — cualquiera con acceso de edición puede abrir los sidebars y hacer cambios masivos.</p>
+<p><strong>¿Qué pasa si borro por error un usuario?</strong>
+Tienes dos opciones: (a) ctrl+Z inmediatamente para deshacer en el sheet, o (b) abrir un respaldo reciente y copiarle la fila.</p>
+<p><strong>¿Por qué un usuario no puede iniciar sesión?</strong>
+En orden: (1) revisa que su correo esté en USUARIOS, (2) revisa que tenga un aprobador asignado (sidebar → Anomalías), (3) pídele que presione “Reenviar PIN” en el login, (4) borra su PIN manualmente desde el sidebar para forzarle uno nuevo.</p>
+<p><strong>¿Cómo sé si el portal está leyendo de USUARIOS o de INTEGRANTES?</strong>
+Menú → “Modo activo”. Te lo dice.</p>
+<hr>
+<p><em>Última actualización: 2026-04-13</em></p>
+
+  </div>
+</body>
+</html>

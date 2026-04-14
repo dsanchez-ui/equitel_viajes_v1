@@ -1,12 +1,14 @@
 /**
- * Build script: convierte docs/guia-administrador.md a HTML styled + PDF.
+ * Build script: convierte los .md de docs/ a HTML styled + PDF.
  *
  * Uso:
- *   npm run build:guia
+ *   npm run build:guia              # construye TODAS las guías
+ *   node scripts/build-guia.cjs administrador  # solo una
+ *   node scripts/build-guia.cjs hoja-calculo   # solo una
  *
  * Requisitos:
  *   - Chrome instalado (ver CHROME_PATH abajo)
- *   - markdown-it disponible (se instala auto via npx si no existe)
+ *   - markdown-it disponible (se instala auto si no existe)
  */
 
 const fs = require('fs');
@@ -14,12 +16,25 @@ const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const MD_PATH = path.join(ROOT, 'docs', 'guia-administrador.md');
-const HTML_PATH = path.join(ROOT, 'docs', 'guia-administrador.html');
-const PDF_PATH = path.join(ROOT, 'docs', 'guia-administrador.pdf');
 const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
-// --- 1. Renderizar markdown a HTML ---
+// Guías registradas: { slug → { md, html, pdf, title } }
+const GUIAS = {
+  administrador: {
+    md: path.join(ROOT, 'docs', 'guia-administrador.md'),
+    html: path.join(ROOT, 'docs', 'guia-administrador.html'),
+    pdf: path.join(ROOT, 'docs', 'guia-administrador.pdf'),
+    title: 'Guía del Administrador — Equitel Viajes',
+  },
+  'hoja-calculo': {
+    md: path.join(ROOT, 'docs', 'guia-hoja-calculo.md'),
+    html: path.join(ROOT, 'docs', 'guia-hoja-calculo.html'),
+    pdf: path.join(ROOT, 'docs', 'guia-hoja-calculo.pdf'),
+    title: 'Guía del Google Sheets — Portal de Viajes Equitel',
+  },
+};
+
+// --- 1. Cargar markdown-it (auto-instala si falta) ---
 let MarkdownIt;
 try {
   MarkdownIt = require('markdown-it');
@@ -30,8 +45,6 @@ try {
 }
 
 const md = new MarkdownIt({ html: true, linkify: true, typographer: true });
-const mdText = fs.readFileSync(MD_PATH, 'utf8');
-const bodyHtml = md.render(mdText);
 
 const css = `
   :root {
@@ -102,12 +115,20 @@ const css = `
   }
 `;
 
-const html = `<!DOCTYPE html>
+function buildGuia(slug, guia) {
+  console.log('\n--- Construyendo:', slug, '---');
+  if (!fs.existsSync(guia.md)) {
+    console.error('✗ No existe:', guia.md);
+    return false;
+  }
+  const mdText = fs.readFileSync(guia.md, 'utf8');
+  const bodyHtml = md.render(mdText);
+  const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Guía del Administrador — Equitel Viajes</title>
+  <title>${guia.title}</title>
   <style>${css}</style>
 </head>
 <body>
@@ -117,35 +138,45 @@ const html = `<!DOCTYPE html>
 </body>
 </html>
 `;
+  fs.writeFileSync(guia.html, html, 'utf8');
+  console.log('✓ HTML generado:', path.relative(ROOT, guia.html));
 
-fs.writeFileSync(HTML_PATH, html, 'utf8');
-console.log('✓ HTML generado: docs/guia-administrador.html');
+  if (!fs.existsSync(CHROME_PATH)) {
+    console.error('✗ Chrome no encontrado en:', CHROME_PATH);
+    console.error('  Abre el HTML en tu navegador y Ctrl+P → Guardar como PDF.');
+    return false;
+  }
 
-// --- 2. Generar PDF con Chrome headless ---
-if (!fs.existsSync(CHROME_PATH)) {
-  console.error('✗ Chrome no encontrado en:', CHROME_PATH);
-  console.error('  Edita CHROME_PATH en scripts/build-guia.cjs con la ruta correcta,');
-  console.error('  o abre docs/guia-administrador.html en tu navegador y Ctrl+P → Guardar como PDF.');
-  process.exit(1);
-}
+  const result = spawnSync(CHROME_PATH, [
+    '--headless=new',
+    '--disable-gpu',
+    '--no-sandbox',
+    '--no-pdf-header-footer',
+    '--virtual-time-budget=5000',
+    `--print-to-pdf=${guia.pdf}`,
+    `file:///${guia.html.replace(/\\/g, '/')}`,
+  ], { stdio: 'pipe' });
 
-// --headless=new es el modo moderno de Chrome que renderiza CSS correctamente.
-// --virtual-time-budget da tiempo a que fonts/styles se apliquen antes del print.
-// --no-pdf-header-footer quita el header/footer default de Chrome.
-const result = spawnSync(CHROME_PATH, [
-  '--headless=new',
-  '--disable-gpu',
-  '--no-sandbox',
-  '--no-pdf-header-footer',
-  '--virtual-time-budget=5000',
-  `--print-to-pdf=${PDF_PATH}`,
-  `file:///${HTML_PATH.replace(/\\/g, '/')}`,
-], { stdio: 'pipe' });
-
-if (result.status === 0) {
-  const stats = fs.statSync(PDF_PATH);
-  console.log('✓ PDF generado: docs/guia-administrador.pdf (' + Math.round(stats.size / 1024) + ' KB)');
-} else {
+  if (result.status === 0) {
+    const stats = fs.statSync(guia.pdf);
+    console.log('✓ PDF generado:', path.relative(ROOT, guia.pdf), '(' + Math.round(stats.size / 1024) + ' KB)');
+    return true;
+  }
   console.error('✗ Chrome falló:', result.stderr.toString());
-  process.exit(1);
+  return false;
 }
+
+// --- Ejecutar según argumentos ---
+const arg = process.argv[2];
+const toBuild = arg ? [arg] : Object.keys(GUIAS);
+
+let allOk = true;
+for (const slug of toBuild) {
+  if (!GUIAS[slug]) {
+    console.error('✗ Guía desconocida:', slug, '— disponibles:', Object.keys(GUIAS).join(', '));
+    allOk = false;
+    continue;
+  }
+  if (!buildGuia(slug, GUIAS[slug])) allOk = false;
+}
+process.exit(allOk ? 0 : 1);
