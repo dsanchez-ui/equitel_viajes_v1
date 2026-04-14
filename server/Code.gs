@@ -5859,12 +5859,28 @@ const BACKUP_FOLDER_ID = getConfig_('BACKUP_FOLDER_ID', '1psDuvtdUCxmRnBmFI8P3LP
  * Lanza excepción si no lo es. Debe llamarse al inicio de CADA función nbs_*.
  * Sin esto, cualquier usuario con acceso de edición al sheet podría ejecutar
  * switchMain/migrateData vía el sidebar y romper la base.
+ *
+ * Intenta obtener el email con dos métodos: getActiveUser (usuario que abrió
+ * el sheet) y getEffectiveUser (usuario autorizado). Algunas veces uno devuelve
+ * empty string según el contexto de dominio.
  */
 function _requireAnalyst_() {
   var email = String(Session.getActiveUser().getEmail() || '').toLowerCase().trim();
-  if (!email) throw new Error('No se pudo identificar al usuario.');
+  if (!email) {
+    // Fallback: getEffectiveUser para cuando getActiveUser devuelve '' por
+    // restricciones de dominio cruzado.
+    email = String(Session.getEffectiveUser().getEmail() || '').toLowerCase().trim();
+  }
+  if (!email) {
+    throw new Error('No se pudo identificar al usuario. Asegúrate de estar autenticado con tu correo corporativo.');
+  }
   if (!isUserAnalyst(email)) {
-    throw new Error('Acción no autorizada. Solo el analista/admin puede usar estas funciones.');
+    var whitelist = getAnalystWhitelist_();
+    throw new Error(
+      'Acción no autorizada. Correo detectado: "' + email + '". ' +
+      'Whitelist actual: ' + JSON.stringify(whitelist) + '. ' +
+      'Ejecuta actualizarAnalystEmails() si necesitas agregarlo.'
+    );
   }
 }
 
@@ -6300,7 +6316,9 @@ function abrirSidebarReorg() {
   try {
     _requireAnalyst_();
   } catch (e) {
-    ui.alert('Acción no autorizada', 'Solo el analista/admin puede abrir este sidebar.', ui.ButtonSet.OK);
+    // Pasa el mensaje real del error (incluye el email detectado y la whitelist)
+    // para que se pueda diagnosticar si hay un mismatch.
+    ui.alert('Acción no autorizada', e.message || String(e), ui.ButtonSet.OK);
     return;
   }
   var html = HtmlService.createHtmlOutputFromFile('ReorgSidebar')
@@ -7083,4 +7101,36 @@ function _emptyAnalystPerformance_() {
     { stage: 'confirmacion', label: 'Confirmación costos (Selección → Costo)', count: 0, avgMinutes: null, minMinutes: null, maxMinutes: null },
     { stage: 'compra', label: 'Compra tiquetes (Aprobado → Reserva)', count: 0, avgMinutes: null, minMinutes: null, maxMinutes: null }
   ];
+}
+
+// =====================================================================
+// UTILIDADES ADMIN — ejecutables manualmente desde el editor de Apps Script
+// =====================================================================
+// Estas funciones NO se llaman automáticamente; sirven como atajo para
+// operaciones puntuales que requieren modificar Script Properties cuando la
+// GUI de propiedades queda en modo read-only (>50 propiedades).
+// =====================================================================
+
+/**
+ * Actualiza ANALYST_EMAILS (whitelist de admins autorizados).
+ *
+ * Modifica el array si necesitas quitar o agregar correos, luego ejecuta
+ * esta función UNA VEZ desde el editor:
+ *   1. Dropdown de funciones (arriba) → selecciona "actualizarAnalystEmails"
+ *   2. Click ▶ Ejecutar
+ *   3. Ver → Registros de ejecución (confirma el resultado)
+ *
+ * Seguridad: solo quienes tienen acceso al editor de Apps Script pueden
+ * ejecutar esto (típicamente el dueño del proyecto GAS). No es un endpoint
+ * expuesto al web app.
+ */
+function actualizarAnalystEmails() {
+  var emails = [
+    'apcompras@equitel.com.co',
+    'dsanchez@equitel.com.co'
+  ];
+  setAnalystWhitelist(emails);
+  var stored = PropertiesService.getScriptProperties().getProperty('ANALYST_EMAILS');
+  Logger.log('ANALYST_EMAILS actualizado a: ' + stored);
+  return stored;
 }
