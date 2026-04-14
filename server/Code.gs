@@ -224,7 +224,7 @@ function doGet(e) {
 
   // 3b. Handle User Consultation Response (Returns HTML)
   // Triggered when the user clicks CONTINUAR or ANULAR in the consultation
-  // email that Wendy sends after denying a change request.
+  // email that the analyst sends after denying a change request.
   if (action === 'user_consult') {
     return processUserConsultResponse(e);
   }
@@ -1674,7 +1674,7 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
 
     // Check if this is a modification (has parent) — solo para etiquetar el nombre,
     // ya NO se anida la carpeta dentro del padre. Toda solicitud (original o
-    // modificación) vive al nivel raíz para que Wendy navegue Drive plano.
+    // modificación) vive al nivel raíz para que el analista navegue Drive plano.
     const parentId = String(sheet.getRange(rowNumber, parentIdIdx + 1).getValue()).trim();
     const isModification = parentId && parentId !== '' && parentId !== 'undefined';
 
@@ -3270,7 +3270,7 @@ function createNewRequest(data, emailHtml) {
  * Modificaciones y originales viven al MISMO nivel raíz. El nombre de la
  * carpeta de una modificación tiene el prefix "CAMBIO DE ${parentId}" que
  * deja clara la relación visualmente, pero no se anida físicamente. Esto
- * facilita la navegación de Wendy en Drive (todo en el root, sin subfolders).
+ * facilita la navegación del analista en Drive (todo en el root, sin subfolders).
  */
 function getOrCreateRequestFolder_(requestId, rowNumber, sheet) {
     const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
@@ -4285,7 +4285,7 @@ function processAdminReminders() {
     const pendingOptions = requests.filter(r => r.status === 'PENDIENTE_OPCIONES' && r.departureDate >= today && !isPaused(r));
     const pendingCost = requests.filter(r => r.status === 'PENDIENTE_CONFIRMACION_COSTO' && r.departureDate >= today && !isPaused(r));
     const approved = requests.filter(r => (r.status === 'APROBADO' || r.status === 'RESERVADO_PARCIAL') && r.departureDate >= today && !isPaused(r));
-    // Solicitudes de cambio esperando que Wendy las pase a estudio o las deniegue
+    // Solicitudes de cambio esperando que el analista las pase a estudio o las deniegue
     const pendingChanges = requests.filter(r => r.status === 'PENDIENTE_ANALISIS_CAMBIO' && r.departureDate >= today);
 
     if (pendingOptions.length === 0 && pendingCost.length === 0 && approved.length === 0 && pendingChanges.length === 0) {
@@ -4825,7 +4825,7 @@ const HR_MAESTRO_SHEET = getConfig_('HR_MAESTRO_SHEET', 'Hoja 1');
  * Menú "Equitel Viajes" en la barra superior del sheet.
  *
  * GATED: solo se muestra cuando USE_USUARIOS_SHEET === 'true'. Esto asegura
- * que en producción (donde el switch está apagado), Wendy no ve nada nuevo
+ * que en producción (donde el switch está apagado), el analista no ve nada nuevo
  * en la barra de menús y no puede activar accidentalmente funciones de
  * Plan 2 que aún no deben estar disponibles.
  *
@@ -5834,8 +5834,8 @@ function usuarios_bulkUpdate(payload) {
 // Si algo falla, la hoja vieja sigue activa y la nueva queda como respaldo.
 // =====================================================================
 
-// Columnas que Wendy puede editar — fondo amarillo claro tras la migración.
-// Definidas explícitamente por David (ver memoria del proyecto).
+// Columnas que el analista de compras puede editar — fondo amarillo claro tras la migración.
+// Definidas explícitamente según el flujo de gestión (ver memoria del proyecto).
 const NBS_EDITABLE_COLUMNS = [
   'NOMBRE HOTEL',
   'PERSONA QUE TRAMITA EL TIQUETE /HOTEL',
@@ -6671,7 +6671,7 @@ function _aggregateMetrics_(metrics) {
 }
 
 /**
- * Performance del analista (Wendy). Calcula tiempos de las 3 etapas que
+ * Performance del analista de compras. Calcula tiempos de las 3 etapas que
  * le corresponden: cotización, confirmación de costos, compra de tiquetes.
  */
 function _buildAnalystPerformance_(metrics) {

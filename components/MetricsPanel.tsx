@@ -228,7 +228,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
               {data.analystPerformance && data.analystPerformance.length > 0 && (
                 <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-4">
                   <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
-                    <h4 className="text-xs font-bold text-gray-700 uppercase">Performance del analista (etapas de Wendy)</h4>
+                    <h4 className="text-xs font-bold text-gray-700 uppercase">Performance del analista de compras</h4>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3">
                     {data.analystPerformance.map(stage => (
@@ -260,11 +260,11 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
                         <th className="px-2 py-2 text-left font-medium text-gray-500">Solicitante</th>
                         <th className="px-2 py-2 text-left font-medium text-gray-500">Destino</th>
                         <th className="px-2 py-2 text-left font-medium text-gray-500">Estado</th>
-                        <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo de Wendy en cargar opciones">Cotizar</th>
+                        <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo del analista en cargar opciones">Cotizar</th>
                         <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo del usuario en describir su selección">Seleccionar</th>
-                        <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo de Wendy en confirmar costos">Confirmar</th>
+                        <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo del analista en confirmar costos">Confirmar</th>
                         <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo total de aprobación">Aprobar</th>
-                        <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo de Wendy en comprar tiquetes">Comprar</th>
+                        <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo del analista en comprar tiquetes">Comprar</th>
                         <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo del ciclo completo">Total</th>
                       </tr>
                     </thead>
