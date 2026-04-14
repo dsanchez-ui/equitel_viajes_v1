@@ -5888,13 +5888,47 @@ function _requireAnalyst_() {
  * Normaliza un header para comparación tolerante a:
  *  - Espacios múltiples (los colapsa a uno solo)
  *  - Forma Unicode NFC vs NFD (p.ej. "CÉDULA" en NFC vs NFD)
+ *  - Caracteres invisibles (BOM, ZWSP, soft hyphen, directional marks)
  *  - Espacios en extremos
+ *  - Diferentes tipos de espacio (NBSP, tab, etc → espacio regular)
  * NO hace lowercase — preserva case (case-sensitive por diseño).
  */
 function _normalizeHeader_(h) {
   if (!h) return '';
   var s = String(h).normalize('NFC');
-  return s.replace(/\s+/g, ' ').trim();
+  // Strip caracteres invisibles que confunden la comparación:
+  //   U+00AD      soft hyphen
+  //   U+200B-200F zero-width spaces + directional marks
+  //   U+202A-202E directional override chars
+  //   U+2060      word joiner
+  //   U+FEFF      byte-order mark
+  s = s.replace(/[\u00AD\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '');
+  // Colapsa cualquier whitespace (incluye NBSP U+00A0, tab, etc.) a espacio simple
+  s = s.replace(/\s+/g, ' ');
+  return s.trim();
+}
+
+/**
+ * Devuelve una representación debug de un string con códigos Unicode de
+ * cada carácter. Útil cuando un header "parece" canónico visualmente pero
+ * no compara como tal — revela caracteres invisibles.
+ * Ejemplo: "ID\u00A0RESPUESTA" → "ID[U+00A0 NBSP]RESPUESTA"
+ */
+function _debugHeader_(h) {
+  if (!h) return '(vacío)';
+  var s = String(h);
+  var out = '';
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charCodeAt(i);
+    var ch = s.charAt(i);
+    // Chars "normales" visibles (letras, dígitos, espacio simple, guión, paréntesis, #, ¿, ?, /, _)
+    if ((c >= 32 && c <= 126) || (c >= 192 && c <= 255)) {
+      out += ch;
+    } else {
+      out += '[U+' + ('0000' + c.toString(16).toUpperCase()).slice(-4) + ']';
+    }
+  }
+  return out;
 }
 
 // Columnas de dinero — formato pesos colombianos. Se aplica SIEMPRE (no negociable).
@@ -5986,19 +6020,19 @@ function nbs_verifyWorkSheet(targetName) {
 
 /**
  * Paso 4: Migra los datos de la hoja activa a la hoja de trabajo.
- * Orden nuevo: PRIMERO aplica validaciones + formatos + colores al destino,
- * LUEGO escribe los datos sobre celdas ya preparadas. Esto garantiza que los
- * dropdowns y formatos persistan correctamente.
  *
- * Pasos internos:
- *   1. Build header maps de fuente y destino
+ * Orden de operaciones (equivalente a Ctrl+V "Pegar todo" por columna):
+ *   1. Build header maps de fuente y destino (con normalización Unicode)
  *   2. Build column mappings (por nombre de header)
- *   3. PRE-FORMAT: aplica a cada columna mapeada del destino:
- *        a. Validación de datos (si la fuente tenía dropdown)
- *        b. Número formato (preserva el de la fuente O forzar moneda si aplica)
- *        c. Fondo amarillo (si está en NBS_EDITABLE_COLUMNS)
- *   4. WRITE: escribe los datos en batch
+ *   3. WRITE DATA: escribe los valores columna por columna
+ *   4. POST-FORMAT: aplica validaciones, formatos y colores DESPUÉS de los
+ *      datos, usando copyTo(PASTE_DATA_VALIDATION) y copyTo(PASTE_FORMAT) —
+ *      idéntico a lo que hace Ctrl+V en Sheets. Esto garantiza que los
+ *      dropdowns y formatos se preserven exactamente como en el original.
  *   5. Auto-resize columnas mapeadas
+ *
+ * Las columnas extras (no canónicas) en destino NUNCA se tocan: preserva
+ * sus datos, validaciones y formatos.
  */
 function nbs_migrateData(sourceName, targetName, options) {
   _requireAnalyst_();
@@ -6056,10 +6090,7 @@ function nbs_migrateData(sourceName, targetName, options) {
       target.insertRowsAfter(tgtMaxRows, (numRows + 1) - tgtMaxRows);
     }
 
-    // ========== 3. PRE-FORMAT: aplicar SOLO al rango con datos reales (no a filas vacías) ==========
-    // Aplicar validaciones/colores a miles de filas vacías ralentiza el sheet.
-    // Usamos numRows en vez de finalMaxRows para acotar al contenido real.
-
+    // Precomputar sets para lookups rápidos en las 2 fases
     var currencySet = {};
     NBS_CURRENCY_COLUMNS.forEach(function(n) { currencySet[n] = true; });
     var editableSet = {};
@@ -6070,57 +6101,12 @@ function nbs_migrateData(sourceName, targetName, options) {
     var coloredColumns = 0;
     var currencyApplied = 0;
 
-    colMappings.forEach(function(m) {
-      var tgtCol1 = m.tgtCol + 1;
-      var srcCol1 = m.srcCol + 1;
-
-      // 3a. VALIDACIÓN: busca en primeras 3 filas por si row 2 no la tiene
-      if (migrateValidations) {
-        try {
-          var vRange = source.getRange(2, srcCol1, Math.min(3, numRows), 1).getDataValidations();
-          var srcValidation = null;
-          for (var i = 0; i < vRange.length; i++) {
-            if (vRange[i][0]) { srcValidation = vRange[i][0]; break; }
-          }
-          if (srcValidation) {
-            // Aplica solo al rango con datos, no hasta maxRows (evita lentitud)
-            target.getRange(2, tgtCol1, numRows, 1).setDataValidation(srcValidation);
-            validationsCopied++;
-          }
-        } catch (e) {
-          console.warn('Validation copy failed for ' + m.name + ': ' + e);
-        }
-      }
-
-      // 3b. NUMBER FORMAT
-      try {
-        if (currencySet[m.name]) {
-          target.getRange(2, tgtCol1, numRows, 1).setNumberFormat(NBS_CURRENCY_FORMAT);
-          currencyApplied++;
-        } else {
-          var srcFormat = source.getRange(2, srcCol1).getNumberFormat();
-          if (srcFormat && srcFormat !== 'General' && srcFormat !== '0' && srcFormat !== '@') {
-            target.getRange(2, tgtCol1, numRows, 1).setNumberFormat(srcFormat);
-            formatsCopied++;
-          }
-        }
-      } catch (e) {
-        console.warn('Number format copy failed for ' + m.name + ': ' + e);
-      }
-
-      // 3c. FONDO AMARILLO (solo al rango con datos)
-      if (applyEditableColors && editableSet[m.name]) {
-        target.getRange(2, tgtCol1, numRows, 1).setBackground(NBS_EDITABLE_BG);
-        coloredColumns++;
-      }
-    });
-
-    SpreadsheetApp.flush();
-
-    // ========== 4. WRITE DATA (columna por columna, sin tocar extras) ==========
-    // Escribimos SOLO las columnas mapeadas, una por una, como rangos individuales.
-    // Esto evita tocar las columnas extras que el admin haya agregado manualmente
-    // (preserva datos, validaciones y formatos de esos extras).
+    // ========== 3. WRITE DATA FIRST (columna por columna, sin tocar extras) ==========
+    // Escribimos PRIMERO los valores y DESPUÉS las validaciones/formatos/colores.
+    // Razón: setValues en celdas con validación puede generar conflictos si el
+    // valor no cumple la regla. Aplicando las reglas después, los valores ya
+    // escritos no se revalidan y las reglas quedan en su lugar para futuras
+    // ediciones — exactamente como Ctrl+V "Pegar todo" lo hace en Sheets.
     var srcData = source.getRange(2, 1, numRows, srcLastCol).getValues();
 
     colMappings.forEach(function(m) {
@@ -6130,6 +6116,57 @@ function nbs_migrateData(sourceName, targetName, options) {
       }
       target.getRange(2, m.tgtCol + 1, numRows, 1).setValues(colValues);
     });
+    SpreadsheetApp.flush();
+
+    // ========== 4. POST-FORMAT: validaciones + formatos + colores ==========
+    // Aplicar DESPUÉS de los datos usando copyTo (equivalente a Ctrl+V).
+    // Esto es más robusto que setDataValidation porque copia por-celda.
+    colMappings.forEach(function(m) {
+      var tgtCol1 = m.tgtCol + 1;
+      var srcCol1 = m.srcCol + 1;
+
+      // 4a. VALIDACIÓN: copyTo(PASTE_DATA_VALIDATION) — igual que Ctrl+V
+      // Copia las reglas de validación de cada celda del rango fuente a la
+      // misma posición en destino, sin tocar valores. Preserva dropdowns
+      // aunque el admin los haya aplicado por celda, por rango o por columna.
+      if (migrateValidations) {
+        try {
+          var srcRange = source.getRange(2, srcCol1, numRows, 1);
+          var tgtRange = target.getRange(2, tgtCol1, numRows, 1);
+          srcRange.copyTo(tgtRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+          // Verificar que al menos 1 celda del target quedó con validación
+          var sample = target.getRange(2, tgtCol1, Math.min(10, numRows), 1).getDataValidations();
+          for (var si = 0; si < sample.length; si++) {
+            if (sample[si][0]) { validationsCopied++; break; }
+          }
+        } catch (e) {
+          console.warn('Validation copy failed for ' + m.name + ': ' + e);
+        }
+      }
+
+      // 4b. NUMBER FORMAT: copyTo(PASTE_FORMAT) preserva formato numérico,
+      // alineación y bordes. Luego si es moneda, sobreescribe con el formato
+      // canónico de pesos colombianos.
+      try {
+        var srcRangeFmt = source.getRange(2, srcCol1, numRows, 1);
+        var tgtRangeFmt = target.getRange(2, tgtCol1, numRows, 1);
+        srcRangeFmt.copyTo(tgtRangeFmt, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+        formatsCopied++;
+        if (currencySet[m.name]) {
+          tgtRangeFmt.setNumberFormat(NBS_CURRENCY_FORMAT);
+          currencyApplied++;
+        }
+      } catch (e) {
+        console.warn('Format copy failed for ' + m.name + ': ' + e);
+      }
+
+      // 4c. FONDO AMARILLO: override del PASTE_FORMAT para columnas editables.
+      if (applyEditableColors && editableSet[m.name]) {
+        target.getRange(2, tgtCol1, numRows, 1).setBackground(NBS_EDITABLE_BG);
+        coloredColumns++;
+      }
+    });
+
     SpreadsheetApp.flush();
 
     // ========== 5. AUTO-RESIZE COLUMNAS MAPEADAS ==========
@@ -6151,6 +6188,24 @@ function nbs_migrateData(sourceName, targetName, options) {
       }
     }
 
+    // Diagnóstico de mismatch con char codes para identificar chars invisibles
+    var extraInTarget = tgtHeaders.filter(function(h) { return h && !srcMap[h]; });
+    var droppedFromSource = srcHeaders.filter(function(h) { return h && !tgtMap[h]; });
+    var mismatchDetails = [];
+    if (extraInTarget.length > 0 || droppedFromSource.length > 0) {
+      console.log('=== HEADER MISMATCH DEBUG ===');
+      extraInTarget.forEach(function(h) {
+        var debug = _debugHeader_(h);
+        mismatchDetails.push('[target-only] "' + h + '" → ' + debug);
+        console.log('[target-only] "' + h + '" → ' + debug);
+      });
+      droppedFromSource.forEach(function(h) {
+        var debug = _debugHeader_(h);
+        mismatchDetails.push('[source-only] "' + h + '" → ' + debug);
+        console.log('[source-only] "' + h + '" → ' + debug);
+      });
+    }
+
     return {
       rowsCopied: numRows,
       columnsMapped: colMappings.length,
@@ -6158,8 +6213,9 @@ function nbs_migrateData(sourceName, targetName, options) {
       formatsCopied: formatsCopied,
       currencyApplied: currencyApplied,
       coloredColumns: coloredColumns,
-      extraInTarget: tgtHeaders.filter(function(h) { return h && !srcMap[h]; }),
-      droppedFromSource: srcHeaders.filter(function(h) { return h && !tgtMap[h]; })
+      extraInTarget: extraInTarget,
+      droppedFromSource: droppedFromSource,
+      mismatchDetails: mismatchDetails
     };
   } finally {
     lock.releaseLock();
@@ -7133,4 +7189,63 @@ function actualizarAnalystEmails() {
   var stored = PropertiesService.getScriptProperties().getProperty('ANALYST_EMAILS');
   Logger.log('ANALYST_EMAILS actualizado a: ' + stored);
   return stored;
+}
+
+/**
+ * DIAGNÓSTICO: ejecuta desde el editor para ver qué correo detecta el script
+ * y si está en la whitelist. Útil para debuggear el error "Acción no autorizada".
+ *
+ * Pasos:
+ *   1. Dropdown de funciones → diagnosticarAuth
+ *   2. ▶ Ejecutar
+ *   3. Ver → Registros de ejecución
+ */
+function diagnosticarAuth() {
+  var activeEmail = '';
+  var effectiveEmail = '';
+  var errorActive = '';
+  var errorEffective = '';
+
+  try {
+    activeEmail = String(Session.getActiveUser().getEmail() || '');
+  } catch (e) {
+    errorActive = e.message;
+  }
+  try {
+    effectiveEmail = String(Session.getEffectiveUser().getEmail() || '');
+  } catch (e) {
+    errorEffective = e.message;
+  }
+
+  var whitelist = getAnalystWhitelist_();
+  var activeMatches = activeEmail && whitelist.indexOf(activeEmail.toLowerCase().trim()) >= 0;
+  var effectiveMatches = effectiveEmail && whitelist.indexOf(effectiveEmail.toLowerCase().trim()) >= 0;
+
+  Logger.log('=== DIAGNÓSTICO DE AUTENTICACIÓN ===');
+  Logger.log('Session.getActiveUser().getEmail():    "' + activeEmail + '"' + (errorActive ? ' [ERROR: ' + errorActive + ']' : ''));
+  Logger.log('Session.getEffectiveUser().getEmail(): "' + effectiveEmail + '"' + (errorEffective ? ' [ERROR: ' + errorEffective + ']' : ''));
+  Logger.log('ANALYST_EMAILS whitelist:              ' + JSON.stringify(whitelist));
+  Logger.log('');
+  Logger.log('¿Active user en whitelist?    ' + (activeMatches ? '✅ SÍ' : '❌ NO'));
+  Logger.log('¿Effective user en whitelist? ' + (effectiveMatches ? '✅ SÍ' : '❌ NO'));
+  Logger.log('');
+  if (!activeEmail && !effectiveEmail) {
+    Logger.log('⚠️ PROBLEMA: Ninguno de los métodos de Session retorna email.');
+    Logger.log('   Causa típica: falta autorización del script. Ejecuta cualquier');
+    Logger.log('   función que requiera permisos (como esta) y completa el diálogo');
+    Logger.log('   de autorización. Si ya lo hiciste, puede ser dominio cruzado.');
+  } else if (!activeMatches && !effectiveMatches) {
+    Logger.log('⚠️ PROBLEMA: El correo detectado NO está en la whitelist.');
+    Logger.log('   Agrégalo editando actualizarAnalystEmails() y ejecutándola.');
+  } else {
+    Logger.log('✅ TODO OK: Deberías poder abrir los sidebars sin problema.');
+  }
+
+  return {
+    activeEmail: activeEmail,
+    effectiveEmail: effectiveEmail,
+    whitelist: whitelist,
+    activeMatches: activeMatches,
+    effectiveMatches: effectiveMatches
+  };
 }

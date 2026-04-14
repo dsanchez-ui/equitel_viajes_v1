@@ -55,6 +55,10 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [fetchingData, setFetchingData] = useState(false);
   const [role, setRole] = useState<UserRole>(UserRole.REQUESTER);
+  // Permite a un analista ver su propio dashboard de usuario (para crear
+  // solicitudes propias). true = ver como usuario, false = ver como admin.
+  // Solo aplica cuando role === ANALYST; si role es REQUESTER, se ignora.
+  const [viewAsRequester, setViewAsRequester] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [loginEmailInput, setLoginEmailInput] = useState('');
   const [showPinModal, setShowPinModal] = useState(false);
@@ -114,15 +118,18 @@ const App: React.FC = () => {
     init();
   }, []);
 
+  // Modo efectivo: analista viendo como usuario → fetch como usuario
+  const isEffectiveAdmin = role === UserRole.ANALYST && !viewAsRequester;
+
   useEffect(() => {
     if (!userEmail) return;
     const intervalId = setInterval(async () => {
       setIsSyncing(true);
-      await fetchRequests(userEmail, role === UserRole.ANALYST, true);
+      await fetchRequests(userEmail, isEffectiveAdmin, true);
       setIsSyncing(false);
     }, POLL_INTERVAL_MS);
     return () => clearInterval(intervalId);
-  }, [userEmail, role]);
+  }, [userEmail, role, viewAsRequester]);
 
   const determineUserName = (email: string, currentIntegrantes: Integrant[] = []) => {
     const found = currentIntegrantes.find(i => i.email.toLowerCase() === email.toLowerCase());
@@ -135,9 +142,30 @@ const App: React.FC = () => {
     gasService.setUserEmail(email);
     const list = preloadedIntegrantes || integrantes;
     setUserName(determineUserName(email, list));
-    setRole(authenticatedAsAdmin ? UserRole.ANALYST : UserRole.REQUESTER);
+
+    // DEFENSE-IN-DEPTH: si la sesión dice que somos analyst, re-confirmar
+    // contra el backend con checkIsAnalyst. Si el backend dice que NO, rebajar
+    // a REQUESTER (caso donde alguien fue removido de ANALYST_EMAILS pero la
+    // sesión vieja aún tiene role=ANALYST almacenada).
+    let finalIsAdmin = authenticatedAsAdmin;
+    if (authenticatedAsAdmin) {
+      try {
+        const confirmedAnalyst = await gasService.checkIsAnalyst(email);
+        if (!confirmedAnalyst) {
+          console.warn('Session role was ANALYST but backend says user is no longer analyst. Downgrading to REQUESTER.');
+          finalIsAdmin = false;
+        }
+      } catch (err) {
+        console.error('checkIsAnalyst failed during login, defaulting to REQUESTER:', err);
+        finalIsAdmin = false;
+      }
+    }
+
+    setRole(finalIsAdmin ? UserRole.ANALYST : UserRole.REQUESTER);
+    // Analistas arrancan siempre en vista admin (viewAsRequester=false)
+    setViewAsRequester(false);
     setLoading(false);
-    await fetchRequests(email, authenticatedAsAdmin, false);
+    await fetchRequests(email, finalIsAdmin, false);
   };
 
   const handleRequesterLogin = async (e: React.FormEvent) => {
@@ -270,6 +298,7 @@ const App: React.FC = () => {
     gasService.clearSession();
     setRequests([]);
     setRole(UserRole.REQUESTER);
+    setViewAsRequester(false);
     setLoginEmailInput('');
 
     // RESET STATE to avoid ghosts on re-login
@@ -289,7 +318,43 @@ const App: React.FC = () => {
   };
 
   const handleManualRefresh = async () => {
-    await fetchRequests(userEmail, role === UserRole.ANALYST, false);
+    await fetchRequests(userEmail, isEffectiveAdmin, false);
+  };
+
+  const handleToggleView = async () => {
+    const next = !viewAsRequester;
+
+    // DEFENSE-IN-DEPTH: antes de cambiar a vista admin, re-verificar con el
+    // backend que el usuario SIGUE siendo analyst. Esto previene que alguien
+    // con React DevTools manipule el state `role` en memoria para acceder al
+    // dashboard admin. Si el backend dice que NO es analyst, forzar logout.
+    if (!next) {
+      // next=false significa "cambiar a vista admin"
+      if (role !== UserRole.ANALYST) {
+        // Sanity check adicional — no debería ni mostrarse el botón en este caso
+        alert('No tienes permisos de administrador.');
+        return;
+      }
+      try {
+        const stillAnalyst = await gasService.checkIsAnalyst(userEmail);
+        if (!stillAnalyst) {
+          alert('Tus permisos de administrador han cambiado. Se cerrará la sesión por seguridad.');
+          handleLogout();
+          return;
+        }
+      } catch (err) {
+        alert('No se pudo verificar tus permisos. Intenta de nuevo.');
+        return;
+      }
+    }
+
+    setViewAsRequester(next);
+    // Reset view state to LIST al cambiar de modo para no dejar forms colgados
+    setView('LIST');
+    setSelectedRequest(null);
+    setModificationRequest(null);
+    // Refetch con el modo opuesto
+    await fetchRequests(userEmail, role === UserRole.ANALYST && next === false, false);
   };
 
   // --- MODIFICATION FLOW ---
@@ -388,9 +453,18 @@ const App: React.FC = () => {
   }
 
   return (
-    <Layout userEmail={userEmail} userName={userName} role={role} onLogout={handleLogout} onRefresh={handleManualRefresh}>
+    <Layout
+      userEmail={userEmail}
+      userName={userName}
+      role={isEffectiveAdmin ? 'ANALYST' : 'REQUESTER'}
+      onLogout={handleLogout}
+      onRefresh={handleManualRefresh}
+      canToggleView={role === UserRole.ANALYST}
+      viewAsRequester={viewAsRequester}
+      onToggleView={handleToggleView}
+    >
 
-      {role === UserRole.REQUESTER && view === 'LIST' && (
+      {!isEffectiveAdmin && view === 'LIST' && (
         <UserDashboard
           requests={requests}
           isLoading={fetchingData}
@@ -412,7 +486,7 @@ const App: React.FC = () => {
         />
       )}
 
-      {role === UserRole.ANALYST && view === 'LIST' && (
+      {isEffectiveAdmin && view === 'LIST' && (
         <AdminDashboard requests={requests} integrantes={integrantes} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={setSelectedRequest} />
       )}
 
@@ -423,7 +497,7 @@ const App: React.FC = () => {
           onClose={() => setSelectedRequest(null)}
           onRefresh={handleManualRefresh}
           onModify={handleRequestModification}
-          isAdmin={role === UserRole.ANALYST}
+          isAdmin={isEffectiveAdmin}
         />
       )}
       <div className="fixed bottom-2 left-4 text-xs text-gray-400 font-mono font-bold z-[9999] pointer-events-none drop-shadow-sm">

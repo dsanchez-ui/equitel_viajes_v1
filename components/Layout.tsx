@@ -9,9 +9,14 @@ interface LayoutProps {
   role: string;
   onLogout?: () => void;
   onRefresh?: () => void;
+  // Toggle de vista admin↔usuario — solo se muestra si canToggleView=true.
+  // Permite a un analista ver su dashboard de usuario para crear solicitudes propias.
+  canToggleView?: boolean;
+  viewAsRequester?: boolean;
+  onToggleView?: () => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, role, onLogout, onRefresh }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, role, onLogout, onRefresh, canToggleView, viewAsRequester, onToggleView }) => {
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <header className="bg-black shadow-md border-b border-gray-800 sticky top-0 z-50">
@@ -47,8 +52,25 @@ export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, r
               </div>
               
               <div className="flex items-center gap-2">
+                {canToggleView && onToggleView && (
+                  <button
+                    onClick={onToggleView}
+                    className={`inline-flex items-center px-3 py-1.5 border shadow-sm text-xs font-medium rounded focus:outline-none transition-colors ${
+                      viewAsRequester
+                        ? 'border-brand-red text-white bg-brand-red hover:bg-red-700'
+                        : 'border-gray-600 text-gray-300 bg-gray-900 hover:bg-gray-800 hover:text-white'
+                    }`}
+                    title={viewAsRequester ? 'Cambiar a vista de administrador' : 'Cambiar a vista de usuario (tus solicitudes)'}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                    </svg>
+                    <span className="hidden sm:inline">{viewAsRequester ? 'VER COMO ADMIN' : 'VER COMO USUARIO'}</span>
+                  </button>
+                )}
+
                 {onRefresh && (
-                  <button 
+                  <button
                     onClick={onRefresh}
                     className="inline-flex items-center px-3 py-1.5 border border-gray-600 shadow-sm text-xs font-medium rounded text-gray-300 bg-gray-900 hover:bg-gray-800 hover:text-white focus:outline-none transition-colors"
                     title="Sincronizar / Refrescar"
