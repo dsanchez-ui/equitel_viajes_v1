@@ -5851,11 +5851,54 @@ const NBS_EDITABLE_COLUMNS = [
 ];
 const NBS_EDITABLE_BG = '#FFF9C4'; // amarillo claro
 
+// Carpeta de Drive para backups. Sobreescribible vía Script Property BACKUP_FOLDER_ID.
+const BACKUP_FOLDER_ID = getConfig_('BACKUP_FOLDER_ID', '1psDuvtdUCxmRnBmFI8P3LPyVXvDUh-t6');
+
+/**
+ * SECURITY: verifica que el usuario actual sea analyst/admin.
+ * Lanza excepción si no lo es. Debe llamarse al inicio de CADA función nbs_*.
+ * Sin esto, cualquier usuario con acceso de edición al sheet podría ejecutar
+ * switchMain/migrateData vía el sidebar y romper la base.
+ */
+function _requireAnalyst_() {
+  var email = String(Session.getActiveUser().getEmail() || '').toLowerCase().trim();
+  if (!email) throw new Error('No se pudo identificar al usuario.');
+  if (!isUserAnalyst(email)) {
+    throw new Error('Acción no autorizada. Solo el analista/admin puede usar estas funciones.');
+  }
+}
+
+/**
+ * Normaliza un header para comparación tolerante a:
+ *  - Espacios múltiples (los colapsa a uno solo)
+ *  - Forma Unicode NFC vs NFD (p.ej. "CÉDULA" en NFC vs NFD)
+ *  - Espacios en extremos
+ * NO hace lowercase — preserva case (case-sensitive por diseño).
+ */
+function _normalizeHeader_(h) {
+  if (!h) return '';
+  var s = String(h).normalize('NFC');
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+// Columnas de dinero — formato pesos colombianos. Se aplica SIEMPRE (no negociable).
+const NBS_CURRENCY_COLUMNS = [
+  'COSTO COTIZADO PARA VIAJE',
+  'VALOR PAGADO A AEROLINEA Y/O HOTEL',
+  'VALOR PAGADO A AVIATUR Y/O IVA',
+  'TOTAL FACTURA',
+  'PRESUPUESTO',
+  'COSTO_FINAL_TIQUETES',
+  'COSTO_FINAL_HOTEL'
+];
+const NBS_CURRENCY_FORMAT = '"$"#,##0'; // Render: $1,200,000 (Sheets locale adapta separadores)
+
 /**
  * Paso 1: Crea una hoja de trabajo paralela con todos los headers canónicos
  * en orden default. El admin puede luego reorganizar las columnas a mano.
  */
 function nbs_createWorkSheet(targetName) {
+  _requireAnalyst_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var name = String(targetName || '').trim();
   if (!name) throw new Error('Nombre de hoja requerido.');
@@ -5877,14 +5920,25 @@ function nbs_createWorkSheet(targetName) {
  *  - extra: headers que existen en el sheet pero NO en el canónico (preservados, no se borran)
  */
 function nbs_verifyWorkSheet(targetName) {
+  _requireAnalyst_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(targetName);
   if (!sheet) throw new Error('No existe la hoja "' + targetName + '".');
   var lastCol = sheet.getLastColumn();
   if (lastCol < 1) throw new Error('La hoja no tiene columnas.');
 
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
-    .map(function(h) { return String(h || '').trim(); });
+  // Normalizar headers con NFC + colapsar espacios múltiples
+  var rawHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headers = rawHeaders.map(_normalizeHeader_);
+
+  // Detectar duplicados
+  var counts = {};
+  headers.forEach(function(h) {
+    if (!h) return;
+    counts[h] = (counts[h] || 0) + 1;
+  });
+  var duplicates = Object.keys(counts).filter(function(k) { return counts[k] > 1; });
+
   var present = {};
   headers.forEach(function(h) { if (h) present[h] = true; });
 
@@ -5896,135 +5950,211 @@ function nbs_verifyWorkSheet(targetName) {
   var canonicalSet = {};
   HEADERS_REQUESTS.forEach(function(c) { canonicalSet[c] = true; });
   var extra = headers.filter(function(h) { return h && !canonicalSet[h]; });
+  // Remove duplicate entries from `extra` so each name appears once
+  var seenExtra = {};
+  extra = extra.filter(function(h) {
+    if (seenExtra[h]) return false;
+    seenExtra[h] = true;
+    return true;
+  });
 
   return {
-    ok: missing.length === 0,
+    ok: missing.length === 0 && duplicates.length === 0,
     missing: missing,
     extra: extra,
+    duplicates: duplicates,
     totalCanonical: HEADERS_REQUESTS.length,
     totalInSheet: headers.filter(function(h) { return h; }).length
   };
 }
 
 /**
- * Paso 4: Migra los datos de la hoja activa (Nueva Base Solicitudes) a la
- * hoja de trabajo. Mapea columnas por NOMBRE de header. Preserva validaciones
- * de datos (dropdowns) de la hoja original copiándolas a la nueva.
+ * Paso 4: Migra los datos de la hoja activa a la hoja de trabajo.
+ * Orden nuevo: PRIMERO aplica validaciones + formatos + colores al destino,
+ * LUEGO escribe los datos sobre celdas ya preparadas. Esto garantiza que los
+ * dropdowns y formatos persistan correctamente.
  *
- * Si una columna existe en la fuente pero NO en la destino, sus datos se
- * pierden (advertir al usuario antes). Si existe en destino pero no en fuente,
- * queda vacía (las validaciones agregadas manualmente se preservan).
+ * Pasos internos:
+ *   1. Build header maps de fuente y destino
+ *   2. Build column mappings (por nombre de header)
+ *   3. PRE-FORMAT: aplica a cada columna mapeada del destino:
+ *        a. Validación de datos (si la fuente tenía dropdown)
+ *        b. Número formato (preserva el de la fuente O forzar moneda si aplica)
+ *        c. Fondo amarillo (si está en NBS_EDITABLE_COLUMNS)
+ *   4. WRITE: escribe los datos en batch
+ *   5. Auto-resize columnas mapeadas
  */
 function nbs_migrateData(sourceName, targetName, options) {
+  _requireAnalyst_();
   options = options || {};
   var migrateValidations = options.migrateValidations !== false;
   var applyEditableColors = options.applyEditableColors !== false;
+  var autoResize = options.autoResize !== false;
 
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var source = ss.getSheetByName(sourceName);
-  var target = ss.getSheetByName(targetName);
-  if (!source) throw new Error('Hoja fuente "' + sourceName + '" no encontrada.');
-  if (!target) throw new Error('Hoja destino "' + targetName + '" no encontrada.');
-  if (sourceName === targetName) throw new Error('Fuente y destino son la misma hoja.');
-
-  // Build header maps
-  var srcLastCol = source.getLastColumn();
-  var srcHeaders = source.getRange(1, 1, 1, srcLastCol).getValues()[0]
-    .map(function(h) { return String(h || '').trim(); });
-  var tgtLastCol = target.getLastColumn();
-  var tgtHeaders = target.getRange(1, 1, 1, tgtLastCol).getValues()[0]
-    .map(function(h) { return String(h || '').trim(); });
-
-  var srcMap = {}; srcHeaders.forEach(function(h, i) { if (h) srcMap[h] = i; });
-  var tgtMap = {}; tgtHeaders.forEach(function(h, i) { if (h) tgtMap[h] = i; });
-
-  // Read source data
-  var srcLastRow = source.getLastRow();
-  if (srcLastRow < 2) {
-    return { rowsCopied: 0, validationsCopied: 0, columnsMapped: 0 };
+  // LOCK para evitar escrituras simultáneas durante la migración.
+  // Protege contra createRequest/updateRequest ejecutándose en paralelo.
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) {
+    throw new Error('Sistema ocupado. Intente de nuevo en unos segundos.');
   }
-  var srcData = source.getRange(2, 1, srcLastRow - 1, srcLastCol).getValues();
 
-  // Build column mapping: srcCol → tgtCol (only for headers that exist in both)
-  var colMappings = []; // [{ srcCol, tgtCol, name }]
-  Object.keys(srcMap).forEach(function(name) {
-    if (tgtMap[name] !== undefined) {
-      colMappings.push({ srcCol: srcMap[name], tgtCol: tgtMap[name], name: name });
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var source = ss.getSheetByName(sourceName);
+    var target = ss.getSheetByName(targetName);
+    if (!source) throw new Error('Hoja fuente "' + sourceName + '" no encontrada.');
+    if (!target) throw new Error('Hoja destino "' + targetName + '" no encontrada.');
+    if (sourceName === targetName) throw new Error('Fuente y destino son la misma hoja.');
+
+    // ========== 1. HEADERS + MAPPINGS (con normalización NFC) ==========
+    var srcLastCol = source.getLastColumn();
+    var srcHeaders = source.getRange(1, 1, 1, srcLastCol).getValues()[0].map(_normalizeHeader_);
+    var tgtLastCol = target.getLastColumn();
+    var tgtHeaders = target.getRange(1, 1, 1, tgtLastCol).getValues()[0].map(_normalizeHeader_);
+
+    var srcMap = {}; srcHeaders.forEach(function(h, i) { if (h) srcMap[h] = i; });
+    var tgtMap = {}; tgtHeaders.forEach(function(h, i) { if (h) tgtMap[h] = i; });
+
+    var srcLastRow = source.getLastRow();
+    if (srcLastRow < 2) {
+      return { rowsCopied: 0, validationsCopied: 0, columnsMapped: 0 };
     }
-  });
 
-  // Build target data array — column by column to respect target's order
-  var numRows = srcData.length;
-  // Initialize all rows with empty arrays of size tgtLastCol
-  var tgtData = [];
-  for (var r = 0; r < numRows; r++) {
-    tgtData.push(new Array(tgtLastCol).fill(''));
-  }
-  // Fill in the values for mapped columns only
-  colMappings.forEach(function(m) {
-    for (var r = 0; r < numRows; r++) {
-      tgtData[r][m.tgtCol] = srcData[r][m.srcCol];
-    }
-  });
-
-  // Ensure target has enough rows
-  var tgtMaxRows = target.getMaxRows();
-  if (tgtMaxRows < numRows + 1) {
-    target.insertRowsAfter(tgtMaxRows, (numRows + 1) - tgtMaxRows);
-  }
-
-  // Write data to target (rows 2 to N+1, all target columns)
-  target.getRange(2, 1, numRows, tgtLastCol).setValues(tgtData);
-
-  // Migrate data validations (dropdowns) for mapped columns
-  var validationsCopied = 0;
-  if (migrateValidations) {
-    colMappings.forEach(function(m) {
-      try {
-        var srcValidations = source.getRange(2, m.srcCol + 1, srcLastRow - 1, 1).getDataValidations();
-        // Find first non-null validation as the column-wide one
-        var colValidation = null;
-        for (var i = 0; i < srcValidations.length; i++) {
-          if (srcValidations[i][0]) { colValidation = srcValidations[i][0]; break; }
-        }
-        if (colValidation) {
-          var tgtRange = target.getRange(2, m.tgtCol + 1, target.getMaxRows() - 1, 1);
-          tgtRange.setDataValidation(colValidation);
-          validationsCopied++;
-        }
-      } catch (e) {
-        console.warn('Validation copy failed for ' + m.name + ': ' + e);
+    var colMappings = []; // [{ srcCol, tgtCol, name }]
+    Object.keys(srcMap).forEach(function(name) {
+      if (tgtMap[name] !== undefined) {
+        colMappings.push({ srcCol: srcMap[name], tgtCol: tgtMap[name], name: name });
       }
     });
-  }
 
-  // Apply yellow background to editable columns
-  var coloredColumns = 0;
-  if (applyEditableColors) {
-    NBS_EDITABLE_COLUMNS.forEach(function(name) {
-      if (tgtMap[name] !== undefined) {
-        var col = tgtMap[name] + 1;
-        target.getRange(2, col, target.getMaxRows() - 1, 1).setBackground(NBS_EDITABLE_BG);
+    // GUARD: debe haber al menos 1 columna mapeada, si no es una hoja destino
+    // completamente diferente que destruiría los datos.
+    if (colMappings.length === 0) {
+      throw new Error('No hay columnas con el mismo nombre entre fuente y destino. Verifica los headers.');
+    }
+
+    // ========== 2. ENSURE TARGET HAS ENOUGH ROWS ==========
+    var numRows = srcLastRow - 1;
+    var tgtMaxRows = target.getMaxRows();
+    if (tgtMaxRows < numRows + 1) {
+      target.insertRowsAfter(tgtMaxRows, (numRows + 1) - tgtMaxRows);
+    }
+
+    // ========== 3. PRE-FORMAT: aplicar SOLO al rango con datos reales (no a filas vacías) ==========
+    // Aplicar validaciones/colores a miles de filas vacías ralentiza el sheet.
+    // Usamos numRows en vez de finalMaxRows para acotar al contenido real.
+
+    var currencySet = {};
+    NBS_CURRENCY_COLUMNS.forEach(function(n) { currencySet[n] = true; });
+    var editableSet = {};
+    NBS_EDITABLE_COLUMNS.forEach(function(n) { editableSet[n] = true; });
+
+    var validationsCopied = 0;
+    var formatsCopied = 0;
+    var coloredColumns = 0;
+    var currencyApplied = 0;
+
+    colMappings.forEach(function(m) {
+      var tgtCol1 = m.tgtCol + 1;
+      var srcCol1 = m.srcCol + 1;
+
+      // 3a. VALIDACIÓN: busca en primeras 3 filas por si row 2 no la tiene
+      if (migrateValidations) {
+        try {
+          var vRange = source.getRange(2, srcCol1, Math.min(3, numRows), 1).getDataValidations();
+          var srcValidation = null;
+          for (var i = 0; i < vRange.length; i++) {
+            if (vRange[i][0]) { srcValidation = vRange[i][0]; break; }
+          }
+          if (srcValidation) {
+            // Aplica solo al rango con datos, no hasta maxRows (evita lentitud)
+            target.getRange(2, tgtCol1, numRows, 1).setDataValidation(srcValidation);
+            validationsCopied++;
+          }
+        } catch (e) {
+          console.warn('Validation copy failed for ' + m.name + ': ' + e);
+        }
+      }
+
+      // 3b. NUMBER FORMAT
+      try {
+        if (currencySet[m.name]) {
+          target.getRange(2, tgtCol1, numRows, 1).setNumberFormat(NBS_CURRENCY_FORMAT);
+          currencyApplied++;
+        } else {
+          var srcFormat = source.getRange(2, srcCol1).getNumberFormat();
+          if (srcFormat && srcFormat !== 'General' && srcFormat !== '0' && srcFormat !== '@') {
+            target.getRange(2, tgtCol1, numRows, 1).setNumberFormat(srcFormat);
+            formatsCopied++;
+          }
+        }
+      } catch (e) {
+        console.warn('Number format copy failed for ' + m.name + ': ' + e);
+      }
+
+      // 3c. FONDO AMARILLO (solo al rango con datos)
+      if (applyEditableColors && editableSet[m.name]) {
+        target.getRange(2, tgtCol1, numRows, 1).setBackground(NBS_EDITABLE_BG);
         coloredColumns++;
       }
     });
-  }
 
-  SpreadsheetApp.flush();
-  return {
-    rowsCopied: numRows,
-    columnsMapped: colMappings.length,
-    validationsCopied: validationsCopied,
-    coloredColumns: coloredColumns,
-    extraInTarget: tgtHeaders.filter(function(h) { return h && !srcMap[h]; }),
-    droppedFromSource: srcHeaders.filter(function(h) { return h && !tgtMap[h]; })
-  };
+    SpreadsheetApp.flush();
+
+    // ========== 4. WRITE DATA (columna por columna, sin tocar extras) ==========
+    // Escribimos SOLO las columnas mapeadas, una por una, como rangos individuales.
+    // Esto evita tocar las columnas extras que el admin haya agregado manualmente
+    // (preserva datos, validaciones y formatos de esos extras).
+    var srcData = source.getRange(2, 1, numRows, srcLastCol).getValues();
+
+    colMappings.forEach(function(m) {
+      var colValues = [];
+      for (var r = 0; r < numRows; r++) {
+        colValues.push([srcData[r][m.srcCol]]);
+      }
+      target.getRange(2, m.tgtCol + 1, numRows, 1).setValues(colValues);
+    });
+    SpreadsheetApp.flush();
+
+    // ========== 5. AUTO-RESIZE COLUMNAS MAPEADAS ==========
+    // Batch por rangos contiguos para minimizar round-trips.
+    if (autoResize) {
+      try {
+        var sortedCols = colMappings.map(function(m) { return m.tgtCol + 1; })
+          .sort(function(a, b) { return a - b; });
+        var i = 0;
+        while (i < sortedCols.length) {
+          var start = sortedCols[i];
+          var j = i + 1;
+          while (j < sortedCols.length && sortedCols[j] === sortedCols[j - 1] + 1) j++;
+          target.autoResizeColumns(start, j - i);
+          i = j;
+        }
+      } catch (e) {
+        console.warn('Auto-resize failed: ' + e);
+      }
+    }
+
+    return {
+      rowsCopied: numRows,
+      columnsMapped: colMappings.length,
+      validationsCopied: validationsCopied,
+      formatsCopied: formatsCopied,
+      currencyApplied: currencyApplied,
+      coloredColumns: coloredColumns,
+      extraInTarget: tgtHeaders.filter(function(h) { return h && !srcMap[h]; }),
+      droppedFromSource: srcHeaders.filter(function(h) { return h && !tgtMap[h]; })
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**
  * Paso 5 (helper): Lista los IDs de solicitudes en la hoja dada (para preview).
  */
 function nbs_listRequests(sheetName, limit) {
+  _requireAnalyst_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) throw new Error('Hoja "' + sheetName + '" no encontrada.');
@@ -6061,6 +6191,7 @@ function nbs_listRequests(sheetName, limit) {
  * para que el admin verifique la migración celda por celda.
  */
 function nbs_getRequestRow(sheetName, requestId) {
+  _requireAnalyst_();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(sheetName);
   if (!sheet) throw new Error('Hoja "' + sheetName + '" no encontrada.');
@@ -6101,47 +6232,269 @@ function nbs_getRequestRow(sheetName, requestId) {
  * Reversible: si algo falla, basta con revertir los nombres manualmente.
  */
 function nbs_switchMain(currentName, newName) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (currentName !== SHEET_NAME_REQUESTS) {
-    throw new Error('Solo puedes hacer switch desde la hoja activa "' + SHEET_NAME_REQUESTS + '".');
+  _requireAnalyst_();
+
+  // LOCK: el switch hace dos setName() consecutivos. Sin lock, un usuario
+  // escribiendo requests en paralelo puede encontrar el sheet renombrado
+  // a mitad de su operación (race condition → pérdida de datos).
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) {
+    throw new Error('Sistema ocupado. Intente de nuevo en unos segundos.');
   }
-  var current = ss.getSheetByName(currentName);
-  var target = ss.getSheetByName(newName);
-  if (!current) throw new Error('Hoja activa "' + currentName + '" no encontrada.');
-  if (!target) throw new Error('Hoja de trabajo "' + newName + '" no encontrada.');
 
-  // Renombrar activa a _OLD_<fecha>
-  var dateStr = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyyMMdd_HHmm');
-  var oldName = currentName + '_OLD_' + dateStr;
-  // Si por algún motivo ya existe (re-intento), añade un sufijo
-  var attempt = 0;
-  while (ss.getSheetByName(oldName)) {
-    attempt++;
-    oldName = currentName + '_OLD_' + dateStr + '_' + attempt;
-    if (attempt > 10) throw new Error('No se pudo encontrar un nombre disponible para la hoja antigua.');
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (currentName !== SHEET_NAME_REQUESTS) {
+      throw new Error('Solo puedes hacer switch desde la hoja activa "' + SHEET_NAME_REQUESTS + '".');
+    }
+    var current = ss.getSheetByName(currentName);
+    var target = ss.getSheetByName(newName);
+    if (!current) throw new Error('Hoja activa "' + currentName + '" no encontrada.');
+    if (!target) throw new Error('Hoja de trabajo "' + newName + '" no encontrada.');
+
+    // RE-VERIFY: antes de hacer el switch atómico, confirmar que la hoja destino
+    // tiene TODOS los headers canónicos. Si falta alguno, el backend se rompe
+    // inmediatamente después del switch. Mejor abortar aquí.
+    var verify = nbs_verifyWorkSheet(newName);
+    if (verify.missing.length > 0) {
+      throw new Error('La hoja "' + newName + '" tiene headers canónicos faltantes: ' + verify.missing.join(', ') + '. Corrígelos antes del switch.');
+    }
+    if (verify.duplicates && verify.duplicates.length > 0) {
+      throw new Error('La hoja "' + newName + '" tiene headers duplicados: ' + verify.duplicates.join(', ') + '. Corrígelos antes del switch.');
+    }
+
+    // Renombrar activa a _OLD_<fecha>
+    var dateStr = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyyMMdd_HHmm');
+    var oldName = currentName + '_OLD_' + dateStr;
+    var attempt = 0;
+    while (ss.getSheetByName(oldName)) {
+      attempt++;
+      oldName = currentName + '_OLD_' + dateStr + '_' + attempt;
+      if (attempt > 10) throw new Error('No se pudo encontrar un nombre disponible para la hoja antigua.');
+    }
+    current.setName(oldName);
+
+    // Renombrar trabajo a canónica
+    target.setName(currentName);
+
+    // Limpiar cache de headers porque el "active" sheet cambió
+    _clearReqHeadersCache_();
+    SpreadsheetApp.flush();
+
+    return {
+      ok: true,
+      oldSheetName: oldName,
+      newActiveSheet: currentName
+    };
+  } finally {
+    lock.releaseLock();
   }
-  current.setName(oldName);
-
-  // Renombrar trabajo a canónica
-  target.setName(currentName);
-
-  // Limpiar cache de headers porque el "active" sheet cambió
-  _clearReqHeadersCache_();
-
-  return {
-    ok: true,
-    oldSheetName: oldName,
-    newActiveSheet: currentName
-  };
 }
 
 /**
  * Abre el sidebar de reorganización (separado del sidebar de USUARIOS).
+ * GATED: solo accesible al analista/admin.
  */
 function abrirSidebarReorg() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+  } catch (e) {
+    ui.alert('Acción no autorizada', 'Solo el analista/admin puede abrir este sidebar.', ui.ButtonSet.OK);
+    return;
+  }
   var html = HtmlService.createHtmlOutputFromFile('ReorgSidebar')
     .setTitle('Reorganizar Base Principal');
-  SpreadsheetApp.getUi().showSidebar(html);
+  ui.showSidebar(html);
+}
+
+// =====================================================================
+// BACKUP — copia de seguridad del spreadsheet completo a carpeta externa
+// =====================================================================
+// Pensado como función independiente (accesible desde el sidebar de reorg
+// o como paso previo antes del switch). Copia TODO el archivo (todas las
+// hojas incluyendo INTEGRANTES, USUARIOS, etc.) a una carpeta que el admin
+// configura (típicamente su Drive personal / carpeta privada).
+//
+// Configuración: Script Property BACKUP_FOLDER_ID (opcional). Si no está
+// configurada, la función acepta un folderId como parámetro explícito.
+// =====================================================================
+
+/**
+ * Retorna la carpeta de backup configurada (url + nombre) o null si no hay.
+ */
+function nbs_getBackupFolderInfo() {
+  _requireAnalyst_();
+  var id = BACKUP_FOLDER_ID;
+  if (!id) return { configured: false };
+  try {
+    var folder = DriveApp.getFolderById(id);
+    return {
+      configured: true,
+      id: id,
+      name: folder.getName(),
+      url: folder.getUrl()
+    };
+  } catch (e) {
+    return { configured: false, error: 'No se pudo acceder a la carpeta (' + id + '): ' + e.message };
+  }
+}
+
+/**
+ * Guarda la carpeta de backup en Script Properties. Acepta un folderId
+ * directo o una URL de Drive (se extrae el ID).
+ */
+function nbs_setBackupFolder(folderIdOrUrl) {
+  _requireAnalyst_();
+  var raw = String(folderIdOrUrl || '').trim();
+  if (!raw) throw new Error('Debe proporcionar un ID o URL de carpeta.');
+
+  // Extraer ID si viene como URL: https://drive.google.com/drive/folders/XXX
+  var id = raw;
+  var match = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (match) id = match[1];
+
+  // Validar que la carpeta es accesible antes de guardar
+  try {
+    var folder = DriveApp.getFolderById(id);
+    var name = folder.getName();
+    PropertiesService.getScriptProperties().setProperty('BACKUP_FOLDER_ID', id);
+    return {
+      ok: true,
+      id: id,
+      name: name,
+      url: folder.getUrl()
+    };
+  } catch (e) {
+    throw new Error('No se pudo acceder a la carpeta con ID "' + id + '". Verifique permisos y que el ID sea correcto.');
+  }
+}
+
+/**
+ * Crea una copia completa del spreadsheet actual y la mueve a la carpeta
+ * de backup. El nombre incluye timestamp para evitar colisiones.
+ *
+ * @param {string} [folderIdOrUrl] Opcional: si se provee, sobreescribe el
+ *   BACKUP_FOLDER_ID configurado solo para esta ejecución (no lo guarda).
+ * @returns {{ok, url, name, folderUrl}} info de la copia creada
+ */
+function nbs_createBackup(folderIdOrUrl) {
+  _requireAnalyst_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ssFile = DriveApp.getFileById(ss.getId());
+
+  // Resolver carpeta destino
+  var folderId = '';
+  if (folderIdOrUrl) {
+    var raw = String(folderIdOrUrl).trim();
+    var match = raw.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+    folderId = match ? match[1] : raw;
+  } else {
+    folderId = BACKUP_FOLDER_ID;
+  }
+  if (!folderId) {
+    throw new Error('No hay carpeta de backup configurada. Configure BACKUP_FOLDER_ID o pase la carpeta como parámetro.');
+  }
+
+  var folder;
+  try {
+    folder = DriveApp.getFolderById(folderId);
+  } catch (e) {
+    throw new Error('No se pudo acceder a la carpeta de backup: ' + e.message);
+  }
+
+  // Crear copia con timestamp
+  var timestamp = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyyMMdd_HHmm');
+  var copyName = 'Backup_' + timestamp + '_' + ssFile.getName();
+  var copy = ssFile.makeCopy(copyName, folder);
+
+  return {
+    ok: true,
+    id: copy.getId(),
+    url: copy.getUrl(),
+    name: copy.getName(),
+    folderUrl: folder.getUrl(),
+    folderName: folder.getName()
+  };
+}
+
+// =====================================================================
+// VISIBILIDAD DE COLUMNAS — ocultar/mostrar columnas de la hoja activa
+// =====================================================================
+
+/**
+ * Retorna los nombres de todas las hojas del spreadsheet activo.
+ */
+function nbs_listSheets() {
+  _requireAnalyst_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  return ss.getSheets().map(function(s) { return s.getName(); });
+}
+
+/**
+ * Retorna el estado actual de visibilidad de cada columna con header no vacío.
+ * Para cada columna devuelve {name, hidden, isCanonical}.
+ */
+function nbs_getColumnStates(sheetName) {
+  _requireAnalyst_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('Hoja "' + sheetName + '" no encontrada.');
+
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return [];
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(function(h) { return String(h || '').trim(); });
+
+  var canonicalSet = {};
+  HEADERS_REQUESTS.forEach(function(h) { canonicalSet[h] = true; });
+
+  var states = [];
+  for (var i = 0; i < lastCol; i++) {
+    if (!headers[i]) continue;
+    states.push({
+      colIndex: i + 1, // 1-based
+      name: headers[i],
+      hidden: sheet.isColumnHiddenByUser(i + 1),
+      isCanonical: !!canonicalSet[headers[i]]
+    });
+  }
+  return states;
+}
+
+/**
+ * Aplica visibilidad a las columnas según el estado recibido.
+ * @param {string} sheetName
+ * @param {Array<{name, visible}>} visibilityStates
+ * @returns {{ hidden: number, shown: number }}
+ */
+function nbs_applyColumnVisibility(sheetName, visibilityStates) {
+  _requireAnalyst_();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('Hoja "' + sheetName + '" no encontrada.');
+
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0]
+    .map(function(h) { return String(h || '').trim(); });
+
+  var nameToCol = {};
+  headers.forEach(function(h, i) { if (h) nameToCol[h] = i + 1; });
+
+  var hidden = 0, shown = 0;
+  visibilityStates.forEach(function(s) {
+    var col = nameToCol[s.name];
+    if (!col) return;
+    if (s.visible) {
+      sheet.showColumns(col);
+      shown++;
+    } else {
+      sheet.hideColumns(col);
+      hidden++;
+    }
+  });
+
+  return { hidden: hidden, shown: shown };
 }
 
 // =====================================================================

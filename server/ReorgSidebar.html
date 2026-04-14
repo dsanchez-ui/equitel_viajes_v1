@@ -96,6 +96,30 @@
   <h2>Reorganizar Base Principal</h2>
   <div class="subtitle">Workflow seguro: la hoja activa NO se toca hasta el paso 6.</div>
 
+  <!-- SECCIÓN: RESPALDO COMPLETO (independiente, siempre accesible) -->
+  <div class="step" style="background:#eff6ff; border-color:#bfdbfe;">
+    <div class="step-header">
+      <div class="step-number" style="background:#2563eb; color:white;">🛡️</div>
+      <div class="step-title">Respaldo completo del archivo</div>
+    </div>
+    <div class="step-body">
+      <p style="font-size:11px; color:#1e40af; margin:0 0 8px;">
+        Crea una copia COMPLETA del Google Sheets (todas las hojas) en tu carpeta privada.
+        Recomendado antes de cualquier reorganización.
+      </p>
+      <div class="field">
+        <label>Carpeta de respaldo (ID o URL de Drive)</label>
+        <input type="text" id="backupFolderInput" placeholder="Ej: 1AbC... o https://drive.google.com/drive/folders/..." />
+        <div class="help-text" id="backupFolderCurrent">Cargando carpeta configurada...</div>
+      </div>
+      <div class="actions">
+        <button id="btnSetBackupFolder">Guardar carpeta</button>
+        <button id="btnCreateBackup" class="primary">📋 Crear respaldo ahora</button>
+      </div>
+      <div id="statusBackup" class="status"></div>
+    </div>
+  </div>
+
   <!-- PASO 1: Crear hoja de trabajo -->
   <div id="step1" class="step active">
     <div class="step-header">
@@ -200,6 +224,36 @@
         <button id="btnSwitch" class="primary">Activar nueva hoja</button>
       </div>
       <div id="status6" class="status"></div>
+    </div>
+  </div>
+
+  <!-- PASO 7: Ocultar columnas (independiente, opcional) -->
+  <div id="step7" class="step" style="background:#fafafa;">
+    <div class="step-header">
+      <div class="step-number" style="background:#6b7280; color:white;">7</div>
+      <div class="step-title">Ocultar columnas (opcional)</div>
+    </div>
+    <div class="step-body">
+      <p style="font-size:11px; color:#6b7280; margin:0 0 8px;">
+        Selecciona qué columnas quieres ver y cuáles ocultar. Las columnas ocultas siguen funcionando en el backend, solo quedan invisibles visualmente.
+        Puedes ejecutar este paso sobre cualquier hoja (principal o de trabajo) en cualquier momento.
+      </p>
+      <div class="field">
+        <label>Hoja</label>
+        <select id="visSheetSelect"><option value="Nueva Base Solicitudes">Nueva Base Solicitudes</option></select>
+      </div>
+      <div class="actions">
+        <button id="btnLoadVis">Cargar columnas</button>
+      </div>
+      <div id="visList" style="display:none; margin-top:10px; max-height:320px; overflow-y:auto; background:white; border:1px solid #e5e7eb; border-radius:4px; padding:6px;"></div>
+      <div id="visActions" style="display:none; margin-top:8px;">
+        <div class="actions">
+          <button id="btnVisAllVisible" style="font-size:10px;">✓ Todas visibles</button>
+          <button id="btnVisAllHidden" style="font-size:10px;">✗ Todas ocultas</button>
+          <button id="btnApplyVis" class="primary">Aplicar</button>
+        </div>
+      </div>
+      <div id="statusVis" class="status"></div>
     </div>
   </div>
 
@@ -415,6 +469,154 @@
           showStatus('status6', 'Error: ' + err.message, 'error');
         })
         .nbs_switchMain(state.sourceName, state.targetName);
+    });
+
+    // ============ BACKUP SECTION ============
+    function loadBackupFolderInfo() {
+      google.script.run
+        .withSuccessHandler(function(info) {
+          var el = document.getElementById('backupFolderCurrent');
+          if (info.configured) {
+            el.innerHTML = '✓ Carpeta: <strong>' + escapeHtml(info.name) + '</strong> · <a href="' + info.url + '" target="_blank">Abrir</a>';
+            document.getElementById('backupFolderInput').value = info.id;
+          } else {
+            el.innerHTML = info.error
+              ? '⚠️ ' + escapeHtml(info.error)
+              : 'Sin configurar. Pega el ID o URL de tu carpeta de respaldo.';
+          }
+        })
+        .withFailureHandler(function(err) {
+          document.getElementById('backupFolderCurrent').textContent = 'Error: ' + err.message;
+        })
+        .nbs_getBackupFolderInfo();
+    }
+    loadBackupFolderInfo();
+
+    document.getElementById('btnSetBackupFolder').addEventListener('click', function() {
+      var val = document.getElementById('backupFolderInput').value.trim();
+      if (!val) { showStatus('statusBackup', 'Pega el ID o URL primero.', 'error'); return; }
+      var btn = this; btn.disabled = true; btn.textContent = 'Guardando...';
+      hideStatus('statusBackup');
+      google.script.run
+        .withSuccessHandler(function(r) {
+          btn.disabled = false; btn.textContent = 'Guardar carpeta';
+          showStatus('statusBackup', '✓ Carpeta guardada: ' + r.name, 'success');
+          loadBackupFolderInfo();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = 'Guardar carpeta';
+          showStatus('statusBackup', 'Error: ' + err.message, 'error');
+        })
+        .nbs_setBackupFolder(val);
+    });
+
+    document.getElementById('btnCreateBackup').addEventListener('click', function() {
+      if (!confirm('¿Crear copia completa del archivo en la carpeta de respaldo?\n\nEsto puede tardar ~30-60 segundos.')) return;
+      var btn = this; btn.disabled = true; btn.textContent = 'Copiando... (puede tardar)';
+      hideStatus('statusBackup');
+      google.script.run
+        .withSuccessHandler(function(r) {
+          btn.disabled = false; btn.textContent = '📋 Crear respaldo ahora';
+          var msg = '✓ Respaldo creado: <a href="' + r.url + '" target="_blank">' + escapeHtml(r.name) + '</a>';
+          var s = document.getElementById('statusBackup');
+          s.innerHTML = msg;
+          s.className = 'status success';
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = '📋 Crear respaldo ahora';
+          showStatus('statusBackup', 'Error: ' + err.message, 'error');
+        })
+        .nbs_createBackup(null);
+    });
+
+    // ============ PASO 7: OCULTAR COLUMNAS ============
+    var visColumnStates = [];
+
+    // Popular dropdown con todas las hojas del spreadsheet
+    google.script.run
+      .withSuccessHandler(function(names) {
+        var sel = document.getElementById('visSheetSelect');
+        sel.innerHTML = '';
+        names.forEach(function(n) {
+          var opt = document.createElement('option');
+          opt.value = n;
+          opt.textContent = n;
+          if (n === 'Nueva Base Solicitudes') opt.selected = true;
+          sel.appendChild(opt);
+        });
+      })
+      .withFailureHandler(function() { /* silent */ })
+      .nbs_listSheets();
+
+    document.getElementById('btnLoadVis').addEventListener('click', function() {
+      var sheetName = document.getElementById('visSheetSelect').value;
+      var btn = this; btn.disabled = true; btn.textContent = 'Cargando...';
+      hideStatus('statusVis');
+      google.script.run
+        .withSuccessHandler(function(states) {
+          btn.disabled = false; btn.textContent = 'Cargar columnas';
+          visColumnStates = states;
+          renderVisList();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = 'Cargar columnas';
+          showStatus('statusVis', 'Error: ' + err.message, 'error');
+        })
+        .nbs_getColumnStates(sheetName);
+    });
+
+    function renderVisList() {
+      var listDiv = document.getElementById('visList');
+      if (visColumnStates.length === 0) {
+        listDiv.innerHTML = '<div style="padding:10px; color:#9ca3af; text-align:center;">Sin columnas.</div>';
+        listDiv.style.display = 'block';
+        return;
+      }
+      var html = '';
+      visColumnStates.forEach(function(s, idx) {
+        var visible = !s.hidden;
+        html += '<label style="display:flex; align-items:center; gap:6px; padding:4px 6px; border-bottom:1px solid #f3f4f6; font-size:11px; cursor:pointer;">'
+          + '<input type="checkbox" data-idx="' + idx + '"' + (visible ? ' checked' : '') + ' style="accent-color:#D71920;" />'
+          + '<span style="flex:1;' + (s.isCanonical ? '' : ' color:#d97706; font-style:italic;') + '">' + escapeHtml(s.name) + '</span>'
+          + (s.isCanonical ? '' : '<span style="font-size:9px; color:#d97706;">extra</span>')
+          + '</label>';
+      });
+      listDiv.innerHTML = html;
+      listDiv.style.display = 'block';
+      document.getElementById('visActions').style.display = 'block';
+
+      Array.prototype.forEach.call(listDiv.querySelectorAll('input[type="checkbox"]'), function(cb) {
+        cb.addEventListener('change', function() {
+          var idx = Number(cb.dataset.idx);
+          visColumnStates[idx].hidden = !cb.checked;
+        });
+      });
+    }
+
+    document.getElementById('btnVisAllVisible').addEventListener('click', function() {
+      visColumnStates.forEach(function(s) { s.hidden = false; });
+      renderVisList();
+    });
+    document.getElementById('btnVisAllHidden').addEventListener('click', function() {
+      visColumnStates.forEach(function(s) { s.hidden = true; });
+      renderVisList();
+    });
+
+    document.getElementById('btnApplyVis').addEventListener('click', function() {
+      var sheetName = document.getElementById('visSheetSelect').value;
+      var states = visColumnStates.map(function(s) { return { name: s.name, visible: !s.hidden }; });
+      var btn = this; btn.disabled = true; btn.textContent = 'Aplicando...';
+      hideStatus('statusVis');
+      google.script.run
+        .withSuccessHandler(function(r) {
+          btn.disabled = false; btn.textContent = 'Aplicar';
+          showStatus('statusVis', '✓ ' + r.shown + ' visibles, ' + r.hidden + ' ocultas.', 'success');
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false; btn.textContent = 'Aplicar';
+          showStatus('statusVis', 'Error: ' + err.message, 'error');
+        })
+        .nbs_applyColumnVisibility(sheetName, states);
     });
   </script>
 </body>
