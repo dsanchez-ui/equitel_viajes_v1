@@ -7249,3 +7249,228 @@ function diagnosticarAuth() {
     effectiveMatches: effectiveMatches
   };
 }
+
+// =====================================================================
+// PLAN 2 — ACTIVACIÓN/DESACTIVACIÓN DEL MODO USUARIOS (runtime flag)
+// =====================================================================
+// Estas funciones permiten alternar entre leer de INTEGRANTES (legacy) y
+// leer de USUARIOS (Fase B) sin depender de la GUI de Script Properties
+// (que se bloquea cuando hay >50 propiedades, como en este proyecto).
+//
+// FILOSOFÍA: NO están en el menú onOpen por diseño — solo accesibles desde
+// el editor de Apps Script. Evita que alguien haga click por error.
+// =====================================================================
+
+/**
+ * PRE-FLIGHT CHECK: valida que la migración de INTEGRANTES → USUARIOS está
+ * completa antes de activar el flag. Ejecutar ANTES de toggleUsuariosMode().
+ *
+ * Reporta:
+ *   - Usuarios en INTEGRANTES que NO están en USUARIOS (bloquearían login)
+ *   - PIN hashes que NO se preservaron
+ *   - Aprobadores con "(no resuelto)" en col H de USUARIOS
+ *   - Usuarios en USUARIOS sin correo (inválidos)
+ *
+ * Pasos:
+ *   1. Dropdown de funciones → verificarMigracionUsuarios
+ *   2. ▶ Ejecutar
+ *   3. Ver → Registros de ejecución
+ *
+ * Si todo sale OK ("✅ Migración consistente"), puedes proceder a ejecutar
+ * toggleUsuariosMode() con confianza.
+ */
+function verificarMigracionUsuarios() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var integrantes = ss.getSheetByName(SHEET_NAME_INTEGRANTES);
+  var usuarios = ss.getSheetByName(SHEET_NAME_USUARIOS);
+
+  Logger.log('=== PRE-FLIGHT CHECK: MIGRACIÓN USUARIOS ===');
+  Logger.log('');
+
+  if (!integrantes) {
+    Logger.log('⚠️  No existe la hoja INTEGRANTES. Nada que comparar.');
+    return { ok: false, reason: 'INTEGRANTES no existe' };
+  }
+  if (!usuarios) {
+    Logger.log('❌ No existe la hoja USUARIOS. Ejecuta crearHojaUsuarios() primero.');
+    return { ok: false, reason: 'USUARIOS no existe' };
+  }
+
+  // Parse INTEGRANTES (sección verde)
+  var intHeaders = integrantes.getRange(1, 1, 1, integrantes.getLastColumn()).getValues()[0];
+  var idxIntCorreo = intHeaders.indexOf('correo');
+  var idxIntPin = intHeaders.indexOf('PIN');
+  if (idxIntCorreo < 0) {
+    Logger.log('⚠️  INTEGRANTES no tiene columna "correo".');
+    return { ok: false, reason: 'INTEGRANTES malformada' };
+  }
+  var intLastRow = integrantes.getLastRow();
+  var intData = intLastRow >= 2 ? integrantes.getRange(2, 1, intLastRow - 1, integrantes.getLastColumn()).getValues() : [];
+  var integrantesMap = {}; // correo → {pin}
+  intData.forEach(function(r) {
+    var email = String(r[idxIntCorreo] || '').toLowerCase().trim();
+    if (!email) return;
+    integrantesMap[email] = {
+      pin: idxIntPin >= 0 ? String(r[idxIntPin] || '').trim() : ''
+    };
+  });
+
+  // Parse USUARIOS
+  var usrLastRow = usuarios.getLastRow();
+  var usrData = usrLastRow >= 2 ? usuarios.getRange(2, 1, usrLastRow - 1, 10).getValues() : [];
+  var usuariosMap = {}; // correo → {pin, unresolvedApprover}
+  var usuariosSinCorreo = 0;
+  usrData.forEach(function(r) {
+    var email = String(r[2] || '').toLowerCase().trim();
+    if (!email) { usuariosSinCorreo++; return; }
+    usuariosMap[email] = {
+      pin: String(r[9] || '').trim(),
+      unresolvedApprover: String(r[7] || '').indexOf('(no resuelto)') !== -1
+    };
+  });
+
+  // Comparar
+  var missing = [];       // en INTEGRANTES, NO en USUARIOS
+  var pinLost = [];       // tenían PIN en INTEGRANTES, NO en USUARIOS
+  var unresolvedApp = []; // col H tiene "(no resuelto)"
+
+  Object.keys(integrantesMap).forEach(function(email) {
+    var intEntry = integrantesMap[email];
+    var usrEntry = usuariosMap[email];
+    if (!usrEntry) {
+      missing.push(email);
+    } else {
+      if (intEntry.pin && !usrEntry.pin) {
+        pinLost.push(email);
+      }
+    }
+  });
+  Object.keys(usuariosMap).forEach(function(email) {
+    if (usuariosMap[email].unresolvedApprover) {
+      unresolvedApp.push(email);
+    }
+  });
+
+  Logger.log('Total INTEGRANTES: ' + Object.keys(integrantesMap).length);
+  Logger.log('Total USUARIOS:    ' + Object.keys(usuariosMap).length);
+  Logger.log('');
+
+  var allOk = true;
+
+  if (missing.length > 0) {
+    allOk = false;
+    Logger.log('❌ BLOQUEANTE: ' + missing.length + ' usuario(s) en INTEGRANTES pero NO en USUARIOS.');
+    Logger.log('   Estos usuarios no podrán iniciar sesión tras el switch:');
+    missing.slice(0, 10).forEach(function(e) { Logger.log('     - ' + e); });
+    if (missing.length > 10) Logger.log('     ... y ' + (missing.length - 10) + ' más');
+    Logger.log('   FIX: ejecuta migrarIntegrantesAUsuarios() o sincronizarConMaestroRH().');
+    Logger.log('');
+  } else {
+    Logger.log('✅ Todos los correos de INTEGRANTES están en USUARIOS.');
+  }
+
+  if (pinLost.length > 0) {
+    allOk = false;
+    Logger.log('❌ ' + pinLost.length + ' usuario(s) tenían PIN en INTEGRANTES pero NO en USUARIOS.');
+    Logger.log('   Estos deberán regenerar su PIN tras el switch:');
+    pinLost.slice(0, 10).forEach(function(e) { Logger.log('     - ' + e); });
+    Logger.log('   FIX: re-ejecutar migrarIntegrantesAUsuarios() con "borrar y re-migrar"=SÍ.');
+    Logger.log('');
+  } else {
+    Logger.log('✅ Todos los PINs preservados.');
+  }
+
+  if (unresolvedApp.length > 0) {
+    Logger.log('⚠️  ' + unresolvedApp.length + ' usuario(s) tienen aprobador sin resolver en USUARIOS.');
+    Logger.log('   No bloquea el switch, pero estos usuarios no tendrán aprobador válido:');
+    unresolvedApp.slice(0, 5).forEach(function(e) { Logger.log('     - ' + e); });
+    Logger.log('   FIX: asignarles aprobador desde el sidebar o ejecutar recargarResolucionesUsuarios().');
+    Logger.log('');
+  }
+
+  if (usuariosSinCorreo > 0) {
+    Logger.log('⚠️  ' + usuariosSinCorreo + ' fila(s) en USUARIOS sin correo — ignoradas.');
+    Logger.log('');
+  }
+
+  Logger.log('---');
+  if (allOk) {
+    Logger.log('✅ MIGRACIÓN CONSISTENTE. Puedes ejecutar toggleUsuariosMode() con confianza.');
+  } else {
+    Logger.log('❌ NO ACTIVES todavía. Corrige los problemas de arriba y vuelve a verificar.');
+  }
+
+  return {
+    ok: allOk,
+    integrantesTotal: Object.keys(integrantesMap).length,
+    usuariosTotal: Object.keys(usuariosMap).length,
+    missing: missing,
+    pinLost: pinLost,
+    unresolvedApprovers: unresolvedApp
+  };
+}
+
+/**
+ * TOGGLE IDEMPOTENTE: cambia el flag USE_USUARIOS_SHEET entre 'true' y 'false'.
+ *
+ * Comportamiento:
+ *   - Si actualmente está en INTEGRANTES (flag='false' o vacío) → cambia a USUARIOS.
+ *   - Si actualmente está en USUARIOS (flag='true') → cambia de vuelta a INTEGRANTES.
+ *
+ * Por qué existe: la GUI de Script Properties se bloquea cuando hay >50
+ * propiedades (caso de este proyecto). Esta función es la forma confiable
+ * de cambiar el flag.
+ *
+ * Seguridad: NO está en el menú onOpen — solo accesible desde el editor.
+ * Esto evita que alguien lo ejecute sin entender las consecuencias.
+ *
+ * Pasos:
+ *   1. Dropdown de funciones → toggleUsuariosMode
+ *   2. ▶ Ejecutar
+ *   3. Ver → Registros de ejecución
+ *   4. Recarga el sheet para que onOpen() vuelva a leer el flag
+ *
+ * Rollback: ejecutar la misma función de nuevo — vuelve al estado anterior.
+ *
+ * RECOMENDACIÓN: ejecuta verificarMigracionUsuarios() ANTES de toggle para
+ * asegurar que no vas a dejar usuarios varados tras el switch.
+ */
+function toggleUsuariosMode() {
+  var props = PropertiesService.getScriptProperties();
+  var currentRaw = props.getProperty('USE_USUARIOS_SHEET');
+  var currentlyActive = (currentRaw === 'true');
+
+  Logger.log('=== TOGGLE MODO USUARIOS ===');
+  Logger.log('Estado previo: USE_USUARIOS_SHEET = ' + (currentRaw === null ? '(no definido, default=false)' : '"' + currentRaw + '"'));
+  Logger.log('Modo previo:   ' + (currentlyActive ? 'USUARIOS (Fase B)' : 'INTEGRANTES (legacy)'));
+  Logger.log('');
+
+  var newValue = currentlyActive ? 'false' : 'true';
+  props.setProperty('USE_USUARIOS_SHEET', newValue);
+
+  Logger.log('Estado nuevo:  USE_USUARIOS_SHEET = "' + newValue + '"');
+  Logger.log('Modo nuevo:    ' + (newValue === 'true' ? 'USUARIOS (Fase B)' : 'INTEGRANTES (legacy)'));
+  Logger.log('');
+
+  if (newValue === 'true') {
+    Logger.log('✅ MODO USUARIOS ACTIVADO.');
+    Logger.log('');
+    Logger.log('Próximos pasos:');
+    Logger.log('  1. Recarga el Google Sheet (F5) para que el menú refleje el cambio.');
+    Logger.log('  2. Prueba el login con un usuario normal.');
+    Logger.log('  3. Si algo falla, ejecuta toggleUsuariosMode() de nuevo para revertir.');
+  } else {
+    Logger.log('↩️  MODO REVERTIDO A INTEGRANTES (legacy).');
+    Logger.log('');
+    Logger.log('Próximos pasos:');
+    Logger.log('  1. Recarga el Google Sheet (F5).');
+    Logger.log('  2. La aplicación lee de INTEGRANTES como antes. Datos de USUARIOS quedan');
+    Logger.log('     intactos pero no se usan.');
+  }
+
+  return {
+    previousMode: currentlyActive ? 'USUARIOS' : 'INTEGRANTES',
+    currentMode: newValue === 'true' ? 'USUARIOS' : 'INTEGRANTES',
+    flagValue: newValue
+  };
+}

@@ -29,13 +29,14 @@
     /* TABS */
     .tabs {
       display: flex;
-      gap: 4px;
+      gap: 2px;
       margin-bottom: 12px;
       border-bottom: 1px solid #e5e7eb;
     }
     .tab {
-      flex: 1;
-      padding: 8px 6px;
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 8px 4px;
       font-size: 11px;
       font-weight: 600;
       color: #6b7280;
@@ -43,9 +44,11 @@
       border: none;
       border-bottom: 2px solid transparent;
       cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
+      letter-spacing: 0;
       position: relative;
+      white-space: nowrap;
+      overflow: visible;
+      text-align: center;
     }
     .tab:hover { color: #374151; }
     .tab.active {
