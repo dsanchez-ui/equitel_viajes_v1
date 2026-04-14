@@ -125,47 +125,84 @@ const App: React.FC = () => {
     if (!userEmail) return;
     const intervalId = setInterval(async () => {
       setIsSyncing(true);
-      await fetchRequests(userEmail, isEffectiveAdmin, true);
-      setIsSyncing(false);
+      try {
+        await fetchRequests(userEmail, isEffectiveAdmin, true);
+      } finally {
+        // Defensive: siempre apagar isSyncing, aun si fetchRequests lanzara algo.
+        setIsSyncing(false);
+      }
     }, POLL_INTERVAL_MS);
     return () => clearInterval(intervalId);
   }, [userEmail, role, viewAsRequester]);
 
   const determineUserName = (email: string, currentIntegrantes: Integrant[] = []) => {
-    const found = currentIntegrantes.find(i => i.email.toLowerCase() === email.toLowerCase());
-    if (found) return `Hola, ${found.name.toUpperCase()}`;
+    // Defensive: si integrantes tiene filas con email/name undefined, no queremos
+    // que .toLowerCase() lance TypeError y tumbe el flujo de login.
+    try {
+      const target = String(email || '').toLowerCase();
+      const found = currentIntegrantes.find(i => i && i.email && String(i.email).toLowerCase() === target);
+      if (found && found.name) return `Hola, ${String(found.name).toUpperCase()}`;
+    } catch (e) {
+      console.warn('determineUserName error:', e);
+    }
     return "Hola, Integrante Equitel";
   };
 
   const handleLoginSuccess = async (email: string, authenticatedAsAdmin: boolean = false, preloadedIntegrantes?: Integrant[]) => {
-    setUserEmail(email);
-    gasService.setUserEmail(email);
-    const list = preloadedIntegrantes || integrantes;
-    setUserName(determineUserName(email, list));
-
-    // DEFENSE-IN-DEPTH: si la sesión dice que somos analyst, re-confirmar
-    // contra el backend con checkIsAnalyst. Si el backend dice que NO, rebajar
-    // a REQUESTER (caso donde alguien fue removido de ANALYST_EMAILS pero la
-    // sesión vieja aún tiene role=ANALYST almacenada).
+    // CRÍTICO: toda la función está envuelta en try/finally para GARANTIZAR
+    // que setLoading(false) siempre se ejecute, aun si alguna operación lanza
+    // una excepción inesperada. Sin esto, el usuario podría quedar atrapado
+    // en un spinner infinito.
+    setLoading(true);
     let finalIsAdmin = authenticatedAsAdmin;
-    if (authenticatedAsAdmin) {
-      try {
-        const confirmedAnalyst = await gasService.checkIsAnalyst(email);
-        if (!confirmedAnalyst) {
-          console.warn('Session role was ANALYST but backend says user is no longer analyst. Downgrading to REQUESTER.');
+    try {
+      gasService.setUserEmail(email);
+      const list = preloadedIntegrantes || integrantes;
+
+      // DEFENSE-IN-DEPTH: si la sesión dice que somos analyst, re-confirmar
+      // contra el backend con checkIsAnalyst. Si el backend dice que NO, rebajar
+      // a REQUESTER (caso donde alguien fue removido de ANALYST_EMAILS pero la
+      // sesión vieja aún tiene role=ANALYST almacenada).
+      if (authenticatedAsAdmin) {
+        try {
+          const confirmedAnalyst = await gasService.checkIsAnalyst(email);
+          if (!confirmedAnalyst) {
+            console.warn('Session role was ANALYST but backend says user is no longer analyst. Downgrading to REQUESTER.');
+            finalIsAdmin = false;
+          }
+        } catch (err) {
+          console.error('checkIsAnalyst failed during login, defaulting to REQUESTER:', err);
           finalIsAdmin = false;
         }
-      } catch (err) {
-        console.error('checkIsAnalyst failed during login, defaulting to REQUESTER:', err);
-        finalIsAdmin = false;
       }
-    }
 
-    setRole(finalIsAdmin ? UserRole.ANALYST : UserRole.REQUESTER);
-    // Analistas arrancan siempre en vista admin (viewAsRequester=false)
-    setViewAsRequester(false);
-    setLoading(false);
-    await fetchRequests(email, finalIsAdmin, false);
+      // Pre-cargar los requests silenciosamente (fetchRequests ya tiene su propio
+      // try/catch, nunca re-lanza). Así, cuando el dashboard aparezca, ya tendrá
+      // datos sin mostrar el indicador interno de fetching (tenemos el spinner).
+      await fetchRequests(email, finalIsAdmin, true);
+
+      // Batch de state updates finales: React 18 los procesa en un solo render,
+      // así que la transición de spinner → dashboard correcto es atómica.
+      setRole(finalIsAdmin ? UserRole.ANALYST : UserRole.REQUESTER);
+      setViewAsRequester(false);
+      setUserName(determineUserName(email, list));
+      setUserEmail(email);
+    } catch (err) {
+      // Fallback defensivo: si algo inesperado se rompe (p.ej. data malformada),
+      // limpia la sesión y devuelve al usuario al login para que reintente en
+      // lugar de dejarlo en un estado híbrido inconsistente.
+      console.error('handleLoginSuccess failed:', err);
+      clearStoredSession();
+      gasService.clearSession();
+      setUserEmail('');
+      setRequests([]);
+      setRole(UserRole.REQUESTER);
+      setViewAsRequester(false);
+      alert('No se pudo completar el inicio de sesión. Por favor intenta de nuevo.');
+    } finally {
+      // SIEMPRE apaga el spinner — no importa qué haya pasado arriba.
+      setLoading(false);
+    }
   };
 
   const handleRequesterLogin = async (e: React.FormEvent) => {
@@ -375,7 +412,11 @@ const App: React.FC = () => {
     handleManualRefresh();
   };
 
-  if (loading && !userEmail) {
+  // Spinner mientras loading esté activo — sin importar si userEmail ya se seteó.
+  // Esto previene el "flash" de dashboard equivocado cuando se está validando la
+  // sesión de un analyst (orden: setUserEmail → render intermedio con role=REQUESTER
+  // → setRole(ANALYST) → render correcto). Ahora loading cubre todo el proceso.
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
