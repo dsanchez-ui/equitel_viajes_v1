@@ -389,8 +389,83 @@
 <h3>6.2 Reorganizar Base Principal (sidebar de REORG)</h3>
 <p><strong>Cuándo usarlo:</strong> una vez cada pocos meses (o nunca). Cambiar el orden de columnas de la hoja principal, agregar columnas extras personales, o limpiar el layout.</p>
 <p>Ver guía completa en <a href="./guia-reorganizar-base.md">guia-reorganizar-base.md</a>.</p>
+<h3>6.3 Validaciones en los formularios</h3>
+<p>Tanto el sidebar como el módulo móvil (§7) aplican validaciones “en vivo” mientras el admin escribe:</p>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Restricción</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cédula</td>
+<td>Solo dígitos. Cualquier letra/símbolo se filtra al escribir. Teclado numérico en móvil.</td>
+</tr>
+<tr>
+<td>Nombre completo</td>
+<td>Auto-UPPERCASE mientras se escribe. Se preservan tildes y Ñ (ej: <code>CÓRDOBA</code>, <code>ZUÑIGA</code>).</td>
+</tr>
+<tr>
+<td>Correo</td>
+<td>Auto-lowercase. Espacios removidos. Validación de formato <code>algo@algo.algo</code> antes de enviar.</td>
+</tr>
+<tr>
+<td>Centro de costo</td>
+<td>Solo dígitos. Teclado numérico en móvil.</td>
+</tr>
+</tbody>
+</table>
+<p>Las validaciones se ejecutan también en el <code>Guardar</code>, por si el admin pega un valor con copy-paste que saltó los filtros. Si algo no cumple, no se envía al backend y se muestra el error.</p>
+<p><strong>Sobre caracteres especiales (tildes, Ñ, Ü):</strong> son <strong>100% seguros</strong> en el sistema. Los nombres se usan en correos, PDFs de reporte, nombres de archivos Drive y comparaciones — en todos los casos el código maneja UTF-8 correctamente. Escribir <code>BRICEÑO</code> o <code>BRICENO</code> es indiferente para el backend, pero el primero respeta la ortografía real del nombre.</p>
 <hr>
-<h2>7. Métricas</h2>
+<h2>7. Módulo Admin Móvil</h2>
+<p><strong>Para qué sirve:</strong> crear usuarios nuevos rápidamente desde el celular sin tener que abrir el Sheet en el escritorio.</p>
+<p><strong>Caso de uso típico:</strong> llega RRHH con un empleado nuevo que necesita acceso al portal YA. Desde el celular el admin ingresa cédula, nombre, correo, empresa, sede y aprobador — un minuto y listo.</p>
+<h3>Quién puede usarlo</h3>
+<p>Únicamente personas cuyo correo esté en la whitelist <code>ANALYST_EMAILS</code> (Script Property). El módulo usa el mismo PIN admin de 8 dígitos que el portal normal. Otros usuarios ven la pantalla de login pero su PIN siempre falla.</p>
+<h3>URL del módulo</h3>
+<p>La misma URL del Web App con el parámetro <code>?action=admin</code> al final:</p>
+<pre><code>https://script.google.com/macros/s/AKfycb.../exec?action=admin
+</code></pre>
+<p>Recomendación: agregarlo a la pantalla de inicio del celular (iOS Safari → compartir → “Añadir a pantalla de inicio”; Chrome Android → menú → “Añadir a pantalla de inicio”) para acceso de un toque, como si fuera una app nativa.</p>
+<h3>Qué hace</h3>
+<ul>
+<li><strong>Login</strong>: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 30 días en ese navegador.</li>
+<li><strong>Crear usuario</strong>: formulario idéntico al del sidebar (cédula, nombre, correo, empresa, sede, CC, aprobadores) con las mismas validaciones y el mismo picker de aprobador.</li>
+<li>Al crear, el usuario aparece inmediatamente en la hoja USUARIOS y puede iniciar sesión en el portal.</li>
+</ul>
+<h3>Qué NO hace (limitaciones por diseño)</h3>
+<p>El módulo está enfocado en <strong>creación</strong>, que es la operación urgente más común fuera de oficina. No incluye:</p>
+<ul>
+<li>Editar usuarios existentes (usar sidebar del Sheet)</li>
+<li>Eliminar usuarios (usar sidebar)</li>
+<li>Detectar anomalías/duplicados</li>
+<li>Reemplazar aprobador masivo</li>
+<li>Edición masiva</li>
+<li>Reorganizar la base principal</li>
+<li>Ver métricas</li>
+</ul>
+<p>Si necesitas cualquiera de esas, abre el Sheet en tu computadora y usa el sidebar.</p>
+<h3>Seguridad</h3>
+<ul>
+<li>La URL es pública pero la página es inútil sin PIN.</li>
+<li>Cada operación del backend (<code>mobileAdmin_getBootstrap</code>, <code>mobileAdmin_createUser</code>) valida el token de sesión y confirma que el correo esté en <code>ANALYST_EMAILS</code> antes de ejecutarse. Sin auth válida, cualquier intento de API retorna error.</li>
+<li>Si el admin es removido de <code>ANALYST_EMAILS</code> mientras tiene sesión activa, la siguiente llamada falla automáticamente y lo manda al login.</li>
+<li>Sesión expira a los 30 días o si el admin cierra sesión manualmente.</li>
+</ul>
+<h3>Impacto en la operación mientras se usa</h3>
+<p><strong>Ninguno para aprobadores ni solicitantes.</strong> El módulo móvil escribe solo en la hoja USUARIOS, mientras que las solicitudes y aprobaciones viven en la hoja Nueva Base Solicitudes. Apps Script soporta ejecuciones concurrentes (hasta 30 por script). Un admin creando un usuario no bloquea:</p>
+<ul>
+<li>Aprobadores clickeando correos de aprobación</li>
+<li>Usuarios haciendo login y generando su PIN por primera vez</li>
+<li>Usuarios creando solicitudes nuevas</li>
+<li>Triggers programados de recordatorios</li>
+</ul>
+<p>El único caso donde hay serialización es cuando <strong>dos admins crean usuarios simultáneamente</strong> (uno desde el sidebar y otro desde el móvil): el segundo espera máximo 2-3 segundos al primero. Esto es intencional para evitar que ambos escriban en la misma fila.</p>
+<hr>
+<h2>8. Métricas</h2>
 <p>Panel accesible desde el dashboard admin → botón <strong>Métricas</strong>.</p>
 <p><strong>Qué muestra:</strong></p>
 <ul>
@@ -421,7 +496,7 @@
 <li>Horario hábil: L-V 07:00–17:00, Sáb 08:00–12:00. Fuera de horario se excluye.</li>
 </ul>
 <hr>
-<h2>8. Triggers programados (4 triggers cada 2h)</h2>
+<h2>9. Triggers programados (4 triggers cada 2h)</h2>
 <p>Estos se ejecutan automáticamente en horario laboral. Ya están configurados.</p>
 <table>
 <thead>
@@ -454,7 +529,7 @@
 <li><code>cleanupExpiredSessions</code> (mensual) — borra sesiones <code>SESSION_*</code> expiradas de Script Properties. Previene acumulación.</li>
 </ul>
 <hr>
-<h2>9. Script Properties (configuración)</h2>
+<h2>10. Script Properties (configuración)</h2>
 <p>Son variables de configuración en el proyecto Apps Script. <strong>NO editar desde la GUI</strong> (se bloquea cuando hay &gt;50 propiedades, caso de este proyecto). Usar funciones helper.</p>
 <table>
 <thead>
@@ -514,7 +589,7 @@
 </table>
 <p><strong>Diagnóstico de propiedades:</strong> ejecuta <code>verPropiedadesDelScript()</code> desde el editor para ver el estado de todas.</p>
 <hr>
-<h2>10. Funciones admin útiles (ejecutar desde el editor Apps Script)</h2>
+<h2>11. Funciones admin útiles (ejecutar desde el editor Apps Script)</h2>
 <table>
 <thead>
 <tr>
@@ -570,7 +645,7 @@
 </tbody>
 </table>
 <hr>
-<h2>11. Troubleshooting</h2>
+<h2>12. Troubleshooting</h2>
 <h3>El usuario dice que no le llega el PIN</h3>
 <ol>
 <li>Verifica que el correo esté en USUARIOS (tab Usuarios del sidebar, o busca en la hoja).</li>
@@ -601,7 +676,7 @@
 <h3>Un trigger falló / no corrió</h3>
 <p>Revisa <code>Triggers</code> en el editor GAS. Si un trigger se eliminó manualmente, debes recrearlo (click en +, seleccionar la función, fuente=Time-driven, intervalo 2h).</p>
 <hr>
-<h2>12. Backup y recuperación</h2>
+<h2>13. Backup y recuperación</h2>
 <p><strong>Antes de cualquier cambio estructural</strong> (reorganizar, migrar USUARIOS, etc.):</p>
 <ol>
 <li>Menú <strong>Equitel Viajes → Reorganizar Base Principal (Sidebar)</strong></li>
@@ -611,7 +686,7 @@
 </ol>
 <p>Recuperación: si algo sale MUY mal, abres la copia respaldada, la descargas como .xlsx, o la copias encima del sheet activo (requiere re-vincular Apps Script).</p>
 <hr>
-<h2>13. Contacto y mantenimiento</h2>
+<h2>14. Contacto y mantenimiento</h2>
 <ul>
 <li><strong>Código en:</strong> <a href="http://github.com/dsanchez-ui/equitel_viajes_v1">github.com/dsanchez-ui/equitel_viajes_v1</a></li>
 <li><strong>Deploy frontend:</strong> Cloud Run <code>sistematiquetesequitel-302740316698.us-west1.run.app</code></li>

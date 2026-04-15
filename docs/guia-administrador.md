@@ -209,9 +209,82 @@ Hay dos sidebars, ambos en el menú **Equitel Viajes** dentro del Google Sheet:
 
 Ver guía completa en [guia-reorganizar-base.md](./guia-reorganizar-base.md).
 
+### 6.3 Validaciones en los formularios
+
+Tanto el sidebar como el módulo móvil (§7) aplican validaciones "en vivo" mientras el admin escribe:
+
+| Campo | Restricción |
+|---|---|
+| Cédula | Solo dígitos. Cualquier letra/símbolo se filtra al escribir. Teclado numérico en móvil. |
+| Nombre completo | Auto-UPPERCASE mientras se escribe. Se preservan tildes y Ñ (ej: `CÓRDOBA`, `ZUÑIGA`). |
+| Correo | Auto-lowercase. Espacios removidos. Validación de formato `algo@algo.algo` antes de enviar. |
+| Centro de costo | Solo dígitos. Teclado numérico en móvil. |
+
+Las validaciones se ejecutan también en el `Guardar`, por si el admin pega un valor con copy-paste que saltó los filtros. Si algo no cumple, no se envía al backend y se muestra el error.
+
+**Sobre caracteres especiales (tildes, Ñ, Ü):** son **100% seguros** en el sistema. Los nombres se usan en correos, PDFs de reporte, nombres de archivos Drive y comparaciones — en todos los casos el código maneja UTF-8 correctamente. Escribir `BRICEÑO` o `BRICENO` es indiferente para el backend, pero el primero respeta la ortografía real del nombre.
+
 ---
 
-## 7. Métricas
+## 7. Módulo Admin Móvil
+
+**Para qué sirve:** crear usuarios nuevos rápidamente desde el celular sin tener que abrir el Sheet en el escritorio.
+
+**Caso de uso típico:** llega RRHH con un empleado nuevo que necesita acceso al portal YA. Desde el celular el admin ingresa cédula, nombre, correo, empresa, sede y aprobador — un minuto y listo.
+
+### Quién puede usarlo
+
+Únicamente personas cuyo correo esté en la whitelist `ANALYST_EMAILS` (Script Property). El módulo usa el mismo PIN admin de 8 dígitos que el portal normal. Otros usuarios ven la pantalla de login pero su PIN siempre falla.
+
+### URL del módulo
+
+La misma URL del Web App con el parámetro `?action=admin` al final:
+
+```
+https://script.google.com/macros/s/AKfycb.../exec?action=admin
+```
+
+Recomendación: agregarlo a la pantalla de inicio del celular (iOS Safari → compartir → "Añadir a pantalla de inicio"; Chrome Android → menú → "Añadir a pantalla de inicio") para acceso de un toque, como si fuera una app nativa.
+
+### Qué hace
+
+- **Login**: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 30 días en ese navegador.
+- **Crear usuario**: formulario idéntico al del sidebar (cédula, nombre, correo, empresa, sede, CC, aprobadores) con las mismas validaciones y el mismo picker de aprobador.
+- Al crear, el usuario aparece inmediatamente en la hoja USUARIOS y puede iniciar sesión en el portal.
+
+### Qué NO hace (limitaciones por diseño)
+
+El módulo está enfocado en **creación**, que es la operación urgente más común fuera de oficina. No incluye:
+- Editar usuarios existentes (usar sidebar del Sheet)
+- Eliminar usuarios (usar sidebar)
+- Detectar anomalías/duplicados
+- Reemplazar aprobador masivo
+- Edición masiva
+- Reorganizar la base principal
+- Ver métricas
+
+Si necesitas cualquiera de esas, abre el Sheet en tu computadora y usa el sidebar.
+
+### Seguridad
+
+- La URL es pública pero la página es inútil sin PIN.
+- Cada operación del backend (`mobileAdmin_getBootstrap`, `mobileAdmin_createUser`) valida el token de sesión y confirma que el correo esté en `ANALYST_EMAILS` antes de ejecutarse. Sin auth válida, cualquier intento de API retorna error.
+- Si el admin es removido de `ANALYST_EMAILS` mientras tiene sesión activa, la siguiente llamada falla automáticamente y lo manda al login.
+- Sesión expira a los 30 días o si el admin cierra sesión manualmente.
+
+### Impacto en la operación mientras se usa
+
+**Ninguno para aprobadores ni solicitantes.** El módulo móvil escribe solo en la hoja USUARIOS, mientras que las solicitudes y aprobaciones viven en la hoja Nueva Base Solicitudes. Apps Script soporta ejecuciones concurrentes (hasta 30 por script). Un admin creando un usuario no bloquea:
+- Aprobadores clickeando correos de aprobación
+- Usuarios haciendo login y generando su PIN por primera vez
+- Usuarios creando solicitudes nuevas
+- Triggers programados de recordatorios
+
+El único caso donde hay serialización es cuando **dos admins crean usuarios simultáneamente** (uno desde el sidebar y otro desde el móvil): el segundo espera máximo 2-3 segundos al primero. Esto es intencional para evitar que ambos escriban en la misma fila.
+
+---
+
+## 8. Métricas
 
 Panel accesible desde el dashboard admin → botón **Métricas**.
 
@@ -239,7 +312,7 @@ Panel accesible desde el dashboard admin → botón **Métricas**.
 
 ---
 
-## 8. Triggers programados (4 triggers cada 2h)
+## 9. Triggers programados (4 triggers cada 2h)
 
 Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 
@@ -255,7 +328,7 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 
 ---
 
-## 9. Script Properties (configuración)
+## 10. Script Properties (configuración)
 
 Son variables de configuración en el proyecto Apps Script. **NO editar desde la GUI** (se bloquea cuando hay >50 propiedades, caso de este proyecto). Usar funciones helper.
 
@@ -275,7 +348,7 @@ Son variables de configuración en el proyecto Apps Script. **NO editar desde la
 
 ---
 
-## 10. Funciones admin útiles (ejecutar desde el editor Apps Script)
+## 11. Funciones admin útiles (ejecutar desde el editor Apps Script)
 
 | Función | Cuándo usarla |
 |---|---|
@@ -293,7 +366,7 @@ Son variables de configuración en el proyecto Apps Script. **NO editar desde la
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 ### El usuario dice que no le llega el PIN
 
@@ -336,7 +409,7 @@ Revisa `Triggers` en el editor GAS. Si un trigger se eliminó manualmente, debes
 
 ---
 
-## 12. Backup y recuperación
+## 13. Backup y recuperación
 
 **Antes de cualquier cambio estructural** (reorganizar, migrar USUARIOS, etc.):
 
@@ -349,7 +422,7 @@ Recuperación: si algo sale MUY mal, abres la copia respaldada, la descargas com
 
 ---
 
-## 13. Contacto y mantenimiento
+## 14. Contacto y mantenimiento
 
 - **Código en:** github.com/dsanchez-ui/equitel_viajes_v1
 - **Deploy frontend:** Cloud Run `sistematiquetesequitel-302740316698.us-west1.run.app`

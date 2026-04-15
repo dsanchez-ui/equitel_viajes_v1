@@ -249,6 +249,58 @@
 </ul>
 <p><strong>Sugerencia:</strong> si alguna vez quieres usarla, léete primero la guía detallada en <code>docs/guia-reorganizar-base.md</code> antes.</p>
 <hr>
+<h2>📱 Crear usuarios desde el celular (Módulo Móvil)</h2>
+<p>Cuando llega alguien nuevo y necesita acceso inmediato al portal, y tú no estás frente al computador, <strong>no hace falta abrir el Google Sheets</strong>. Hay una página web pensada para el celular que te deja crear usuarios en un minuto.</p>
+<h3>¿Cómo accedes?</h3>
+<p>Abre este enlace desde el navegador de tu teléfono (Safari o Chrome):</p>
+<pre><code>https://script.google.com/macros/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec?action=admin
+</code></pre>
+<p><strong>Recomendación:</strong> guárdalo como atajo en la pantalla de inicio de tu celular para abrirlo de un solo toque como si fuera una app:</p>
+<ul>
+<li><strong>iPhone</strong> (Safari): botón compartir → “Añadir a pantalla de inicio”</li>
+<li><strong>Android</strong> (Chrome): menú ⋮ → “Añadir a pantalla de inicio”</li>
+</ul>
+<h3>¿Cómo entras?</h3>
+<p>La primera vez te pide:</p>
+<ul>
+<li>Tu correo administrador</li>
+<li>El PIN de 8 dígitos (el mismo que usas en el portal normal con el botón negro “Administrador”)</li>
+</ul>
+<p>Una vez que entras, el teléfono recuerda tu sesión <strong>por 30 días</strong>. No tienes que volver a meter el PIN cada vez. Si cambias de celular o borras datos del navegador, sí hay que volver a ingresar.</p>
+<h3>¿Qué puedes hacer?</h3>
+<p><strong>Solo una cosa: crear usuarios.</strong> El módulo móvil tiene un formulario simple con los mismos campos que el sidebar del Sheets:</p>
+<ul>
+<li>Cédula</li>
+<li>Nombre completo</li>
+<li>Correo</li>
+<li>Empresa (dropdown)</li>
+<li>Sede (dropdown)</li>
+<li>Centro de costo</li>
+<li>Aprobadores (buscador)</li>
+</ul>
+<p>Llenas los campos, presionas “Crear usuario” y listo — el usuario queda en la hoja USUARIOS y puede iniciar sesión en el portal de inmediato.</p>
+<h3>¿Qué NO puedes hacer desde el móvil?</h3>
+<p>El móvil está pensado para la acción más urgente fuera de oficina: <strong>agregar gente nueva</strong>. Todo lo demás se hace desde el sidebar del Google Sheets:</p>
+<ul>
+<li>Editar un usuario existente</li>
+<li>Eliminar un usuario</li>
+<li>Ver anomalías o duplicados</li>
+<li>Reemplazar aprobador masivo</li>
+<li>Cambios masivos (empresa/sede/CC)</li>
+<li>Borrar un PIN</li>
+</ul>
+<p>Si necesitas cualquiera de esas, abre el Sheets en el computador y usa el sidebar.</p>
+<h3>¿Es seguro?</h3>
+<p>Sí. Aunque el enlace sea público, <strong>sin el PIN nadie puede hacer nada</strong>. Además:</p>
+<ul>
+<li>Solo correos que están en la lista <code>ANALYST_EMAILS</code> (los admins autorizados) pueden usar el módulo. El resto verá la pantalla de login pero su PIN siempre fallará.</li>
+<li>Después de 5 intentos fallidos, el sistema bloquea por 15 minutos.</li>
+<li>Cada acción (cargar datos, crear usuario) re-verifica que tu sesión siga siendo válida. Si te quitaron de la lista de admins mientras estabas logueado, la siguiente acción te saca automáticamente.</li>
+</ul>
+<h3>¿Afecta a las demás personas mientras yo lo uso?</h3>
+<p><strong>No.</strong> Los aprobadores pueden seguir aprobando desde sus correos, los solicitantes pueden seguir creando solicitudes, los usuarios nuevos pueden seguir generando su PIN por primera vez — todo al mismo tiempo que tú creas un usuario desde el celular, sin conflictos.</p>
+<p>La única vez que algo espera es si otro admin está creando otro usuario al mismo segundo desde el sidebar del Sheets. En ese caso, tu creación espera 2-3 segundos al otro admin y luego procede. Nada grave.</p>
+<hr>
 <h3>Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)</h3>
 <p>Un item del menú que al hacer click te muestra un diálogo diciendo <strong>qué hoja está leyendo el portal en este momento</strong>. No cambia nada, solo te informa.</p>
 <p>En producción debe decir “Modo activo: USUARIOS”. Si dice “INTEGRANTES” significa que alguien revirtió el flag.</p>
@@ -264,6 +316,37 @@
 </li>
 </ul>
 <p>Las otras dos (Crear / Migrar) ya se ejecutaron. No las corras de nuevo a menos que sepas exactamente lo que haces.</p>
+<hr>
+<h2>Cómo funcionan los campos del formulario de usuarios</h2>
+<p>Tanto en el sidebar (pestaña Usuarios) como en el módulo móvil, los campos tienen reglas automáticas que te ayudan a escribir datos bien formateados sin pensar:</p>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Qué pasa mientras escribes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Cédula</strong></td>
+<td>Solo acepta números. Si intentas escribir letras, las ignora. En el celular sale el teclado numérico.</td>
+</tr>
+<tr>
+<td><strong>Nombre completo</strong></td>
+<td>Todo lo que escribes se convierte automáticamente a MAYÚSCULAS. Las tildes y la Ñ se respetan — puedes escribir <code>CÓRDOBA</code>, <code>ÁNGEL</code>, <code>ZÚÑIGA</code> normalmente.</td>
+</tr>
+<tr>
+<td><strong>Correo</strong></td>
+<td>Se convierte a minúsculas solo. Los espacios se eliminan. Si el formato no es tipo <code>algo@algo.algo</code>, el guardado falla y te avisa.</td>
+</tr>
+<tr>
+<td><strong>Centro de costo</strong></td>
+<td>Solo acepta números. Teclado numérico en el celular.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Duda común:</strong> ¿es importante escribir nombres con tildes y Ñ o sin ellos?
+<strong>Respuesta:</strong> Da exactamente lo mismo para el portal. El sistema maneja ambos igual — los correos que salen, los reportes en PDF, los nombres de archivos en Drive, todo funciona idéntico con o sin tildes. Es solo estética. Mi recomendación: escribir con tildes y Ñ para respetar la ortografía real de los nombres, pero si prefieres sin ellos por simplicidad, también está bien.</p>
 <hr>
 <h2>Reglas de oro</h2>
 <ol>

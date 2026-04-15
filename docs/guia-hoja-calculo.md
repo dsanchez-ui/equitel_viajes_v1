@@ -211,6 +211,70 @@ Si el badge al lado de "Anomalías" muestra un número rojo (ej: "3"), son probl
 
 ---
 
+## 📱 Crear usuarios desde el celular (Módulo Móvil)
+
+Cuando llega alguien nuevo y necesita acceso inmediato al portal, y tú no estás frente al computador, **no hace falta abrir el Google Sheets**. Hay una página web pensada para el celular que te deja crear usuarios en un minuto.
+
+### ¿Cómo accedes?
+
+Abre este enlace desde el navegador de tu teléfono (Safari o Chrome):
+
+```
+https://script.google.com/macros/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec?action=admin
+```
+
+**Recomendación:** guárdalo como atajo en la pantalla de inicio de tu celular para abrirlo de un solo toque como si fuera una app:
+- **iPhone** (Safari): botón compartir → "Añadir a pantalla de inicio"
+- **Android** (Chrome): menú ⋮ → "Añadir a pantalla de inicio"
+
+### ¿Cómo entras?
+
+La primera vez te pide:
+- Tu correo administrador
+- El PIN de 8 dígitos (el mismo que usas en el portal normal con el botón negro "Administrador")
+
+Una vez que entras, el teléfono recuerda tu sesión **por 30 días**. No tienes que volver a meter el PIN cada vez. Si cambias de celular o borras datos del navegador, sí hay que volver a ingresar.
+
+### ¿Qué puedes hacer?
+
+**Solo una cosa: crear usuarios.** El módulo móvil tiene un formulario simple con los mismos campos que el sidebar del Sheets:
+- Cédula
+- Nombre completo
+- Correo
+- Empresa (dropdown)
+- Sede (dropdown)
+- Centro de costo
+- Aprobadores (buscador)
+
+Llenas los campos, presionas "Crear usuario" y listo — el usuario queda en la hoja USUARIOS y puede iniciar sesión en el portal de inmediato.
+
+### ¿Qué NO puedes hacer desde el móvil?
+
+El móvil está pensado para la acción más urgente fuera de oficina: **agregar gente nueva**. Todo lo demás se hace desde el sidebar del Google Sheets:
+- Editar un usuario existente
+- Eliminar un usuario
+- Ver anomalías o duplicados
+- Reemplazar aprobador masivo
+- Cambios masivos (empresa/sede/CC)
+- Borrar un PIN
+
+Si necesitas cualquiera de esas, abre el Sheets en el computador y usa el sidebar.
+
+### ¿Es seguro?
+
+Sí. Aunque el enlace sea público, **sin el PIN nadie puede hacer nada**. Además:
+- Solo correos que están en la lista `ANALYST_EMAILS` (los admins autorizados) pueden usar el módulo. El resto verá la pantalla de login pero su PIN siempre fallará.
+- Después de 5 intentos fallidos, el sistema bloquea por 15 minutos.
+- Cada acción (cargar datos, crear usuario) re-verifica que tu sesión siga siendo válida. Si te quitaron de la lista de admins mientras estabas logueado, la siguiente acción te saca automáticamente.
+
+### ¿Afecta a las demás personas mientras yo lo uso?
+
+**No.** Los aprobadores pueden seguir aprobando desde sus correos, los solicitantes pueden seguir creando solicitudes, los usuarios nuevos pueden seguir generando su PIN por primera vez — todo al mismo tiempo que tú creas un usuario desde el celular, sin conflictos.
+
+La única vez que algo espera es si otro admin está creando otro usuario al mismo segundo desde el sidebar del Sheets. En ese caso, tu creación espera 2-3 segundos al otro admin y luego procede. Nada grave.
+
+---
+
 ### Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)
 
 Un item del menú que al hacer click te muestra un diálogo diciendo **qué hoja está leyendo el portal en este momento**. No cambia nada, solo te informa.
@@ -228,6 +292,22 @@ Estas opciones (`Crear hoja USUARIOS`, `Migrar desde INTEGRANTES`, `Sincronizar 
 - **"Recargar resoluciones"**: si editaste manualmente la columna G (cédulas aprobadores) de USUARIOS, ejecuta esto para que las columnas H e I (correos/nombres auto) se actualicen.
 
 Las otras dos (Crear / Migrar) ya se ejecutaron. No las corras de nuevo a menos que sepas exactamente lo que haces.
+
+---
+
+## Cómo funcionan los campos del formulario de usuarios
+
+Tanto en el sidebar (pestaña Usuarios) como en el módulo móvil, los campos tienen reglas automáticas que te ayudan a escribir datos bien formateados sin pensar:
+
+| Campo | Qué pasa mientras escribes |
+|---|---|
+| **Cédula** | Solo acepta números. Si intentas escribir letras, las ignora. En el celular sale el teclado numérico. |
+| **Nombre completo** | Todo lo que escribes se convierte automáticamente a MAYÚSCULAS. Las tildes y la Ñ se respetan — puedes escribir `CÓRDOBA`, `ÁNGEL`, `ZÚÑIGA` normalmente. |
+| **Correo** | Se convierte a minúsculas solo. Los espacios se eliminan. Si el formato no es tipo `algo@algo.algo`, el guardado falla y te avisa. |
+| **Centro de costo** | Solo acepta números. Teclado numérico en el celular. |
+
+**Duda común:** ¿es importante escribir nombres con tildes y Ñ o sin ellos?
+**Respuesta:** Da exactamente lo mismo para el portal. El sistema maneja ambos igual — los correos que salen, los reportes en PDF, los nombres de archivos en Drive, todo funciona idéntico con o sin tildes. Es solo estética. Mi recomendación: escribir con tildes y Ñ para respetar la ortografía real de los nombres, pero si prefieres sin ellos por simplicidad, también está bien.
 
 ---
 
