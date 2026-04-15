@@ -5551,32 +5551,44 @@ function _mapEmpresaCode_(raw) {
 }
 
 function usuarios_create(data) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
-  if (!sheet) throw new Error('Hoja USUARIOS no encontrada. Crea la hoja primero.');
-
-  const cedula = String(data.cedula || '').trim();
-  if (!cedula) throw new Error('Cédula es requerida.');
-  if (!data.nombre || !String(data.nombre).trim()) throw new Error('Nombre es requerido.');
-  const correo = String(data.correo || '').toLowerCase().trim();
-  if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) throw new Error('Correo inválido.');
-
-  if (_findUsuarioRowByCedula_(sheet, cedula) > 0) {
-    throw new Error('Ya existe un usuario con esa cédula.');
+  // LOCK: protege la ventana crítica entre _findUsuarioRowByCedula_ y getLastRow()+1.
+  // Sin esto, dos admins creando usuarios simultáneamente (uno desde sidebar, otro
+  // desde el móvil) podrían calcular el mismo newRow y sobreescribirse mutuamente.
+  // El lock solo dura la operación de escritura (~1-2 segundos).
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) {
+    throw new Error('Sistema ocupado creando otro usuario. Intente de nuevo en unos segundos.');
   }
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+    if (!sheet) throw new Error('Hoja USUARIOS no encontrada. Crea la hoja primero.');
 
-  const newRow = sheet.getLastRow() + 1;
-  _writeUsuarioRow_(sheet, newRow, {
-    cedula: cedula,
-    nombre: data.nombre,
-    correo: correo,
-    empresa: data.empresa,
-    sede: data.sede,
-    centroCosto: data.centroCosto,
-    cedulasAprobadores: data.cedulasAprobadores
-  });
-  SpreadsheetApp.flush();
-  return { success: true, cedula: cedula };
+    const cedula = String(data.cedula || '').trim();
+    if (!cedula) throw new Error('Cédula es requerida.');
+    if (!data.nombre || !String(data.nombre).trim()) throw new Error('Nombre es requerido.');
+    const correo = String(data.correo || '').toLowerCase().trim();
+    if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) throw new Error('Correo inválido.');
+
+    if (_findUsuarioRowByCedula_(sheet, cedula) > 0) {
+      throw new Error('Ya existe un usuario con esa cédula.');
+    }
+
+    const newRow = sheet.getLastRow() + 1;
+    _writeUsuarioRow_(sheet, newRow, {
+      cedula: cedula,
+      nombre: data.nombre,
+      correo: correo,
+      empresa: data.empresa,
+      sede: data.sede,
+      centroCosto: data.centroCosto,
+      cedulasAprobadores: data.cedulasAprobadores
+    });
+    SpreadsheetApp.flush();
+    return { success: true, cedula: cedula };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function usuarios_update(originalCedula, data) {
