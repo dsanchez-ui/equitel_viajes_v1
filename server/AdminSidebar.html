@@ -769,6 +769,14 @@
       document.getElementById('approverSearch').addEventListener('input', searchApprovers);
       document.getElementById('approverSearch').addEventListener('focus', searchApprovers);
 
+      // Validaciones de input — fuerzan formato mientras escribes:
+      // Cédula y Centro de Costo: solo dígitos. Nombre: UPPERCASE auto
+      // (preserva tildes/Ñ). Correo: lowercase auto.
+      attachDigitsOnly('f_cedula');
+      attachDigitsOnly('f_cc');
+      attachUpperCase('f_nombre');
+      attachLowerCase('f_correo');
+
       // Anomalies tab
       document.getElementById('btnRefreshAnomalies').addEventListener('click', loadAnomalies);
 
@@ -1021,13 +1029,37 @@
     }
 
     function saveForm() {
+      // Normalizar por si el usuario pegó algo que no pasó por los handlers oninput
+      var cedulaRaw = document.getElementById('f_cedula').value.replace(/\D+/g, '').trim();
+      var nombreRaw = document.getElementById('f_nombre').value.toUpperCase().trim();
+      var correoRaw = document.getElementById('f_correo').value.toLowerCase().replace(/\s+/g, '').trim();
+      var ccRaw = document.getElementById('f_cc').value.replace(/\D+/g, '').trim();
+
+      // Refleja los valores normalizados en los inputs (coherencia visual)
+      document.getElementById('f_cedula').value = cedulaRaw;
+      document.getElementById('f_nombre').value = nombreRaw;
+      document.getElementById('f_correo').value = correoRaw;
+      document.getElementById('f_cc').value = ccRaw;
+
+      // Validaciones explícitas
+      if (!cedulaRaw) { showStatus('La cédula es obligatoria y debe ser numérica.', 'error'); return; }
+      if (!nombreRaw) { showStatus('El nombre es obligatorio.', 'error'); return; }
+      if (!correoRaw || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correoRaw)) {
+        showStatus('El correo no tiene un formato válido.', 'error');
+        return;
+      }
+      if (ccRaw && !/^\d+$/.test(ccRaw)) {
+        showStatus('El centro de costo debe ser numérico.', 'error');
+        return;
+      }
+
       var data = {
-        cedula: document.getElementById('f_cedula').value.trim(),
-        nombre: document.getElementById('f_nombre').value.trim(),
-        correo: document.getElementById('f_correo').value.trim().toLowerCase(),
+        cedula: cedulaRaw,
+        nombre: nombreRaw,
+        correo: correoRaw,
         empresa: document.getElementById('f_empresa').value,
         sede: document.getElementById('f_sede').value,
-        centroCosto: document.getElementById('f_cc').value.trim(),
+        centroCosto: ccRaw,
         cedulasAprobadores: selectedApprovers.map(function(a) { return a.cedula; }).join(', ')
       };
 
@@ -2008,6 +2040,45 @@
       var s = document.getElementById('bulkStatus');
       s.className = 'status';
       s.textContent = '';
+    }
+
+    // ============ INPUT VALIDATORS ============
+    // Estos handlers filtran/transforman el valor A MEDIDA que el usuario escribe,
+    // para garantizar que los datos que llegan al backend cumplan el formato.
+    // Preservan la posición del cursor cuando es posible.
+    function attachDigitsOnly(id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.setAttribute('inputmode', 'numeric'); // teclado numérico en móviles
+      el.addEventListener('input', function(e) {
+        var cleaned = e.target.value.replace(/\D+/g, '');
+        if (cleaned !== e.target.value) e.target.value = cleaned;
+      });
+    }
+    function attachUpperCase(id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', function(e) {
+        // Preserva tildes, Ñ, Ü en mayúsculas — safe para el backend (es solo estilo).
+        var up = e.target.value.toUpperCase();
+        if (up !== e.target.value) {
+          var pos = e.target.selectionStart;
+          e.target.value = up;
+          try { e.target.setSelectionRange(pos, pos); } catch (_) { /* noop */ }
+        }
+      });
+    }
+    function attachLowerCase(id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', function(e) {
+        var lo = e.target.value.toLowerCase().replace(/\s+/g, ''); // correos no llevan espacios
+        if (lo !== e.target.value) {
+          var pos = e.target.selectionStart;
+          e.target.value = lo;
+          try { e.target.setSelectionRange(pos, pos); } catch (_) { /* noop */ }
+        }
+      });
     }
 
     // ============ UTILS ============

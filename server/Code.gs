@@ -229,6 +229,16 @@ function doGet(e) {
     return processUserConsultResponse(e);
   }
 
+  // 3c. Admin mobile module — página HTML standalone para crear usuarios
+  // desde el celular. Seguridad: la página exige login con PIN admin y usa
+  // un token de sesión validado en cada request hacia mobileAdmin_*.
+  if (action === 'admin') {
+    return HtmlService.createHtmlOutputFromFile('AdminMobile')
+      .setTitle('Equitel Viajes — Admin Móvil')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+  }
+
   // 4. API Action via GET (Returns JSON)
   if (action) {
     const result = dispatch(action, e.parameter);
@@ -7355,6 +7365,60 @@ function diagnosticarAuth() {
     activeMatches: activeMatches,
     effectiveMatches: effectiveMatches
   };
+}
+
+// =====================================================================
+// ADMIN MÓVIL — funciones gated por sesión, llamadas desde AdminMobile.html
+// =====================================================================
+// La página AdminMobile es pública (cualquiera con el URL la ve), así que
+// TODA función que la página invoque debe verificar auth primero. El patrón:
+//   - Login: reutiliza verifyAdminPin → retorna token
+//   - Llamadas posteriores: reciben (email, token, ...args). El token se
+//     valida con validateUserSession_ + isUserAnalyst antes de delegar.
+//
+// Sin esto, cualquier persona podría llamar a usuarios_create desde la URL
+// pública y crear usuarios arbitrarios.
+// =====================================================================
+
+/**
+ * Valida que el par (email, token) corresponde a una sesión activa de un
+ * analyst. Lanza excepción si no. Usar al inicio de CADA mobileAdmin_*.
+ */
+function _requireMobileAdminAuth_(email, token) {
+  if (!email || !token) {
+    throw new Error('Sesión inválida. Inicia sesión nuevamente.');
+  }
+  var session = validateUserSession_(email, token);
+  if (!session) {
+    throw new Error('Sesión inválida o expirada. Inicia sesión nuevamente.');
+  }
+  if (!isUserAnalyst(email)) {
+    throw new Error('No autorizado: este correo no tiene permisos de administrador.');
+  }
+  return session;
+}
+
+/**
+ * Bootstrap: devuelve lo que la página móvil necesita para arrancar — lista
+ * de usuarios (para el picker de aprobador), empresas y sedes. Una sola
+ * llamada al cargar.
+ */
+function mobileAdmin_getBootstrap(email, token) {
+  _requireMobileAdminAuth_(email, token);
+  return {
+    users: usuarios_listAll(),
+    empresas: usuarios_getEmpresas(),
+    sedes: usuarios_getSedes()
+  };
+}
+
+/**
+ * Crea un usuario desde el módulo móvil. Delega a usuarios_create tras
+ * validar auth. Mantiene el mismo formato de payload que el sidebar.
+ */
+function mobileAdmin_createUser(email, token, data) {
+  _requireMobileAdminAuth_(email, token);
+  return usuarios_create(data);
 }
 
 // =====================================================================
