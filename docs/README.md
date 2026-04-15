@@ -9,6 +9,8 @@
 | [guia-hoja-calculo.md](./guia-hoja-calculo.md) | **Guía simple del Google Sheets** — explicación no-técnica de cada hoja, cada botón del menú, qué editar y qué no. |
 | [guia-hoja-calculo.pdf](./guia-hoja-calculo.pdf) | PDF de la guía del Sheets (7 páginas). Recomendada para admins nuevos. |
 | [guia-reorganizar-base.md](./guia-reorganizar-base.md) | Guía específica del workflow de reorganización de columnas de la hoja principal. |
+| [presentacion-impacto.html](./presentacion-impacto.html) | Infografía ejecutiva del impacto del portal (HTML con CSS custom — no usa markdown). |
+| [presentacion-impacto.pdf](./presentacion-impacto.pdf) | PDF ejecutivo para presentar a gerencia (antes vs después, cifras reales, testimonios). |
 
 **Versiones HTML** (`.html`) se generan automáticamente y se pueden abrir en navegador.
 

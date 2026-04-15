@@ -32,6 +32,13 @@ const GUIAS = {
     pdf: path.join(ROOT, 'docs', 'guia-hoja-calculo.pdf'),
     title: 'Guía del Google Sheets — Portal de Viajes Equitel',
   },
+  // Presentación: NO tiene .md — el HTML es la fuente (CSS custom con grids/cards).
+  // Build solo hace PDF a partir del HTML existente.
+  'presentacion': {
+    html: path.join(ROOT, 'docs', 'presentacion-impacto.html'),
+    pdf: path.join(ROOT, 'docs', 'presentacion-impacto.pdf'),
+    htmlOnly: true,
+  },
 };
 
 // --- 1. Cargar markdown-it (auto-instala si falta) ---
@@ -117,13 +124,16 @@ const css = `
 
 function buildGuia(slug, guia) {
   console.log('\n--- Construyendo:', slug, '---');
-  if (!fs.existsSync(guia.md)) {
-    console.error('✗ No existe:', guia.md);
-    return false;
-  }
-  const mdText = fs.readFileSync(guia.md, 'utf8');
-  const bodyHtml = md.render(mdText);
-  const html = `<!DOCTYPE html>
+
+  // htmlOnly = HTML ya existe (con estilos propios), solo se imprime a PDF.
+  if (!guia.htmlOnly) {
+    if (!fs.existsSync(guia.md)) {
+      console.error('✗ No existe:', guia.md);
+      return false;
+    }
+    const mdText = fs.readFileSync(guia.md, 'utf8');
+    const bodyHtml = md.render(mdText);
+    const html = `<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -138,8 +148,15 @@ function buildGuia(slug, guia) {
 </body>
 </html>
 `;
-  fs.writeFileSync(guia.html, html, 'utf8');
-  console.log('✓ HTML generado:', path.relative(ROOT, guia.html));
+    fs.writeFileSync(guia.html, html, 'utf8');
+    console.log('✓ HTML generado:', path.relative(ROOT, guia.html));
+  } else {
+    if (!fs.existsSync(guia.html)) {
+      console.error('✗ No existe HTML de origen:', guia.html);
+      return false;
+    }
+    console.log('✓ Usando HTML existente:', path.relative(ROOT, guia.html));
+  }
 
   if (!fs.existsSync(CHROME_PATH)) {
     console.error('✗ Chrome no encontrado en:', CHROME_PATH);
