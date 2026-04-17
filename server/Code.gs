@@ -4369,6 +4369,32 @@ function processAdminReminders() {
 }
 
 /**
+ * WARMUP PING — mantiene el V8 isolate de Apps Script "tibio" para reducir
+ * cold starts. Apps Script apaga el runtime tras ~15 min sin uso, y la
+ * siguiente invocación paga 5-15s de arranque. Este ping ligero (lee una
+ * ScriptProperty trivial) evita esa penalidad.
+ *
+ * Setup (una sola vez):
+ *   1. Editor Apps Script → Triggers (ícono de reloj en el panel izquierdo)
+ *   2. + Add Trigger (abajo a la derecha)
+ *   3. Función: warmupPing
+ *   4. Event source: Time-driven
+ *   5. Type of time based trigger: Minutes timer
+ *   6. Select minute interval: Every 10 minutes
+ *   7. Save
+ *
+ * Costo: ~1 s por invocación × 144 invocaciones/día = ~2.5 min/día de quota
+ * de triggers (límite free 90 min/día, Workspace 6 h/día). Despreciable.
+ *
+ * Rollback: borrar el trigger desde la misma pantalla. La función queda
+ * definida pero no se ejecuta; sin impacto en nada.
+ */
+function warmupPing() {
+  PropertiesService.getScriptProperties().getProperty('_WARMUP_TOUCH_');
+  return 'ok';
+}
+
+/**
  * Helper to check if current time is within Equitel working hours (Bogota GMT-5) (v2.2)
  * Mon-Fri: 7:00 - 17:00
  * Sat: 8:00 - 12:00

@@ -9,6 +9,38 @@ export function setOnSessionExpired(handler: SessionExpiredHandler | null) {
   sessionExpiredHandler = handler;
 }
 
+// --- HEALTH MONITORING -------------------------------------------------------
+// Detecta SOLO transport errors (fetch falló, HTTP 5xx, respuesta HTML en vez
+// de JSON). NO cuenta errores lógicos del backend ({success:false, error:...})
+// porque esos son respuestas válidas. Cuando hay N fallos de transporte
+// consecutivos, notifica al listener (App.tsx) que muestra el banner.
+type HealthStatus = 'ok' | 'down';
+type HealthHandler = (status: HealthStatus) => void;
+let healthHandler: HealthHandler | null = null;
+let consecutiveTransportFailures = 0;
+let reportedHealth: HealthStatus = 'ok';
+const TRANSPORT_FAILURE_THRESHOLD = 3; // 3 fallos seguidos ≈ >10s de caída
+
+export function setOnHealthChange(handler: HealthHandler | null) {
+  healthHandler = handler;
+}
+
+function _notifyTransport(ok: boolean) {
+  if (ok) {
+    consecutiveTransportFailures = 0;
+    if (reportedHealth === 'down') {
+      reportedHealth = 'ok';
+      if (healthHandler) { try { healthHandler('ok'); } catch (_) { /* noop */ } }
+    }
+  } else {
+    consecutiveTransportFailures++;
+    if (consecutiveTransportFailures >= TRANSPORT_FAILURE_THRESHOLD && reportedHealth === 'ok') {
+      reportedHealth = 'down';
+      if (healthHandler) { try { healthHandler('down'); } catch (_) { /* noop */ } }
+    }
+  }
+}
+
 class GasService {
   private _userEmail: string = '';
   private _sessionToken: string = '';
@@ -86,6 +118,9 @@ class GasService {
         }
       }
 
+      // Transport OK: llegamos hasta aquí con JSON parseado. Aunque el backend
+      // haya devuelto {success:false}, eso es lógica, no caída de conectividad.
+      _notifyTransport(true);
       return result;
 
     } catch (error: any) {
@@ -101,6 +136,9 @@ class GasService {
       if (isNetworkError) {
         msg = 'No se pudo conectar con el servidor. Verifique su conexión o la URL del script.';
       }
+      // Transport fail: fetch lanzó, HTTP !ok, HTML en vez de JSON, etc.
+      // Estos son los casos que cuentan para el health banner.
+      _notifyTransport(false);
       return { success: false, error: msg };
     }
   }

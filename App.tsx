@@ -5,7 +5,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { UserDashboard } from './components/UserDashboard';
 import { RequestDetail } from './components/RequestDetail';
 import { PinEntryModal } from './components/PinEntryModal';
-import { gasService, setOnSessionExpired } from './services/gasService';
+import { gasService, setOnSessionExpired, setOnHealthChange } from './services/gasService';
 import { TravelRequest, UserRole, Integrant } from './types';
 import { LOGO_URL, APP_VERSION } from './constants';
 
@@ -72,6 +72,10 @@ const App: React.FC = () => {
   const [loginBusy, setLoginBusy] = useState(false);
   const [adminBusy, setAdminBusy] = useState(false);
 
+  // Health monitoring: el banner aparece SOLO cuando hay fallos de transporte
+  // (red caída, GAS caído, 5xx). Errores lógicos del backend no lo disparan.
+  const [systemHealth, setSystemHealth] = useState<'ok' | 'down'>('ok');
+
   // Listen for session expiry events from gasService
   useEffect(() => {
     setOnSessionExpired(() => {
@@ -85,6 +89,12 @@ const App: React.FC = () => {
       alert('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
     });
     return () => setOnSessionExpired(null);
+  }, []);
+
+  // Listen for health changes from gasService (transport failures only)
+  useEffect(() => {
+    setOnHealthChange((status) => setSystemHealth(status));
+    return () => setOnHealthChange(null);
   }, []);
 
   useEffect(() => {
@@ -456,23 +466,59 @@ const App: React.FC = () => {
     handleManualRefresh();
   };
 
+  // Banner global de salud del sistema. Solo se renderiza cuando systemHealth
+  // === 'down' — si está 'ok', retorna null (cero impacto visual). Posición
+  // fixed top-0, z-index muy alto → NUNCA desplaza ni se superpone bajo otro
+  // contenido. Pointer-events: auto en el banner para que el link sea clickeable.
+  const healthBanner = systemHealth === 'down' ? (
+    <div
+      role="alert"
+      aria-live="polite"
+      className="fixed top-0 left-0 right-0 z-[10000] bg-red-700 text-white shadow-2xl border-b-2 border-red-900"
+    >
+      <div className="max-w-5xl mx-auto px-3 py-2 sm:px-4 flex items-start gap-2 text-xs sm:text-sm leading-snug">
+        <span className="text-base sm:text-lg flex-shrink-0 mt-0.5" aria-hidden="true">⚠️</span>
+        <div className="flex-1">
+          <strong className="font-bold">Sistema presentando fallas de conectividad.</strong>{' '}
+          <span className="opacity-95">
+            Probablemente sea una <strong>falla del servicio de Google Apps Script</strong> (no del Portal de Viajes). Verifícalo en{' '}
+            <a
+              href="https://www.google.com/appsstatus/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-semibold hover:text-red-100 break-all"
+            >
+              google.com/appsstatus
+            </a>{' '}
+            o reintenta en un momento.
+          </span>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   // Spinner mientras loading esté activo — sin importar si userEmail ya se seteó.
   // Esto previene el "flash" de dashboard equivocado cuando se está validando la
   // sesión de un analyst (orden: setUserEmail → render intermedio con role=REQUESTER
   // → setRole(ANALYST) → render correcto). Ahora loading cubre todo el proceso.
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-red mx-auto"></div>
-          <p className="mt-4 text-gray-500">Conectando...</p>
+      <>
+        {healthBanner}
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-red mx-auto"></div>
+            <p className="mt-4 text-gray-500">Conectando...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!userEmail) {
     return (
+      <>
+        {healthBanner}
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
         {showPinModal && (
           <PinEntryModal
@@ -542,10 +588,13 @@ const App: React.FC = () => {
           </p>
         </div>
       </div>
+      </>
     );
   }
 
   return (
+    <>
+    {healthBanner}
     <Layout
       userEmail={userEmail}
       userName={userName}
@@ -597,6 +646,7 @@ const App: React.FC = () => {
         v{APP_VERSION}
       </div>
     </Layout>
+    </>
   );
 };
 
