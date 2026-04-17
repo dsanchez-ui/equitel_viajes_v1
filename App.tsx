@@ -70,6 +70,7 @@ const App: React.FC = () => {
   const [pinFlowMessage, setPinFlowMessage] = useState('');
   const [pinFlowKind, setPinFlowKind] = useState<'existing' | 'sent'>('sent');
   const [loginBusy, setLoginBusy] = useState(false);
+  const [adminBusy, setAdminBusy] = useState(false);
 
   // Listen for session expiry events from gasService
   useEffect(() => {
@@ -234,7 +235,15 @@ const App: React.FC = () => {
       }
       setShowUserPinModal(true);
     } catch (err: any) {
-      alert(err?.message || 'No se pudo enviar el PIN. Intenta nuevamente.');
+      const msg = String(err?.message || '');
+      // Si el backend marca el correo como admin-only, abrimos el flujo dedicado
+      // automáticamente para no dejar al administrador colgado con un error.
+      if (msg.indexOf('ADMIN_REDIRECT') >= 0) {
+        setPendingAdminEmail(emailLower);
+        setShowPinModal(true);
+      } else {
+        alert(msg || 'No se pudo enviar el PIN. Intenta nuevamente.');
+      }
     } finally {
       setLoginBusy(false);
     }
@@ -286,6 +295,10 @@ const App: React.FC = () => {
       alert('Por favor ingrese su correo corporativo de administrador.');
       return;
     }
+    // CRÍTICO: setAdminBusy da retroalimentación visual inmediata ("VERIFICANDO...").
+    // Sin esto, en Safari iPhone el botón parecía no responder durante la latencia
+    // de checkIsAnalyst (puede tardar varios segundos en cold-start de GAS).
+    setAdminBusy(true);
     try {
       const isAnalyst = await gasService.checkIsAnalyst(emailToUse);
       if (isAnalyst) {
@@ -296,6 +309,8 @@ const App: React.FC = () => {
       }
     } catch {
       alert('Error al verificar permisos. Intente de nuevo.');
+    } finally {
+      setAdminBusy(false);
     }
   };
 
@@ -477,12 +492,20 @@ const App: React.FC = () => {
           <form onSubmit={handleRequesterLogin}>
             <div className="text-left mb-6">
               <label className="block text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Correo Corporativo</label>
-              <input name="email" type="email" autoComplete="username" placeholder="usuario@equitel.com.co" className="w-full bg-gray-50 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-md shadow-sm p-3 focus:ring-2 focus:ring-brand-red focus:border-brand-red outline-none transition" value={loginEmailInput} onChange={(e) => setLoginEmailInput(e.target.value)} autoFocus disabled={loginBusy} />
+              <input name="email" type="email" autoComplete="username" placeholder="usuario@equitel.com.co" className="w-full bg-gray-50 text-gray-900 placeholder-gray-400 border border-gray-300 rounded-md shadow-sm p-3 focus:ring-2 focus:ring-brand-red focus:border-brand-red outline-none transition" value={loginEmailInput} onChange={(e) => setLoginEmailInput(e.target.value)} autoFocus disabled={loginBusy || adminBusy} />
             </div>
             <div className="space-y-3">
-              <button type="submit" disabled={loginBusy} className="w-full bg-brand-red text-white py-3 px-4 rounded font-bold uppercase tracking-wide hover:bg-red-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed">{loginBusy ? 'ENVIANDO PIN...' : 'INGRESAR'}</button>
+              <button type="submit" disabled={loginBusy || adminBusy} className="w-full bg-brand-red text-white py-3 px-4 rounded font-bold uppercase tracking-wide hover:bg-red-700 transition shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed">{loginBusy ? 'ENVIANDO PIN...' : 'INGRESAR'}</button>
               <div className="relative flex py-2 items-center"><div className="flex-grow border-t border-gray-300"></div><span className="flex-shrink-0 mx-4 text-gray-400 text-xs uppercase font-bold">O Acceso Staff</span><div className="flex-grow border-t border-gray-300"></div></div>
-              <button type="button" onClick={handleAdminLoginClick} disabled={loginBusy} className="w-full bg-black text-white py-3 px-4 rounded font-bold uppercase tracking-wide hover:bg-gray-800 transition shadow hover:shadow-md disabled:opacity-60">ADMINISTRADOR</button>
+              <button type="button" onClick={handleAdminLoginClick} disabled={loginBusy || adminBusy} className="w-full bg-black text-white py-3 px-4 rounded font-bold uppercase tracking-wide hover:bg-gray-800 transition shadow hover:shadow-md disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2">
+                {adminBusy && (
+                  <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                  </svg>
+                )}
+                <span>{adminBusy ? 'VERIFICANDO...' : 'ADMINISTRADOR'}</span>
+              </button>
             </div>
           </form>
           <p className="mt-6 text-[10px] text-gray-400 leading-relaxed">

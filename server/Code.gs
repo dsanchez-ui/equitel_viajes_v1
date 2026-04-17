@@ -793,9 +793,25 @@ function requestUserPin(email, forceRegenerate) {
   }
   var normalized = String(email).toLowerCase().trim();
 
-  // 1. Verify the user exists in INTEGRANTES
+  // 1. Verify the user exists in INTEGRANTES / USUARIOS (analysts bypass this check).
   if (!validateUserEmail_(normalized)) {
     throw new Error('Tu correo no está registrado en el sistema. Contacta al área de viajes.');
+  }
+
+  // 1b. CASO ESPECIAL: correo de administrador que NO tiene fila en la hoja
+  //     de usuarios (p.ej. apcompras). El flujo de PIN por-usuario asume que
+  //     existe una fila donde guardar el hash; sin ella, setUserPinHash_ lanza.
+  //     Redirigimos al flujo dedicado del botón "ADMINISTRADOR" con un código
+  //     que el frontend puede detectar para automatizar la transición.
+  if (isUserAnalyst(normalized)) {
+    var hasSheetRow = false;
+    try {
+      var _sheet = _getActiveUserSheet_();
+      if (_sheet) hasSheetRow = _findIntegranteRowByEmail_(_sheet, normalized) > 0;
+    } catch (e) { hasSheetRow = false; }
+    if (!hasSheetRow) {
+      throw new Error('ADMIN_REDIRECT: Este correo es de administrador. Usa el botón "ADMINISTRADOR" para ingresar.');
+    }
   }
 
   // 2. Detect if it's the first time (no hash yet)
@@ -838,6 +854,19 @@ function verifyUserPin(email, inputPin) {
 
   if (isUserPinRateLimited_(normalized)) {
     throw new Error('Demasiados intentos fallidos. Intenta de nuevo en 15 minutos.');
+  }
+
+  // Espejo de la protección en requestUserPin: un admin sin fila en USUARIOS
+  // no puede verificarse por este endpoint; debe usar el flujo dedicado.
+  if (isUserAnalyst(normalized)) {
+    var _hasRow = false;
+    try {
+      var _sh = _getActiveUserSheet_();
+      if (_sh) _hasRow = _findIntegranteRowByEmail_(_sh, normalized) > 0;
+    } catch (e) { _hasRow = false; }
+    if (!_hasRow) {
+      throw new Error('ADMIN_REDIRECT: Este correo es de administrador. Usa el botón "ADMINISTRADOR" para ingresar.');
+    }
   }
 
   var storedHash = getUserPinHash_(normalized);
@@ -3705,13 +3734,23 @@ function isUserAnalyst(email) {
 function getAnalystWhitelist_() {
   const props = PropertiesService.getScriptProperties();
   const cached = props.getProperty('ANALYST_EMAILS');
+  // DEFENSIVE: el ADMIN_EMAIL SIEMPRE debe estar en la whitelist. Si alguien
+  // configura ANALYST_EMAILS y olvida incluirlo, podría dejar al admin primario
+  // sin acceso al sistema (ya pasó en producción una vez).
+  const adminEmail = String(ADMIN_EMAIL || '').toLowerCase().trim();
+  const whitelist = adminEmail ? [adminEmail] : [];
   if (cached) {
     try {
-      return JSON.parse(cached).map(function(e) { return e.toLowerCase().trim(); });
-    } catch(err) { /* fall through to default */ }
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed)) {
+        parsed.forEach(function(e) {
+          const norm = String(e || '').toLowerCase().trim();
+          if (norm && whitelist.indexOf(norm) < 0) whitelist.push(norm);
+        });
+      }
+    } catch(err) { /* use default admin only */ }
   }
-  // Default: only the configured admin email
-  return [ADMIN_EMAIL.toLowerCase().trim()];
+  return whitelist;
 }
 
 /**
