@@ -135,8 +135,12 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
         return 'bg-gray-100 text-gray-600';
     };
 
-    const flightOptions = request.analystOptions?.filter(o => o.type === 'FLIGHT') || [];
-    const hotelOptions = request.analystOptions?.filter(o => o.type === 'HOTEL') || [];
+    // Defensa: filtrar nulls/undefined antes de iterar — un null en el array
+    // (residuo de algún bug previo) crasheaba el render con "Cannot read type
+    // of null" y el modal se veía en blanco. Ahora ignoramos entradas inválidas.
+    const _validOptions = (request.analystOptions || []).filter((o): o is NonNullable<typeof o> => !!o && typeof o === 'object');
+    const flightOptions = _validOptions.filter(o => o.type === 'FLIGHT');
+    const hotelOptions = _validOptions.filter(o => o.type === 'HOTEL');
 
     const handleUserSelectionSubmit = async () => {
         if (!userSelectionText.trim()) {

@@ -26,8 +26,11 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
     const [flightDirection, setFlightDirection] = useState<'IDA' | 'VUELTA'>('IDA');
     const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
-    // Confirmed options: already in Drive (loaded from backend)
-    const [confirmedOptions, setConfirmedOptions] = useState<Option[]>(request.analystOptions || []);
+    // Confirmed options: already in Drive (loaded from backend).
+    // Filtramos nulls/undefined defensivamente por si el array en DB tiene restos.
+    const [confirmedOptions, setConfirmedOptions] = useState<Option[]>(
+        (request.analystOptions || []).filter((o): o is Option => !!o && typeof o === 'object')
+    );
     // Pending options: local only, not yet in Drive
     const [pendingOptions, setPendingOptions] = useState<PendingOption[]>([]);
     // Marked-for-deletion driveIds: NO se borran de Drive hasta que el usuario
@@ -186,11 +189,17 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                     pending.letter,
                     pending.direction
                 );
-                uploadedOptions.push(uploaded);
+                // Defensa: nunca pushear null/undefined al array. Si el backend
+                // responde algo inválido, lo ignoramos en vez de contaminar el JSON.
+                if (uploaded && typeof uploaded === 'object') {
+                    uploadedOptions.push(uploaded);
+                }
             }
 
-            // 3. Combine confirmed-survivors + newly uploaded
-            const survivors = confirmedOptions.filter(o => !markedForDeletion.has(o.driveId));
+            // 3. Combine confirmed-survivors + newly uploaded (doble filtro defensivo)
+            const survivors = confirmedOptions
+                .filter((o): o is Option => !!o && typeof o === 'object')
+                .filter(o => !markedForDeletion.has(o.driveId));
             const allOptions = [...survivors, ...uploadedOptions];
 
             // 4. Update request status with the final list (overwrites OPCIONES JSON)

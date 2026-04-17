@@ -3446,7 +3446,12 @@ function updateRequestStatus(id, status, payload) {
    if (payload) {
        if (payload.analystOptions) {
            const optIdx = H("OPCIONES (JSON)");
-           sheet.getRange(rowNumber, optIdx + 1).setValue(JSON.stringify(payload.analystOptions));
+           // DEFENSA: nunca persistir nulls/undefined en el array (contamina el
+           // JSON y rompe el render del frontend en el detalle).
+           var cleanOptions = Array.isArray(payload.analystOptions)
+               ? payload.analystOptions.filter(function(o) { return o && typeof o === 'object'; })
+               : [];
+           sheet.getRange(rowNumber, optIdx + 1).setValue(JSON.stringify(cleanOptions));
        }
        if (payload.selectionDetails) {
            const selIdx = H("SELECCION_TEXTO");
@@ -3892,7 +3897,17 @@ function mapRowToRequest(row) {
   }
 
   let analystOptions = [], selectedOption = null, supportData = undefined;
-  try { analystOptions = JSON.parse(get("OPCIONES (JSON)") || '[]'); } catch(e){}
+  try {
+    analystOptions = JSON.parse(get("OPCIONES (JSON)") || '[]');
+    // DEFENSA: filtrar nulls/undefined que hayan quedado en el array por bugs
+    // previos (ej: upload parcial que escribió null). Sin esto, el frontend
+    // crashea al hacer o.type de un null → pantalla blanca en el detalle.
+    if (Array.isArray(analystOptions)) {
+      analystOptions = analystOptions.filter(function(o) { return o && typeof o === 'object'; });
+    } else {
+      analystOptions = [];
+    }
+  } catch(e){ analystOptions = []; }
   try { selectedOption = JSON.parse(get("SELECCION (JSON)") || 'null'); } catch(e){}
   try { supportData = JSON.parse(get("SOPORTES (JSON)") || 'null'); } catch(e){}
 
