@@ -3738,15 +3738,22 @@ function isUserAnalyst(email) {
 }
 
 function getAnalystWhitelist_() {
-  const props = PropertiesService.getScriptProperties();
-  const cached = props.getProperty('ANALYST_EMAILS');
-  // DEFENSIVE: el ADMIN_EMAIL SIEMPRE debe estar en la whitelist. Si alguien
-  // configura ANALYST_EMAILS y olvida incluirlo, podría dejar al admin primario
-  // sin acceso al sistema (ya pasó en producción una vez).
-  const adminEmail = String(ADMIN_EMAIL || '').toLowerCase().trim();
-  const whitelist = adminEmail ? [adminEmail] : [];
-  if (cached) {
-    try {
+  // EMERGENCY FALLBACK: incluso si TODO lo demás (ADMIN_EMAIL, ANALYST_EMAILS)
+  // está corrupto o vacío, este set hardcoded garantiza que los admins
+  // conocidos nunca queden excluidos del sistema. Capa de defensa adicional
+  // sobre ADMIN_EMAIL + ANALYST_EMAILS.
+  const whitelist = ['apcompras@equitel.com.co'];
+
+  // DEFENSIVE: agregar ADMIN_EMAIL (default apcompras) por si está configurado a otra cosa
+  try {
+    const adminEmail = String(ADMIN_EMAIL || '').toLowerCase().trim();
+    if (adminEmail && whitelist.indexOf(adminEmail) < 0) whitelist.push(adminEmail);
+  } catch(e) { /* continue */ }
+
+  // PRIMARY: la whitelist administrable vía ANALYST_EMAILS
+  try {
+    const cached = PropertiesService.getScriptProperties().getProperty('ANALYST_EMAILS');
+    if (cached) {
       const parsed = JSON.parse(cached);
       if (Array.isArray(parsed)) {
         parsed.forEach(function(e) {
@@ -3754,8 +3761,9 @@ function getAnalystWhitelist_() {
           if (norm && whitelist.indexOf(norm) < 0) whitelist.push(norm);
         });
       }
-    } catch(err) { /* use default admin only */ }
-  }
+    }
+  } catch(err) { /* si el parse falla, seguimos con los defaults */ }
+
   return whitelist;
 }
 

@@ -288,7 +288,14 @@ class GasService {
 
   async checkIsAnalyst(email: string): Promise<boolean> {
     const response = await this.runGas('checkIsAnalyst', { userEmail: email });
-    return response.success && response.data === true;
+    // CRÍTICO: si response.success es false (cold start GAS, timeout, error red),
+    // NO retornar false silenciosamente — eso hace que el UI muestre "no tiene
+    // permisos de administrador" cuando en realidad hubo un error de conexión.
+    // Lanzar para que el caller distinga: "Error al verificar" vs "no es admin".
+    if (!response.success) {
+      throw new Error(response.error || 'Error verificando permisos.');
+    }
+    return response.data === true;
   }
 
   async verifyAdminPin(pin: string, email: string): Promise<{ success: boolean, token?: string, expiresAt?: number, role?: string }> {

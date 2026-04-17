@@ -300,15 +300,29 @@ const App: React.FC = () => {
     // de checkIsAnalyst (puede tardar varios segundos en cold-start de GAS).
     setAdminBusy(true);
     try {
-      const isAnalyst = await gasService.checkIsAnalyst(emailToUse);
+      // RETRY: reintentamos una sola vez si el primer intento falla — cubre
+      // cold start de GAS donde la primera llamada toma 8-15s y puede abortar
+      // antes de que el servidor esté listo. Segunda llamada casi siempre OK.
+      let isAnalyst: boolean;
+      try {
+        isAnalyst = await gasService.checkIsAnalyst(emailToUse);
+      } catch (firstErr) {
+        console.warn('checkIsAnalyst primer intento falló, reintentando:', firstErr);
+        await new Promise(r => setTimeout(r, 800));
+        isAnalyst = await gasService.checkIsAnalyst(emailToUse);
+      }
       if (isAnalyst) {
         setPendingAdminEmail(emailToUse);
         setShowPinModal(true);
       } else {
+        // SOLO aquí, con respuesta CONFIRMADA del backend de que NO es analista,
+        // mostramos el mensaje de "no tiene permisos". Antes, cualquier error
+        // de red se confundía con "no es analista" (bug crítico).
         alert('El correo ingresado no tiene permisos de administrador.');
       }
-    } catch {
-      alert('Error al verificar permisos. Intente de nuevo.');
+    } catch (err: any) {
+      console.error('handleAdminLoginClick error:', err);
+      alert('Error de conexión al verificar permisos. Verifique su internet y vuelva a intentar. Si persiste, intente dentro de 1 minuto (el servidor puede estar arrancando).');
     } finally {
       setAdminBusy(false);
     }
