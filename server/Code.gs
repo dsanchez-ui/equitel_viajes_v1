@@ -489,7 +489,11 @@ function verifyAdminPin(inputPin, email) {
     }
   }
 
-  var inputHash = hashPin_(String(inputPin));
+  // Defensive: strip whitespace/invisibles que Chrome o iOS autofill pueden meter
+  // antes de hashear. El frontend ya hace replace(/\D/g,'') pero este trim
+  // server-side cierra la puerta a cualquier caracter raro adicional.
+  var cleanInputPin = String(inputPin || '').replace(/\s+/g, '').trim();
+  var inputHash = hashPin_(cleanInputPin);
   if (inputHash !== storedHash) {
     recordFailedPinAttempt_();
     return { success: false };
@@ -874,7 +878,9 @@ function verifyUserPin(email, inputPin) {
     throw new Error('No tienes un PIN configurado. Solicita primero el envío de tu PIN.');
   }
 
-  var inputHash = hashPin_(String(inputPin));
+  // Defensive trim (ver nota en verifyAdminPin)
+  var cleanInputPinUser = String(inputPin || '').replace(/\s+/g, '').trim();
+  var inputHash = hashPin_(cleanInputPinUser);
   if (inputHash !== storedHash) {
     recordFailedUserPinAttempt_(normalized);
     return { success: false };

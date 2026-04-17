@@ -365,6 +365,21 @@ const App: React.FC = () => {
     if (!silent) setFetchingData(true);
     try {
       const data = isAdmin ? await gasService.getAllRequests(email) : await gasService.getMyRequests(email);
+      // DEFENSIVA 1: si el backend devuelve algo que no es array (undefined, null,
+      // objeto de error), NO sobreescribir el estado. Mantiene la lista previa.
+      if (!Array.isArray(data)) {
+        console.warn('fetchRequests: respuesta no es array, se preserva estado anterior', data);
+        return;
+      }
+      // DEFENSIVA 2: durante auto-refresh silencioso, si la respuesta viene vacía
+      // pero la lista previa tenía datos, es casi seguro un hiccup transitorio
+      // (cold start, timeout parcial, red). No vaciamos la UI — el admin veía 30
+      // solicitudes y de repente ninguna es una experiencia aterrorizante. Si el
+      // admin quiere confirmar vaciado real, usa el botón Refrescar manual.
+      if (silent && data.length === 0) {
+        setRequests(prev => (prev.length > 0 ? prev : data));
+        return;
+      }
       setRequests(data);
     } catch (e) { console.error(e); } finally { if (!silent) setFetchingData(false); }
   };
