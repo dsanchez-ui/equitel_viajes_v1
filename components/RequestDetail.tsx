@@ -254,12 +254,10 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                     </div>
                                 )}
 
-                                {/* Banner APROBACIÓN EXTRAORDINARIA — R10: texto diferente para alto costo nacional (excluye CEO) */}
-                                {(Number(request.totalCost) || 0) > 1200000 && !request.requesterIsCeo && !request.requesterIsCds && (
+                                {/* Banner APROBACIÓN EXTRAORDINARIA — R10: solo para alto costo nacional (si es internacional, el banner INTERNACIONAL ya cubre quién aprueba) */}
+                                {(Number(request.totalCost) || 0) > 1200000 && !request.requesterIsCeo && !request.requesterIsCds && !request.isInternational && (
                                     <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md text-sm">
-                                        <strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud (${Number(request.totalCost).toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de {request.isInternational
-                                            ? 'Gerencia General, Dirección de Cadena de Suministro y Aprobador de Área'
-                                            : 'Dirección de Cadena de Suministro y Aprobador de Área'}.
+                                        <strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud (${Number(request.totalCost).toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Dirección de Cadena de Suministro y Aprobador de Área.
                                     </div>
                                 )}
 

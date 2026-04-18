@@ -1751,7 +1751,13 @@ function processApprovalFromEmail(e) {
                   || (cdsIsAreaApprover && cdsApproved);
               const executiveSatisfied = (requiresCeoApproval && ceoApproved)
                                        || (requiresCdsApproval && cdsApproved);
-              if (effectiveAreaApproved && executiveSatisfied) {
+              // LEGACY FALLBACK R10: solicitudes alto costo nacional creadas ANTES
+              // del deploy recibieron correo al CEO bajo las reglas antiguas
+              // "CEO o CDS". Si el CEO ya aprobó antes del deploy, honrar esa
+              // decisión para no varar la solicitud. Solo dispara cuando CEO ya
+              // NO es requerido por R10 pero su voto está registrado.
+              const legacyCeoApproval = ceoApproved && !requiresCeoApproval;
+              if (effectiveAreaApproved && (executiveSatisfied || legacyCeoApproval)) {
                   isFullyApproved = true;
               }
           } else {
@@ -2694,16 +2700,13 @@ const HtmlTemplates = {
             </div>
         `;
 
-        // HIGH COST BANNER — se oculta si solicitante es CEO/CDS (su sola
-        // aprobación basta, los banners de "requiere CEO/CDS" son ruido).
-        // R10: Texto diferente según si es internacional (incluye CEO) o
-        // alto costo nacional (solo CDS + Área, NO incluye CEO).
+        // HIGH COST BANNER — se oculta si solicitante es CEO/CDS o si es
+        // internacional (el banner INTERNACIONAL ya cubre quién aprueba;
+        // mostrar ambos genera redundancia e inconsistencia textual).
+        // R10: solo aporta info única en el caso ALTO COSTO NACIONAL.
         const totalCost = Number(request.totalCost) || 0;
-        if (totalCost > 1200000 && !isPriorityAppr) {
-            const approversText = request.isInternational
-                ? 'Gerencia General, Dirección de Cadena de Suministro y Aprobador de Área'
-                : 'Dirección de Cadena de Suministro y Aprobador de Área';
-            alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud ($${totalCost.toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de ${approversText}.</div>`;
+        if (totalCost > 1200000 && !isPriorityAppr && !request.isInternational) {
+            alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud ($${totalCost.toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Dirección de Cadena de Suministro y Aprobador de Área.</div>`;
         }
 
         // INTERNATIONAL BANNER — mismo razonamiento.
