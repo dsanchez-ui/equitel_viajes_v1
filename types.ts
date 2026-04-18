@@ -156,6 +156,8 @@ export interface TravelRequest {
   ceoIsAreaApprover?: boolean;
   cdsIsAreaApprover?: boolean;
   requiresExecutiveApproval?: boolean;
+  requiresCeoApproval?: boolean;
+  requiresCdsApproval?: boolean;
 }
 
 export interface CostCenterMaster {

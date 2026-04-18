@@ -1571,10 +1571,12 @@ function processApprovalFromEmail(e) {
           const costIdx = H("COSTO COTIZADO PARA VIAJE");
           const totalCost = Number(sheet.getRange(rowNumber, costIdx + 1).getValue()) || 0;
 
-          // Determine if High Cost Logic applies (National > 1.2M)
-          // If it's International, it already requires CEO/CDS.
-          // If it's National but > 1.2M, it ALSO requires CEO/CDS.
-          const requiresExecutiveApproval = isInternational || totalCost > 1200000;
+          // R10: CEO se excluye del flujo de ALTO COSTO NACIONAL. El CEO
+          // solo interviene en solicitudes INTERNACIONALES (donde es OR con CDS).
+          // El CDS sí interviene en ambos casos (internacional + alto costo).
+          const requiresCeoApproval = isInternational;
+          const requiresCdsApproval = isInternational || totalCost > 1200000;
+          const requiresExecutiveApproval = requiresCeoApproval || requiresCdsApproval;
 
           // If already fully processed, stop status update but allow logging if it's a late approval
           const isAdvancedStatus = ['APROBADO', 'RESERVADO', 'PROCESADO', 'ANULADO', 'DENEGADO'].includes(currentStatus);
@@ -1739,15 +1741,17 @@ function processApprovalFromEmail(e) {
               // LEGACY FALLBACK: same reasoning as the CEO branch above.
               else if (areaApproved && ceoApproved) isFullyApproved = true;
           } else if (requiresExecutiveApproval) {
-              // Standard executive flow: area + (CEO or CDS).
-              // If the assigned area approver IS the CEO/CDS, the deduped email
-              // was sent only with executive role (CEO or CDS), so the area column
-              // never gets marked. Treat the executive approval as implicitly
-              // satisfying the area requirement in that case.
+              // Standard executive flow: area + (CEO or CDS — según flags R10).
+              // Internacional: basta con UNO de los dos ejecutivos (OR).
+              // Alto costo nacional: solo CDS requerido (CEO excluido).
+              // Si el aprobador de área ES el CEO/CDS, su click ejecutivo
+              // implícitamente cubre también el rol de área (effectiveAreaApproved).
               const effectiveAreaApproved = areaApproved
                   || (ceoIsAreaApprover && ceoApproved)
                   || (cdsIsAreaApprover && cdsApproved);
-              if (effectiveAreaApproved && (cdsApproved || ceoApproved)) {
+              const executiveSatisfied = (requiresCeoApproval && ceoApproved)
+                                       || (requiresCdsApproval && cdsApproved);
+              if (effectiveAreaApproved && executiveSatisfied) {
                   isFullyApproved = true;
               }
           } else {
@@ -2692,9 +2696,14 @@ const HtmlTemplates = {
 
         // HIGH COST BANNER — se oculta si solicitante es CEO/CDS (su sola
         // aprobación basta, los banners de "requiere CEO/CDS" son ruido).
+        // R10: Texto diferente según si es internacional (incluye CEO) o
+        // alto costo nacional (solo CDS + Área, NO incluye CEO).
         const totalCost = Number(request.totalCost) || 0;
         if (totalCost > 1200000 && !isPriorityAppr) {
-            alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud ($${totalCost.toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Gerencia General, Gerencia de Cadena de Suministro y Aprobador de Área.</div>`;
+            const approversText = request.isInternational
+                ? 'Gerencia General, Dirección de Cadena de Suministro y Aprobador de Área'
+                : 'Dirección de Cadena de Suministro y Aprobador de Área';
+            alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud ($${totalCost.toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de ${approversText}.</div>`;
         }
 
         // INTERNATIONAL BANNER — mismo razonamiento.
@@ -3821,7 +3830,9 @@ function sendApprovalRequestEmail(req) {
     const requesterIsCds = requesterLower === cdsLower;
 
     const totalCost = Number(req.totalCost) || 0;
-    const requiresExecutiveApproval = req.isInternational || totalCost > 1200000;
+    // R10: CEO se excluye del flujo de alto costo nacional.
+    const requiresCeoApproval = req.isInternational;
+    const requiresCdsApproval = req.isInternational || totalCost > 1200000;
     const subject = getStandardSubject(req) + " - APROBACIÓN REQUERIDA";
 
     const sendOne = function(email, role) {
@@ -3851,10 +3862,8 @@ function sendApprovalRequestEmail(req) {
     // executive (effectiveAreaApproved logic).
     const planned = new Map();
 
-    if (requiresExecutiveApproval) {
-        planned.set(ceoLower, { email: CEO_EMAIL, role: 'CEO' });
-        planned.set(cdsLower, { email: DIRECTOR_EMAIL, role: 'CDS' });
-    }
+    if (requiresCeoApproval) planned.set(ceoLower, { email: CEO_EMAIL, role: 'CEO' });
+    if (requiresCdsApproval) planned.set(cdsLower, { email: DIRECTOR_EMAIL, role: 'CDS' });
 
     const approverEmails = String(req.approverEmail || '').split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
     approverEmails.forEach(function(email) {
@@ -3944,7 +3953,11 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
   const ceoIsAreaApprover = assignedAreaApprovers.indexOf(ceoLower) !== -1;
   const cdsIsAreaApprover = assignedAreaApprovers.indexOf(cdsLower) !== -1;
 
-  const requiresExecutive = isInternational || (Number(totalCost) || 0) > 1200000;
+  // R10: CEO se excluye del flujo de alto costo nacional. Solo interviene
+  // en internacionales. CDS interviene en internacional Y en alto costo.
+  const requiresCeoApproval = isInternational;
+  const requiresCdsApproval = isInternational || (Number(totalCost) || 0) > 1200000;
+  const requiresExecutive = requiresCeoApproval || requiresCdsApproval;
 
   var area = 'PENDING', areaReason = '';
   var ceo = 'PENDING', ceoReason = '';
@@ -3975,17 +3988,26 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
       area = 'PENDING';
     }
 
-    if (requiresExecutive) {
+    // CEO: solo se evalúa si requiresCeoApproval (= isInternational).
+    if (requiresCeoApproval) {
       if (ceoApproved) ceo = 'APPROVED';
       else if (ceoDenied) ceo = 'DENIED';
       else ceo = 'PENDING';
+    } else {
+      ceo = 'NA';
+      ceoReason = requiresCdsApproval
+        ? 'Solicitud de alto costo nacional: solo requiere aprobación del Director CDS, no del CEO.'
+        : 'Solicitud nacional y bajo $1.200.000 — no requiere aprobación ejecutiva.';
+    }
 
+    // CDS: se evalúa tanto en internacional como en alto costo nacional.
+    if (requiresCdsApproval) {
       if (cdsApproved) cds = 'APPROVED';
       else if (cdsDenied) cds = 'DENIED';
       else cds = 'PENDING';
     } else {
-      ceo = 'NA'; ceoReason = 'Solicitud nacional y bajo $1.200.000 — no requiere aprobación ejecutiva.';
-      cds = 'NA'; cdsReason = 'Solicitud nacional y bajo $1.200.000 — no requiere aprobación ejecutiva.';
+      cds = 'NA';
+      cdsReason = 'Solicitud nacional y bajo $1.200.000 — no requiere aprobación ejecutiva.';
     }
   }
 
@@ -3997,7 +4019,9 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
     requesterIsCds: requesterIsCds,
     ceoIsAreaApprover: ceoIsAreaApprover,
     cdsIsAreaApprover: cdsIsAreaApprover,
-    requiresExecutive: requiresExecutive
+    requiresExecutive: requiresExecutive,
+    requiresCeoApproval: requiresCeoApproval,
+    requiresCdsApproval: requiresCdsApproval
   };
 }
 
@@ -4133,6 +4157,8 @@ function mapRowToRequest(row) {
   result.ceoIsAreaApprover = eff.ceoIsAreaApprover;
   result.cdsIsAreaApprover = eff.cdsIsAreaApprover;
   result.requiresExecutiveApproval = eff.requiresExecutive;
+  result.requiresCeoApproval = eff.requiresCeoApproval;
+  result.requiresCdsApproval = eff.requiresCdsApproval;
 
   // DEFENSA: Si el status global es APROBADO pero el ejecutivo solicitante
   // aparece como PENDIENTE en su propio rol, forzar APPROVED. Caso detectado:
@@ -4329,19 +4355,22 @@ function sendPendingApprovalReminders() {
 
       const isAreaApproved = String(row[areaApproveIdx]).startsWith("Sí");
       const totalCost = Number(request.totalCost) || 0;
-      const requiresExecutiveApproval = request.isInternational || totalCost > 1200000;
-      
+      // R10: CEO solo en internacional, CDS en internacional + alto costo.
+      const requiresCeoApproval = request.isInternational;
+      const requiresCdsApproval = request.isInternational || totalCost > 1200000;
+      const requiresExecutiveApproval = requiresCeoApproval || requiresCdsApproval;
+
       if (requiresExecutiveApproval) {
          const isCdsApproved = String(row[cdsApproveIdx]).startsWith("Sí");
          const isCeoApproved = String(row[ceoApproveIdx]).startsWith("Sí");
 
-         // Lógica Ejecutiva: Solo notificar a quien falte
+         // Lógica Ejecutiva: Solo notificar a quien falte Y esté requerido.
          if (!isAreaApproved && request.approverEmail) {
              const emails = request.approverEmail.split(',').map(e => e.trim()).filter(e => e);
              emails.forEach(e => recipients.push({email: e, role: 'NORMAL'}));
          }
-         if (!isCdsApproved) recipients.push({email: DIRECTOR_EMAIL, role: 'CDS'});
-         if (!isCeoApproved) recipients.push({email: CEO_EMAIL, role: 'CEO'});
+         if (requiresCdsApproval && !isCdsApproved) recipients.push({email: DIRECTOR_EMAIL, role: 'CDS'});
+         if (requiresCeoApproval && !isCeoApproved) recipients.push({email: CEO_EMAIL, role: 'CEO'});
 
       } else {
          // Lógica Nacional
