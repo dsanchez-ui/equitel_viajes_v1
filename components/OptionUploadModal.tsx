@@ -39,6 +39,13 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
     // en estado inconsistente.
     const [markedForDeletion, setMarkedForDeletion] = useState<Set<string>>(new Set());
 
+    // R8b: Notificar al usuario por correo con las opciones. Default ON.
+    // Cuando el admin gestionó la compra por fuera (caso ejecutivos prioritarios),
+    // carga las opciones solo para trazabilidad — desmarcarlo evita el correo
+    // "seleccione opción" Y salta directo a PENDIENTE_CONFIRMACION_COSTO sin
+    // esperar la selección del usuario (él ya tiene los tiquetes).
+    const [sendUserNotification, setSendUserNotification] = useState(true);
+
     const flightInputRef = useRef<HTMLInputElement>(null);
     const hotelInputRef = useRef<HTMLInputElement>(null);
 
@@ -156,6 +163,24 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
             return;
         }
 
+        // R8b: si se desmarcó "Enviar al usuario", exigir confirmación EXTRA
+        // con advertencia antes del confirm normal.
+        if (!sendUserNotification) {
+            setDialog({
+                isOpen: true,
+                title: '⚠️ El usuario NO recibirá correo automático',
+                message: 'Desmarcaste "Enviar correo al usuario". Se guardarán las opciones SOLO para trazabilidad y la solicitud avanzará directamente a PENDIENTE DE CONFIRMACIÓN DE COSTOS sin esperar la selección del usuario.\n\n⚠️ Úsalo solo cuando los tiquetes/hotel ya fueron gestionados por fuera del sistema. El usuario NO sabrá que estas opciones están cargadas.\n\n¿Continuar sin notificar al usuario?',
+                type: 'CONFIRM',
+                onConfirm: () => { closeDialog(); promptFinalConfirm(); },
+                onCancel: closeDialog
+            });
+            return;
+        }
+
+        promptFinalConfirm();
+    };
+
+    const promptFinalConfirm = () => {
         const deleteCount = markedForDeletion.size;
         const uploadCount = pendingOptions.length;
         const summaryParts = [];
@@ -165,9 +190,14 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
             ? `Cambios pendientes: ${summaryParts.join(' y ')}.\n\n`
             : '';
 
+        const message = sendUserNotification
+            ? `${summary}Se enviarán ${totalCount} opciones visuales al usuario.\n\nEl usuario recibirá un correo con las imágenes y deberá ingresar a la plataforma para describir su elección.`
+            : `${summary}Se guardarán ${totalCount} opciones SOLO para trazabilidad (SIN correo al usuario). La solicitud avanzará directamente a PENDIENTE DE CONFIRMACIÓN DE COSTOS.`;
+
         setDialog({
-            isOpen: true, title: 'Enviar Opciones',
-            message: `${summary}Se enviarán ${totalCount} opciones visuales al usuario.\n\nEl usuario recibirá un correo con las imágenes y deberá ingresar a la plataforma para describir su elección.`,
+            isOpen: true,
+            title: sendUserNotification ? 'Enviar Opciones' : 'Guardar Opciones (sin notificar)',
+            message: message,
             type: 'CONFIRM', onConfirm: executeSubmission, onCancel: closeDialog
         });
     };
@@ -214,14 +244,31 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                 .filter(o => !markedForDeletion.has(o.driveId));
             const allOptions = [...survivors, ...uploadedOptions];
 
-            // 4. Update request status with the final list (overwrites OPCIONES JSON)
+            // 4. Update request status — siempre pasa primero por PENDING_SELECTION
+            // para que el backend persista las opciones. El flag skipNotification
+            // le dice al backend que NO envíe correo al usuario en este paso.
+            // Si no se notifica, hacemos un segundo update inmediato a
+            // PENDING_CONFIRMACION_COSTO para que el admin continúe con costos.
             await gasService.updateRequestStatus(request.requestId, RequestStatus.PENDING_SELECTION, {
-                analystOptions: allOptions
+                analystOptions: allOptions,
+                skipNotification: !sendUserNotification
             });
 
+            if (!sendUserNotification) {
+                // Avanza a PENDIENTE_CONFIRMACION_COSTO con un texto de selección
+                // sintético para trazabilidad (refleja que la selección fue implícita
+                // por gestión off-system).
+                await gasService.updateRequestStatus(request.requestId, RequestStatus.PENDING_CONFIRMACION_COSTO, {
+                    selectionDetails: '[OPCIONES CARGADAS SOLO POR TRAZABILIDAD — gestión fuera del sistema]'
+                });
+            }
+
+            const baseMsg = sendUserNotification
+                ? 'Las opciones han sido enviadas al usuario correctamente.'
+                : 'Opciones guardadas solo para trazabilidad. La solicitud avanzó a PENDIENTE DE CONFIRMACIÓN DE COSTOS. No se envió correo al usuario.';
             const successMsg = deletionErrors.length > 0
-                ? `Las opciones han sido enviadas al usuario correctamente.\n\nNota: ${deletionErrors.length} archivo(s) en Drive no se pudieron eliminar (referencia ya removida del registro, los huérfanos son inofensivos).`
-                : 'Las opciones han sido enviadas al usuario correctamente.';
+                ? `${baseMsg}\n\nNota: ${deletionErrors.length} archivo(s) en Drive no se pudieron eliminar (referencia ya removida del registro, los huérfanos son inofensivos).`
+                : baseMsg;
 
             setDialog({
                 isOpen: true, title: 'Envío Exitoso',
@@ -464,6 +511,27 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                     ))}
                                 </div>
                             </div>
+                        </div>
+
+                        {/* Checkbox R8b: enviar correo de selección al usuario */}
+                        <div className={`mt-5 rounded p-3 border ${sendUserNotification ? 'bg-gray-50 border-gray-200' : 'bg-amber-50 border-amber-300'}`}>
+                            <label className="flex items-start gap-3 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={sendUserNotification}
+                                    onChange={(e) => setSendUserNotification(e.target.checked)}
+                                    disabled={loading}
+                                    className="mt-1 w-4 h-4 accent-brand-red flex-shrink-0"
+                                />
+                                <span className="text-sm text-gray-800 flex-1">
+                                    <strong>Enviar correo al usuario</strong> para que revise las opciones y seleccione.
+                                    {!sendUserNotification && (
+                                        <span className="block mt-1 text-xs text-amber-800 font-medium">
+                                            ⚠️ Desmarcado: las opciones se guardan solo para trazabilidad. La solicitud avanzará directamente a PENDIENTE DE CONFIRMACIÓN DE COSTOS sin esperar selección del usuario.
+                                        </span>
+                                    )}
+                                </span>
+                            </label>
                         </div>
 
                         <div className="mt-6 flex justify-end gap-3 border-t pt-4">

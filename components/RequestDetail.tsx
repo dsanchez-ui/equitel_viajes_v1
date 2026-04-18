@@ -605,15 +605,15 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                     </div>
                                 )}
 
-                                {/* --- SECTION 3B: SUPERADMIN — SALTAR SELECCIÓN --- */}
-                                {isSelectionPhase && isSuperAdmin && (
+                                {/* --- SECTION 3B: ADMIN — SALTAR SELECCIÓN --- */}
+                                {isSelectionPhase && isAdmin && (
                                     <div className="bg-indigo-50 border-2 border-indigo-300 rounded-lg p-4 mt-6 shadow-sm">
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1">
-                                                <h4 className="text-sm font-bold text-indigo-900 mb-1">⏩ Saltar etapa de selección (SUPERADMIN)</h4>
+                                                <h4 className="text-sm font-bold text-indigo-900 mb-1">⏩ Saltar etapa de selección</h4>
                                                 <p className="text-xs text-indigo-800 leading-relaxed">
                                                     Avanza la solicitud directamente a <strong>PENDIENTE DE CONFIRMACIÓN DE COSTOS</strong> sin esperar la selección del usuario.
-                                                    Usar solo cuando el área ya gestionó la compra por fuera del sistema. Se registra en observaciones con su correo, timestamp y justificación. No se envía correo al usuario.
+                                                    Usar cuando el área ya gestionó la compra por fuera del sistema. Se registra en observaciones con su correo, timestamp y justificación. No se envía correo al usuario.
                                                 </p>
                                             </div>
                                             <button

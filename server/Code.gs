@@ -337,7 +337,9 @@ function dispatch(action, payload) {
     // confía solo en el role del token guardado) para permitir revocación en
     // caliente — si se quita a alguien de SUPER_ADMIN_EMAILS, su capacidad
     // superadmin desaparece al siguiente intento sin invalidar su sesión.
-    const superAdminOnlyActions = ['skipSelectionStage'];
+    // (skipSelectionStage se movió a adminOnlyActions: Wendy ANALYST también
+    // necesita saltarse selección cuando gestiona compra por fuera.)
+    const superAdminOnlyActions = [];
     if (superAdminOnlyActions.includes(action) && !isSuperAdmin(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de superadmin.' };
     }
@@ -3691,7 +3693,20 @@ function updateRequestStatus(id, status, payload) {
    if (status === 'PENDIENTE_SELECCION') {
       _recordEvent_(id, 'optionsUploaded'); // métricas: analista cargó opciones
       const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
-      sendOptionsToRequester(fullReq.requesterEmail, fullReq, payload.analystOptions);
+      // skipNotification: opciones cargadas SOLO para trazabilidad (caso típico:
+      // los tiquetes se gestionaron fuera del sistema para un ejecutivo prioritario
+      // o urgencia). No se molesta al usuario con un correo de "seleccione opción"
+      // cuando ya tiene los tiquetes. Queda nota en OBSERVACIONES.
+      if (payload && payload.skipNotification === true) {
+          try {
+              var obsIdx = H('OBSERVACIONES');
+              var currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
+              var note = '[OPCIONES]: Cargadas solo para trazabilidad — no se envió correo de selección al usuario.';
+              sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + '\n' : '') + note);
+          } catch (e) { console.error('Error logging options skipNotification: ' + e); }
+      } else {
+          sendOptionsToRequester(fullReq.requesterEmail, fullReq, payload.analystOptions);
+      }
    }
 
    // NEW: NOTIFY ADMIN WHEN USER MAKES SELECTION
