@@ -81,6 +81,70 @@ function escapeHtml_(unsafe) {
     .replace(/'/g, '&#039;');
 }
 
+// --- SECURITY: HMAC signing de approval links ---
+// Por qué: sin firma, un atacante con acceso a CUALQUIER link de un correo
+// (p.ej. reenviado por error, screenshot expuesto, email leakeado) puede
+// fabricar links manualmente cambiando id/decision y aprobar o denegar
+// solicitudes que no le corresponden. Firmamos (action,id,decision,role,
+// actor,t) con HMAC-SHA256 y un secreto en ScriptProperties.
+//
+// Cutover: si APPROVAL_LINK_HMAC_CUTOVER_AT (ISO) está seteado y ya pasó,
+// links sin firma se rechazan. Mientras no esté seteado, se aceptan con
+// warning. Esto permite un grace period para correos en tránsito después
+// del deploy. Recomendado: setear cutover 10-14 días después de deploy.
+function _getApprovalLinkSecret_() {
+  var props = PropertiesService.getScriptProperties();
+  var secret = props.getProperty('APPROVAL_LINK_SECRET');
+  if (!secret) {
+    secret = Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+    props.setProperty('APPROVAL_LINK_SECRET', secret);
+  }
+  return secret;
+}
+
+function _approvalLinkCanonical_(action, id, decision, role, actor, t) {
+  return [
+    String(action || ''),
+    String(id || ''),
+    String(decision || ''),
+    String(role || ''),
+    String(actor || '').toLowerCase().trim(),
+    String(t || '')
+  ].join('|');
+}
+
+function _signApprovalLink_(canonical) {
+  var secret = _getApprovalLinkSecret_();
+  var raw = Utilities.computeHmacSha256Signature(canonical, secret);
+  return raw.map(function(b) { return ('0' + ((b & 0xFF).toString(16))).slice(-2); }).join('');
+}
+
+// Devuelve { t, sig } para inyectar en URL nueva.
+function _newApprovalLinkSig_(action, id, decision, role, actor) {
+  var t = String(new Date().getTime());
+  var canonical = _approvalLinkCanonical_(action, id, decision, role, actor, t);
+  return { t: t, sig: _signApprovalLink_(canonical) };
+}
+
+// Devuelve { valid: boolean, reason: string }. Llamar antes de ejecutar la
+// acción. Si hay sig → verifica HMAC. Si no → evalúa cutover para legacy.
+function _verifyApprovalLinkSig_(action, id, decision, role, actor, t, sig) {
+  if (!sig || !t) {
+    var cutover = PropertiesService.getScriptProperties().getProperty('APPROVAL_LINK_HMAC_CUTOVER_AT') || '';
+    if (!cutover) return { valid: true, reason: 'legacy-accepted-no-cutover' };
+    var cutoverMs = new Date(cutover).getTime();
+    if (isNaN(cutoverMs)) return { valid: true, reason: 'legacy-accepted-cutover-invalid' };
+    if (new Date().getTime() < cutoverMs) return { valid: true, reason: 'legacy-accepted-pre-cutover' };
+    return { valid: false, reason: 'Este enlace es inválido (formato antiguo). Solicita uno nuevo al área de viajes.' };
+  }
+  var canonical = _approvalLinkCanonical_(action, id, decision, role, actor, t);
+  var expected = _signApprovalLink_(canonical);
+  if (sig !== expected) {
+    return { valid: false, reason: 'Este enlace no es válido o fue manipulado.' };
+  }
+  return { valid: true, reason: 'signed-ok' };
+}
+
 // Marcador único en OBSERVACIONES para indicar que la solicitud padre está
 // esperando que el usuario responda si desea continuar o anular (tras una
 // consulta iniciada por el admin después de denegar un cambio). Mientras el
@@ -1366,12 +1430,21 @@ function processStudyDecision(e) {
   const id = e.parameter.id;
   const decision = e.parameter.decision; // 'study' or 'reject'
   const confirm = e.parameter.confirm;
+  const sigT = e.parameter.t;
+  const sigVal = e.parameter.sig;
+
+  const _verify = _verifyApprovalLinkSig_('study_decision', id, decision, '', '', sigT, sigVal);
+  if (!_verify.valid) {
+    console.error('StudyDecision link rechazado: ' + _verify.reason + ' | id=' + id + ' decision=' + decision);
+    return renderMessagePage('Enlace inválido', _verify.reason, '#D71920');
+  }
 
   const decisionLabel = decision === 'study' ? 'PASAR A ESTUDIO' : 'RECHAZAR CAMBIO';
   const decisionColor = decision === 'study' ? '#059669' : '#D71920';
 
   if (confirm !== 'true') {
-      const url = `${WEB_APP_URL}?action=study_decision&id=${id}&decision=${decision}&confirm=true`;
+      const _sigQuery = (sigT && sigVal) ? `&t=${encodeURIComponent(sigT)}&sig=${encodeURIComponent(sigVal)}` : '';
+      const url = `${WEB_APP_URL}?action=study_decision&id=${id}&decision=${decision}&confirm=true${_sigQuery}`;
       return renderConfirmationPage(
           `Confirmar Decisión`,
           `¿Está seguro de <strong>${decisionLabel}</strong> para la solicitud <strong>${id}</strong>?`,
@@ -1510,8 +1583,10 @@ function _startUserConsultOnParent_(parentRequestId, childRequestId, denialReaso
  */
 function sendUserConsultEmail_(parentReq, childRequestId, denialReason) {
   const subject = getStandardSubject(parentReq); // Mismo asunto = mismo hilo
-  const continueLink = `${WEB_APP_URL}?action=user_consult&id=${encodeURIComponent(parentReq.requestId)}&decision=continue`;
-  const cancelLink = `${WEB_APP_URL}?action=user_consult&id=${encodeURIComponent(parentReq.requestId)}&decision=anulate`;
+  const _sigCont = _newApprovalLinkSig_('user_consult', parentReq.requestId, 'continue', '', '');
+  const _sigCancel = _newApprovalLinkSig_('user_consult', parentReq.requestId, 'anulate', '', '');
+  const continueLink = `${WEB_APP_URL}?action=user_consult&id=${encodeURIComponent(parentReq.requestId)}&decision=continue&t=${_sigCont.t}&sig=${_sigCont.sig}`;
+  const cancelLink = `${WEB_APP_URL}?action=user_consult&id=${encodeURIComponent(parentReq.requestId)}&decision=anulate&t=${_sigCancel.t}&sig=${_sigCancel.sig}`;
   const isHotelOnly = parentReq.requestMode === 'HOTEL_ONLY';
 
   const content = `
@@ -1570,16 +1645,25 @@ function processUserConsultResponse(e) {
   const id = e.parameter.id;
   const decision = e.parameter.decision; // 'continue' | 'anulate'
   const confirm = e.parameter.confirm;
+  const sigT = e.parameter.t;
+  const sigVal = e.parameter.sig;
 
   if (!id || !decision) {
     return renderMessagePage("Error", "Parámetros inválidos.", '#D71920');
+  }
+
+  const _verify = _verifyApprovalLinkSig_('user_consult', id, decision, '', '', sigT, sigVal);
+  if (!_verify.valid) {
+    console.error('UserConsult link rechazado: ' + _verify.reason + ' | id=' + id + ' decision=' + decision);
+    return renderMessagePage('Enlace inválido', _verify.reason, '#D71920');
   }
 
   const decisionLabel = decision === 'continue' ? 'CONTINUAR CON LA SOLICITUD' : 'ANULAR LA SOLICITUD';
   const decisionColor = decision === 'continue' ? '#059669' : '#dc2626';
 
   if (confirm !== 'true') {
-    const url = `${WEB_APP_URL}?action=user_consult&id=${encodeURIComponent(id)}&decision=${encodeURIComponent(decision)}&confirm=true`;
+    const _sigQuery = (sigT && sigVal) ? `&t=${encodeURIComponent(sigT)}&sig=${encodeURIComponent(sigVal)}` : '';
+    const url = `${WEB_APP_URL}?action=user_consult&id=${encodeURIComponent(id)}&decision=${encodeURIComponent(decision)}&confirm=true${_sigQuery}`;
     return renderConfirmationPage(
       `Confirmar Decisión`,
       `¿Está seguro de <strong>${decisionLabel}</strong> para la solicitud <strong>${escapeHtml_(id)}</strong>?`,
@@ -1699,15 +1783,31 @@ function processApprovalFromEmail(e) {
   const role = e.parameter.role || 'NORMAL'; // 'NORMAL', 'CEO', 'CDS'
   const confirm = e.parameter.confirm;
   const actor = e.parameter.actor; // NEW: Specific email of the person acting
+  const sigT = e.parameter.t;
+  const sigVal = e.parameter.sig;
+
+  // SEGURIDAD: verificar firma HMAC del link. Si el link es legacy (sin firma)
+  // y APPROVAL_LINK_HMAC_CUTOVER_AT aún no pasó, se acepta con warning.
+  const _verify = _verifyApprovalLinkSig_('approve', id, decision, role, actor, sigT, sigVal);
+  if (!_verify.valid) {
+    console.error('Approval link rechazado: ' + _verify.reason + ' | id=' + id + ' role=' + role + ' decision=' + decision);
+    return renderMessagePage('Enlace inválido', _verify.reason, '#D71920');
+  }
+  if (_verify.reason && _verify.reason.indexOf('legacy') === 0) {
+    console.log('Approval link LEGACY aceptado (pre-cutover): ' + _verify.reason + ' | id=' + id);
+  }
 
   const decisionLabel = decision === 'approved' ? 'APROBAR' : 'DENEGAR';
   const decisionColor = decision === 'approved' ? '#059669' : '#D71920';
 
   if (confirm !== 'true') {
+      // Propagamos t y sig a la URL de confirmación para que la segunda
+      // pasada también pase la validación HMAC.
+      const _sigQuery = (sigT && sigVal) ? `&t=${encodeURIComponent(sigT)}&sig=${encodeURIComponent(sigVal)}` : '';
       if (decision === 'denied') {
-          return renderDenialReasonPage(id, role, actor, decisionColor);
+          return renderDenialReasonPage(id, role, actor, decisionColor, sigT, sigVal);
       }
-      const url = `${WEB_APP_URL}?action=approve&id=${id}&decision=${decision}&role=${role}&confirm=true&actor=${encodeURIComponent(actor || '')}`;
+      const url = `${WEB_APP_URL}?action=approve&id=${id}&decision=${decision}&role=${role}&confirm=true&actor=${encodeURIComponent(actor || '')}${_sigQuery}`;
       return renderConfirmationPage(
           `Confirmar Decisión`,
           `¿Está seguro de <strong>${decisionLabel}</strong> la solicitud <strong>${id}</strong>?`,
@@ -3135,9 +3235,10 @@ function renderConfirmationPage(title, message, actionText, actionUrl, color) {
     return HtmlService.createHtmlOutput(html).setTitle(title).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
 
-function renderDenialReasonPage(id, role, actor, color) {
+function renderDenialReasonPage(id, role, actor, color, sigT, sigVal) {
     const safeId = escapeHtml_(id);
     const safeRole = escapeHtml_(role);
+    const _sigQueryJs = (sigT && sigVal) ? ('&t=' + encodeURIComponent(sigT) + '&sig=' + encodeURIComponent(sigVal)) : '';
     const html = `
     <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Denegar Solicitud</title>
     <style>
@@ -3158,7 +3259,7 @@ function renderDenialReasonPage(id, role, actor, color) {
       function submitDenial(){
         var reason = document.getElementById('reason').value.trim();
         var encodedReason = encodeURIComponent(reason);
-        var url = '${WEB_APP_URL}?action=approve&id=${encodeURIComponent(id)}&decision=denied&role=${encodeURIComponent(role)}&confirm=true&actor=${encodeURIComponent(actor || '')}' + (reason ? '&reason=' + encodedReason : '');
+        var url = '${WEB_APP_URL}?action=approve&id=${encodeURIComponent(id)}&decision=denied&role=${encodeURIComponent(role)}&confirm=true&actor=${encodeURIComponent(actor || '')}${_sigQueryJs}' + (reason ? '&reason=' + encodedReason : '');
         document.getElementById('form-card').style.display='none';
         document.getElementById('loading-card').style.display='block';
         window.top.location.href = url;
@@ -3964,10 +4065,14 @@ function sendRequestEmailWithHtml(data, requestId, htmlTemplate) {
            <div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 12px; border-radius:6px; font-size:12px; margin-bottom:14px; text-align:left;">
                Puede pasarla a estudio o denegarla con los botones de abajo, o desde el <strong>Panel de Administración</strong> (botón "Revisar Cambio" en la fila de la solicitud). Mientras tanto, los recordatorios de la solicitud original <strong>${escapeHtml_(data.relatedRequestId || '')}</strong> quedan pausados.
            </div>
-           <div style="margin-bottom: 15px;">
-               <a href="${WEB_APP_URL}?action=study_decision&id=${requestId}&decision=study" style="background-color: #059669; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; margin-right: 10px; display: inline-block;">PASAR A ESTUDIO</a>
-               <a href="${WEB_APP_URL}?action=study_decision&id=${requestId}&decision=reject" style="background-color: #dc2626; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin-right: 10px;">RECHAZAR CAMBIO</a>
-           </div>
+           ${(function(){
+               var _sigStudy = _newApprovalLinkSig_('study_decision', requestId, 'study', '', '');
+               var _sigReject = _newApprovalLinkSig_('study_decision', requestId, 'reject', '', '');
+               return `<div style="margin-bottom: 15px;">
+               <a href="${WEB_APP_URL}?action=study_decision&id=${requestId}&decision=study&t=${_sigStudy.t}&sig=${_sigStudy.sig}" style="background-color: #059669; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; margin-right: 10px; display: inline-block;">PASAR A ESTUDIO</a>
+               <a href="${WEB_APP_URL}?action=study_decision&id=${requestId}&decision=reject&t=${_sigReject.t}&sig=${_sigReject.sig}" style="background-color: #dc2626; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; font-weight: bold; display: inline-block; margin-right: 10px;">RECHAZAR CAMBIO</a>
+           </div>`;
+           })()}
            <div>
                <a href="${PLATFORM_URL}" style="background-color: #1f2937; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-size: 12px; display: inline-block;">VER EN LA APP</a>
            </div>
@@ -4085,8 +4190,11 @@ function sendApprovalRequestEmail(req) {
     const subject = getStandardSubject(req) + " - APROBACIÓN REQUERIDA";
 
     const sendOne = function(email, role) {
-        const approveLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=approved&role=${role}&actor=${encodeURIComponent(email || '')}`;
-        const rejectLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=denied&role=${role}&actor=${encodeURIComponent(email || '')}`;
+        // Firma HMAC: (action, id, decision, role, actor) — ver _verifyApprovalLinkSig_.
+        const approveSig = _newApprovalLinkSig_('approve', req.requestId, 'approved', role, email || '');
+        const rejectSig = _newApprovalLinkSig_('approve', req.requestId, 'denied', role, email || '');
+        const approveLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=approved&role=${role}&actor=${encodeURIComponent(email || '')}&t=${approveSig.t}&sig=${approveSig.sig}`;
+        const rejectLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=denied&role=${role}&actor=${encodeURIComponent(email || '')}&t=${rejectSig.t}&sig=${rejectSig.sig}`;
         const html = HtmlTemplates.approvalRequest(req, req.selectedOption, approveLink, rejectLink);
         sendEmailRich(email, subject, html, null);
     };
@@ -4682,9 +4790,11 @@ function sendPendingApprovalReminders() {
 }
 
 function sendReminderEmail(req, toEmail, role) {
-    // Generamos los links igual que en el flujo normal
-    const approveLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=approved&role=${role}&actor=${encodeURIComponent(toEmail || '')}`;
-    const rejectLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=denied&role=${role}&actor=${encodeURIComponent(toEmail || '')}`;
+    // Generamos los links igual que en el flujo normal (firmados HMAC).
+    const _approveSig = _newApprovalLinkSig_('approve', req.requestId, 'approved', role, toEmail || '');
+    const _rejectSig = _newApprovalLinkSig_('approve', req.requestId, 'denied', role, toEmail || '');
+    const approveLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=approved&role=${role}&actor=${encodeURIComponent(toEmail || '')}&t=${_approveSig.t}&sig=${_approveSig.sig}`;
+    const rejectLink = `${WEB_APP_URL}?action=approve&id=${req.requestId}&decision=denied&role=${role}&actor=${encodeURIComponent(toEmail || '')}&t=${_rejectSig.t}&sig=${_rejectSig.sig}`;
 
     // Reutilizamos la plantilla de aprobación
     let htmlBody = HtmlTemplates.approvalRequest(req, req.selectedOption, approveLink, rejectLink);
@@ -4866,8 +4976,10 @@ function sendPendingConsultReminders() {
 
     // Rebuild the consult email (same as original, threaded by subject)
     var subject = getStandardSubject(req);
-    var continueLink = WEB_APP_URL + '?action=user_consult&id=' + encodeURIComponent(requestId) + '&decision=continue';
-    var cancelLink = WEB_APP_URL + '?action=user_consult&id=' + encodeURIComponent(requestId) + '&decision=anulate';
+    var _sigContR = _newApprovalLinkSig_('user_consult', requestId, 'continue', '', '');
+    var _sigCancR = _newApprovalLinkSig_('user_consult', requestId, 'anulate', '', '');
+    var continueLink = WEB_APP_URL + '?action=user_consult&id=' + encodeURIComponent(requestId) + '&decision=continue&t=' + _sigContR.t + '&sig=' + _sigContR.sig;
+    var cancelLink = WEB_APP_URL + '?action=user_consult&id=' + encodeURIComponent(requestId) + '&decision=anulate&t=' + _sigCancR.t + '&sig=' + _sigCancR.sig;
     var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
 
     var content = '<div style="background-color:#fff7ed; border:1px solid #fed7aa; color:#c2410c; padding:12px 14px; text-align:center; font-weight:bold; font-size:14px; margin-bottom:15px; border-radius:4px;">⏰ RECORDATORIO: Necesitamos su respuesta</div>';
