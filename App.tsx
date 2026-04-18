@@ -12,11 +12,13 @@ import { LOGO_URL, APP_VERSION } from './constants';
 const POLL_INTERVAL_MS = 15000;
 const SESSION_STORAGE_KEY = 'equitel_session';
 
+type StoredRole = 'REQUESTER' | 'ANALYST' | 'SUPERADMIN';
+
 interface StoredSession {
   email: string;
   token: string;
   expiresAt: number;
-  role: 'REQUESTER' | 'ANALYST';
+  role: StoredRole;
 }
 
 const readStoredSession = (): StoredSession | null => {
@@ -118,7 +120,7 @@ const App: React.FC = () => {
         // Session OK → load integrantes (now session-protected) and finish login
         const loadedIntegrantes = await gasService.getIntegrantesData();
         setIntegrantes(loadedIntegrantes);
-        await handleLoginSuccess(stored.email, validation.role === 'ANALYST', loadedIntegrantes);
+        await handleLoginSuccess(stored.email, (validation.role as StoredRole) || 'REQUESTER', loadedIntegrantes);
       } catch (err) {
         console.error("Init failed", err);
         clearStoredSession();
@@ -129,21 +131,35 @@ const App: React.FC = () => {
     init();
   }, []);
 
-  // Modo efectivo: analista viendo como usuario → fetch como usuario
-  const isEffectiveAdmin = role === UserRole.ANALYST && !viewAsRequester;
+  // Modo efectivo: analista/superadmin viendo como usuario → fetch como usuario.
+  // Un SUPERADMIN ES un ANALYST con extras (herencia), así que en modo admin
+  // ambos roles tienen acceso al dashboard de admin.
+  const isAdminRole = role === UserRole.ANALYST || role === UserRole.SUPERADMIN;
+  const isEffectiveAdmin = isAdminRole && !viewAsRequester;
+  // Solo los superadmin tienen capacidades extra (saltar selección, etc.).
+  const isEffectiveSuperAdmin = role === UserRole.SUPERADMIN && !viewAsRequester;
 
   useEffect(() => {
     if (!userEmail) return;
+    // SECURITY/RACE (#A3): capturamos snapshot de los valores AL momento de
+    // disparar el tick, y al terminar comparamos con los actuales. Si el
+    // usuario alternó viewAsRequester durante el tick en vuelo, el resultado
+    // corresponde a la vista anterior — no lo aplicamos para evitar mostrar
+    // lista de otra vista. `mounted` evita setState sobre componente desmontado.
+    let mounted = true;
     const intervalId = setInterval(async () => {
+      const snapshotAdmin = isEffectiveAdmin;
       setIsSyncing(true);
       try {
-        await fetchRequests(userEmail, isEffectiveAdmin, true);
+        await fetchRequests(userEmail, snapshotAdmin, true, () => mounted && snapshotAdmin === isEffectiveAdmin);
       } finally {
-        // Defensive: siempre apagar isSyncing, aun si fetchRequests lanzara algo.
-        setIsSyncing(false);
+        if (mounted) setIsSyncing(false);
       }
     }, POLL_INTERVAL_MS);
-    return () => clearInterval(intervalId);
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+    };
   }, [userEmail, role, viewAsRequester]);
 
   const determineUserName = (email: string, currentIntegrantes: Integrant[] = []) => {
@@ -159,42 +175,47 @@ const App: React.FC = () => {
     return "Hola, Integrante Equitel";
   };
 
-  const handleLoginSuccess = async (email: string, authenticatedAsAdmin: boolean = false, preloadedIntegrantes?: Integrant[]) => {
+  const handleLoginSuccess = async (email: string, storedRole: StoredRole = 'REQUESTER', preloadedIntegrantes?: Integrant[]) => {
     // CRÍTICO: toda la función está envuelta en try/finally para GARANTIZAR
     // que setLoading(false) siempre se ejecute, aun si alguna operación lanza
     // una excepción inesperada. Sin esto, el usuario podría quedar atrapado
     // en un spinner infinito.
     setLoading(true);
-    let finalIsAdmin = authenticatedAsAdmin;
+    let finalRole: StoredRole = storedRole;
     try {
       gasService.setUserEmail(email);
       const list = preloadedIntegrantes || integrantes;
 
-      // DEFENSE-IN-DEPTH: si la sesión dice que somos analyst, re-confirmar
-      // contra el backend con checkIsAnalyst. Si el backend dice que NO, rebajar
-      // a REQUESTER (caso donde alguien fue removido de ANALYST_EMAILS pero la
-      // sesión vieja aún tiene role=ANALYST almacenada).
-      if (authenticatedAsAdmin) {
+      // DEFENSE-IN-DEPTH: si la sesión dice que somos admin (ANALYST o SUPERADMIN),
+      // re-confirmar contra el backend con checkIsAnalyst. Si el backend dice que
+      // NO, rebajar a REQUESTER (caso donde alguien fue removido de ANALYST_EMAILS
+      // pero la sesión vieja aún tiene rol admin guardado). Un superadmin también
+      // pasa checkIsAnalyst porque isUserAnalyst hereda superadmin (backend).
+      if (storedRole === 'ANALYST' || storedRole === 'SUPERADMIN') {
         try {
           const confirmedAnalyst = await gasService.checkIsAnalyst(email);
           if (!confirmedAnalyst) {
-            console.warn('Session role was ANALYST but backend says user is no longer analyst. Downgrading to REQUESTER.');
-            finalIsAdmin = false;
+            console.warn('Session role was admin but backend downgraded to REQUESTER.');
+            finalRole = 'REQUESTER';
           }
         } catch (err) {
           console.error('checkIsAnalyst failed during login, defaulting to REQUESTER:', err);
-          finalIsAdmin = false;
+          finalRole = 'REQUESTER';
         }
       }
 
+      const isAdmin = finalRole === 'ANALYST' || finalRole === 'SUPERADMIN';
       // Pre-cargar los requests silenciosamente (fetchRequests ya tiene su propio
       // try/catch, nunca re-lanza). Así, cuando el dashboard aparezca, ya tendrá
       // datos sin mostrar el indicador interno de fetching (tenemos el spinner).
-      await fetchRequests(email, finalIsAdmin, true);
+      await fetchRequests(email, isAdmin, true);
 
       // Batch de state updates finales: React 18 los procesa en un solo render,
       // así que la transición de spinner → dashboard correcto es atómica.
-      setRole(finalIsAdmin ? UserRole.ANALYST : UserRole.REQUESTER);
+      const nextRole = finalRole === 'SUPERADMIN' ? UserRole.SUPERADMIN
+                     : finalRole === 'ANALYST' ? UserRole.ANALYST
+                     : UserRole.REQUESTER;
+      setRole(nextRole);
       setViewAsRequester(false);
       setUserName(determineUserName(email, list));
       setUserEmail(email);
@@ -269,7 +290,7 @@ const App: React.FC = () => {
         email: pendingPinEmail,
         token: result.token,
         expiresAt: result.expiresAt || (Date.now() + 30 * 24 * 60 * 60 * 1000),
-        role: (result.role as 'REQUESTER' | 'ANALYST') || 'REQUESTER'
+        role: (result.role as StoredRole) || 'REQUESTER'
       };
       writeStoredSession(session);
       gasService.setUserEmail(pendingPinEmail);
@@ -282,7 +303,7 @@ const App: React.FC = () => {
       setShowUserPinModal(false);
       setPendingPinEmail('');
       setPinFlowMessage('');
-      await handleLoginSuccess(pendingPinEmail, session.role === 'ANALYST', loadedIntegrantes);
+      await handleLoginSuccess(pendingPinEmail, session.role, loadedIntegrantes);
       return true;
     } catch (err: any) {
       console.error('verifyUserPin error', err);
@@ -343,11 +364,12 @@ const App: React.FC = () => {
       const result = await gasService.verifyAdminPin(pin, pendingAdminEmail);
       if (!result.success || !result.token) return false;
 
+      const sessionRole: StoredRole = (result.role as StoredRole) || 'ANALYST';
       const session: StoredSession = {
         email: pendingAdminEmail,
         token: result.token,
         expiresAt: result.expiresAt || (Date.now() + 30 * 24 * 60 * 60 * 1000),
-        role: 'ANALYST'
+        role: sessionRole
       };
       writeStoredSession(session);
       gasService.setUserEmail(pendingAdminEmail);
@@ -357,7 +379,7 @@ const App: React.FC = () => {
       setIntegrantes(loadedIntegrantes);
 
       setShowPinModal(false);
-      await handleLoginSuccess(pendingAdminEmail, true, loadedIntegrantes);
+      await handleLoginSuccess(pendingAdminEmail, sessionRole, loadedIntegrantes);
       return true;
     } catch (e) {
       console.error('verifyAdminPin error', e);
@@ -385,10 +407,21 @@ const App: React.FC = () => {
     window.location.hash = '';
   };
 
-  const fetchRequests = async (email: string, isAdmin: boolean, silent: boolean = false) => {
+  const fetchRequests = async (
+    email: string,
+    isAdmin: boolean,
+    silent: boolean = false,
+    stillValid: () => boolean = () => true
+  ) => {
     if (!silent) setFetchingData(true);
     try {
       const data = isAdmin ? await gasService.getAllRequests(email) : await gasService.getMyRequests(email);
+      // RACE (#A3): si durante el fetch el usuario alternó vista (admin↔user)
+      // o el componente se desmontó, descartamos el resultado para no
+      // sobreescribir el estado actual con la lista de la vista anterior.
+      if (!stillValid()) {
+        return;
+      }
       // DEFENSIVA 1: si el backend devuelve algo que no es array (undefined, null,
       // objeto de error), NO sobreescribir el estado. Mantiene la lista previa.
       if (!Array.isArray(data)) {
@@ -640,6 +673,7 @@ const App: React.FC = () => {
           onRefresh={handleManualRefresh}
           onModify={handleRequestModification}
           isAdmin={isEffectiveAdmin}
+          isSuperAdmin={isEffectiveSuperAdmin}
         />
       )}
       <div className="fixed bottom-2 left-4 text-xs text-gray-400 font-mono font-bold z-[9999] pointer-events-none drop-shadow-sm">

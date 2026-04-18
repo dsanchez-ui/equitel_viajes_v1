@@ -63,7 +63,19 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
     };
 
     // Store image locally (NO Drive upload)
+    // FIX (#A9): tamaño + MIME validados frontend-side ANTES de leer a base64
+    // (leer 50MB a memoria tumba la pestaña). Backend también valida, esto es
+    // feedback inmediato y defensivo. Consistente con SupportUploadModal.
+    const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
     const processFile = (file: File, type: 'FLIGHT' | 'HOTEL') => {
+        if (file.size > MAX_FILE_SIZE_BYTES) {
+            alert('Archivo demasiado grande (máximo 10 MB). Tamaño actual: ' + (file.size / 1024 / 1024).toFixed(1) + ' MB.');
+            return;
+        }
+        if (file.type && !file.type.startsWith('image/')) {
+            alert('Solo se aceptan imágenes (PNG, JPEG, GIF, WebP). Tipo recibido: ' + file.type);
+            return;
+        }
         setUploading(true);
         const reader = new FileReader();
         reader.onload = () => {

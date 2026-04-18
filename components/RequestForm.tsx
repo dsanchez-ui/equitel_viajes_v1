@@ -4,7 +4,7 @@ import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, C
 import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 import { generateTravelRequestEmail } from '../utils/EmailGenerator';
-import { formatToYYYYMMDD, formatToDDMMYYYY } from '../utils/dateUtils';
+import { formatToYYYYMMDD, formatToDDMMYYYY, parseDate } from '../utils/dateUtils';
 import { CityCombobox } from './CityCombobox';
 
 interface RequestFormProps {
@@ -288,11 +288,15 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   }, [formData.origin, formData.destination, cities, isHotelOnly]);
 
   // POLICY VALIDATION LOGIC
+  // FIX (#A4): usar parseDate en vez de `new Date(YYYY-MM-DD)`. El string ISO
+  // sin hora se parseaba como UTC, produciendo desfase de 1 día al borde del
+  // día calendario en GMT-5. parseDate interpreta la fecha en zona local,
+  // consistente con el resto del código y con lo que ve el usuario.
   useEffect(() => {
     if (formData.departureDate) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const depDate = new Date(formData.departureDate);
+      const depDate = parseDate(formData.departureDate);
       depDate.setHours(0, 0, 0, 0);
 
       const diffTime = depDate.getTime() - today.getTime();
@@ -662,7 +666,21 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                 {formData.costCenter === 'VARIOS' && (
                   <div className="mt-3 bg-gray-50 p-3 rounded-md border border-gray-200">
                     <div className="flex gap-2 mb-2">
-                      <input type="text" className="flex-1 rounded-md border-gray-300 shadow-sm border p-1 bg-white text-gray-900" placeholder="Ej: 0101" value={variousCCInput} onChange={(e) => setVariousCCInput(e.target.value)} />
+                      <input
+                        type="text"
+                        className="flex-1 rounded-md border-gray-300 shadow-sm border p-1 bg-white text-gray-900"
+                        placeholder="Ej: 0101"
+                        value={variousCCInput}
+                        onChange={(e) => setVariousCCInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          // FIX (#A11): Enter dentro de <form> dispara submit por default.
+                          // Aquí queremos que Enter agregue el CC, no envíe el formulario.
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddVariousCC();
+                          }
+                        }}
+                      />
                       <button type="button" onClick={handleAddVariousCC} className="bg-brand-red text-white text-xs px-3 py-1 rounded font-bold">Agregar</button>
                     </div>
                     <div className="flex flex-wrap gap-2 mt-2">

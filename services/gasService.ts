@@ -235,8 +235,17 @@ class GasService {
   }
 
   // --- RESERVATION ---
-  async registerReservation(requestId: string, reservationNumber: string, files: { fileData: string, fileName: string }[], creditCard: string, purchaseDate?: string): Promise<void> {
-    const response = await this.runGas('registerReservation', { requestId, reservationNumber, files, creditCard, purchaseDate });
+  async registerReservation(requestId: string, reservationNumber: string, files: { fileData: string, fileName: string }[], creditCard: string, purchaseDate?: string, skipNotification?: boolean): Promise<void> {
+    const response = await this.runGas('registerReservation', { requestId, reservationNumber, files, creditCard, purchaseDate, skipNotification });
+    if (!response.success) throw new Error(response.error);
+  }
+
+  /**
+   * Superadmin-only: salta la etapa PENDIENTE_SELECCION de una solicitud.
+   * Backend valida rol en tiempo real + justificación min 10 chars.
+   */
+  async skipSelectionStage(requestId: string, justification: string): Promise<void> {
+    const response = await this.runGas('skipSelectionStage', { requestId, justification });
     if (!response.success) throw new Error(response.error);
   }
 

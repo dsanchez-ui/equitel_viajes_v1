@@ -49,6 +49,27 @@ const ADMIN_EMAIL = getConfig_('ADMIN_EMAIL', 'apcompras@equitel.com.co');
 const CEO_EMAIL = getConfig_('CEO_EMAIL', 'misaza@equitel.com.co');
 const DIRECTOR_EMAIL = getConfig_('DIRECTOR_EMAIL', 'yprieto@equitel.com.co');
 
+// --- SECURITY: sanitiza un valor antes de escribirlo a Google Sheets para
+// prevenir formula injection. Si el string empieza por `= + - @`, Sheets
+// lo interpreta como fórmula (=HYPERLINK, etc.) — un usuario malicioso
+// podría exfiltrar datos cuando otro usuario abra la hoja. Prefijamos `'`
+// (apóstrofe) que Sheets renderiza como texto literal, preservando el
+// valor visible sin ejecutar la fórmula.
+//
+// Solo se aplica a STRINGS (numbers, dates, booleans pasan sin tocar).
+// Aceptable para cualquier campo donde el user input llega al sheet:
+// OBSERVACIONES, SELECCION_TEXTO, TEXTO_CAMBIO, nombres de pasajero,
+// reservationNumber, creditCard, comments, hotelName, etc.
+function safeSheetValue_(value) {
+  if (value === null || value === undefined) return value;
+  if (typeof value !== 'string') return value;
+  // Caracteres que Sheets interpreta como inicio de fórmula
+  if (/^[=+\-@]/.test(value)) {
+    return "'" + value;
+  }
+  return value;
+}
+
 // --- SECURITY: HTML escaping to prevent XSS in email templates ---
 function escapeHtml_(unsafe) {
   if (unsafe === null || unsafe === undefined) return '';
@@ -280,7 +301,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -307,9 +328,18 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
+    }
+
+    // SECURITY R5: Super-admin-only actions. Revalidado EN CADA request (no se
+    // confía solo en el role del token guardado) para permitir revocación en
+    // caliente — si se quita a alguien de SUPER_ADMIN_EMAILS, su capacidad
+    // superadmin desaparece al siguiente intento sin invalidar su sesión.
+    const superAdminOnlyActions = ['skipSelectionStage'];
+    if (superAdminOnlyActions.includes(action) && !isSuperAdmin(currentUserEmail)) {
+      return { success: false, error: 'Esta acción requiere permisos de superadmin.' };
     }
 
     // LOCKING STRATEGY: Block execution until lock is acquired to prevent race conditions.
@@ -361,16 +391,35 @@ function dispatch(action, payload) {
       // NEW: UPLOAD OPTION IMAGE (UPDATED v2.7)
       case 'uploadOptionImage': result = uploadOptionImage(payload.requestId, payload.fileData, payload.fileName, payload.type, payload.optionLetter, payload.direction); break;
 
-      case 'closeRequest': 
+      case 'closeRequest': {
+        // SECURITY (#A8): solo se puede cerrar desde estados válidos del ciclo.
+        // Antes permitía cerrar desde cualquier estado (incluso DENEGADO/ANULADO/
+        // PENDIENTE_*), corrompiendo el flujo. Estados válidos para cerrar:
+        // RESERVADO (flujo normal) y APROBADO (edge case: compra manual sin PNR).
+        var _ss = SpreadsheetApp.getActiveSpreadsheet();
+        var _sheet = _ss.getSheetByName(SHEET_NAME_REQUESTS);
+        var _idIdx = H('ID RESPUESTA');
+        var _statusIdx = H('STATUS');
+        var _ids = _sheet.getRange(2, _idIdx + 1, _sheet.getLastRow() - 1, 1).getValues().flat();
+        var _rowIndex = _ids.map(String).indexOf(String(payload.requestId));
+        if (_rowIndex === -1) throw new Error('Solicitud no encontrada.');
+        var _currentStatus = String(_sheet.getRange(_rowIndex + 2, _statusIdx + 1).getValue() || '').trim();
+        if (_currentStatus !== 'RESERVADO' && _currentStatus !== 'APROBADO') {
+          throw new Error('Solo se pueden cerrar solicitudes en estado RESERVADO o APROBADO. Estado actual: ' + _currentStatus);
+        }
         updateRequestStatus(payload.requestId, 'PROCESADO');
         try { generateSupportReport(payload.requestId); } catch(e) { console.error('Auto-report failed: ' + e); }
         result = true;
         break;
+      }
       case 'enhanceChangeText': result = enhanceTextWithGemini(payload.currentRequest, payload.userDraft); break;
       
       // REFACTORED MODIFICATION LOGIC
       case 'requestModification': result = requestModification(payload.requestId, payload.modifiedRequest, payload.changeReason, payload.emailHtml); break;
       case 'processChangeDecision': result = processChangeDecision(payload); break;
+
+      // SUPERADMIN: saltar etapa PENDIENTE_SELECCION
+      case 'skipSelectionStage': result = skipSelectionStage(payload.requestId, payload.justification, currentUserEmail); break;
       
       // PIN FEATURES
       case 'verifyAdminPin': result = verifyAdminPin(payload.pin, payload.email); break;
@@ -383,7 +432,7 @@ function dispatch(action, payload) {
       case 'logout': result = logout(payload.email, payload.token); break;
 
       // NEW: RESERVATION LOGIC
-      case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard, payload.purchaseDate); break;
+      case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard, payload.purchaseDate, payload.skipNotification); break;
       case 'amendReservation': result = amendReservation(payload); break;
 
       // NEW: DRIVE DELETION
@@ -510,12 +559,13 @@ function verifyAdminPin(inputPin, email) {
   if (!isUserAnalyst(normalized)) {
     throw new Error('El correo proporcionado no tiene permisos de administrador.');
   }
-  var session = createSession_(normalized, 'ANALYST');
+  var adminRole = isSuperAdmin(normalized) ? 'SUPERADMIN' : 'ANALYST';
+  var session = createSession_(normalized, adminRole);
   return {
     success: true,
     token: session.token,
     expiresAt: session.expiresAt,
-    role: 'ANALYST'
+    role: adminRole
   };
 }
 
@@ -998,7 +1048,12 @@ function verifyUserPin(email, inputPin) {
 
   // Success: clear failures, determine role, create session
   clearFailedUserPinAttempts_(normalized);
-  var role = isUserAnalyst(normalized) ? 'ANALYST' : 'REQUESTER';
+  // Jerarquía de roles: SUPERADMIN > ANALYST > REQUESTER.
+  // isUserAnalyst ya incluye superadmins (herencia), pero aquí necesitamos
+  // el rol más alto aplicable para la sesión.
+  var role = isSuperAdmin(normalized) ? 'SUPERADMIN'
+           : isUserAnalyst(normalized) ? 'ANALYST'
+           : 'REQUESTER';
   var session = createSession_(normalized, role);
   return {
     success: true,
@@ -1796,7 +1851,7 @@ function processApprovalFromEmail(e) {
 
 // --- NEW RESERVATION FUNCTION ---
 
-function registerReservation(requestId, reservationNumber, files, creditCard, purchaseDate) {
+function registerReservation(requestId, reservationNumber, files, creditCard, purchaseDate, skipNotification) {
     // Backward compatibility: if old clients still pass (fileData, fileName, creditCard) positionally,
     // wrap into a single-element files array.
     if (typeof files === 'string') {
@@ -1808,6 +1863,9 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
         files = [{ fileData: legacyFileData, fileName: legacyFileName }];
         creditCard = legacyCreditCard;
     }
+    // skipNotification: R8 — si true, NO envía el correo al usuario. Usado
+    // cuando el analista ya entregó el PNR por fuera (caso ejecutivos).
+    var shouldSkipNotify = skipNotification === true;
 
     if (!Array.isArray(files) || files.length === 0) {
         throw new Error('Debe adjuntar al menos un archivo de confirmación.');
@@ -1916,10 +1974,10 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     folder.setName(newFolderName);
 
     // 3. Update Sheets
-    sheet.getRange(rowNumber, resNoIdx + 1).setValue(reservationNumber);
+    sheet.getRange(rowNumber, resNoIdx + 1).setValue(safeSheetValue_(reservationNumber));
     sheet.getRange(rowNumber, statusIdx + 1).setValue('RESERVADO');
     if (creditCard && creditCardIdx > -1) {
-        sheet.getRange(rowNumber, creditCardIdx + 1).setValue(creditCard);
+        sheet.getRange(rowNumber, creditCardIdx + 1).setValue(safeSheetValue_(creditCard));
     }
 
     // Fecha de compra del tiquete (nueva, viene del frontend; default: hoy)
@@ -1958,14 +2016,26 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     const html = HtmlTemplates.reservationConfirmed(fullReq);
     const subject = getStandardSubject(fullReq);
 
-    try {
-        MailApp.sendEmail({
-            to: fullReq.requesterEmail,
-            cc: getCCList(fullReq),
-            subject: subject,
-            htmlBody: html
-        });
-    } catch(e) { console.error("Error sending reservation email: " + e); }
+    if (shouldSkipNotify) {
+        // R8: el analista decidió no notificar al usuario por este medio
+        // (típicamente porque ya entregó el PNR por otro canal). Se registra
+        // en OBSERVACIONES para trazabilidad.
+        try {
+            var obsIdx = H('OBSERVACIONES');
+            var currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
+            var note = '[RESERVA]: Registrada sin notificación automática al usuario (el admin confirmó envío por otro medio).';
+            sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + '\n' : '') + note);
+        } catch (e) { console.error('Error logging skipNotification: ' + e); }
+    } else {
+        try {
+            MailApp.sendEmail({
+                to: fullReq.requesterEmail,
+                cc: getCCList(fullReq),
+                subject: subject,
+                htmlBody: html
+            });
+        } catch(e) { console.error("Error sending reservation email: " + e); }
+    }
 
     // METRICS: registrar evento de reserva completada
     _recordEvent_(requestId, 'reservationRegistered');
@@ -2014,8 +2084,8 @@ function amendReservation(payload) {
     var rowNumber = rowIndex + 2;
 
     // 1. Update PNR, card, purchase date
-    sheet.getRange(rowNumber, resNoIdx + 1).setValue(newPnr);
-    if (creditCardIdx > -1) sheet.getRange(rowNumber, creditCardIdx + 1).setValue(newCard);
+    sheet.getRange(rowNumber, resNoIdx + 1).setValue(safeSheetValue_(newPnr));
+    if (creditCardIdx > -1) sheet.getRange(rowNumber, creditCardIdx + 1).setValue(safeSheetValue_(newCard));
     if (purchaseDateIdx > -1 && newPurchaseDate) {
         sheet.getRange(rowNumber, purchaseDateIdx + 1).setValue(newPurchaseDate);
     }
@@ -2227,17 +2297,15 @@ function sendEmailRich(to, subject, htmlBody, cc) {
         const filterEmails = (str) => (str || "").split(',').map(e=>e.trim()).filter(e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).join(',');
         
         const ccAddress = (cc === undefined) ? ADMIN_EMAIL : cc;
-        let validTo = filterEmails(to);
-        let validCc = filterEmails(ccAddress);
-        
-        // If TO is empty but CC exists, move CC to TO to prevent MailApp crash
-        if (!validTo && validCc) {
-            validTo = validCc;
-            validCc = '';
-        }
-        
+        const validTo = filterEmails(to);
+        const validCc = filterEmails(ccAddress);
+
+        // SECURITY (#A2): si TO está vacío, abortar en vez de promover CC→TO.
+        // El fallback anterior enviaba el correo al primer CC exponiendo a los
+        // demás CCs en la cabecera, y entregándolo a una persona no prevista
+        // como destinatario principal. Ahora fallamos silencioso y logueamos.
         if (!validTo) {
-            console.error("No valid recipients for email: " + subject);
+            console.error("sendEmailRich: TO vacío, correo NO enviado. Subject=" + subject + " CC=" + (validCc || '(ninguno)'));
             return;
         }
 
@@ -3325,24 +3393,24 @@ function createNewRequest(data, emailHtml) {
   set("EMPRESA", data.company);
   set("CIUDAD ORIGEN", data.origin);
   set("CIUDAD DESTINO", data.destination);
-  set("# ORDEN TRABAJO", data.workOrder || '');
+  set("# ORDEN TRABAJO", safeSheetValue_(data.workOrder || ''));
   set("# PERSONAS QUE VIAJAN", data.passengers ? data.passengers.length : 1);
   set("CORREO ENCUESTADO", String(data.requesterEmail).toLowerCase().trim());
   
   const p = data.passengers || [];
   for(let i=0; i<5; i++) {
-    set(`CÉDULA PERSONA ${i+1}`, p[i] ? p[i].idNumber : '');
-    set(`NOMBRE PERSONA ${i+1}`, p[i] ? p[i].name : '');
+    set(`CÉDULA PERSONA ${i+1}`, safeSheetValue_(p[i] ? p[i].idNumber : ''));
+    set(`NOMBRE PERSONA ${i+1}`, safeSheetValue_(p[i] ? p[i].name : ''));
   }
 
   set("CENTRO DE COSTOS", data.costCenter);
-  set("VARIOS CENTROS COSTOS", data.variousCostCenters || '');
+  set("VARIOS CENTROS COSTOS", safeSheetValue_(data.variousCostCenters || ''));
   set("NOMBRE CENTRO DE COSTOS (AUTOMÁTICO)", costCenterName);
   set("UNIDAD DE NEGOCIO", data.businessUnit);
   set("SEDE", data.site);
   set("REQUIERE HOSPEDAJE", data.requiresHotel ? 'Sí' : 'No');
   // FORCE UPPERCASE HOTEL NAME
-  set("NOMBRE HOTEL", (data.hotelName || '').toUpperCase());
+  set("NOMBRE HOTEL", safeSheetValue_((data.hotelName || '').toUpperCase()));
   set("# NOCHES (AUTOMÁTICO)", nights);
   set("FECHA IDA", data.departureDate);
   set("FECHA VUELTA", data.returnDate || '');
@@ -3350,17 +3418,17 @@ function createNewRequest(data, emailHtml) {
   set("HORA LLEGADA VUELO VUELTA", data.returnTimePreference || '');
   set("ID RESPUESTA", id);
   set("STATUS", data.status || 'PENDIENTE_OPCIONES');
-  set("OBSERVACIONES", data.comments || '');
-  
+  set("OBSERVACIONES", safeSheetValue_(data.comments || ''));
+
   set("QUIÉN APRUEBA? (AUTOMÁTICO)", approverName);
   set("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)", approverEmail);
-  
+
   set("CORREOS PASAJEROS (JSON)", JSON.stringify(data.passengers.map(p => p.email).filter(e=>e)));
 
   // NEW LINKED REQUEST FIELDS
   set("ID SOLICITUD PADRE", data.relatedRequestId || '');
   set("TIPO DE SOLICITUD", data.requestType || 'ORIGINAL');
-  set("TEXTO_CAMBIO", data.changeReason || '');
+  set("TEXTO_CAMBIO", safeSheetValue_(data.changeReason || ''));
   if (data.hasChangeFlag) set("FLAG_CAMBIO_REALIZADO", "CAMBIO GENERADO");
 
   // METADATA COLUMNS
@@ -3484,11 +3552,15 @@ function validateFileUpload_(fileData, fileName, mimeType) {
   if (!fileName || String(fileName).length > 255) throw new Error('Nombre de archivo inválido.');
   var decoded = Utilities.base64Decode(fileData);
   if (decoded.length > MAX_FILE_SIZE_BYTES) throw new Error('Archivo demasiado grande (máximo 10MB).');
+  // SECURITY (#A6): REJECT estricto de MIME no permitido. Antes solo loguaba
+  // warning → un usuario podía subir .exe/.html/.js con nombre *.pdf y el
+  // archivo quedaba accesible con ANYONE_WITH_LINK (uploadOptionImage /
+  // registerReservation). Aceptamos el set explícito + MimeType.PNG como
+  // fallback para compatibilidad con uploads de opciones.
   if (mimeType && ALLOWED_UPLOAD_TYPES.indexOf(mimeType) === -1 && mimeType !== MimeType.PNG) {
-    // Allow generic PNG from option images even if not in list
-    console.warn('Tipo de archivo no estándar: ' + mimeType);
+    throw new Error('Tipo de archivo no permitido: ' + mimeType + '. Use PDF, PNG, JPEG, GIF o WebP.');
   }
-  // Sanitize filename
+  // Sanitize filename (path traversal + chars problemáticos)
   return String(fileName).replace(/[\/\\:*?"<>|]/g, '_').substring(0, 200);
 }
 
@@ -3600,7 +3672,7 @@ function updateRequestStatus(id, status, payload) {
        }
        if (payload.selectionDetails) {
            const selIdx = H("SELECCION_TEXTO");
-           sheet.getRange(rowNumber, selIdx + 1).setValue(payload.selectionDetails);
+           sheet.getRange(rowNumber, selIdx + 1).setValue(safeSheetValue_(payload.selectionDetails));
        }
        if (payload.finalCostTickets !== undefined) {
            sheet.getRange(rowNumber, H("COSTO_FINAL_TIQUETES") + 1).setValue(payload.finalCostTickets);
@@ -3882,9 +3954,47 @@ function sendApprovalRequestEmail(req) {
 }
 
 // --- SECURITY: Analyst whitelist (replaces insecure string-matching) ---
+// HERENCIA R5: SUPERADMIN ⊇ ANALYST. Un superadmin ES un analyst con capacidades
+// adicionales (skipSelectionStage, saltar correo de reserva). Esto significa que
+// agregar un correo SOLO a SUPER_ADMIN_EMAILS basta — automáticamente hereda
+// todas las capacidades de analyst sin duplicar la lista.
 function isUserAnalyst(email) {
+  const normalized = String(email).toLowerCase().trim();
   const whitelist = getAnalystWhitelist_();
-  return whitelist.includes(String(email).toLowerCase().trim());
+  if (whitelist.indexOf(normalized) !== -1) return true;
+  return isSuperAdmin(normalized); // herencia: superadmin ES analyst
+}
+
+/**
+ * Lista de correos con rol SUPERADMIN. Se lee de Script Property
+ * `SUPER_ADMIN_EMAILS` (JSON array). Si la propiedad no está configurada
+ * o el JSON es inválido → retorna [] (fail-closed, cero impacto).
+ */
+function getSuperAdminWhitelist_() {
+  try {
+    const raw = PropertiesService.getScriptProperties().getProperty('SUPER_ADMIN_EMAILS');
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map(function(e) { return String(e || '').toLowerCase().trim(); })
+      .filter(function(e) { return e; });
+  } catch (err) {
+    console.warn('SUPER_ADMIN_EMAILS JSON inválido: ' + err);
+    return [];
+  }
+}
+
+/**
+ * True si el correo pertenece al whitelist SUPERADMIN. Revalidado en CADA
+ * request a superAdminOnlyActions (ver dispatch) — si se quita a alguien
+ * de SUPER_ADMIN_EMAILS, su capacidad superadmin desaparece al siguiente
+ * intento sin necesidad de invalidar la sesión.
+ */
+function isSuperAdmin(email) {
+  if (!email) return false;
+  const normalized = String(email).toLowerCase().trim();
+  return getSuperAdminWhitelist_().indexOf(normalized) !== -1;
 }
 
 function getAnalystWhitelist_() {
@@ -5130,20 +5240,28 @@ function anularSolicitud(requestId, reason) {
   const statusIdx = H("STATUS");
   const obsIdx = H("OBSERVACIONES");
   const emailIdx = H("CORREO ENCUESTADO");
-  
+
   const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
   const rowIndex = ids.map(String).indexOf(String(requestId));
-  
+
   if (rowIndex === -1) throw new Error("ID no encontrado");
   const rowNumber = rowIndex + 2;
-  
+
+  // SECURITY (#A7): no permitir anular desde estados terminales.
+  // cancelOwnRequest ya validaba esto; este endpoint admin no lo hacía y
+  // podía corromper el ciclo (ej: marcar ANULADO una solicitud PROCESADO).
+  const currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '').trim();
+  if (['ANULADO', 'PROCESADO', 'DENEGADO'].indexOf(currentStatus) !== -1) {
+    throw new Error('Esta solicitud ya está en estado ' + currentStatus + ' y no se puede anular.');
+  }
+
   // Update Status
   sheet.getRange(rowNumber, statusIdx + 1).setValue('ANULADO');
-  
+
   // Append Reason to Observations
   const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
   const newNote = `[ANULACIÓN MANUAL]: ${reason}`;
-  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + newNote);
+  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + safeSheetValue_(newNote));
   
   // Send notification to user
   const userEmail = sheet.getRange(rowNumber, emailIdx + 1).getValue();
@@ -5165,6 +5283,113 @@ function anularSolicitud(requestId, reason) {
   }
 
   return true;
+}
+
+// =====================================================================
+// SUPERADMIN: saltar etapa PENDIENTE_SELECCION (R4)
+// =====================================================================
+/**
+ * Salta la etapa de selección de un usuario cuando el área de viajes ya
+ * gestionó la compra por fuera del sistema (caso típico: ejecutivos
+ * prioritarios con compra urgente).
+ *
+ * Validaciones (defense-in-depth; dispatch ya valida isSuperAdmin):
+ *   - requestId requerido
+ *   - justification requerida, mínimo 10 chars
+ *   - status actual DEBE ser PENDIENTE_SELECCION
+ *
+ * Efectos:
+ *   - SELECCION_TEXTO: prefijado con "[ETAPA SALTADA]: ${justification}"
+ *   - OBSERVACIONES: nota con autor + timestamp
+ *   - EVENTOS_JSON: registra skippedBy + skippedAt para trazabilidad y métricas
+ *   - STATUS: avanza a PENDIENTE_CONFIRMACION_COSTO
+ *   - NO envía correo al usuario (evita confusión — él no seleccionó)
+ *   - SÍ notifica al admin por email del siguiente paso (confirmar costos)
+ *
+ * @param {string} requestId
+ * @param {string} justification Min 10 chars, obligatoria
+ * @param {string} currentUserEmail Email del superadmin (inyectado por dispatch)
+ */
+function skipSelectionStage(requestId, justification, currentUserEmail) {
+  if (!requestId) throw new Error('requestId requerido.');
+  var just = String(justification || '').trim();
+  if (just.length < 10) {
+    throw new Error('La justificación es obligatoria y debe tener al menos 10 caracteres.');
+  }
+  if (just.length > 2000) {
+    throw new Error('La justificación es demasiado larga (máx 2000 caracteres).');
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error('Hoja de solicitudes no encontrada.');
+
+  var idIdx = H('ID RESPUESTA');
+  var statusIdx = H('STATUS');
+  var obsIdx = H('OBSERVACIONES');
+  var selTextIdx = H('SELECCION_TEXTO');
+  var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
+  var rowIndex = ids.map(String).indexOf(String(requestId));
+  if (rowIndex === -1) throw new Error('Solicitud no encontrada.');
+  var rowNumber = rowIndex + 2;
+
+  var currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '').trim();
+  if (currentStatus !== 'PENDIENTE_SELECCION') {
+    throw new Error('Solo se puede saltar la selección en estado PENDIENTE_SELECCION. Estado actual: ' + currentStatus);
+  }
+
+  var now = new Date();
+  var timestampStr = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd HH:mm');
+  var actorEmail = String(currentUserEmail || 'desconocido').toLowerCase().trim();
+
+  // 1. SELECCION_TEXTO: texto visible del caso
+  if (selTextIdx > -1) {
+    sheet.getRange(rowNumber, selTextIdx + 1).setValue('[ETAPA SALTADA]: ' + just);
+  }
+
+  // 2. OBSERVACIONES: traza legible con autor + timestamp
+  var currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
+  var note = '[ETAPA SALTADA por ' + actorEmail + ' - ' + timestampStr + ']: ' + just;
+  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + '\n' : '') + note);
+
+  // 3. EVENTOS_JSON: evento estructurado para métricas/trazabilidad
+  try {
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var eventsCol = headers.indexOf(EVENTOS_JSON_HEADER);
+    if (eventsCol >= 0) {
+      var raw = sheet.getRange(rowNumber, eventsCol + 1).getValue();
+      var events = {};
+      if (raw) { try { events = JSON.parse(raw); } catch (e) { events = {}; } }
+      var nowIso = now.toISOString();
+      if (!events.selectionMade) events.selectionMade = nowIso;
+      events.skippedBy = actorEmail;
+      events.skippedAt = nowIso;
+      sheet.getRange(rowNumber, eventsCol + 1).setValue(JSON.stringify(events));
+    }
+  } catch (e) {
+    console.error('skipSelectionStage: error registrando evento: ' + e);
+  }
+
+  // 4. Avanzar status (dispara sendSelectionNotificationToAdmin para que el
+  // analista sepa que debe confirmar costos). NO se envía correo al usuario
+  // solicitante — él no seleccionó, y mandarle notificación sería confuso.
+  // updateRequestStatus para 'PENDIENTE_CONFIRMACION_COSTO' ya solo notifica
+  // al admin, no al usuario (ver sendSelectionNotificationToAdmin).
+  sheet.getRange(rowNumber, statusIdx + 1).setValue('PENDIENTE_CONFIRMACION_COSTO');
+  SpreadsheetApp.flush();
+
+  // Notificar al admin para que continúe el flujo (reutiliza template existente).
+  try {
+    var rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var req = mapRowToRequest(rowData);
+    req.selectionDetails = '[ETAPA SALTADA]: ' + just;
+    sendSelectionNotificationToAdmin(req);
+  } catch (e) {
+    console.error('skipSelectionStage: error notificando admin: ' + e);
+  }
+
+  return { success: true, requestId: requestId, skippedBy: actorEmail };
 }
 
 // =====================================================================

@@ -2,7 +2,8 @@
 export enum UserRole {
   REQUESTER = 'REQUESTER',
   ANALYST = 'ANALYST',
-  APPROVER = 'APPROVER'
+  APPROVER = 'APPROVER',
+  SUPERADMIN = 'SUPERADMIN'
 }
 
 export enum RequestStatus {

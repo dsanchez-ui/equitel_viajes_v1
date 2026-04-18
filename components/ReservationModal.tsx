@@ -35,6 +35,10 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
     // Correction note (edit mode only)
     const [correctionNote, setCorrectionNote] = useState('');
 
+    // R8: Controla si se envía el correo automático al usuario. Default: sí.
+    // Solo aplica en modo NEW (en edit siempre se envía correo de corrección).
+    const [sendUserNotification, setSendUserNotification] = useState(true);
+
     const [dialog, setDialog] = useState<{
         isOpen: boolean;
         title: string;
@@ -146,13 +150,37 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             return;
         }
 
+        // R8: si se desmarcó "Enviar correo", primero exigir confirmación
+        // explícita con advertencia antes de siquiera llegar al confirm normal.
+        // Esto evita olvidos accidentales (la reserva queda sin notificar).
+        if (!isEditMode && !sendUserNotification) {
+            setDialog({
+                isOpen: true,
+                title: '⚠️ El usuario NO recibirá correo automático',
+                message: 'Desmarcaste "Enviar correo al usuario". El sistema NO le enviará el PNR ni el soporte a su correo.\n\n⚠️ Si NO ha enviado el PNR por otro medio (WhatsApp, correo manual, etc.), HÁGALO AHORA antes de registrar la reserva.\n\nLa acción quedará registrada en observaciones. ¿Continuar sin notificar al usuario?',
+                type: 'CONFIRM',
+                onConfirm: () => {
+                    closeDialog();
+                    promptFinalConfirm();
+                },
+                onCancel: closeDialog
+            });
+            return;
+        }
+
+        promptFinalConfirm();
+    };
+
+    const promptFinalConfirm = () => {
         const deleteCount = filesToDelete.size;
         const confirmMsg = isEditMode
             ? `Se actualizará la reserva a ${reservationNumber} con tarjeta ${creditCard}.`
               + (deleteCount > 0 ? `\nSe eliminarán ${deleteCount} archivo(s) de Drive.` : '')
               + (newFiles.length > 0 ? `\nSe subirán ${newFiles.length} archivo(s) nuevo(s).` : '')
               + `\nSe enviará correo de corrección al usuario.\n\n¿Desea continuar?`
-            : `Se registrará la reserva ${reservationNumber} con la tarjeta ${creditCard}, se subirán ${newFiles.length} archivo(s) y se notificará al usuario.\n\n¿Desea continuar?`;
+            : `Se registrará la reserva ${reservationNumber} con la tarjeta ${creditCard}, se subirán ${newFiles.length} archivo(s)`
+              + (sendUserNotification ? ' y se notificará al usuario.' : ' (SIN notificación al usuario).')
+              + '\n\n¿Desea continuar?';
 
         setDialog({
             isOpen: true,
@@ -197,12 +225,15 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                     reservationNumber,
                     filePayloads,
                     creditCard,
-                    purchaseDate
+                    purchaseDate,
+                    !sendUserNotification
                 );
                 setDialog({
                     isOpen: true,
                     title: 'Reserva Registrada',
-                    message: `La reserva ha sido guardada (${newFiles.length} archivo(s)) y el usuario notificado.`,
+                    message: sendUserNotification
+                        ? `La reserva ha sido guardada (${newFiles.length} archivo(s)) y el usuario notificado.`
+                        : `La reserva ha sido guardada (${newFiles.length} archivo(s)). NO se envió correo automático al usuario — verifique que haya recibido la información por otro medio.`,
                     type: 'SUCCESS',
                     onConfirm: () => { closeDialog(); onSuccess(); }
                 });
@@ -397,6 +428,29 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                         disabled={loading}
                                     />
                                     <p className="text-xs text-gray-400 mt-1 italic">Se incluirá en el correo de corrección al usuario.</p>
+                                </div>
+                            )}
+
+                            {/* Checkbox: enviar correo al usuario (solo modo nuevo) */}
+                            {!isEditMode && (
+                                <div className={`rounded p-3 border ${sendUserNotification ? 'bg-gray-50 border-gray-200' : 'bg-amber-50 border-amber-300'}`}>
+                                    <label className="flex items-start gap-3 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={sendUserNotification}
+                                            onChange={(e) => setSendUserNotification(e.target.checked)}
+                                            disabled={loading}
+                                            className="mt-1 w-4 h-4 accent-brand-red flex-shrink-0"
+                                        />
+                                        <span className="text-sm text-gray-800 flex-1">
+                                            <strong>Enviar correo al usuario</strong> con el PNR y los soportes.
+                                            {!sendUserNotification && (
+                                                <span className="block mt-1 text-xs text-amber-800 font-medium">
+                                                    ⚠️ Desmarcado: el usuario NO recibirá notificación automática. Si ya le enviaste el PNR por otro medio, continúa. De lo contrario, márcalo o envíalo manualmente.
+                                                </span>
+                                            )}
+                                        </span>
+                                    </label>
                                 </div>
                             )}
 

@@ -25,9 +25,16 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
       <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
         
         {/* Background overlay */}
-        <div 
-            className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" 
-            onClick={type === 'CONFIRM' ? onCancel : onConfirm}
+        {/* FIX (#A10): click-outside en ALERT no debe disparar onConfirm —
+            eso equivale a "aceptar" un error inadvertidamente. CONFIRM usa
+            onCancel si existe. SUCCESS mantiene onConfirm (es acción neutra). */}
+        <div
+            className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+            onClick={
+              type === 'CONFIRM' ? onCancel :
+              type === 'SUCCESS' ? onConfirm :
+              undefined /* ALERT: no-op — usuario debe pulsar Aceptar explícitamente */
+            }
         ></div>
 
         <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>

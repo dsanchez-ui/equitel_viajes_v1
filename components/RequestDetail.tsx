@@ -12,6 +12,7 @@ interface RequestDetailProps {
     onRefresh?: () => void;
     onModify: (req: TravelRequest) => void;
     isAdmin?: boolean;
+    isSuperAdmin?: boolean;
 }
 
 // Drive image URL: uc?export=view serves raw content for public files (works cross-origin in browsers)
@@ -90,9 +91,14 @@ const ApprovalStatusRow = ({
     );
 };
 
-export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModify, isAdmin = false }: RequestDetailProps) => {
+export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModify, isAdmin = false, isSuperAdmin = false }: RequestDetailProps) => {
     const [loading, setLoading] = useState(false);
     const [userSelectionText, setUserSelectionText] = useState('');
+
+    // Superadmin: saltar etapa de selección
+    const [skipModalOpen, setSkipModalOpen] = useState(false);
+    const [skipJustification, setSkipJustification] = useState('');
+    const [skipLoading, setSkipLoading] = useState(false);
 
     const [dialog, setDialog] = useState<{
         isOpen: boolean;
@@ -173,6 +179,24 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
         });
     };
 
+    const handleSkipSubmit = async () => {
+        const trimmed = skipJustification.trim();
+        if (trimmed.length < 10) {
+            alert('La justificación es obligatoria y debe tener al menos 10 caracteres.');
+            return;
+        }
+        setSkipLoading(true);
+        try {
+            await gasService.skipSelectionStage(request.requestId, trimmed);
+            setSkipModalOpen(false);
+            setSkipJustification('');
+            onSuccessAction('Etapa de selección saltada. La solicitud avanzó a PENDIENTE DE CONFIRMACIÓN DE COSTOS.');
+        } catch (e: any) {
+            alert('Error: ' + (e?.message || e));
+            setSkipLoading(false);
+        }
+    };
+
     const handleModifyClick = () => {
         if (request.status === RequestStatus.RESERVED) {
             setDialog({
@@ -201,6 +225,48 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                 onConfirm={dialog.onConfirm}
                 onCancel={dialog.onCancel}
             />
+
+            {/* Modal de justificación para saltar selección (solo superadmin) */}
+            {skipModalOpen && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                        <h3 className="text-lg font-bold text-indigo-900 mb-2">⏩ Saltar etapa de selección</h3>
+                        <p className="text-sm text-gray-700 mb-3">
+                            La solicitud <strong>{request.requestId}</strong> avanzará a <strong>PENDIENTE DE CONFIRMACIÓN DE COSTOS</strong> sin selección del usuario. Esta acción queda registrada con su correo y la justificación.
+                        </p>
+                        <label className="block text-xs font-bold uppercase text-gray-600 mb-1 tracking-wide">
+                            Justificación (mínimo 10 caracteres)
+                        </label>
+                        <textarea
+                            className="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                            rows={4}
+                            placeholder="Ej: Tiquetes ya gestionados fuera del sistema el 2026-04-18 por compra urgente del área ejecutiva."
+                            value={skipJustification}
+                            onChange={(e) => setSkipJustification(e.target.value)}
+                            disabled={skipLoading}
+                        />
+                        <div className="mt-1 text-xs text-gray-500">
+                            {skipJustification.trim().length}/10 caracteres mínimos
+                        </div>
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                onClick={() => { setSkipModalOpen(false); setSkipJustification(''); }}
+                                disabled={skipLoading}
+                                className="px-4 py-2 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleSkipSubmit}
+                                disabled={skipLoading || skipJustification.trim().length < 10}
+                                className="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-bold shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {skipLoading ? 'Procesando...' : 'CONFIRMAR Y SALTAR'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="fixed inset-0 z-[60] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
                 <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
@@ -535,6 +601,27 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                     </div>
                                                 </div>
                                             ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* --- SECTION 3B: SUPERADMIN — SALTAR SELECCIÓN --- */}
+                                {isSelectionPhase && isSuperAdmin && (
+                                    <div className="bg-indigo-50 border-2 border-indigo-300 rounded-lg p-4 mt-6 shadow-sm">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="flex-1">
+                                                <h4 className="text-sm font-bold text-indigo-900 mb-1">⏩ Saltar etapa de selección (SUPERADMIN)</h4>
+                                                <p className="text-xs text-indigo-800 leading-relaxed">
+                                                    Avanza la solicitud directamente a <strong>PENDIENTE DE CONFIRMACIÓN DE COSTOS</strong> sin esperar la selección del usuario.
+                                                    Usar solo cuando el área ya gestionó la compra por fuera del sistema. Se registra en observaciones con su correo, timestamp y justificación. No se envía correo al usuario.
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => { setSkipJustification(''); setSkipModalOpen(true); }}
+                                                className="flex-shrink-0 bg-indigo-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-indigo-700 shadow whitespace-nowrap"
+                                            >
+                                                SALTAR SELECCIÓN
+                                            </button>
                                         </div>
                                     </div>
                                 )}
