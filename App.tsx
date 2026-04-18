@@ -454,7 +454,8 @@ const App: React.FC = () => {
     // dashboard admin. Si el backend dice que NO es analyst, forzar logout.
     if (!next) {
       // next=false significa "cambiar a vista admin"
-      if (role !== UserRole.ANALYST) {
+      const _isAdminLike = role === UserRole.ANALYST || role === UserRole.SUPERADMIN;
+      if (!_isAdminLike) {
         // Sanity check adicional — no debería ni mostrarse el botón en este caso
         alert('No tienes permisos de administrador.');
         return;

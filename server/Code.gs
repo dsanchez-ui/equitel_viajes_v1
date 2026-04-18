@@ -498,29 +498,47 @@ function hashPin_(pin) {
   return digest.map(function(b) { return ('0' + ((b & 0xFF).toString(16))).slice(-2); }).join('');
 }
 
-function isPinRateLimited_() {
+// Per-email namespacing. Un atacante que fallla 5 veces contra un admin no
+// debe poder bloquear login del otro admin. Si no hay email todavía (cliente
+// legacy), se cae a una clave global '_GLOBAL_' (preserva comportamiento antiguo).
+function _adminPinLockKey_(email) {
+  return 'ADMIN_PIN_LOCKOUT_' + (email ? hashEmail_(email) : '_GLOBAL_');
+}
+function _adminPinFailKey_(email) {
+  return 'ADMIN_PIN_FAILS_' + (email ? hashEmail_(email) : '_GLOBAL_');
+}
+
+function isPinRateLimited_(email) {
   var props = PropertiesService.getScriptProperties();
-  var lockoutUntil = props.getProperty('PIN_LOCKOUT_UNTIL');
+  var lockoutUntil = props.getProperty(_adminPinLockKey_(email));
   if (lockoutUntil && new Date().getTime() < Number(lockoutUntil)) {
     return true;
   }
   return false;
 }
 
-function recordFailedPinAttempt_() {
+function recordFailedPinAttempt_(email) {
   var props = PropertiesService.getScriptProperties();
-  var attempts = Number(props.getProperty('PIN_FAILED_ATTEMPTS') || '0') + 1;
-  props.setProperty('PIN_FAILED_ATTEMPTS', String(attempts));
+  var failKey = _adminPinFailKey_(email);
+  var lockKey = _adminPinLockKey_(email);
+  var attempts = Number(props.getProperty(failKey) || '0') + 1;
+  props.setProperty(failKey, String(attempts));
   if (attempts >= 5) {
-    // Lock for 15 minutes
     var lockoutUntil = new Date().getTime() + (15 * 60 * 1000);
-    props.setProperty('PIN_LOCKOUT_UNTIL', String(lockoutUntil));
-    props.setProperty('PIN_FAILED_ATTEMPTS', '0');
+    props.setProperty(lockKey, String(lockoutUntil));
+    props.setProperty(failKey, '0');
   }
 }
 
+function clearFailedAdminPinAttempts_(email) {
+  var props = PropertiesService.getScriptProperties();
+  props.deleteProperty(_adminPinFailKey_(email));
+  props.deleteProperty(_adminPinLockKey_(email));
+}
+
 function verifyAdminPin(inputPin, email) {
-  if (isPinRateLimited_()) {
+  var normalizedEmailForLock = email ? String(email).toLowerCase().trim() : '';
+  if (isPinRateLimited_(normalizedEmailForLock)) {
     throw new Error('Demasiados intentos fallidos. Intente de nuevo en 15 minutos.');
   }
 
@@ -546,12 +564,13 @@ function verifyAdminPin(inputPin, email) {
   var cleanInputPin = String(inputPin || '').replace(/\s+/g, '').trim();
   var inputHash = hashPin_(cleanInputPin);
   if (inputHash !== storedHash) {
-    recordFailedPinAttempt_();
+    recordFailedPinAttempt_(normalizedEmailForLock);
     return { success: false };
   }
 
-  // PIN matches. Now require an email to issue a session token.
-  // Backward compat: if no email provided, return legacy `true` so old clients still work.
+  // PIN matches. Limpiar counters para este email (no afectamos otros admins).
+  clearFailedAdminPinAttempts_(normalizedEmailForLock);
+  // Limpieza legacy (claves antiguas pre-fix #A12 por si quedaron en prod).
   props.deleteProperty('PIN_FAILED_ATTEMPTS');
   props.deleteProperty('PIN_LOCKOUT_UNTIL');
 
@@ -818,6 +837,79 @@ function clearFailedUserPinAttempts_(email) {
   props.deleteProperty('USER_PIN_LOCKOUT_' + hashKey);
 }
 
+// --- Regeneration rate-limit (max 3/h per user) ---
+// Protege contra spamming de "olvidé mi PIN" que inunda la bandeja del usuario
+// y agota cuota de MailApp. Cuenta se resetea al cruzar la ventana.
+var PIN_REGEN_WINDOW_MS = 60 * 60 * 1000; // 1 hora
+var PIN_REGEN_MAX = 3;
+
+function _isRegenRateLimited_(email) {
+  var props = PropertiesService.getScriptProperties();
+  var key = 'PIN_REGEN_' + hashEmail_(email);
+  var raw = props.getProperty(key);
+  if (!raw) return false;
+  try {
+    var parsed = JSON.parse(raw);
+    var now = new Date().getTime();
+    if (now > Number(parsed.resetAt || 0)) return false; // ventana expiró
+    return Number(parsed.count || 0) >= PIN_REGEN_MAX;
+  } catch (e) { return false; }
+}
+
+// --- Rate-limit de creación de solicitudes (10/día por usuario) ---
+// Un usuario con cuenta comprometida podría lanzar spam masivo de solicitudes
+// que genera correos, filas en la hoja y cuota de Gmail. 10/día es muy por
+// encima del uso normal (1-2/mes) pero acota un ataque.
+var CREATE_REQUEST_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
+var CREATE_REQUEST_MAX_PER_DAY = 10;
+
+function _isCreateRequestRateLimited_(email) {
+  if (!email) return false;
+  var props = PropertiesService.getScriptProperties();
+  var key = 'CREATE_REQ_' + hashEmail_(email);
+  var raw = props.getProperty(key);
+  if (!raw) return false;
+  try {
+    var parsed = JSON.parse(raw);
+    var now = new Date().getTime();
+    if (now > Number(parsed.resetAt || 0)) return false;
+    return Number(parsed.count || 0) >= CREATE_REQUEST_MAX_PER_DAY;
+  } catch (e) { return false; }
+}
+
+function _recordCreateRequest_(email) {
+  if (!email) return;
+  var props = PropertiesService.getScriptProperties();
+  var key = 'CREATE_REQ_' + hashEmail_(email);
+  var now = new Date().getTime();
+  var raw = props.getProperty(key);
+  var parsed = { count: 0, resetAt: now + CREATE_REQUEST_WINDOW_MS };
+  if (raw) {
+    try {
+      var existing = JSON.parse(raw);
+      if (now <= Number(existing.resetAt || 0)) parsed = existing;
+    } catch (e) {}
+  }
+  parsed.count = Number(parsed.count || 0) + 1;
+  props.setProperty(key, JSON.stringify(parsed));
+}
+
+function _recordPinRegen_(email) {
+  var props = PropertiesService.getScriptProperties();
+  var key = 'PIN_REGEN_' + hashEmail_(email);
+  var now = new Date().getTime();
+  var raw = props.getProperty(key);
+  var parsed = { count: 0, resetAt: now + PIN_REGEN_WINDOW_MS };
+  if (raw) {
+    try {
+      var existing = JSON.parse(raw);
+      if (now <= Number(existing.resetAt || 0)) parsed = existing;
+    } catch (e) {}
+  }
+  parsed.count = Number(parsed.count || 0) + 1;
+  props.setProperty(key, JSON.stringify(parsed));
+}
+
 // --- PIN hash read/write — works against INTEGRANTES or USUARIOS ---
 // Branches via USE_USUARIOS_SHEET flag. Both sheets have a "PIN" column,
 // but the email column has different casing ("correo" vs "Correo").
@@ -995,6 +1087,15 @@ function requestUserPin(email, forceRegenerate) {
     };
   }
 
+  // 3b. Si es una regeneración (ya tenía PIN), aplicar cooldown 3/hora.
+  // Primera vez (sin PIN) no cuenta — queremos que el onboarding fluya.
+  if (hasPin) {
+    if (_isRegenRateLimited_(normalized)) {
+      throw new Error('Ya solicitaste un nuevo PIN demasiadas veces. Espera una hora antes de volver a pedirlo.');
+    }
+    _recordPinRegen_(normalized);
+  }
+
   // 4. Generate a new PIN, hash, store
   var plainPin = generateRandomPin_();
   var hash = hashPin_(plainPin);
@@ -1149,7 +1250,16 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
    // GET PARENT DETAILS FOR METADATA
    const parentStatus = sheet.getRange(rowNumber, statusIdx + 1).getValue();
    const parentDateVal = sheet.getRange(rowNumber, dateIdx + 1).getValue();
-   
+
+   // SEGURIDAD/UX: no permitir modificar solicitudes en estados terminales.
+   // Una modificación sobre ANULADO/DENEGADO/PROCESADO confunde al analista
+   // y genera ruido (nueva fila, correos, observaciones en el padre).
+   const _parentStatusStr = String(parentStatus || '').toUpperCase().trim();
+   const _forbiddenParents = ['ANULADO', 'DENEGADO', 'PROCESADO'];
+   if (_forbiddenParents.indexOf(_parentStatusStr) !== -1) {
+      throw new Error('No se puede solicitar modificación: la solicitud original está en estado ' + _parentStatusStr + '. Crea una solicitud nueva.');
+   }
+
    // Logic for Extra Cost Warning
    const parentWasReserved = (parentStatus === 'RESERVADO');
    
@@ -1640,7 +1750,10 @@ function processApprovalFromEmail(e) {
 
           // 0. PREPARE LOGGING DATA (TRACEABILITY)
           const now = new Date();
-          const timestamp = `${now.getDate()}/${now.getMonth()+1}/${now.getFullYear()} ${now.getHours()}:${now.getMinutes()}`;
+          // #A24: forzar zona horaria Bogotá explícita. Si alguna vez el proyecto
+          // cambia de TZ (p.ej. lo heredara en UTC), el timestamp quedaría mal
+          // sin afectar al usuario — pero sí al auditor. Mejor explícito.
+          const timestamp = Utilities.formatDate(now, 'America/Bogota', "d/M/yyyy H:mm");
           const isApproved = decision === 'approved';
           const decisionPrefix = isApproved ? "Sí" : "No";
           
@@ -3317,6 +3430,14 @@ function validateRequestInput_(data) {
 
 function createNewRequest(data, emailHtml) {
   validateRequestInput_(data);
+
+  // Rate-limit de creación (máx 10/día por solicitante). Protege contra abuso
+  // o cuentas comprometidas que inundarían el sistema con solicitudes.
+  const _requesterKey = String(data.requesterEmail || '').toLowerCase().trim();
+  if (_isCreateRequestRateLimited_(_requesterKey)) {
+    throw new Error('Has creado demasiadas solicitudes hoy. Contacta al área de viajes si necesitas crear más.');
+  }
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const idColIndex = H("ID RESPUESTA") + 1; 
@@ -3513,6 +3634,10 @@ function createNewRequest(data, emailHtml) {
   // METRICS: registrar evento de creación
   _recordEvent_(id, 'created');
 
+  // Rate-limit counter (solo tras éxito). Si falló validación o inserción,
+  // no cuenta.
+  _recordCreateRequest_(_requesterKey);
+
   data.approverEmail = approverEmail;
   data.approverName = approverName;
 
@@ -3559,8 +3684,19 @@ function validateFileUpload_(fileData, fileName, mimeType) {
   // archivo quedaba accesible con ANYONE_WITH_LINK (uploadOptionImage /
   // registerReservation). Aceptamos el set explícito + MimeType.PNG como
   // fallback para compatibilidad con uploads de opciones.
-  if (mimeType && ALLOWED_UPLOAD_TYPES.indexOf(mimeType) === -1 && mimeType !== MimeType.PNG) {
-    throw new Error('Tipo de archivo no permitido: ' + mimeType + '. Use PDF, PNG, JPEG, GIF o WebP.');
+  // #A22: relajar a todo image/* además del set explícito. El usuario puede
+  // compartir JPEG de iOS (image/heic convertido), BMP antiguo del analista,
+  // tiff de scans. Seguimos rechazando .exe/.html/.js por no empezar con image/.
+  var _mimeAllowed = false;
+  if (mimeType) {
+    if (ALLOWED_UPLOAD_TYPES.indexOf(mimeType) !== -1) _mimeAllowed = true;
+    else if (mimeType === MimeType.PNG) _mimeAllowed = true;
+    else if (String(mimeType).toLowerCase().indexOf('image/') === 0) _mimeAllowed = true;
+  } else {
+    _mimeAllowed = true; // sin MIME → defer al nombre del archivo y contenido
+  }
+  if (!_mimeAllowed) {
+    throw new Error('Tipo de archivo no permitido: ' + mimeType + '. Use PDF, imágenes o Excel.');
   }
   // Sanitize filename (path traversal + chars problemáticos)
   return String(fileName).replace(/[\/\\:*?"<>|]/g, '_').substring(0, 200);
@@ -3608,7 +3744,30 @@ function deleteDriveFile(fileId) {
   if (!fileId) return false;
   try {
     const file = DriveApp.getFileById(fileId);
-    file.setTrashed(true); // Safer than permanent delete for corporate environments
+    // SEGURIDAD: solo permitir borrar archivos que viven dentro de ROOT_DRIVE_FOLDER_ID.
+    // Un atacante podría pasar el ID de CUALQUIER archivo al que la cuenta de servicio
+    // tenga acceso (ej. reportes, plantillas, hojas de otras apps) y tirarlo a la papelera.
+    // Esta validación cierra esa puerta.
+    var allowed = false;
+    try {
+      var parents = file.getParents();
+      while (parents.hasNext()) {
+        var p = parents.next();
+        if (p.getId() === ROOT_DRIVE_FOLDER_ID) { allowed = true; break; }
+        // Si el archivo vive en una subcarpeta (carpeta por solicitud), también OK:
+        // verificamos que SU carpeta padre sea la raíz.
+        var grand = p.getParents();
+        while (grand.hasNext()) {
+          if (grand.next().getId() === ROOT_DRIVE_FOLDER_ID) { allowed = true; break; }
+        }
+        if (allowed) break;
+      }
+    } catch (e) { allowed = false; }
+    if (!allowed) {
+      console.error('deleteDriveFile rechazado: ' + fileId + ' no vive bajo ROOT_DRIVE_FOLDER_ID.');
+      return false;
+    }
+    file.setTrashed(true);
     return true;
   } catch (e) {
     console.error("Error deleting file: " + e.toString());
