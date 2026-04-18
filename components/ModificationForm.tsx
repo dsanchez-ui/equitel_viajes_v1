@@ -476,7 +476,7 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
                                     />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Hora Ida</label>
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Hora Requerida Ida</label>
                                     <input 
                                         type="time" 
                                         name="departureTimePreference" 
@@ -503,7 +503,7 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-medium text-gray-500 mb-1">Hora Vuelta</label>
+                                            <label className="block text-xs font-medium text-gray-500 mb-1">Hora Requerida Vuelta</label>
                                             <input 
                                                 type="time" 
                                                 name="returnTimePreference" 

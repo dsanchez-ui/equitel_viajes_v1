@@ -581,6 +581,116 @@ function verPropiedadesDelScript() {
   return 'Revise el Log de Ejecución para ver el resultado.';
 }
 
+// =====================================================================
+// HELPERS DE SCRIPT PROPERTIES — workaround a GUI bloqueada
+// =====================================================================
+// Cuando hay >50 ScriptProperties (caso de este proyecto), la GUI entra en
+// modo read-only y no permite editar valores. Estas funciones permiten
+// hacerlo desde el editor GAS. SOLO ejecutables desde el editor — NO
+// expuestas por doPost/doGet, por lo que cualquier usuario externo NO
+// puede tocar ScriptProperties.
+//
+// Uso desde el editor:
+//   1. Selecciona la función en el dropdown (p.ej. "setScriptProperty")
+//   2. Antes de ejecutar, edita los argumentos en la llamada wrapper
+//      (ver `setScriptPropertyEJEMPLO` más abajo) o crea una nueva función
+//      temporal. GAS no permite pasar args en el ▶ Run directo.
+//   3. Ejecuta y revisa Logs de ejecución.
+// =====================================================================
+
+/**
+ * SET: crea o actualiza una ScriptProperty. Loguea valor viejo y nuevo.
+ *
+ * @param {string} key
+ * @param {string} value
+ * @returns {{key, oldValue, newValue}}
+ */
+function setScriptProperty(key, value) {
+  if (!key || typeof key !== 'string') {
+    throw new Error('setScriptProperty: key debe ser string no-vacío.');
+  }
+  var props = PropertiesService.getScriptProperties();
+  var oldValue = props.getProperty(key);
+  props.setProperty(key, String(value));
+  var newValue = props.getProperty(key);
+  var mask = _maskPropValue_(key, oldValue);
+  var maskNew = _maskPropValue_(key, newValue);
+  Logger.log('setScriptProperty("' + key + '"):');
+  Logger.log('  oldValue = ' + (oldValue === null ? '(no existía)' : '"' + mask + '"'));
+  Logger.log('  newValue = "' + maskNew + '"');
+  return { key: key, oldValue: oldValue, newValue: newValue };
+}
+
+/**
+ * DELETE: borra una ScriptProperty. Loguea el valor que se borró.
+ *
+ * @param {string} key
+ * @returns {{key, deletedValue}}
+ */
+function deleteScriptProperty(key) {
+  if (!key || typeof key !== 'string') {
+    throw new Error('deleteScriptProperty: key debe ser string no-vacío.');
+  }
+  var props = PropertiesService.getScriptProperties();
+  var oldValue = props.getProperty(key);
+  if (oldValue === null) {
+    Logger.log('deleteScriptProperty("' + key + '"): la property no existía, nada que borrar.');
+    return { key: key, deletedValue: null };
+  }
+  props.deleteProperty(key);
+  var mask = _maskPropValue_(key, oldValue);
+  Logger.log('deleteScriptProperty("' + key + '"): borrado. Valor previo = "' + mask + '"');
+  return { key: key, deletedValue: oldValue };
+}
+
+/**
+ * LIST: retorna todas las properties enmascarando valores sensibles.
+ * Útil para inspección desde el editor (alternativo a verPropiedadesDelScript
+ * que imprime con formato diagnóstico).
+ */
+function listScriptProperties() {
+  var all = PropertiesService.getScriptProperties().getProperties();
+  var out = {};
+  Object.keys(all).sort().forEach(function(k) {
+    out[k] = _maskPropValue_(k, all[k]);
+  });
+  Logger.log('listScriptProperties: ' + Object.keys(out).length + ' properties.');
+  Object.keys(out).forEach(function(k) { Logger.log('  ' + k + ' = ' + out[k]); });
+  return out;
+}
+
+/**
+ * Máscara valores sensibles según el nombre de la key. No muestra el valor
+ * completo si la key contiene PIN/HASH/KEY/TOKEN/SECRET.
+ */
+function _maskPropValue_(key, value) {
+  if (value === null || value === undefined) return '(vacío)';
+  var s = String(value);
+  var upper = String(key).toUpperCase();
+  var sensitive = upper.indexOf('PIN') > -1 || upper.indexOf('HASH') > -1
+               || upper.indexOf('KEY') > -1 || upper.indexOf('TOKEN') > -1
+               || upper.indexOf('SECRET') > -1;
+  if (sensitive && s.length > 8) return s.substring(0, 8) + '... (len=' + s.length + ')';
+  return s;
+}
+
+/**
+ * EJEMPLO de uso — cópialo, edita los valores, ejecútalo UNA VEZ, bórralo.
+ * Apps Script no permite pasar argumentos en ▶ Run, así que el patrón es
+ * crear funciones temporales como esta, ejecutarlas, y eliminarlas.
+ *
+ * Ejemplos comunes:
+ *   setScriptProperty('ANALYST_EMAILS', '["apcompras@equitel.com.co","dsanchez@equitel.com.co"]');
+ *   setScriptProperty('SUPER_ADMIN_EMAILS', '["dsanchez@equitel.com.co","yprieto@equitel.com.co"]');
+ *   setScriptProperty('HR_MAESTRO_ID', '1AbCdEfG...');
+ *   deleteScriptProperty('PIN_FAILED_ATTEMPTS');
+ */
+function setScriptPropertyEJEMPLO() {
+  // EDITA estas líneas y ejecuta. NO commitees valores reales aquí.
+  // setScriptProperty('NOMBRE_DE_LA_PROPERTY', 'valor');
+  Logger.log('Esta es una plantilla — edita el código para ejecutar la operación real.');
+}
+
 /**
  * ONE-TIME SETUP: Set initial admin PIN via ScriptProperties.
  * Usage in GAS editor: Set script property INITIAL_ADMIN_PIN to your 8-digit PIN, then run this function.

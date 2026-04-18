@@ -22,15 +22,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, r
       <header className="bg-black shadow-md border-b border-gray-800 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <div className="flex-shrink-0 flex items-center gap-4">
-                <img 
-                  src={LOGO_URL} 
-                  alt="Organización Equitel" 
-                  className="h-10 w-auto object-contain bg-white rounded-sm px-1"
+            <div className="flex items-center min-w-0 flex-1">
+              <div className="flex items-center gap-4 min-w-0">
+                <img
+                  src={LOGO_URL}
+                  alt="Organización Equitel"
+                  className="h-10 w-auto object-contain bg-white rounded-sm px-1 flex-shrink-0"
                   referrerPolicy="no-referrer"
                 />
-                <span className="font-bold text-lg sm:text-xl tracking-wide text-white hidden sm:block">
+                <span className="font-bold text-base lg:text-xl tracking-wide text-white hidden sm:block truncate">
                   Portal de Viajes - Organización Equitel
                 </span>
                 <span className="font-bold text-lg tracking-wide text-white sm:hidden">
@@ -60,7 +60,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, r
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                     </svg>
-                    <span className="hidden sm:inline">{viewAsRequester ? 'VER COMO ADMIN' : 'VER COMO USUARIO'}</span>
+                    <span className="hidden sm:inline whitespace-nowrap">{viewAsRequester ? 'VER ADMIN' : 'VER USUARIO'}</span>
                   </button>
                 )}
 

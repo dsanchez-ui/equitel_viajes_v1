@@ -781,7 +781,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             {/* Hora vuelo ida — solo para vuelos */}
             {!isHotelOnly && (
               <div>
-                <label className="block text-sm font-medium text-gray-700">Hora Llegada Vuelo Ida (Pref.)</label>
+                <label className="block text-sm font-medium text-gray-700">Hora Requerida de Vuelo - Ida (Pref.)</label>
                 <input type="time" name="departureTimePreference" style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureTimePreference} onChange={handleInputChange} onClick={handleOpenPicker} />
               </div>
             )}
@@ -806,7 +806,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                 {/* Hora vuelo vuelta — solo para vuelos round-trip, NO para hotel-only */}
                 {!isHotelOnly && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700">Hora Llegada Vuelo Vuelta (Pref.)</label>
+                    <label className="block text-sm font-medium text-gray-700">Hora Requerida de Vuelo - Vuelta (Pref.)</label>
                     <input type="time" name="returnTimePreference" style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.returnTimePreference} onChange={handleInputChange} onClick={handleOpenPicker} />
                   </div>
                 )}
