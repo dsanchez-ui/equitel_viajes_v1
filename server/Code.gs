@@ -4757,10 +4757,14 @@ function sendPendingApprovalReminders() {
           continue;
       }
 
-      // #A16 Cooldown: después de ~2 días hábiles desde que entró en aprobación
-      // (evento costConfirmed), dejar de insistir y escalar a superadmins.
+      // #A16 Cooldown: si el aprobador no reaccionó tras ~3 días hábiles de
+      // horas LABORALES desde que entró en aprobación (evento costConfirmed),
+      // dejar de insistir y escalar a superadmins. Se mide en minutos de
+      // horario laboral real (L-V 7-17, Sáb 8-12) — si entra un viernes a
+      // las 16:30, no se dispara el sábado por "día calendario".
+      //   3 días hábiles ≈ 30 horas laborales (L-V 10h/día).
       // Los aprobadores no responden → spam inútil. El superadmin puede
-      // intervenir (skipApprovalStage o llamar manualmente).
+      // intervenir (skipApprovalStage, llamar manualmente, etc.).
       let eventsObj = {};
       if (eventsIdx >= 0) {
         const rawE = row[eventsIdx];
@@ -4768,10 +4772,11 @@ function sendPendingApprovalReminders() {
       }
       const approvalStartIso = eventsObj.costConfirmed || request.timestamp || null;
       if (approvalStartIso) {
-        const daysPending = _businessDaysBetween_(approvalStartIso, new Date().toISOString());
-        if (daysPending >= 2) {
+        const workingMinPending = _workingMinutesBetween_(approvalStartIso, new Date().toISOString());
+        const COOLDOWN_WORKING_MIN = 30 * 60; // 30 h laborales ≈ 3 días hábiles
+        if (workingMinPending !== null && workingMinPending >= COOLDOWN_WORKING_MIN) {
           if (!eventsObj.remindersEscalatedAt) {
-            _escalateStalePendingApproval_(request, daysPending, sheet, idIdx, eventsIdx, row, eventsObj);
+            _escalateStalePendingApproval_(request, workingMinPending, sheet, idIdx, eventsIdx, row, eventsObj);
           }
           continue; // ya no se envían recordatorios a aprobadores
         }
@@ -4827,17 +4832,19 @@ function sendPendingApprovalReminders() {
  * aprobadores no responden en 2 días hábiles, el superadmin decide (llamar,
  * saltar aprobación, etc.) en vez de insistir automáticamente.
  */
-function _escalateStalePendingApproval_(req, daysPending, sheet, idIdx, eventsIdx, row, eventsObj) {
+function _escalateStalePendingApproval_(req, workingMinPending, sheet, idIdx, eventsIdx, row, eventsObj) {
   try {
+    const workingHours = Math.round(workingMinPending / 60);
+    const workingDaysEquiv = (workingMinPending / 600).toFixed(1); // 1 día laboral L-V = 600 min
     const admins = (typeof getSuperAdminWhitelist_ === 'function') ? getSuperAdminWhitelist_() : [];
     if (!admins || admins.length === 0) {
       console.warn('_escalateStalePendingApproval_: no hay superadmins configurados; no se envía escalamiento para ' + req.requestId);
     } else {
       const to = admins.join(',');
-      const subject = '⚠️ Aprobación pendiente ' + daysPending + ' día(s) hábiles - ' + req.requestId;
+      const subject = '⚠️ Aprobación pendiente ' + workingHours + ' h laborales - ' + req.requestId;
       let html = '<div style="font-family:Arial,sans-serif;color:#374151;">';
-      html += '<h2 style="color:#b45309;">Solicitud sin aprobar hace ' + daysPending + ' día(s) hábil(es)</h2>';
-      html += '<p>La solicitud <strong>' + escapeHtml_(req.requestId) + '</strong> lleva pendiente de aprobación más del tiempo esperado. Se detienen los recordatorios automáticos para no saturar a los aprobadores.</p>';
+      html += '<h2 style="color:#b45309;">Solicitud sin aprobar hace ' + workingHours + ' horas laborales (~' + workingDaysEquiv + ' días hábiles)</h2>';
+      html += '<p>La solicitud <strong>' + escapeHtml_(req.requestId) + '</strong> lleva pendiente de aprobación más del tiempo esperado, contando solo horario laboral (L-V 7-17, Sáb 8-12). Se detienen los recordatorios automáticos para no saturar a los aprobadores.</p>';
       html += '<p>Posibles acciones:</p>';
       html += '<ul>';
       html += '<li>Contactar directamente al aprobador faltante.</li>';
@@ -4854,7 +4861,7 @@ function _escalateStalePendingApproval_(req, daysPending, sheet, idIdx, eventsId
     // Marcar escalamiento en EVENTOS_JSON (idempotente: solo una vez).
     if (eventsIdx >= 0) {
       eventsObj.remindersEscalatedAt = new Date().toISOString();
-      eventsObj.remindersEscalatedAfterBusinessDays = daysPending;
+      eventsObj.remindersEscalatedAfterWorkingMinutes = workingMinPending;
       // Encontrar la row number real en la hoja
       const thisId = String(row[idIdx] || '').trim();
       if (thisId) {
