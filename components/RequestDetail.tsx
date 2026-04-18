@@ -236,13 +236,26 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                         Por ser {request.isInternational ? 'internacional' : 'nacional'}, debería haberse hecho con al menos <strong>{request.isInternational ? 30 : 8} días</strong> de anticipación.
                                     </div>
                                 )}
-                                {request.isInternational && (
+
+                                {/* Banner prioritario (solo CEO/CDS): aviso que la solicitud puede haber sido gestionada por fuera del sistema */}
+                                {(request.requesterIsCeo || request.requesterIsCds) && (request.status === 'PENDIENTE_SELECCION' || request.status === 'PENDIENTE_APROBACION') && (
+                                    <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-md text-sm">
+                                        <strong>ℹ️ Solicitante prioritario:</strong>{' '}
+                                        {request.status === 'PENDIENTE_SELECCION'
+                                            ? `Es posible que esta solicitud ya haya sido gestionada por el área de viajes fuera del sistema. Si ya recibió los ${request.requestMode === 'HOTEL_ONLY' ? 'datos del hotel' : 'tiquetes'}, puede desestimar la selección. De lo contrario, proceda normalmente.`
+                                            : 'Esta aprobación quedará registrada para trazabilidad. Si la compra ya se tramitó fuera del sistema, su aprobación confirma el proceso a posteriori.'}
+                                    </div>
+                                )}
+
+                                {/* Banner INTERNACIONAL — se oculta si solicitante es CEO/CDS (su sola aprobación basta) */}
+                                {request.isInternational && !request.requesterIsCeo && !request.requesterIsCds && (
                                     <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-md text-sm">
                                         <strong>🌍 VIAJE INTERNACIONAL:</strong> Requiere aprobación de Gerencia General, Gerencia de Cadena de Suministro y Aprobador de Área.
                                     </div>
                                 )}
 
-                                {(Number(request.totalCost) || 0) > 1200000 && (
+                                {/* Banner APROBACIÓN EXTRAORDINARIA — mismo razonamiento */}
+                                {(Number(request.totalCost) || 0) > 1200000 && !request.requesterIsCeo && !request.requesterIsCds && (
                                     <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md text-sm">
                                         <strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud (${Number(request.totalCost).toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Gerencia General, Gerencia de Cadena de Suministro y Aprobador de Área.
                                     </div>

@@ -2590,7 +2590,18 @@ const HtmlTemplates = {
         }).join('');
 
         const isHotelOnlyOpt = request.requestMode === 'HOTEL_ONLY';
+        const isPriorityOpt = _isPriorityRequester_(request);
         let content = `<p style="margin-bottom: 16px; color: #4b5563;">Se han cargado las opciones de ${isHotelOnlyOpt ? 'hospedaje' : 'viaje'} para su solicitud <strong>${request.requestId}</strong>. Por favor revise las imágenes a continuación e ingrese al aplicativo para confirmar su elección.</p>`;
+
+        // BANNER PRIORITARIO (solo si solicitante es CEO/CDS): avisa que
+        // posiblemente la compra ya se tramitó fuera del sistema.
+        if (isPriorityOpt) {
+            content += `
+            <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; padding: 14px 16px; margin-bottom: 22px; border-radius: 6px; font-size: 13px; line-height: 1.55;">
+                <strong>ℹ️ Solicitante prioritario:</strong> Es posible que su solicitud ya haya sido gestionada por el área de viajes fuera del sistema. Si ya recibió los ${isHotelOnlyOpt ? 'datos del hotel' : 'tiquetes'}, puede desestimar este correo. De lo contrario, proceda a seleccionar.
+            </div>
+            `;
+        }
 
         // BANNER: instrucción explícita de indicar categoría
         content += `
@@ -2656,8 +2667,19 @@ const HtmlTemplates = {
     // APPROVAL REQUEST EMAIL (Updated with Full Summary & Banners)
     approvalRequest: function(request, selectedOption, approveLink, rejectLink) {
         const isHotelOnlyAppr = request.requestMode === 'HOTEL_ONLY';
+        const isPriorityAppr = _isPriorityRequester_(request);
         let alertHtml = '';
-        
+
+        // BANNER PRIORITARIO (solo si solicitante es CEO/CDS): avisa que la
+        // aprobación puede ser confirmación a posteriori si ya se compró fuera.
+        if (isPriorityAppr) {
+            alertHtml += `
+                <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; padding: 14px 16px; margin-bottom: 16px; border-radius: 6px; font-size: 13px; line-height: 1.55;">
+                    <strong>ℹ️ Solicitante prioritario:</strong> Esta aprobación quedará registrada para trazabilidad. Si los ${isHotelOnlyAppr ? 'datos del hotel ya fueron gestionados' : 'tiquetes ya fueron comprados'}, su aprobación confirma el proceso a posteriori.
+                </div>
+            `;
+        }
+
         // RECOMMENDATION BANNERS
         alertHtml += `
             <div style="background-color: #fef3c7; border: 1px solid #fde68a; color: #92400e; padding: 12px; margin-bottom: 10px; border-radius: 6px; font-size: 13px;">
@@ -2668,14 +2690,15 @@ const HtmlTemplates = {
             </div>
         `;
 
-        // HIGH COST BANNER
+        // HIGH COST BANNER — se oculta si solicitante es CEO/CDS (su sola
+        // aprobación basta, los banners de "requiere CEO/CDS" son ruido).
         const totalCost = Number(request.totalCost) || 0;
-        if (totalCost > 1200000) {
+        if (totalCost > 1200000 && !isPriorityAppr) {
             alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud ($${totalCost.toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Gerencia General, Gerencia de Cadena de Suministro y Aprobador de Área.</div>`;
         }
-        
-        // INTERNATIONAL BANNER
-        if (request.isInternational) {
+
+        // INTERNATIONAL BANNER — mismo razonamiento.
+        if (request.isInternational && !isPriorityAppr) {
             alertHtml += `<div style="background-color: #eff6ff; border: 1px solid #93c5fd; color: #1e3a8a; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🌍 ${isHotelOnlyAppr ? 'HOSPEDAJE INTERNACIONAL' : 'VIAJE INTERNACIONAL'}:</strong> Esta solicitud requiere aprobación de Gerencia General, Gerencia de Cadena de Suministro y Aprobador de Área.</div>`;
         }
         
@@ -4111,7 +4134,108 @@ function mapRowToRequest(row) {
   result.cdsIsAreaApprover = eff.cdsIsAreaApprover;
   result.requiresExecutiveApproval = eff.requiresExecutive;
 
+  // DEFENSA: Si el status global es APROBADO pero el ejecutivo solicitante
+  // aparece como PENDIENTE en su propio rol, forzar APPROVED. Caso detectado:
+  // SOL-000052 (CEO) aprobó y llegó correo "Solicitud Aprobada", pero la columna
+  // APROBADO CEO quedó vacía. Sin este fix, la UI muestra inconsistencia visual
+  // (status global APROBADO / fila CEO PENDIENTE). Usar diagnosticarAprobacion()
+  // para investigar la causa raíz de la escritura fallida.
+  if (result.status === 'APROBADO') {
+    if (result.requesterIsCeo && result.effectiveApprovalCeo !== 'APPROVED') {
+      console.warn('[DEFENSA CEO] ' + result.requestId + ': status=APROBADO pero effectiveApprovalCeo=' + result.effectiveApprovalCeo + '. Forzando APPROVED.');
+      result.effectiveApprovalCeo = 'APPROVED';
+      result.effectiveApprovalCeoReason = '';
+    }
+    if (result.requesterIsCds && result.effectiveApprovalCds !== 'APPROVED') {
+      console.warn('[DEFENSA CDS] ' + result.requestId + ': status=APROBADO pero effectiveApprovalCds=' + result.effectiveApprovalCds + '. Forzando APPROVED.');
+      result.effectiveApprovalCds = 'APPROVED';
+      result.effectiveApprovalCdsReason = '';
+    }
+  }
+
   return result;
+}
+
+/**
+ * Helper para investigar manualmente el estado de aprobación de una solicitud.
+ * Loguea los valores reales de las columnas (APROBADO POR ÁREA?, APROBADO CEO,
+ * APROBADO CDS, STATUS, CORREO ENCUESTADO) junto con los flags efectivos
+ * calculados por computeEffectiveApprovalStatus_. Úsalo desde el editor GAS
+ * cuando sospeches inconsistencia entre el status global y las columnas.
+ *
+ * Uso: Apps Script no permite pasar args en ▶ Run, así que crea una función
+ * temporal y ejecútala. Ejemplo:
+ *   function _diag_052() { diagnosticarAprobacion('SOL-000052'); }
+ */
+function diagnosticarAprobacion(requestId) {
+  if (!requestId) {
+    Logger.log('diagnosticarAprobacion: falta requestId');
+    return;
+  }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) { Logger.log('No se encontró la hoja de solicitudes.'); return; }
+  var idIdx = H('ID RESPUESTA');
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) { Logger.log('Hoja vacía.'); return; }
+  var ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
+  var rowIndex = ids.map(String).indexOf(String(requestId));
+  if (rowIndex === -1) { Logger.log('Solicitud no encontrada: ' + requestId); return; }
+  var rowNumber = rowIndex + 2;
+
+  var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var get = function(h) { var i = H(h); return i > -1 ? row[i] : '(columna no existe)'; };
+
+  Logger.log('=== DIAGNÓSTICO DE APROBACIÓN: ' + requestId + ' ===');
+  Logger.log('Fila: ' + rowNumber);
+  Logger.log('STATUS:                     "' + get('STATUS') + '"');
+  Logger.log('CORREO ENCUESTADO:          "' + get('CORREO ENCUESTADO') + '"');
+  Logger.log('ES INTERNACIONAL:           "' + get('ES INTERNACIONAL') + '"');
+  Logger.log('COSTO COTIZADO PARA VIAJE:  "' + get('COSTO COTIZADO PARA VIAJE') + '"');
+  Logger.log('CORREO APROBADOR (AUTO):    "' + get('CORREO DE QUIEN APRUEBA (AUTOMÁTICO)') + '"');
+  Logger.log('APROBADO POR ÁREA? (AUTO):  "' + get('APROBADO POR ÁREA? (AUTOMÁTICO)') + '"');
+  Logger.log('FECHA/HORA (AUTO):          "' + get('FECHA/HORA (AUTOMÁTICO)') + '"');
+  Logger.log('APROBADO CEO:               "' + get('APROBADO CEO') + '"');
+  Logger.log('APROBADO CDS:               "' + get('APROBADO CDS') + '"');
+  Logger.log('');
+
+  var req = mapRowToRequest(row);
+  Logger.log('--- Flags efectivos (tras mapRowToRequest + defensa) ---');
+  Logger.log('requesterIsCeo:             ' + req.requesterIsCeo);
+  Logger.log('requesterIsCds:             ' + req.requesterIsCds);
+  Logger.log('ceoIsAreaApprover:          ' + req.ceoIsAreaApprover);
+  Logger.log('cdsIsAreaApprover:          ' + req.cdsIsAreaApprover);
+  Logger.log('requiresExecutiveApproval:  ' + req.requiresExecutiveApproval);
+  Logger.log('effectiveApprovalArea:      ' + req.effectiveApprovalArea + (req.effectiveApprovalAreaReason ? ' (' + req.effectiveApprovalAreaReason + ')' : ''));
+  Logger.log('effectiveApprovalCeo:       ' + req.effectiveApprovalCeo + (req.effectiveApprovalCeoReason ? ' (' + req.effectiveApprovalCeoReason + ')' : ''));
+  Logger.log('effectiveApprovalCds:       ' + req.effectiveApprovalCds + (req.effectiveApprovalCdsReason ? ' (' + req.effectiveApprovalCdsReason + ')' : ''));
+  Logger.log('');
+  Logger.log('Nota: si STATUS=APROBADO y requesterIsCeo=true pero APROBADO CEO está vacío,');
+  Logger.log('la defensa en mapRowToRequest forzó effectiveApprovalCeo=APPROVED.');
+
+  return {
+    requestId: requestId,
+    row: rowNumber,
+    status: String(get('STATUS')),
+    rawApprovalArea: String(get('APROBADO POR ÁREA? (AUTOMÁTICO)')),
+    rawApprovalCeo: String(get('APROBADO CEO')),
+    rawApprovalCds: String(get('APROBADO CDS')),
+    effective: {
+      area: req.effectiveApprovalArea,
+      ceo: req.effectiveApprovalCeo,
+      cds: req.effectiveApprovalCds
+    },
+    requesterIsCeo: req.requesterIsCeo,
+    requesterIsCds: req.requesterIsCds
+  };
+}
+
+/**
+ * Helper: true si el solicitante es ejecutivo (CEO o CDS). Usado por los
+ * templates de correo y por la UI para decidir qué banners ocultar/mostrar.
+ */
+function _isPriorityRequester_(req) {
+  return !!(req && (req.requesterIsCeo || req.requesterIsCds));
 }
 
 // --- CRON JOBS / TRIGGERS ---
