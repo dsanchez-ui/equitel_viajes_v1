@@ -632,10 +632,10 @@ const App: React.FC = () => {
     <Layout
       userEmail={userEmail}
       userName={userName}
-      role={isEffectiveAdmin ? 'ANALYST' : 'REQUESTER'}
+      role={isEffectiveAdmin ? (role === UserRole.SUPERADMIN ? 'SUPERADMIN' : 'ANALYST') : 'REQUESTER'}
       onLogout={handleLogout}
       onRefresh={handleManualRefresh}
-      canToggleView={role === UserRole.ANALYST}
+      canToggleView={role === UserRole.ANALYST || role === UserRole.SUPERADMIN}
       viewAsRequester={viewAsRequester}
       onToggleView={handleToggleView}
     >

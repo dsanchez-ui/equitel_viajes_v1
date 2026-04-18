@@ -684,7 +684,28 @@ function verifyAdminPin(inputPin, email) {
   // server-side cierra la puerta a cualquier caracter raro adicional.
   var cleanInputPin = String(inputPin || '').replace(/\s+/g, '').trim();
   var inputHash = hashPin_(cleanInputPin);
-  if (inputHash !== storedHash) {
+  var matched = (inputHash === storedHash);
+
+  // FALLBACK UX: si el admin tiene su PIN personal guardado en USUARIOS/
+  // INTEGRANTES (caso: David, Yurani — superadmins con fila propia) y
+  // Chrome autocompletó ese PIN personal en el formulario de ADMIN, no
+  // fallar. Aceptamos cualquiera de los dos PINs (admin compartido o
+  // personal). Esto elimina el cruce de autocomplete sin bajar la barra
+  // de seguridad: el personal ya está protegido con el mismo hash+salt.
+  if (!matched && email) {
+    try {
+      var _normEmail = String(email).toLowerCase().trim();
+      if (isUserAnalyst(_normEmail)) {
+        var _personalHash = getUserPinHash_(_normEmail);
+        if (_personalHash && _personalHash === inputHash) {
+          matched = true;
+          console.log('verifyAdminPin: PIN personal aceptado para ' + _normEmail + ' (admin con fila en USUARIOS).');
+        }
+      }
+    } catch (e) { /* fallar silencioso; matched sigue false */ }
+  }
+
+  if (!matched) {
     recordFailedPinAttempt_(normalizedEmailForLock);
     return { success: false };
   }

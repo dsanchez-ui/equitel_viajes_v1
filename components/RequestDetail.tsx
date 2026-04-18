@@ -99,6 +99,9 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
     const [skipModalOpen, setSkipModalOpen] = useState(false);
     const [skipJustification, setSkipJustification] = useState('');
     const [skipLoading, setSkipLoading] = useState(false);
+    // 'selection' = PENDIENTE_SELECCION → PENDIENTE_CONFIRMACION_COSTO (cualquier analista)
+    // 'approval'  = PENDIENTE_APROBACION → APROBADO (solo superadmin)
+    const [skipMode, setSkipMode] = useState<'selection' | 'approval'>('selection');
 
     const [dialog, setDialog] = useState<{
         isOpen: boolean;
@@ -187,10 +190,17 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
         }
         setSkipLoading(true);
         try {
-            await gasService.skipSelectionStage(request.requestId, trimmed);
-            setSkipModalOpen(false);
-            setSkipJustification('');
-            onSuccessAction('Etapa de selección saltada. La solicitud avanzó a PENDIENTE DE CONFIRMACIÓN DE COSTOS.');
+            if (skipMode === 'approval') {
+                await gasService.skipApprovalStage(request.requestId, trimmed);
+                setSkipModalOpen(false);
+                setSkipJustification('');
+                onSuccessAction('Etapa de aprobación saltada. La solicitud quedó APROBADA.');
+            } else {
+                await gasService.skipSelectionStage(request.requestId, trimmed);
+                setSkipModalOpen(false);
+                setSkipJustification('');
+                onSuccessAction('Etapa de selección saltada. La solicitud avanzó a PENDIENTE DE CONFIRMACIÓN DE COSTOS.');
+            }
         } catch (e: any) {
             alert('Error: ' + (e?.message || e));
             setSkipLoading(false);
@@ -226,13 +236,19 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                 onCancel={dialog.onCancel}
             />
 
-            {/* Modal de justificación para saltar selección (solo superadmin) */}
+            {/* Modal de justificación para saltar etapa (selección o aprobación) */}
             {skipModalOpen && (
                 <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
                     <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
-                        <h3 className="text-lg font-bold text-indigo-900 mb-2">⏩ Saltar etapa de selección</h3>
+                        <h3 className="text-lg font-bold text-indigo-900 mb-2">
+                            {skipMode === 'approval' ? '⏩ Saltar etapa de aprobación' : '⏩ Saltar etapa de selección'}
+                        </h3>
                         <p className="text-sm text-gray-700 mb-3">
-                            La solicitud <strong>{request.requestId}</strong> avanzará a <strong>PENDIENTE DE CONFIRMACIÓN DE COSTOS</strong> sin selección del usuario. Esta acción queda registrada con su correo y la justificación.
+                            {skipMode === 'approval' ? (
+                                <>La solicitud <strong>{request.requestId}</strong> pasará directamente a <strong>APROBADA</strong> sin enviar correos a los aprobadores. Úsalo solo si el viaje ya fue autorizado fuera del sistema. Queda registrado con tu correo y justificación.</>
+                            ) : (
+                                <>La solicitud <strong>{request.requestId}</strong> avanzará a <strong>PENDIENTE DE CONFIRMACIÓN DE COSTOS</strong> sin selección del usuario. Esta acción queda registrada con su correo y la justificación.</>
+                            )}
                         </p>
                         <label className="block text-xs font-bold uppercase text-gray-600 mb-1 tracking-wide">
                             Justificación (mínimo 10 caracteres)
@@ -617,10 +633,30 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                 </p>
                                             </div>
                                             <button
-                                                onClick={() => { setSkipJustification(''); setSkipModalOpen(true); }}
+                                                onClick={() => { setSkipJustification(''); setSkipMode('selection'); setSkipModalOpen(true); }}
                                                 className="flex-shrink-0 bg-indigo-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-indigo-700 shadow whitespace-nowrap"
                                             >
                                                 SALTAR SELECCIÓN
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* --- SECTION 3C: SUPERADMIN — SALTAR APROBACIÓN (PENDIENTE_APROBACION) --- */}
+                                {request.status === 'PENDIENTE_APROBACION' && isSuperAdmin && (
+                                    <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4 mt-6 shadow-sm">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="flex-1">
+                                                <h4 className="text-sm font-bold text-amber-900 mb-1">⏩ Saltar etapa de aprobación (SUPERADMIN)</h4>
+                                                <p className="text-xs text-amber-800 leading-relaxed">
+                                                    Pasa la solicitud directamente a <strong>APROBADA</strong> sin enviar correos a CEO/CDS/área. Úsalo solo cuando el viaje ya fue autorizado por fuera del sistema (verbal, WhatsApp, correo). Queda registrada la justificación con tu correo y timestamp.
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => { setSkipJustification(''); setSkipMode('approval'); setSkipModalOpen(true); }}
+                                                className="flex-shrink-0 bg-amber-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-amber-700 shadow whitespace-nowrap"
+                                            >
+                                                SALTAR APROBACIÓN
                                             </button>
                                         </div>
                                     </div>
