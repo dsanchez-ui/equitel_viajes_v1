@@ -250,6 +250,16 @@ class GasService {
   }
 
   /**
+   * Saltar la etapa de aprobación (solo SUPERADMIN). La solicitud pasa de
+   * PENDIENTE_APROBACION → APROBADO directamente. No se envían correos a
+   * CEO/CDS/área. Queda registrado en OBSERVACIONES y EVENTOS_JSON.
+   */
+  async skipApprovalStage(requestId: string, justification: string): Promise<void> {
+    const response = await this.runGas('skipApprovalStage', { requestId, justification });
+    if (!response.success) throw new Error(response.error);
+  }
+
+  /**
    * Amend an existing reservation: update PNR/card/date, delete old files,
    * upload new files, and send a correction email to the user.
    */

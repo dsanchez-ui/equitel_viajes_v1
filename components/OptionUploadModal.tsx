@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Option, TravelRequest, RequestStatus } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
@@ -21,6 +21,14 @@ interface OptionUploadModalProps {
 }
 
 export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadModalProps) => {
+    // ESC cierra el modal (solo si no se está subiendo — evita perder archivos
+    // a medio subir por un press accidental).
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, [onClose]);
+
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [flightDirection, setFlightDirection] = useState<'IDA' | 'VUELTA'>('IDA');

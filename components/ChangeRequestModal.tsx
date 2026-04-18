@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TravelRequest } from '../types';
 import { gasService } from '../services/gasService';
 import { formatToDDMMYYYY } from '../utils/dateUtils';
@@ -13,6 +13,12 @@ interface ChangeRequestModalProps {
 type Step = 'initial' | 'confirmDeny' | 'parentDecision' | 'processing' | 'error';
 
 export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request, onClose, onSuccess }) => {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   const [step, setStep] = useState<Step>('initial');
   const [reason, setReason] = useState('');
   const [parentAction, setParentAction] = useState<'keep' | 'anulate' | 'consult'>('keep');

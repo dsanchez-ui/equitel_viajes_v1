@@ -19,6 +19,7 @@ interface AdminDashboardProps {
   onRefresh: () => void;
   isLoading: boolean;
   onViewRequest: (req: TravelRequest) => void;
+  isSuperAdmin?: boolean;
 }
 
 /**
@@ -61,9 +62,12 @@ const isRequestPriority = (req: TravelRequest, integrantes: Integrant[]): boolea
   return false;
 };
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integrantes, onRefresh, isLoading, onViewRequest }) => {
+const PAGE_SIZE = 50;
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integrantes, onRefresh, isLoading, onViewRequest, isSuperAdmin }) => {
   const [filter, setFilter] = useState<string>('ALL');
   const [showOnlyPriority, setShowOnlyPriority] = useState<boolean>(false);
+  const [page, setPage] = useState<number>(1);
 
   // Pre-compute priority flag por requestId para evitar O(N*M) en cada render
   const priorityMap = useMemo(() => {
@@ -105,11 +109,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
 
   const closeDialog = () => setDialog(prev => ({ ...prev, isOpen: false }));
 
-  const filteredRequests = requests.filter(r => {
-    if (showOnlyPriority && !priorityMap.get(r.requestId)) return false;
-    if (filter === 'ALL') return true;
-    return r.status === filter;
-  });
+  // Orden descendente por timestamp (más recientes primero) para que la página 1
+  // siempre muestre lo reciente sin importar el orden del backend.
+  const filteredRequests = useMemo(() => {
+    const out = requests.filter(r => {
+      if (showOnlyPriority && !priorityMap.get(r.requestId)) return false;
+      if (filter === 'ALL') return true;
+      return r.status === filter;
+    });
+    out.sort((a, b) => {
+      const ta = new Date(a.timestamp || 0).getTime() || 0;
+      const tb = new Date(b.timestamp || 0).getTime() || 0;
+      return tb - ta;
+    });
+    return out;
+  }, [requests, priorityMap, showOnlyPriority, filter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
+  // Si el filtro reduce el total y la página actual queda fuera de rango, resetear.
+  React.useEffect(() => { if (page > totalPages) setPage(1); }, [totalPages, page]);
+  const pagedRequests = useMemo(
+    () => filteredRequests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredRequests, page]
+  );
+
+  // Estados terminales se muestran en gris (ANULADO/DENEGADO/PROCESADO).
+  const TERMINAL_STATUSES: string[] = ['ANULADO', 'DENEGADO', 'PROCESADO'];
 
   const getStatusBadge = (status: RequestStatus) => {
     switch (status) {
@@ -350,16 +375,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
                     </tr>
                   ) : (
                     <>
-                      {filteredRequests.map((req) => {
+                      {pagedRequests.map((req) => {
                         const totalCost = Number(req.totalCost) || 0;
                         const isHighCost = totalCost > 1200000;
                         const anticipationDays = getDaysDiff(req.timestamp, req.departureDate);
                         const remainingDays = getDaysDiff(new Date(), req.departureDate);
                         const isAbandoned = remainingDays < 0 && !['RESERVADO', 'PROCESADO', 'PENDIENTE_ANALISIS_CAMBIO'].includes(req.status);
                         const isPriority = priorityMap.get(req.requestId) || false;
+                        const isTerminal = TERMINAL_STATUSES.includes(req.status);
 
                         return (
-                          <tr key={req.requestId} className={isAbandoned ? 'opacity-60 grayscale bg-gray-50' : (isPriority ? 'bg-amber-50' : '')}>
+                          <tr key={req.requestId} className={isTerminal ? 'opacity-50 bg-gray-50' : (isAbandoned ? 'opacity-60 grayscale bg-gray-50' : (isPriority ? 'bg-amber-50' : ''))}>
                             <td className="whitespace-nowrap px-3 py-4 text-sm font-bold text-gray-900">
                               {isPriority && (
                                 <span
@@ -539,6 +565,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
                 </tbody>
               </table>
             </div>
+            {filteredRequests.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between px-3 py-3 border-t border-gray-200 bg-gray-50 text-sm">
+                <span className="text-gray-600">
+                  {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, filteredRequests.length)} de {filteredRequests.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="px-3 py-1 border border-gray-300 rounded bg-white text-gray-700 disabled:opacity-40"
+                  >Anterior</button>
+                  <span className="text-gray-700">Pág. {page} / {totalPages}</span>
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="px-3 py-1 border border-gray-300 rounded bg-white text-gray-700 disabled:opacity-40"
+                  >Siguiente</button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -573,6 +619,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
             setSelectedRequestForCosts(null);
             onRefresh();
           }}
+          isSuperAdmin={isSuperAdmin}
         />
       )}
 

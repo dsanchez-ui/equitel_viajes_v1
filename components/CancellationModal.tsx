@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface CancellationModalProps {
     isOpen: boolean;
@@ -10,6 +10,13 @@ interface CancellationModalProps {
 export const CancellationModal: React.FC<CancellationModalProps> = ({ isOpen, requestId, onClose, onSubmit }) => {
     const [reason, setReason] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+      if (!isOpen) return;
+      const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, [isOpen, onClose]);
 
     if (!isOpen) return null;
 

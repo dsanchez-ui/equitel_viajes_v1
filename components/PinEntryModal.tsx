@@ -30,6 +30,13 @@ export const PinEntryModal: React.FC<PinEntryModalProps> = ({ isOpen, title = "I
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
+
   const handleResendClick = async () => {
     if (!onResend || resending) return;
     setResending(true);

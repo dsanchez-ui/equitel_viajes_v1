@@ -365,7 +365,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -392,7 +392,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -403,7 +403,9 @@ function dispatch(action, payload) {
     // superadmin desaparece al siguiente intento sin invalidar su sesión.
     // (skipSelectionStage se movió a adminOnlyActions: Wendy ANALYST también
     // necesita saltarse selección cuando gestiona compra por fuera.)
-    const superAdminOnlyActions = [];
+    // skipApprovalStage SÍ es superadmin: saltarse una aprobación ejecutiva
+    // es decisión que solo David/Yurani pueden tomar.
+    const superAdminOnlyActions = ['skipApprovalStage'];
     if (superAdminOnlyActions.includes(action) && !isSuperAdmin(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de superadmin.' };
     }
@@ -486,6 +488,7 @@ function dispatch(action, payload) {
 
       // SUPERADMIN: saltar etapa PENDIENTE_SELECCION
       case 'skipSelectionStage': result = skipSelectionStage(payload.requestId, payload.justification, currentUserEmail); break;
+      case 'skipApprovalStage': result = skipApprovalStage(payload.requestId, payload.justification, currentUserEmail); break;
       
       // PIN FEATURES
       case 'verifyAdminPin': result = verifyAdminPin(payload.pin, payload.email); break;
@@ -4721,6 +4724,13 @@ function sendPendingApprovalReminders() {
   const areaApproveIdx = H("APROBADO POR ÁREA?");
   const cdsApproveIdx = H("APROBADO CDS");
   const ceoApproveIdx = H("APROBADO CEO");
+  const idIdx = H("ID RESPUESTA");
+  const eventsIdx = (function(){
+    try {
+      const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      return headers.indexOf(EVENTOS_JSON_HEADER);
+    } catch (e) { return -1; }
+  })();
 
   // Calcula qué padres están pausadas por una solicitud de cambio activa
   const pausedParentIds = _computePausedParentIds_(data.slice(1));
@@ -4746,6 +4756,27 @@ function sendPendingApprovalReminders() {
       if (pausedParentIds.has(String(request.requestId))) {
           continue;
       }
+
+      // #A16 Cooldown: después de ~2 días hábiles desde que entró en aprobación
+      // (evento costConfirmed), dejar de insistir y escalar a superadmins.
+      // Los aprobadores no responden → spam inútil. El superadmin puede
+      // intervenir (skipApprovalStage o llamar manualmente).
+      let eventsObj = {};
+      if (eventsIdx >= 0) {
+        const rawE = row[eventsIdx];
+        if (rawE) { try { eventsObj = JSON.parse(rawE); } catch (e) { eventsObj = {}; } }
+      }
+      const approvalStartIso = eventsObj.costConfirmed || request.timestamp || null;
+      if (approvalStartIso) {
+        const daysPending = _businessDaysBetween_(approvalStartIso, new Date().toISOString());
+        if (daysPending >= 2) {
+          if (!eventsObj.remindersEscalatedAt) {
+            _escalateStalePendingApproval_(request, daysPending, sheet, idIdx, eventsIdx, row, eventsObj);
+          }
+          continue; // ya no se envían recordatorios a aprobadores
+        }
+      }
+
       let recipients = [];
 
       const isAreaApproved = String(row[areaApproveIdx]).startsWith("Sí");
@@ -4787,6 +4818,57 @@ function sendPendingApprovalReminders() {
     }
   }
   console.log(`Ejecución de recordatorios finalizada. Correos enviados: ${remindersSent}` + (remindersSent >= MAX_REMINDER_EMAILS_PER_RUN ? ' (CAP alcanzado)' : ''));
+}
+
+/**
+ * Escala a los superadmins una solicitud que lleva >=2 días hábiles sin
+ * aprobación. Envía UN SOLO correo (marcado con remindersEscalatedAt en
+ * EVENTOS_JSON) y deja de recordar a los aprobadores originales. Idea: si los
+ * aprobadores no responden en 2 días hábiles, el superadmin decide (llamar,
+ * saltar aprobación, etc.) en vez de insistir automáticamente.
+ */
+function _escalateStalePendingApproval_(req, daysPending, sheet, idIdx, eventsIdx, row, eventsObj) {
+  try {
+    const admins = (typeof getSuperAdminWhitelist_ === 'function') ? getSuperAdminWhitelist_() : [];
+    if (!admins || admins.length === 0) {
+      console.warn('_escalateStalePendingApproval_: no hay superadmins configurados; no se envía escalamiento para ' + req.requestId);
+    } else {
+      const to = admins.join(',');
+      const subject = '⚠️ Aprobación pendiente ' + daysPending + ' día(s) hábiles - ' + req.requestId;
+      let html = '<div style="font-family:Arial,sans-serif;color:#374151;">';
+      html += '<h2 style="color:#b45309;">Solicitud sin aprobar hace ' + daysPending + ' día(s) hábil(es)</h2>';
+      html += '<p>La solicitud <strong>' + escapeHtml_(req.requestId) + '</strong> lleva pendiente de aprobación más del tiempo esperado. Se detienen los recordatorios automáticos para no saturar a los aprobadores.</p>';
+      html += '<p>Posibles acciones:</p>';
+      html += '<ul>';
+      html += '<li>Contactar directamente al aprobador faltante.</li>';
+      html += '<li>Usar "Saltar aprobación" en el modal de confirmación de costos si el viaje ya fue autorizado fuera del sistema.</li>';
+      html += '<li>Anular la solicitud si corresponde.</li>';
+      html += '</ul>';
+      html += '<hr style="border:0;border-top:1px solid #e5e7eb;margin:16px 0;">';
+      try { html += HtmlTemplates._getFullSummary(req); } catch (e) { /* ignore */ }
+      html += '<p style="font-size:12px;color:#6b7280;margin-top:16px;">Este correo solo se envía una vez por solicitud. Si resuelves la situación, la solicitud pasará a su siguiente estado normalmente.</p>';
+      html += '</div>';
+      MailApp.sendEmail({ to: to, subject: subject, htmlBody: html });
+    }
+
+    // Marcar escalamiento en EVENTOS_JSON (idempotente: solo una vez).
+    if (eventsIdx >= 0) {
+      eventsObj.remindersEscalatedAt = new Date().toISOString();
+      eventsObj.remindersEscalatedAfterBusinessDays = daysPending;
+      // Encontrar la row number real en la hoja
+      const thisId = String(row[idIdx] || '').trim();
+      if (thisId) {
+        const lastRow = sheet.getLastRow();
+        const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
+        const rowNumber = ids.map(String).indexOf(thisId) + 2;
+        if (rowNumber >= 2) {
+          sheet.getRange(rowNumber, eventsIdx + 1).setValue(JSON.stringify(eventsObj));
+        }
+      }
+    }
+  } catch (err) {
+    console.error('_escalateStalePendingApproval_ error: ' + err);
+  }
 }
 
 function sendReminderEmail(req, toEmail, role) {
@@ -5673,6 +5755,111 @@ function skipSelectionStage(requestId, justification, currentUserEmail) {
     sendSelectionNotificationToAdmin(req);
   } catch (e) {
     console.error('skipSelectionStage: error notificando admin: ' + e);
+  }
+
+  return { success: true, requestId: requestId, skippedBy: actorEmail };
+}
+
+// =====================================================================
+// SUPERADMIN: saltar etapa de aprobación (R4.b — solo viaje autorizado fuera)
+// =====================================================================
+/**
+ * Salta la etapa de aprobación cuando un ejecutivo ya autorizó el viaje por
+ * fuera del sistema (verbal, WhatsApp, correo). Pasa de PENDIENTE_APROBACION
+ * directamente a APROBADO sin enviar correos a aprobadores.
+ *
+ * Validaciones:
+ *   - requestId requerido
+ *   - justification mín 10 chars
+ *   - status actual DEBE ser PENDIENTE_APROBACION
+ *
+ * Efectos:
+ *   - OBSERVACIONES: nota con autor + timestamp
+ *   - EVENTOS_JSON: registra fullyApproved con skippedApprovalBy
+ *   - STATUS: avanza a APROBADO
+ *   - APROBADO CDS / APROBADO CEO / APROBADO POR ÁREA: se marcan como "NA" con nota
+ *   - NO envía correos a CEO/CDS/área
+ *   - SÍ envía correo al usuario informando que fue aprobada (decisionNotification)
+ */
+function skipApprovalStage(requestId, justification, currentUserEmail) {
+  if (!requestId) throw new Error('requestId requerido.');
+  var just = String(justification || '').trim();
+  if (just.length < 10) throw new Error('La justificación es obligatoria y debe tener al menos 10 caracteres.');
+  if (just.length > 2000) throw new Error('La justificación es demasiado larga (máx 2000 caracteres).');
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error('Hoja de solicitudes no encontrada.');
+
+  var idIdx = H('ID RESPUESTA');
+  var statusIdx = H('STATUS');
+  var obsIdx = H('OBSERVACIONES');
+  var areaIdx = H('APROBADO POR ÁREA? (AUTOMÁTICO)');
+  var cdsIdx = H('APROBADO CDS');
+  var ceoIdx = H('APROBADO CEO');
+  var approvalDateIdx = H('FECHA/HORA (AUTOMÁTICO)');
+
+  var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
+  var rowIndex = ids.map(String).indexOf(String(requestId));
+  if (rowIndex === -1) throw new Error('Solicitud no encontrada.');
+  var rowNumber = rowIndex + 2;
+
+  var currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '').trim();
+  if (currentStatus !== 'PENDIENTE_APROBACION') {
+    throw new Error('Solo se puede saltar la aprobación en estado PENDIENTE_APROBACION. Estado actual: ' + currentStatus);
+  }
+
+  var now = new Date();
+  var timestampStr = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd HH:mm');
+  var actorEmail = String(currentUserEmail || 'desconocido').toLowerCase().trim();
+
+  // 1. Marcar las 3 columnas de aprobación con un valor que deje clara la
+  // circunstancia. mapRowToRequest lee estas columnas; un valor no-vacío
+  // que no coincida con APROBADO será tratado como OTHER. Para que
+  // computeEffectiveApprovalStatus_ no complique el estado, usamos "Sí" como
+  // valor aceptado (igual que un aprobador real firma "Sí").
+  var approvalNote = 'Sí (ETAPA SALTADA por ' + actorEmail + ')';
+  if (areaIdx > -1) sheet.getRange(rowNumber, areaIdx + 1).setValue(approvalNote);
+  if (cdsIdx > -1) sheet.getRange(rowNumber, cdsIdx + 1).setValue(approvalNote);
+  if (ceoIdx > -1) sheet.getRange(rowNumber, ceoIdx + 1).setValue(approvalNote);
+  if (approvalDateIdx > -1) sheet.getRange(rowNumber, approvalDateIdx + 1).setValue(timestampStr);
+
+  // 2. OBSERVACIONES con trazabilidad
+  var currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
+  var note = '[APROBACIÓN SALTADA por ' + actorEmail + ' - ' + timestampStr + ']: ' + just;
+  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + '\n' : '') + note);
+
+  // 3. EVENTOS_JSON para métricas
+  try {
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var eventsCol = headers.indexOf(EVENTOS_JSON_HEADER);
+    if (eventsCol >= 0) {
+      var raw = sheet.getRange(rowNumber, eventsCol + 1).getValue();
+      var events = {};
+      if (raw) { try { events = JSON.parse(raw); } catch (e) { events = {}; } }
+      var nowIso = now.toISOString();
+      if (!events.fullyApproved) events.fullyApproved = nowIso;
+      events.skippedApprovalBy = actorEmail;
+      events.skippedApprovalAt = nowIso;
+      sheet.getRange(rowNumber, eventsCol + 1).setValue(JSON.stringify(events));
+    }
+  } catch (e) {
+    console.error('skipApprovalStage: error registrando evento: ' + e);
+  }
+
+  // 4. Avanzar status
+  sheet.getRange(rowNumber, statusIdx + 1).setValue('APROBADO');
+  SpreadsheetApp.flush();
+
+  // 5. Notificar al usuario (decisión final). NO se notifica a los aprobadores
+  // (no participaron y sería confuso).
+  try {
+    var rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var req = mapRowToRequest(rowData);
+    sendDecisionNotification(req, 'APROBADO');
+  } catch (e) {
+    console.error('skipApprovalStage: error notificando usuario: ' + e);
   }
 
   return { success: true, requestId: requestId, skippedBy: actorEmail };

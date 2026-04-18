@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useEffect } from 'react';
 
 interface ConfirmationDialogProps {
   isOpen: boolean;
@@ -16,8 +16,21 @@ export const ConfirmationDialog: React.FC<ConfirmationDialogProps> = ({
   message, 
   onConfirm, 
   onCancel, 
-  type = 'CONFIRM' 
+  type = 'CONFIRM'
 }) => {
+  // ESC: cerrar siguiendo la misma semántica del click-outside (#A10).
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (type === 'CONFIRM' && onCancel) onCancel();
+      else if (type === 'SUCCESS') onConfirm();
+      // ALERT: ignorar — el usuario debe clickear Aceptar.
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, type, onCancel, onConfirm]);
+
   if (!isOpen) return null;
   
   return (

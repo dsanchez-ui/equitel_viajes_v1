@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TravelRequest, RequestStatus } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
@@ -8,10 +8,20 @@ interface CostConfirmationModalProps {
   request: TravelRequest;
   onClose: () => void;
   onSuccess: () => void;
+  isSuperAdmin?: boolean;
 }
 
-export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ request, onClose, onSuccess }) => {
+export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ request, onClose, onSuccess, isSuperAdmin }) => {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   const [loading, setLoading] = useState(false);
+  // #R4.b: SUPERADMIN puede saltar etapa de aprobación (viaje ya autorizado fuera del sistema).
+  const [skipApproval, setSkipApproval] = useState<boolean>(false);
+  const [skipJustification, setSkipJustification] = useState<string>('');
   const [costTickets, setCostTickets] = useState<number>(0);
   const [costHotel, setCostHotel] = useState<number>(0);
 
@@ -58,16 +68,25 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
       let message = isHotelOnly
           ? `Se registrará el costo del hospedaje:\n\nHotel: $${costHotel.toLocaleString()}\nTotal: $${total.toLocaleString()}\n\n`
           : `Se registrarán los siguientes costos:\n\nTiquetes: $${costTickets.toLocaleString()}\nHotel: $${costHotel.toLocaleString()}\nTotal: $${total.toLocaleString()}\n\n`;
-      
-      // Check for High Cost Threshold (1.2M) for National Trips
-      // Note: If it's already international, the backend handles it, but we can still warn if we want.
-      // The requirement says: "si el valor supera 1 millón 200 debe solicitarse aprobación al CEO y a la dirección de cadena de suministro... se le debe informar"
-      
-      if (!request.isInternational && total > 1200000) {
-          message += "⚠️ ALERTA DE COSTO: El valor supera $1,200,000. Se solicitará aprobación adicional a Gerencia General, Gerencia de Cadena de Suministro y Aprobador de Área.\n\n";
+
+      // SUPERADMIN: saltar aprobación requiere justificación válida.
+      if (skipApproval) {
+          if (!isSuperAdmin) {
+              setDialog({ isOpen: true, title: 'Validación', message: 'Solo un superadmin puede saltar la etapa de aprobación.', type: 'ALERT', onConfirm: closeDialog });
+              return;
+          }
+          if (skipJustification.trim().length < 10) {
+              setDialog({ isOpen: true, title: 'Validación', message: 'La justificación para saltar la aprobación debe tener al menos 10 caracteres.', type: 'ALERT', onConfirm: closeDialog });
+              return;
+          }
+          message += `⏭️ SE SALTARÁ LA ETAPA DE APROBACIÓN.\nLa solicitud pasará directamente a APROBADO.\n\nJustificación: "${skipJustification.trim()}"\n\n`;
+      } else if (!request.isInternational && total > 1200000) {
+          message += "⚠️ ALERTA DE COSTO: El valor supera $1,200,000. Se solicitará aprobación adicional a Dirección de Cadena de Suministro y Aprobador de Área.\n\n";
       }
-      
-      message += "Se enviará la solicitud para aprobación.";
+
+      message += skipApproval
+        ? "Se registrará la decisión sin enviar correos de aprobación."
+        : "Se enviará la solicitud para aprobación.";
       
       setDialog({
           isOpen: true,
@@ -88,11 +107,20 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
               finalCostHotel: costHotel,
               totalCost: costTickets + costHotel
           });
-          
+
+          if (skipApproval) {
+              // Salto inmediatamente después de confirmar costos: backend
+              // pasará de PENDIENTE_APROBACION → APROBADO sin enviar correos
+              // de aprobación. Se registra justificación + autor.
+              await gasService.skipApprovalStage(request.requestId, skipJustification.trim());
+          }
+
           setDialog({
               isOpen: true,
               title: 'Exito',
-              message: "Costos confirmados. Solicitud enviada a aprobación.",
+              message: skipApproval
+                ? "Costos confirmados y etapa de aprobación saltada. Solicitud APROBADA."
+                : "Costos confirmados. Solicitud enviada a aprobación.",
               type: 'SUCCESS',
               onConfirm: () => {
                   closeDialog();
@@ -168,6 +196,38 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
                       <span className="font-bold text-gray-700">Total a Aprobar:</span>
                       <span className="text-xl font-bold text-brand-red">$ {(costTickets + costHotel).toLocaleString()}</span>
                   </div>
+
+                  {isSuperAdmin && (
+                    <div className="mt-3 p-3 border border-amber-200 bg-amber-50 rounded">
+                      <label className="flex items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={skipApproval}
+                          onChange={(e) => setSkipApproval(e.target.checked)}
+                          className="mt-1"
+                        />
+                        <div>
+                          <span className="font-bold text-amber-900">Saltar etapa de aprobación</span>
+                          <p className="text-xs text-amber-800 mt-0.5">
+                            Solo para casos ya autorizados fuera del sistema. La solicitud pasará
+                            directamente a <strong>APROBADO</strong> sin enviar correos a aprobadores.
+                          </p>
+                        </div>
+                      </label>
+                      {skipApproval && (
+                        <div className="mt-2">
+                          <label className="block text-xs font-bold text-amber-900 mb-1 uppercase">Justificación (obligatoria, mín. 10 caracteres)</label>
+                          <textarea
+                            value={skipJustification}
+                            onChange={(e) => setSkipJustification(e.target.value)}
+                            placeholder="Ej: Ejecutivo autorizó verbalmente por urgencia operativa, los tiquetes se compraron por fuera y se registran solo para trazabilidad..."
+                            rows={2}
+                            className="w-full border border-amber-300 rounded p-2 text-sm bg-white"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
             </div>
 
             <div className="mt-6 flex justify-end gap-3">

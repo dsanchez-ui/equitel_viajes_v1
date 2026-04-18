@@ -359,10 +359,15 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         if (found) {
           newPassengers[index].name = found.name;
           newPassengers[index].email = found.email;
+        } else if (index === 0) {
+          // Pasajero 1 DEBE venir del directorio (determina el aprobador de área).
+          // Si la cédula no matchea, se limpia para forzar corrección.
+          newPassengers[index].name = '';
+          newPassengers[index].email = '';
         } else {
-          // If not found, keep the name and email as they are (or clear them if you prefer)
-          // We'll leave them to allow manual entry if needed, but usually they should be cleared
-          // if the ID doesn't match. Let's clear them to be safe and force correct IDs.
+          // Pasajeros 2-5: permitir input manual cuando la cédula no está en el
+          // directorio (p.ej. un cliente externo, un proveedor invitado). El
+          // usuario podrá escribir nombre + correo a mano.
           newPassengers[index].name = '';
           newPassengers[index].email = '';
         }
@@ -712,21 +717,48 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             )}
           </div>
           <div className="space-y-4">
-            {passengers.map((p, idx) => (
-              <div key={idx} className="flex flex-col sm:flex-row gap-4 items-start sm:items-end bg-gray-50 p-4 rounded-md">
-                <div className="flex-1 w-full sm:w-auto">
-                  <label className="block text-xs font-medium text-gray-500">Cédula *</label>
-                  <input type="text" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={p.idNumber} onChange={(e) => handlePassengerChange(idx, 'idNumber', e.target.value)} />
+            {passengers.map((p, idx) => {
+              const inDb = isPassengerInDb(p.idNumber);
+              // Pasajeros 2-5 pueden ser externos: si la cédula no está en el
+              // directorio, habilitamos inputs manuales para nombre + correo.
+              const allowManual = idx > 0 && p.idNumber && !inDb;
+              return (
+              <div key={idx} className="flex flex-col gap-3 bg-gray-50 p-4 rounded-md">
+                <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+                  <div className="flex-1 w-full sm:w-auto">
+                    <label className="block text-xs font-medium text-gray-500">Cédula *</label>
+                    <input type="text" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={p.idNumber} onChange={(e) => handlePassengerChange(idx, 'idNumber', e.target.value)} />
+                  </div>
+                  <div className="flex-1 w-full sm:w-auto">
+                    <label className="block text-xs font-medium text-gray-500">Nombre *</label>
+                    <input type="text" required readOnly={inDb} className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm border p-2 text-gray-900 ${inDb ? 'bg-gray-200 cursor-not-allowed' : 'bg-white'}`} value={p.name} onChange={(e) => handlePassengerChange(idx, 'name', e.target.value)} />
+                  </div>
+                  {passengers.length > 1 && (
+                    <button type="button" onClick={() => removePassenger(idx)} className="text-red-500 p-2 hover:bg-red-50 rounded">🗑️</button>
+                  )}
                 </div>
-                <div className="flex-1 w-full sm:w-auto">
-                  <label className="block text-xs font-medium text-gray-500">Nombre *</label>
-                  <input type="text" required readOnly={isPassengerInDb(p.idNumber)} className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm sm:text-sm border p-2 text-gray-900 ${isPassengerInDb(p.idNumber) ? 'bg-gray-200 cursor-not-allowed' : 'bg-white'}`} value={p.name} onChange={(e) => handlePassengerChange(idx, 'name', e.target.value)} />
-                </div>
-                {passengers.length > 1 && (
-                  <button type="button" onClick={() => removePassenger(idx)} className="text-red-500 p-2 hover:bg-red-50 rounded">🗑️</button>
+                {allowManual && (
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-500">
+                        Correo del pasajero {idx + 1} (opcional)
+                      </label>
+                      <input
+                        type="email"
+                        className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900"
+                        value={p.email}
+                        onChange={(e) => handlePassengerChange(idx, 'email', e.target.value.toLowerCase().trim())}
+                        placeholder="externo@ejemplo.com"
+                      />
+                      <p className="text-[11px] text-amber-700 mt-1">
+                        Esta cédula no está en el directorio. Escriba manualmente el nombre y correo (si aplica) del pasajero externo.
+                      </p>
+                    </div>
+                  </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

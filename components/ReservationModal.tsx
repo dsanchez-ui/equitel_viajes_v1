@@ -11,6 +11,12 @@ interface ReservationModalProps {
 }
 
 export const ReservationModal = ({ request, onClose, onSuccess }: ReservationModalProps) => {
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+    }, [onClose]);
+
     // Detect edit mode: the request already has a reservation number
     const isEditMode = !!(request.reservationNumber && request.reservationNumber.trim());
     const isHotelOnly = request.requestMode === 'HOTEL_ONLY';

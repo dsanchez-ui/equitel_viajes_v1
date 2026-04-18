@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { TravelRequest } from '../types';
 import { gasService } from '../services/gasService';
 import { CancellationModal } from './CancellationModal';
@@ -15,6 +15,7 @@ interface UserDashboardProps {
 }
 
 const TERMINAL_STATUSES = ['ANULADO', 'PROCESADO', 'DENEGADO'];
+const PAGE_SIZE = 50;
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
   requests,
@@ -26,6 +27,25 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 }) => {
   const [cancelRequest, setCancelRequest] = useState<TravelRequest | null>(null);
   const [dialog, setDialog] = useState<{ isOpen: boolean; title: string; message: string; type: 'ALERT' | 'SUCCESS'; onConfirm: () => void }>({ isOpen: false, title: '', message: '', type: 'ALERT', onConfirm: () => {} });
+  const [page, setPage] = useState<number>(1);
+
+  // Orden descendente por timestamp para que las recientes salgan primero.
+  const sortedRequests = useMemo(() => {
+    const out = [...requests];
+    out.sort((a, b) => {
+      const ta = new Date(a.timestamp || 0).getTime() || 0;
+      const tb = new Date(b.timestamp || 0).getTime() || 0;
+      return tb - ta;
+    });
+    return out;
+  }, [requests]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedRequests.length / PAGE_SIZE));
+  useEffect(() => { if (page > totalPages) setPage(1); }, [totalPages, page]);
+  const pagedRequests = useMemo(
+    () => sortedRequests.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [sortedRequests, page]
+  );
 
   const handleUserCancel = async (reason: string) => {
     if (!cancelRequest) return;
@@ -63,16 +83,17 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
        ) : (
          <>
            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-             {requests.map(req => {
+             {pagedRequests.map(req => {
                const anticipationDays = getDaysDiff(req.timestamp, req.departureDate);
                const remainingDays = getDaysDiff(new Date(), req.departureDate);
                const totalCost = Number(req.totalCost) || 0;
                const isHighCost = totalCost > 1200000;
-               
+
                const isAbandoned = remainingDays < 0 && !['RESERVADO', 'PROCESADO', 'PENDIENTE_ANALISIS_CAMBIO'].includes(req.status);
-               
+               const isTerminal = TERMINAL_STATUSES.includes(req.status);
+
                return (
-               <div key={req.requestId} className={`bg-white p-6 rounded shadow-sm hover:shadow-md transition border-t-4 border-brand-red relative group ${isAbandoned ? 'opacity-60 grayscale' : ''}`}>
+               <div key={req.requestId} className={`bg-white p-6 rounded shadow-sm hover:shadow-md transition border-t-4 border-brand-red relative group ${isTerminal ? 'opacity-60' : (isAbandoned ? 'opacity-60 grayscale' : '')}`}>
                  <div className="flex justify-between items-start mb-2">
                     <div className="flex flex-col gap-1">
                         <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{req.requestId}</span>
@@ -137,7 +158,28 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                </div>
              )})}
            </div>
-           
+
+           {sortedRequests.length > PAGE_SIZE && (
+             <div className="flex items-center justify-between px-3 py-3 border-t border-gray-200 bg-white rounded text-sm">
+               <span className="text-gray-600">
+                 {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, sortedRequests.length)} de {sortedRequests.length}
+               </span>
+               <div className="flex items-center gap-2">
+                 <button
+                   onClick={() => setPage(p => Math.max(1, p - 1))}
+                   disabled={page <= 1}
+                   className="px-3 py-1 border border-gray-300 rounded bg-white text-gray-700 disabled:opacity-40"
+                 >Anterior</button>
+                 <span className="text-gray-700">Pág. {page} / {totalPages}</span>
+                 <button
+                   onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                   disabled={page >= totalPages}
+                   className="px-3 py-1 border border-gray-300 rounded bg-white text-gray-700 disabled:opacity-40"
+                 >Siguiente</button>
+               </div>
+             </div>
+           )}
+
            {requests.length === 0 && (
              <div className="col-span-full text-center py-16 bg-white rounded border border-gray-200 flex flex-col items-center justify-center">
                <div className="bg-gray-100 rounded-full p-4 mb-4">

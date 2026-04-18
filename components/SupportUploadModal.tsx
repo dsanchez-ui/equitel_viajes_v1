@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { TravelRequest, SupportFile } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
@@ -11,6 +11,12 @@ interface SupportUploadModalProps {
 }
 
 export const SupportUploadModal: React.FC<SupportUploadModalProps> = ({ request, onClose, onSuccess }) => {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   const [loading, setLoading] = useState(false);
   const isProcessed = request.status === 'PROCESADO';
 

@@ -663,7 +663,7 @@ const App: React.FC = () => {
       )}
 
       {isEffectiveAdmin && view === 'LIST' && (
-        <AdminDashboard requests={requests} integrantes={integrantes} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={setSelectedRequest} />
+        <AdminDashboard requests={requests} integrantes={integrantes} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={setSelectedRequest} isSuperAdmin={isEffectiveSuperAdmin} />
       )}
 
       {selectedRequest && (
