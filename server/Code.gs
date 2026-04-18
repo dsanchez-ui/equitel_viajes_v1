@@ -126,15 +126,69 @@ function _newApprovalLinkSig_(action, id, decision, role, actor) {
   return { t: t, sig: _signApprovalLink_(canonical) };
 }
 
+// Para un action dado, devuelve el ISO timestamp en que la solicitud entró
+// a la etapa relevante (costConfirmed para approve, FECHA SOLICITUD para
+// study_decision/user_consult). Se usa para el cutover per-request: un link
+// sin firma se acepta si la solicitud entró a su etapa ANTES del cutover,
+// aunque el cutover global ya haya pasado. Así, las aprobaciones pendientes
+// al momento del deploy siguen funcionando con su link viejo.
+function _getRequestStageTimestampForAction_(action, id) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    if (!sheet) return null;
+    var idIdx = H('ID RESPUESTA');
+    if (idIdx < 0) return null;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return null;
+    var ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
+    var rowIndex = ids.map(String).indexOf(String(id));
+    if (rowIndex === -1) return null;
+    var rowNumber = rowIndex + 2;
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var events = {};
+    var eventsCol = headers.indexOf(EVENTOS_JSON_HEADER);
+    if (eventsCol >= 0) {
+      var raw = sheet.getRange(rowNumber, eventsCol + 1).getValue();
+      if (raw) { try { events = JSON.parse(raw); } catch (e) {} }
+    }
+    if (action === 'approve' && events.costConfirmed) return events.costConfirmed;
+    // Fallback: creación de la solicitud (o FECHA SOLICITUD de la hoja).
+    if (events.created) return events.created;
+    var dateIdx = H('FECHA SOLICITUD');
+    if (dateIdx >= 0) {
+      var dv = sheet.getRange(rowNumber, dateIdx + 1).getValue();
+      if (dv instanceof Date) return dv.toISOString();
+      if (dv) return String(dv);
+    }
+    return null;
+  } catch (e) {
+    console.warn('_getRequestStageTimestampForAction_ failed: ' + e);
+    return null;
+  }
+}
+
 // Devuelve { valid: boolean, reason: string }. Llamar antes de ejecutar la
-// acción. Si hay sig → verifica HMAC. Si no → evalúa cutover para legacy.
+// acción. Si hay sig → verifica HMAC. Si no → evalúa cutover per-request:
+// el link legacy se acepta solo si la solicitud entró a su etapa ANTES del
+// cutover. Esto permite que aprobaciones ya pendientes sigan funcionando
+// mientras las NUEVAS sí requieren firma.
 function _verifyApprovalLinkSig_(action, id, decision, role, actor, t, sig) {
   if (!sig || !t) {
     var cutover = PropertiesService.getScriptProperties().getProperty('APPROVAL_LINK_HMAC_CUTOVER_AT') || '';
     if (!cutover) return { valid: true, reason: 'legacy-accepted-no-cutover' };
     var cutoverMs = new Date(cutover).getTime();
     if (isNaN(cutoverMs)) return { valid: true, reason: 'legacy-accepted-cutover-invalid' };
-    if (new Date().getTime() < cutoverMs) return { valid: true, reason: 'legacy-accepted-pre-cutover' };
+    // PER-REQUEST GRACE: si la solicitud entró a su etapa ANTES del cutover,
+    // aceptar el link legacy. Las nuevas (post-cutover) sí requieren firma.
+    var stageIso = _getRequestStageTimestampForAction_(action, id);
+    if (stageIso) {
+      var stageMs = new Date(stageIso).getTime();
+      if (!isNaN(stageMs) && stageMs < cutoverMs) {
+        return { valid: true, reason: 'legacy-accepted-pre-cutover-request' };
+      }
+    }
     return { valid: false, reason: 'Este enlace es inválido (formato antiguo). Solicita uno nuevo al área de viajes.' };
   }
   var canonical = _approvalLinkCanonical_(action, id, decision, role, actor, t);
