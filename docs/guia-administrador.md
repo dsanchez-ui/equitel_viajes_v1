@@ -12,13 +12,16 @@
 
 Una plataforma web donde los empleados piden viajes y hospedajes corporativos, sus jefes aprueban, y el área de viajes gestiona la compra. Todo el estado vive en un Google Sheets, la lógica en un proyecto Apps Script, y el frontend en React desplegado en Cloud Run.
 
-### Los tres tipos de usuario
+### Los cuatro roles de usuario
 
-| Tipo | Qué hace | Dónde ingresa |
+| Rol | Qué hace | Dónde ingresa |
 |---|---|---|
-| **Solicitante** | Crea solicitudes de viaje/hospedaje, selecciona opciones, sube soportes post-viaje. | Botón rojo **INGRESAR** con su correo corporativo + PIN. |
-| **Aprobador** | Recibe correo de aprobación, click en APROBAR o DENEGAR. NO necesita iniciar sesión en la app. | Botones en el correo. |
-| **Analista / Admin** | Cotiza opciones, confirma costos, registra reservas, gestiona usuarios, consulta métricas. | Botón negro **ADMINISTRADOR** → PIN admin de 8 dígitos. |
+| **Solicitante** | Crea solicitudes de viaje/hospedaje, selecciona opciones, sube soportes post-viaje. | Botón rojo **INGRESAR** con su correo corporativo + PIN personal. |
+| **Aprobador** | Recibe correo de aprobación, click en APROBAR o DENEGAR. NO necesita iniciar sesión en la app. | Botones firmados HMAC en el correo. |
+| **Analista / Admin (ANALYST)** | Cotiza opciones, confirma costos, registra reservas, gestiona usuarios, consulta métricas. Puede saltar la etapa de selección cuando el viaje se gestionó fuera del sistema. | Botón negro **ADMINISTRADOR** con PIN admin compartido, o botón rojo **INGRESAR** con su PIN personal si tiene fila en USUARIOS. |
+| **Superadmin (SUPERADMIN)** | Todo lo del analista **más**: saltar la etapa de aprobación, recibir escalamientos cuando los aprobadores no responden, alternar entre vista admin y vista usuario con el botón **VER USUARIO / VER ADMIN**. | Igual que analista. El rol se asigna en `SUPER_ADMIN_EMAILS` (Script Property). |
+
+> **Jerarquía:** SUPERADMIN hereda todo lo de ANALYST; ANALYST hereda todo lo de SOLICITANTE. Quien está en `SUPER_ADMIN_EMAILS` NO necesita estar también en `ANALYST_EMAILS` — la herencia es automática.
 
 ---
 
@@ -183,6 +186,58 @@ Cuando un usuario pide modificar una solicitud ya en curso, se crea una solicitu
 2. Detalle → **"Anular"**
 3. Requiere motivo → queda en el campo `OBSERVACIONES` + correo al usuario
 
+### 5.8 Saltar la etapa de SELECCIÓN (cualquier analista)
+
+Cuando los tiquetes ya se compraron por fuera del sistema y no tiene sentido pedirle al usuario que "seleccione una opción":
+
+1. Carga las opciones desde el modal **"Subir imágenes de opciones"** — desmarca el checkbox **"Enviar correo al usuario"** si no quieres notificarlo. Las opciones quedan guardadas solo para trazabilidad.
+2. La solicitud avanza directamente a `PENDIENTE_CONFIRMACION_COSTO`, lista para que confirmes los costos.
+3. Alternativamente, si ya está en `PENDIENTE_SELECCION`: abre el detalle → botón indigo **"SALTAR SELECCIÓN"** → escribe justificación (≥10 caracteres) → confirma.
+
+Queda registrado en OBSERVACIONES con tu correo, timestamp y justificación. No se envía correo al solicitante.
+
+### 5.9 Saltar la etapa de APROBACIÓN (solo SUPERADMIN)
+
+Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin mandar correos a los aprobadores:
+
+1. Fila con status `PENDIENTE_APROBACION` → abre el detalle.
+2. Aparece un banner ámbar **"⏩ Saltar etapa de aprobación (SUPERADMIN)"** con un botón **"SALTAR APROBACIÓN"**.
+3. Click → justificación (≥10 caracteres) → confirma.
+4. La solicitud pasa directamente a `APROBADO`. Las columnas `APROBADO POR ÁREA?`, `APROBADO CDS` y `APROBADO CEO` se marcan con `Sí (ETAPA SALTADA por tu.correo)`. El usuario sí recibe el correo "Solicitud Aprobada"; los aprobadores no reciben nada.
+
+**Alternativa equivalente durante confirmación de costos:** en el modal **"Confirmar costos"** aparece un checkbox "Saltar etapa de aprobación" con el mismo efecto, útil cuando sabes desde antes que no quieres pasar por aprobadores.
+
+### 5.10 Omitir correo al registrar reserva
+
+En el modal **"Registrar reserva"** hay un checkbox **"Enviar correo al usuario"** marcado por default. Si el PNR ya se entregó al usuario por otro medio, desmárcalo. Aparece una confirmación doble para evitar errores. Queda nota en OBSERVACIONES.
+
+### 5.11 Alternar vista admin ↔ usuario
+
+Si eres analista o superadmin Y tienes solicitudes propias pendientes (p.ej. tú creaste una), puedes alternar entre el panel de analista y el panel de solicitante usando el botón **VER USUARIO / VER ADMIN** en el header. El sistema revalida tus permisos en cada switch.
+
+---
+
+## 5.bis. Capacidades exclusivas de SUPERADMIN
+
+Los **superadmins** (configurados en `SUPER_ADMIN_EMAILS` — actualmente David y Yurani) tienen capacidades adicionales que un analista normal (Wendy) no tiene:
+
+| Capacidad | Disponible desde |
+|---|---|
+| **Saltar etapa de aprobación** | Detalle de solicitud en `PENDIENTE_APROBACION`, o checkbox en confirmar costos. |
+| **Botón VER USUARIO / VER ADMIN** | Header del panel de analista — alternar vistas. |
+| **Recibir escalamientos** | Correos automáticos cuando una solicitud lleva 30h laborales sin aprobación (≈3 días hábiles). |
+| **Ejecutar helpers de Script Properties** | `setScriptProperty`, `deleteScriptProperty`, `listScriptProperties` desde el editor GAS. |
+| **Ejecutar skip de aprobación vía backend** | `skipApprovalStage(requestId, justification)` — solo vía frontend; el endpoint está protegido y valida superadmin en cada request. |
+
+**Configurar o quitar un superadmin:**
+```javascript
+// Desde el editor GAS → función temporal → ejecutar UNA vez:
+setScriptProperty('SUPER_ADMIN_EMAILS', '["dsanchez@equitel.com.co","yprieto@equitel.com.co"]');
+```
+El cambio aplica **inmediatamente** (no requiere redeploy). Si quitas a alguien, su capacidad superadmin desaparece al siguiente request sin invalidar su sesión.
+
+**Escalamiento automático a superadmins:** tras 30 horas laborales efectivas (L-V 7-17, Sáb 8-12) desde que una solicitud entra a `PENDIENTE_APROBACION` sin que los aprobadores respondan, el sistema envía UN correo único a todos los superadmins pidiéndoles intervenir. El correo sugiere 3 acciones: contactar al aprobador, saltar la aprobación (si el viaje ya fue autorizado por fuera) o anular. Después de ese correo, los recordatorios automáticos a los aprobadores se detienen para no saturar.
+
 ---
 
 ## 6. Sidebars (paneles laterales)
@@ -335,7 +390,10 @@ Son variables de configuración en el proyecto Apps Script. **NO editar desde la
 | Propiedad | Valor | ¿Cómo editar? |
 |---|---|---|
 | `ANALYST_EMAILS` | JSON array: `["apcompras@equitel.com.co","dsanchez@equitel.com.co"]` | Ejecutar `actualizarAnalystEmails()` después de editar el array en código. |
-| `ADMIN_PIN_HASH` | SHA-256 del PIN admin. | `updateAdminPin(nuevoPin)` desde el editor. Primera vez: `configurarPinInicial()` tras poner `INITIAL_ADMIN_PIN`. |
+| `SUPER_ADMIN_EMAILS` | JSON array de correos superadmin. Actualmente David + Yurani. | `setScriptProperty('SUPER_ADMIN_EMAILS', '[...]')` desde el editor. |
+| `ADMIN_PIN_HASH` | SHA-256 del PIN admin compartido. Solo se usa si un admin NO tiene fila propia en USUARIOS (ej. `apcompras@`). | `updateAdminPin(nuevoPin)` desde el editor. Primera vez: `configurarPinInicial()` tras poner `INITIAL_ADMIN_PIN`. |
+| `APPROVAL_LINK_SECRET` | Secreto HMAC para firmar los links de aprobación de correos. Se genera automáticamente la primera vez. | NO tocar manualmente. Si lo borras, todos los links firmados dejan de funcionar. |
+| `APPROVAL_LINK_HMAC_CUTOVER_AT` | ISO timestamp opcional. Tras esa fecha, los links **sin firma** de solicitudes que entraron a su etapa DESPUÉS del cutover se rechazan (defensa contra links manipulados). Links de solicitudes pendientes al momento del deploy siguen funcionando. | `setScriptProperty('APPROVAL_LINK_HMAC_CUTOVER_AT', '2026-04-19T00:01:00-05:00')`. Recomendado: setear 10-14 días después del deploy. |
 | `USE_USUARIOS_SHEET` | `'true'` (activa modo USUARIOS) / `'false'` | Ejecutar `toggleUsuariosMode()` — cambia entre los dos modos. Rollback = ejecutar de nuevo. |
 | `WEB_APP_URL` | URL del deploy Apps Script. | Default hardcoded. Si cambia el deploy, actualizar via editor → propiedades. |
 | `PLATFORM_URL` | URL del frontend Cloud Run. | Default hardcoded. |
@@ -345,6 +403,21 @@ Son variables de configuración en el proyecto Apps Script. **NO editar desde la
 | `CEO_EMAIL`, `DIRECTOR_EMAIL`, `ADMIN_EMAIL` | Correos ejecutivos. | Default hardcoded. |
 
 **Diagnóstico de propiedades:** ejecuta `verPropiedadesDelScript()` desde el editor para ver el estado de todas.
+
+### Detalles de autenticación (PIN admin + PIN personal)
+
+- Si un admin **tiene fila propia en USUARIOS** (caso David, Yurani, Wendy), puede ingresar con el botón negro **ADMINISTRADOR** usando o bien el PIN admin compartido, o bien **su PIN personal** (el mismo que usa para ingresar como usuario). Esto evita el "cruce" cuando Chrome autocompleta el PIN personal en el formulario de admin.
+- Si un admin **NO tiene fila en USUARIOS** (caso `apcompras@`), solo puede ingresar con el PIN admin compartido.
+- El rate-limit por intentos fallidos es **por email**: fallar 5 veces con un correo bloquea solo ese correo por 15 min, no al resto de admins.
+
+### Rate-limits y protecciones anti-abuso
+
+| Límite | Ventana | Acción |
+|---|---|---|
+| PIN admin fallido | 5 intentos / 15 min | Bloqueo del correo específico. |
+| PIN usuario fallido | 5 intentos / 15 min | Bloqueo del correo específico. |
+| Regenerar PIN usuario ("olvidé mi PIN") | 3 regeneraciones / hora | Nueva solicitud rechazada. |
+| Crear solicitudes | 10 solicitudes / día | Excedido → error claro al usuario. |
 
 ---
 
@@ -363,6 +436,10 @@ Son variables de configuración en el proyecto Apps Script. **NO editar desde la
 | `sincronizarConMaestroRH()` | Agregar a USUARIOS los empleados nuevos del Maestro RH. |
 | `recargarResolucionesUsuarios()` | Re-resolver col H/I de USUARIOS tras edición manual de col G. |
 | `createReportTemplate()` | Regenerar el template del PDF de reporte (raro). |
+| `setScriptProperty(key, value)` | Editar cualquier Script Property desde el editor (workaround a la GUI bloqueada >50 properties). |
+| `deleteScriptProperty(key)` | Borrar una Script Property. |
+| `listScriptProperties()` | Listar todas con valores enmascarados. |
+| `diagnosticarAprobacion(requestId)` | Loguea el estado real de las columnas de aprobación de una solicitud. Útil cuando hay inconsistencia entre status global y fila. |
 
 ---
 
