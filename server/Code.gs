@@ -4498,6 +4498,55 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
   };
 }
 
+// Map email → cédula, leyendo la hoja de usuarios activa (USUARIOS o INTEGRANTES
+// según USE_USUARIOS_SHEET). Cache por-ejecución para evitar re-lecturas cuando
+// getAllRequests mapea N filas. Sin persistencia entre invocaciones (cada
+// doPost/doGet arranca limpio). Uso: detectar proxy por cédula (más robusto
+// que email puro, cubre caso de alias como alejo.ramirez/aramirez).
+var _REQUESTER_CEDULA_CACHE = null;
+function _getRequesterCedulaMap_() {
+  if (_REQUESTER_CEDULA_CACHE) return _REQUESTER_CEDULA_CACHE;
+  var map = {};
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = USE_USUARIOS_SHEET
+      ? ss.getSheetByName(SHEET_NAME_USUARIOS)
+      : ss.getSheetByName(SHEET_NAME_INTEGRANTES);
+    if (!sheet) { _REQUESTER_CEDULA_CACHE = map; return map; }
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) { _REQUESTER_CEDULA_CACHE = map; return map; }
+
+    if (USE_USUARIOS_SHEET) {
+      // USUARIOS: A=Cedula, B=Nombre, C=Correo
+      var data = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+      data.forEach(function(r) {
+        var ced = String(r[0] || '').trim();
+        var correo = String(r[2] || '').toLowerCase().trim();
+        if (ced && correo) map[correo] = ced;
+      });
+    } else {
+      // INTEGRANTES legacy: headers por nombre
+      var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      var idxCed = headers.indexOf('Cedula Numero');
+      var idxCorreo = headers.indexOf('correo');
+      if (idxCed < 0 || idxCorreo < 0) {
+        _REQUESTER_CEDULA_CACHE = map;
+        return map;
+      }
+      var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+      data.forEach(function(r) {
+        var ced = String(r[idxCed] || '').trim();
+        var correo = String(r[idxCorreo] || '').toLowerCase().trim();
+        if (ced && correo) map[correo] = ced;
+      });
+    }
+  } catch (e) {
+    console.warn('_getRequesterCedulaMap_ failed: ' + e);
+  }
+  _REQUESTER_CEDULA_CACHE = map;
+  return map;
+}
+
 function mapRowToRequest(row) {
   const get = (h) => { const i = H(h); return (i>-1 && i<row.length) ? row[i] : ''; };
   const safeDate = (v) => { if(!v)return ''; if(v instanceof Date) return v.toISOString().split('T')[0]; return String(v).split('T')[0]; };
@@ -4632,6 +4681,27 @@ function mapRowToRequest(row) {
   result.requiresExecutiveApproval = eff.requiresExecutive;
   result.requiresCeoApproval = eff.requiresCeoApproval;
   result.requiresCdsApproval = eff.requiresCdsApproval;
+
+  // PROXY DETECTION: marca la solicitud como "a nombre de otro" cuando el
+  // solicitante NO es ninguno de los pasajeros. Método primario por CÉDULA
+  // (resuelta desde la hoja de usuarios activa) — evita falsos positivos
+  // por alias de correo (ej. SOL-000018: alejo.ramirez vs aramirez son el
+  // mismo humano con misma cédula). Fallback por correo cuando el
+  // solicitante no está en el directorio (ej. cuentas admin como
+  // apcompras). Si no hay correos de pasajeros ni cédulas, default false.
+  var _reqEmailLower = String(get("CORREO ENCUESTADO") || '').toLowerCase().trim();
+  var _paxIds = passengers.map(function(p) { return String(p.idNumber || '').trim(); }).filter(function(x) { return x; });
+  var _paxEmails = passengers.map(function(p) { return String(p.email || '').toLowerCase().trim(); }).filter(function(x) { return x; });
+  var _isProxy = false;
+  if (_reqEmailLower && passengers.length > 0) {
+    var _requesterCedula = _getRequesterCedulaMap_()[_reqEmailLower];
+    if (_requesterCedula && _paxIds.length > 0) {
+      _isProxy = _paxIds.indexOf(_requesterCedula) === -1;
+    } else if (_paxEmails.length > 0) {
+      _isProxy = _paxEmails.indexOf(_reqEmailLower) === -1;
+    }
+  }
+  result.isProxyRequest = _isProxy;
 
   // DEFENSA: Si el status global es APROBADO pero el ejecutivo solicitante
   // aparece como PENDIENTE en su propio rol, forzar APPROVED. Caso detectado:

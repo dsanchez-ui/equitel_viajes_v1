@@ -102,7 +102,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                             Creada: {formatShortDateTime(req.timestamp)}
                           </span>
                         )}
-                        <div className="flex gap-1">
+                        <div className="flex gap-1 flex-wrap">
                             {isAbandoned && !['ANULADO', 'DENEGADO'].includes(req.status) && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-800" title="Fecha de vuelo pasada sin reserva">
                                     ABANDONADA
@@ -116,6 +116,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                             {isHighCost && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-100 text-red-800" title="Costo Excede Tope (> 1.2M)">
                                     $$$
+                                </span>
+                            )}
+                            {req.isProxyRequest && (
+                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-100 text-indigo-800" title="Solicitud a nombre de otro — creada por alguien que no es pasajero">
+                                    👥 A NOMBRE DE OTRO
                                 </span>
                             )}
                         </div>

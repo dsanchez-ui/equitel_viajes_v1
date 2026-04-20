@@ -23,16 +23,18 @@ interface AdminDashboardProps {
 }
 
 /**
- * Una solicitud es PRIORITARIA cuando el solicitante o algún pasajero es
- * su propio aprobador (autoaprobador). Esto incluye CEO, Director CDS, y
- * cualquier persona en la lista de integrantes cuyo aprobador asignado
- * coincide con su propio correo. Las prioritarias merecen tratamiento
- * preferencial porque suelen ser personas de dirección con urgencias.
+ * Una solicitud es PRIORITARIA cuando QUIEN VIAJA (primer pasajero u otro pasajero)
+ * es su propio aprobador: CEO, Director CDS, o cualquier persona cuyo aprobador
+ * asignado coincide con su propio correo. Se determina por pasajeros, NO por
+ * solicitante — si Mauricio (CEO) crea una solicitud para Juan, la solicitud no
+ * es prioritaria porque Juan no es autoaprobador.
  */
 const isRequestPriority = (req: TravelRequest, integrantes: Integrant[]): boolean => {
-  // Caso A: el solicitante está en la lista de aprobadores asignados a la solicitud
+  // Caso A: el solicitante aparece entre los aprobadores asignados al request.
+  // approverEmail se deriva del primer pasajero en el form — si coincide con el
+  // solicitante, es porque el solicitante ES el primer pasajero y su aprobador.
   const requesterLower = (req.requesterEmail || '').toLowerCase().trim();
-  if (requesterLower) {
+  if (requesterLower && !req.isProxyRequest) {
     const approverEmails = (req.approverEmail || '')
       .toLowerCase()
       .split(',')
@@ -41,10 +43,7 @@ const isRequestPriority = (req: TravelRequest, integrantes: Integrant[]): boolea
     if (approverEmails.includes(requesterLower)) return true;
   }
 
-  // Caso B: el backend ya marcó al solicitante como CEO/CDS (siempre prioritario)
-  if (req.requesterIsCeo || req.requesterIsCds) return true;
-
-  // Caso C: alguno de los pasajeros es su propio aprobador según el directorio
+  // Caso B: algún pasajero es su propio aprobador según el directorio.
   if (integrantes && integrantes.length > 0 && req.passengers && req.passengers.length > 0) {
     for (const p of req.passengers) {
       const matches = integrantes.filter(i =>
@@ -390,8 +389,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
                               {isPriority && (
                                 <span
                                   className="inline-block mr-1 text-amber-500 text-base align-middle"
-                                  title="Prioritaria — Autoaprobador (CEO/CDS/Dirección o usuario que se aprueba a sí mismo)"
+                                  title="Prioritaria — Pasajero es autoaprobador (CEO/CDS/Dirección o usuario que se aprueba a sí mismo)"
                                 >⭐</span>
+                              )}
+                              {req.isProxyRequest && (
+                                <span
+                                  className="inline-block mr-1 text-base align-middle"
+                                  title="Solicitud a nombre de otro — quien creó la solicitud no es uno de los pasajeros"
+                                >👥</span>
                               )}
                               {req.requestId}
                               {req.relatedRequestId && (
