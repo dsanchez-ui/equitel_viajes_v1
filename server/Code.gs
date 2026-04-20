@@ -920,7 +920,7 @@ function configurarPinInicial() {
 // USER PIN AUTHENTICATION + SESSION TOKENS
 // =====================================================================
 
-var SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+var SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 function hashEmail_(email) {
   var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(email).toLowerCase().trim());
