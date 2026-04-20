@@ -357,20 +357,21 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       } else {
         const found = integrantes.find(i => i.idNumber === finalValue);
         if (found) {
+          // Match en directorio: sobrescribe con datos oficiales (el usuario
+          // eligió a esa persona, el directorio es la fuente de verdad).
           newPassengers[index].name = found.name;
           newPassengers[index].email = found.email;
         } else if (index === 0) {
           // Pasajero 1 DEBE venir del directorio (determina el aprobador de área).
-          // Si la cédula no matchea, se limpia para forzar corrección.
-          newPassengers[index].name = '';
-          newPassengers[index].email = '';
-        } else {
-          // Pasajeros 2-5: permitir input manual cuando la cédula no está en el
-          // directorio (p.ej. un cliente externo, un proveedor invitado). El
-          // usuario podrá escribir nombre + correo a mano.
+          // Si la cédula no matchea, se limpia para forzar corrección + Phase C
+          // bloquea submit con banner rojo.
           newPassengers[index].name = '';
           newPassengers[index].email = '';
         }
+        // Pasajeros 2-5 sin match: preservar lo que el usuario ya tecleó
+        // manualmente (nombre + correo). #A21 — evita perder input del usuario
+        // al corregir dígitos de la cédula de un externo. Los inputs siguen
+        // editables (allowManual=true) para que continúe tecleando si quiere.
       }
     }
     setPassengers(newPassengers);
@@ -383,9 +384,17 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   };
 
   const removePassenger = (index: number) => {
-    if (passengers.length > 1) {
-      setPassengers(passengers.filter((_, i) => i !== index));
+    if (passengers.length <= 1) return;
+    const p = passengers[index];
+    // #A34: confirmar antes de borrar para evitar pérdida accidental de datos
+    // tecleados (nombre + cédula). Solo pregunta si hay algo escrito — si la
+    // fila está vacía, borra sin fricción.
+    const hasData = (p.name && p.name.trim()) || (p.idNumber && p.idNumber.trim());
+    if (hasData) {
+      const label = p.name && p.name.trim() ? p.name.trim() : ('pasajero ' + (index + 1));
+      if (!window.confirm(`¿Eliminar a ${label} de la solicitud?`)) return;
     }
+    setPassengers(passengers.filter((_, i) => i !== index));
   };
 
   const handleAddVariousCC = () => {

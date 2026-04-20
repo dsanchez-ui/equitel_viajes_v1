@@ -1458,7 +1458,16 @@ function logout(email, token) {
 
 function enhanceTextWithGemini(currentRequest, userDraft) {
   if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('test')) return userDraft;
-  
+
+  // #A28: limitar tamaño del draft antes de invocar Gemini. Un borrador de
+  // 5000 caracteres es ~5x más largo que una justificación normal. Evita
+  // gastar cuota de Gemini en entradas absurdas o cuentas comprometidas.
+  // Si excede, retornamos el input tal cual (fallback seguro — sin mejora IA).
+  if (userDraft && String(userDraft).length > 5000) {
+    console.warn('enhanceTextWithGemini: userDraft excede 5000 chars (' + String(userDraft).length + '), retornando sin procesar.');
+    return userDraft;
+  }
+
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
   
   const context = `
@@ -4893,17 +4902,27 @@ function diagnosticarAprobacion(requestId) {
   var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
   var get = function(h) { var i = H(h); return i > -1 ? row[i] : '(columna no existe)'; };
 
+  // #A31: enmascarar correos en logs. PII no debe quedar expuesta en exports
+  // de Logger. Si necesitas ver el correo real de una solicitud puntual, úsalo
+  // desde el frontend en lugar del log.
+  var maskEmailsInString = function(s) {
+    return String(s || '').replace(/([^\s,;<>@]+)@([^\s,;<>]+)/g, function(_m, user, domain) {
+      if (user.length <= 2) return user[0] + '***@' + domain;
+      return user.substring(0, 2) + '****@' + domain;
+    });
+  };
+
   Logger.log('=== DIAGNÓSTICO DE APROBACIÓN: ' + requestId + ' ===');
   Logger.log('Fila: ' + rowNumber);
   Logger.log('STATUS:                     "' + get('STATUS') + '"');
-  Logger.log('CORREO ENCUESTADO:          "' + get('CORREO ENCUESTADO') + '"');
+  Logger.log('CORREO ENCUESTADO:          "' + maskEmailsInString(get('CORREO ENCUESTADO')) + '"');
   Logger.log('ES INTERNACIONAL:           "' + get('ES INTERNACIONAL') + '"');
   Logger.log('COSTO COTIZADO PARA VIAJE:  "' + get('COSTO COTIZADO PARA VIAJE') + '"');
-  Logger.log('CORREO APROBADOR (AUTO):    "' + get('CORREO DE QUIEN APRUEBA (AUTOMÁTICO)') + '"');
-  Logger.log('APROBADO POR ÁREA? (AUTO):  "' + get('APROBADO POR ÁREA? (AUTOMÁTICO)') + '"');
+  Logger.log('CORREO APROBADOR (AUTO):    "' + maskEmailsInString(get('CORREO DE QUIEN APRUEBA (AUTOMÁTICO)')) + '"');
+  Logger.log('APROBADO POR ÁREA? (AUTO):  "' + maskEmailsInString(get('APROBADO POR ÁREA? (AUTOMÁTICO)')) + '"');
   Logger.log('FECHA/HORA (AUTO):          "' + get('FECHA/HORA (AUTOMÁTICO)') + '"');
-  Logger.log('APROBADO CEO:               "' + get('APROBADO CEO') + '"');
-  Logger.log('APROBADO CDS:               "' + get('APROBADO CDS') + '"');
+  Logger.log('APROBADO CEO:               "' + maskEmailsInString(get('APROBADO CEO')) + '"');
+  Logger.log('APROBADO CDS:               "' + maskEmailsInString(get('APROBADO CDS')) + '"');
   Logger.log('');
 
   var req = mapRowToRequest(row);
