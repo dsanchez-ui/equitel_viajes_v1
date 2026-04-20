@@ -401,6 +401,17 @@ function doPost(e) {
        throw new Error("Empty Request Body");
     }
 
+    // #A39: guard anti-DoS. Uploads legítimos máximos ≈ 10 archivos × ~10 MB base64
+    // = ~135 MB JSON. Un solo upload concurrente al tope satura la cuota de Apps
+    // Script (6h/día Workspace). 30 MB cubre el caso de uso real (2-3 archivos
+    // medianos) y rechaza payloads absurdos antes de parsear.
+    if (e.postData.contents.length > 30 * 1024 * 1024) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        error: 'Payload demasiado grande. Reduce archivos o solicita al área de viajes.'
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     const data = JSON.parse(e.postData.contents);
     const result = dispatch(data.action, data.payload);
     
@@ -537,7 +548,7 @@ function dispatch(action, payload) {
       case 'enhanceChangeText': result = enhanceTextWithGemini(payload.currentRequest, payload.userDraft); break;
       
       // REFACTORED MODIFICATION LOGIC
-      case 'requestModification': result = requestModification(payload.requestId, payload.modifiedRequest, payload.changeReason, payload.emailHtml); break;
+      case 'requestModification': result = requestModification(payload.requestId, payload.modifiedRequest, payload.changeReason, payload.emailHtml, currentUserEmail); break;
       case 'processChangeDecision': result = processChangeDecision(payload); break;
 
       // SUPERADMIN: saltar etapa PENDIENTE_SELECCION
@@ -1516,7 +1527,7 @@ function enhanceTextWithGemini(currentRequest, userDraft) {
 
 // --- NEW MODIFICATION ARCHITECTURE ---
 
-function requestModification(originalRequestId, modifiedRequestData, changeReason, emailHtml) {
+function requestModification(originalRequestId, modifiedRequestData, changeReason, emailHtml, currentUserEmail) {
    validateRequestInput_(modifiedRequestData);
    const ss = SpreadsheetApp.getActiveSpreadsheet();
    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -1526,12 +1537,27 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
    const statusIdx = H("STATUS");
    const obsIdx = H("OBSERVACIONES");
    const dateIdx = H("FECHA SOLICITUD");
+   const requesterEmailIdx = H("CORREO ENCUESTADO");
 
    const lastRow = sheet.getLastRow();
    const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
    const rowIndex = ids.map(String).indexOf(String(originalRequestId));
    if (rowIndex === -1) throw new Error("ID de solicitud original no encontrado");
    const rowNumber = rowIndex + 2;
+
+   // #A38: OWNERSHIP CHECK — el solicitante solo puede modificar sus propias
+   // solicitudes. Analysts/superadmins pueden modificar cualquier (para casos
+   // operativos donde el área de viajes ajuste una solicitud a nombre del
+   // usuario). Sin este check, cualquier usuario autenticado podía crear
+   // una hija apuntando a la solicitud de otro usuario (escalamiento).
+   const _parentRequester = String(sheet.getRange(rowNumber, requesterEmailIdx + 1).getValue() || '').toLowerCase().trim();
+   const _actor = String(currentUserEmail || '').toLowerCase().trim();
+   if (_parentRequester && _actor && _parentRequester !== _actor) {
+     // Excepción: analyst/superadmin sí pueden (por si gestionan por fuera)
+     if (!isUserAnalyst(_actor)) {
+       throw new Error("No puede solicitar una modificación sobre una solicitud que no es suya.");
+     }
+   }
 
    // GET PARENT DETAILS FOR METADATA
    const parentStatus = sheet.getRange(rowNumber, statusIdx + 1).getValue();
@@ -2680,6 +2706,9 @@ function amendReservation(payload) {
     } catch (e) {
         console.error("Error enviando correo de corrección de reserva: " + e);
     }
+
+    // #A42: registrar evento para métricas (enmienda post-RESERVADO)
+    _recordEvent_(requestId, 'reservationAmended');
 
     return true;
 }
@@ -5887,6 +5916,11 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
     throw new Error("Esta solicitud ya está en estado " + currentStatus + " y no se puede anular.");
   }
 
+  // #A43: no anular si hay hija de cambio activa — dejaría huérfana.
+  if (_parentHasActiveChild_(sheet, requestId)) {
+    throw new Error('Esta solicitud tiene una solicitud de cambio activa. El área de viajes debe resolver el cambio antes de anular.');
+  }
+
   // Apply cancellation
   sheet.getRange(rowNumber, statusIdx + 1).setValue('ANULADO');
   var currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
@@ -5907,7 +5941,42 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
     console.error("Error notificando admin sobre auto-anulación: " + e);
   }
 
+  // #A42: registrar evento para métricas de ciclo de vida
+  _recordEvent_(requestId, 'cancelledByUser');
+
   return true;
+}
+
+/**
+ * #A43 helper: retorna true si la solicitud dada tiene al menos una hija
+ * (solicitud de cambio) en estado NO terminal. Se usa para bloquear la
+ * anulación del padre mientras haya una hija pendiente de decisión —
+ * anularla dejaría la hija huérfana apuntando a un padre inválido.
+ *
+ * NOTA: el flujo de updateRequestStatus cuando una hija pasa a APROBADO
+ * (que escribe ANULADO directamente al padre en sheet) no pasa por aquí
+ * — eso es intencional, porque en ese momento la hija dejó de estar
+ * pendiente y reemplaza legítimamente al padre.
+ */
+function _parentHasActiveChild_(sheet, parentId) {
+  var idCol = H('ID RESPUESTA');
+  var parentIdCol = H('ID SOLICITUD PADRE');
+  var statusCol = H('STATUS');
+  if (idCol < 0 || parentIdCol < 0 || statusCol < 0) return false;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return false;
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  var target = String(parentId || '').trim();
+  if (!target) return false;
+  for (var i = 0; i < data.length; i++) {
+    var childParent = String(data[i][parentIdCol] || '').trim();
+    if (childParent !== target) continue;
+    var childStatus = String(data[i][statusCol] || '').trim();
+    if (childStatus !== 'DENEGADO' && childStatus !== 'ANULADO' && childStatus !== 'PROCESADO') {
+      return true; // hay hija no-terminal
+    }
+  }
+  return false;
 }
 
 function anularSolicitud(requestId, reason) {
@@ -5930,6 +5999,12 @@ function anularSolicitud(requestId, reason) {
   const currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '').trim();
   if (['ANULADO', 'PROCESADO', 'DENEGADO'].indexOf(currentStatus) !== -1) {
     throw new Error('Esta solicitud ya está en estado ' + currentStatus + ' y no se puede anular.');
+  }
+
+  // #A43: bloquear anulación si existe hija activa. La hija quedaría huérfana
+  // con relatedRequestId apuntando a un padre ANULADO.
+  if (_parentHasActiveChild_(sheet, requestId)) {
+    throw new Error('Esta solicitud tiene una solicitud de cambio activa. Deniega o resuelve el cambio antes de anular.');
   }
 
   // Update Status
@@ -5958,6 +6033,9 @@ function anularSolicitud(requestId, reason) {
   } catch (e) {
     console.error("Error enviando email de anulación: " + e);
   }
+
+  // #A42: registrar evento para métricas de ciclo de vida
+  _recordEvent_(requestId, 'cancelledByAdmin');
 
   return true;
 }
@@ -8669,7 +8747,8 @@ function _aggregateMetrics_(metrics) {
   });
   var approverPerformance = Object.keys(approverMap).map(function(email) {
     var a = approverMap[email];
-    return { email: email, role: a.role, count: a.count, avgTimeMinutes: Math.round(a.total / a.count) };
+    // #A44: guard contra count=0 para no retornar Infinity al dashboard
+    return { email: email, role: a.role, count: a.count, avgTimeMinutes: a.count > 0 ? Math.round(a.total / a.count) : null };
   }).sort(function(a, b) { return b.count - a.count; });
 
   return {

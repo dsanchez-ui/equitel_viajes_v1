@@ -11,13 +11,24 @@ interface SupportUploadModalProps {
 }
 
 export const SupportUploadModal: React.FC<SupportUploadModalProps> = ({ request, onClose, onSuccess }) => {
+  const [loading, setLoading] = useState(false);
+
+  // #A40: guard contra cierre durante upload/save. executeSaveChanges sube N
+  // archivos secuencialmente; cerrar a mitad deja archivos huérfanos.
+  const handleClose = () => {
+    if (loading) {
+      if (!window.confirm('Hay una operación en curso. Cerrar ahora podría dejar archivos parciales en Drive. ¿Cerrar de todos modos?')) return;
+    }
+    onClose();
+  };
+
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
 
-  const [loading, setLoading] = useState(false);
   const isProcessed = request.status === 'PROCESADO';
 
   // Existing files from Drive (non-reservation files = facturas/soportes)
@@ -223,12 +234,12 @@ export const SupportUploadModal: React.FC<SupportUploadModalProps> = ({ request,
 
       <div className="fixed inset-0 z-[70] overflow-y-auto" role="dialog" aria-modal="true">
         <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose}></div>
+          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={handleClose}></div>
           <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
 
           <div className="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
             <div className="absolute top-0 right-0 pt-4 pr-4 z-10">
-              <button onClick={onClose} className="bg-white rounded-md text-gray-400 hover:text-gray-500 text-2xl font-bold leading-none px-2 focus:outline-none">✕</button>
+              <button onClick={handleClose} className="bg-white rounded-md text-gray-400 hover:text-gray-500 text-2xl font-bold leading-none px-2 focus:outline-none">✕</button>
             </div>
 
             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 mb-4">
@@ -354,7 +365,7 @@ export const SupportUploadModal: React.FC<SupportUploadModalProps> = ({ request,
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={handleClose}
                   className="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 sm:text-sm"
                 >
                   Cerrar

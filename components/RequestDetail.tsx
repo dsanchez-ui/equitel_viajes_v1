@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { TravelRequest, RequestStatus, Integrant } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
@@ -99,6 +99,10 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
     const [skipModalOpen, setSkipModalOpen] = useState(false);
     const [skipJustification, setSkipJustification] = useState('');
     const [skipLoading, setSkipLoading] = useState(false);
+    // #A41: ref-based double-click guard. setState es async (hasta el próximo
+    // render el botón no queda disabled visualmente), pero un segundo click
+    // antes de ese render dispararía segunda llamada. Ref es síncrono.
+    const skipSubmittingRef = useRef(false);
     // 'selection' = PENDIENTE_SELECCION → PENDIENTE_CONFIRMACION_COSTO (cualquier analista)
     // 'approval'  = PENDIENTE_APROBACION → APROBADO (solo superadmin)
     const [skipMode, setSkipMode] = useState<'selection' | 'approval'>('selection');
@@ -183,11 +187,16 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
     };
 
     const handleSkipSubmit = async () => {
+        // #A41: guard síncrono contra double-click. setState(setSkipLoading)
+        // tarda en aplicar el disabled hasta el próximo render; si el usuario
+        // clickea 2 veces muy rápido, el segundo click pasa. Ref lo bloquea.
+        if (skipSubmittingRef.current) return;
         const trimmed = skipJustification.trim();
         if (trimmed.length < 10) {
             alert('La justificación es obligatoria y debe tener al menos 10 caracteres.');
             return;
         }
+        skipSubmittingRef.current = true;
         setSkipLoading(true);
         try {
             if (skipMode === 'approval') {
@@ -204,6 +213,10 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
         } catch (e: any) {
             alert('Error: ' + (e?.message || e));
             setSkipLoading(false);
+        } finally {
+            // Permitir reintento si hubo error; en el success path el modal
+            // ya cerró así que este ref se resetea solo cuando se reabre.
+            skipSubmittingRef.current = false;
         }
     };
 

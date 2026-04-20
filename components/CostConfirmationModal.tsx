@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TravelRequest, RequestStatus } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
@@ -19,6 +19,10 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
   }, [onClose]);
 
   const [loading, setLoading] = useState(false);
+  // #A41: guard síncrono contra double-click en confirm del dialog →
+  // executeSubmission. Si el dialog se cierra rápido y el usuario clickea
+  // dos veces, podrían dispararse 2 updateRequestStatus en paralelo.
+  const submittingRef = useRef(false);
   // #R4.b: SUPERADMIN puede saltar etapa de aprobación (viaje ya autorizado fuera del sistema).
   const [skipApproval, setSkipApproval] = useState<boolean>(false);
   const [skipJustification, setSkipJustification] = useState<string>('');
@@ -99,6 +103,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
   };
 
   const executeSubmission = async () => {
+      if (submittingRef.current) return; // #A41: evita double-trigger
+      submittingRef.current = true;
       closeDialog();
       setLoading(true);
       try {
@@ -137,6 +143,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
           });
       } finally {
           setLoading(false);
+          submittingRef.current = false;
       }
   };
 

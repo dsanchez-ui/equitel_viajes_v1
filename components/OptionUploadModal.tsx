@@ -21,16 +21,25 @@ interface OptionUploadModalProps {
 }
 
 export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadModalProps) => {
-    // ESC cierra el modal (solo si no se está subiendo — evita perder archivos
-    // a medio subir por un press accidental).
-    useEffect(() => {
-      const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-      window.addEventListener('keydown', handler);
-      return () => window.removeEventListener('keydown', handler);
-    }, [onClose]);
-
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
+
+    // #A40: evitar cerrar durante upload/guardado. Si ESC o click fuera ocurre
+    // mientras hay archivos subiendo a Drive, quedarían huérfanos sin
+    // referencia en OPCIONES (JSON). handleClose es el único punto de salida.
+    const handleClose = () => {
+      if (uploading || loading) {
+        if (!window.confirm('Hay operaciones en curso. Si cierras ahora, archivos parciales podrían quedar en Drive. ¿Cerrar de todos modos?')) return;
+      }
+      onClose();
+    };
+
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [uploading, loading]);
     const [flightDirection, setFlightDirection] = useState<'IDA' | 'VUELTA'>('IDA');
     const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
 
@@ -311,12 +320,12 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
 
             <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
                 <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose}></div>
+                    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={handleClose}></div>
                     <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
 
                     <div className="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-5xl sm:w-full sm:p-6">
                         <div className="absolute top-0 right-0 pt-4 pr-4 z-10">
-                            <button onClick={onClose} className="bg-white rounded-md text-gray-400 hover:text-gray-500 text-2xl font-bold leading-none px-2 focus:outline-none">&times;</button>
+                            <button onClick={handleClose} className="bg-white rounded-md text-gray-400 hover:text-gray-500 text-2xl font-bold leading-none px-2 focus:outline-none">&times;</button>
                         </div>
 
                         <h3 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">
@@ -543,7 +552,7 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                         </div>
 
                         <div className="mt-6 flex justify-end gap-3 border-t pt-4">
-                            <button onClick={onClose} className="px-4 py-2 border rounded text-gray-700 bg-white hover:bg-gray-50">Cancelar</button>
+                            <button onClick={handleClose} className="px-4 py-2 border rounded text-gray-700 bg-white hover:bg-gray-50">Cancelar</button>
                             <button onClick={handleSubmit} disabled={loading || totalCount === 0} className="px-4 py-2 bg-brand-red text-white rounded font-bold hover:bg-red-700 disabled:opacity-50">
                                 {loading ? `Subiendo (${pendingOptions.length} imágenes)...` : 'Confirmar y Enviar'}
                             </button>

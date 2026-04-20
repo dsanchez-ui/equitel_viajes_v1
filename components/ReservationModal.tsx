@@ -11,17 +11,29 @@ interface ReservationModalProps {
 }
 
 export const ReservationModal = ({ request, onClose, onSuccess }: ReservationModalProps) => {
-    useEffect(() => {
-      const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-      window.addEventListener('keydown', handler);
-      return () => window.removeEventListener('keydown', handler);
-    }, [onClose]);
-
     // Detect edit mode: the request already has a reservation number
     const isEditMode = !!(request.reservationNumber && request.reservationNumber.trim());
     const isHotelOnly = request.requestMode === 'HOTEL_ONLY';
 
     const [loading, setLoading] = useState(false);
+
+    // #A40: evita cerrar mientras hay upload/submit en curso. Sin guard, un
+    // click-outside o × a mitad de executeSubmission puede dejar archivos
+    // parciales en Drive sin referencia en SOPORTES (JSON).
+    const handleClose = () => {
+      if (loading) {
+        if (!window.confirm('Hay una operación en curso. Cerrar ahora podría dejar archivos parciales. ¿Cerrar de todos modos?')) return;
+      }
+      onClose();
+    };
+
+    useEffect(() => {
+      const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') handleClose(); };
+      window.addEventListener('keydown', handler);
+      return () => window.removeEventListener('keydown', handler);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loading]);
+
     const [reservationNumber, setReservationNumber] = useState(isEditMode ? request.reservationNumber : '');
     const [creditCard, setCreditCard] = useState(isEditMode ? (request.creditCard || '') : '');
     const [creditCards, setCreditCards] = useState<{ value: string, label: string }[]>([]);
@@ -270,12 +282,12 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
 
             <div className="fixed inset-0 z-[60] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
                 <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={onClose}></div>
+                    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onClick={handleClose}></div>
                     <span className="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
 
                     <div className="relative inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
                         <div className="absolute top-0 right-0 pt-4 pr-4 z-10">
-                            <button onClick={onClose} className="bg-white rounded-md text-gray-400 hover:text-gray-500 text-2xl font-bold leading-none px-2 focus:outline-none">✕</button>
+                            <button onClick={handleClose} className="bg-white rounded-md text-gray-400 hover:text-gray-500 text-2xl font-bold leading-none px-2 focus:outline-none">✕</button>
                         </div>
 
                         <h3 className="text-lg font-bold text-gray-900 mb-1 border-b pb-2">
@@ -461,7 +473,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                             )}
 
                             <div className="mt-6 flex justify-end gap-3 border-t pt-4">
-                                <button type="button" onClick={onClose} className="px-4 py-2 border rounded text-gray-700 bg-white hover:bg-gray-50">Cancelar</button>
+                                <button type="button" onClick={handleClose} className="px-4 py-2 border rounded text-gray-700 bg-white hover:bg-gray-50">Cancelar</button>
                                 <button type="submit" disabled={loading} className={`px-4 py-2 text-white rounded font-bold disabled:opacity-50 ${isEditMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-brand-red hover:bg-red-700'}`}>
                                     {loading ? 'Procesando...' : (isEditMode ? 'Guardar Corrección' : (isHotelOnly ? 'Confirmar Reserva Hotel' : 'Confirmar Compra'))}
                                 </button>
