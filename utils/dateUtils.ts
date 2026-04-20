@@ -52,14 +52,45 @@ export const formatToYYYYMMDD = (dateStr: string | undefined): string => {
 const MONTHS_ABBR_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
 /**
- * Formato corto "20/abr 09:30" para listados densos (admin/user dashboard).
- * Asume que la entrada es ISO (timestamp). Si no parsea, retorna '' silencioso.
- * Timezone: usa el local del navegador (Bogotá para el uso real).
+ * Parser tolerante para el valor de FECHA SOLICITUD.
+ * Acepta:
+ *  - ISO ("2026-04-20T09:30:00Z" o "2026-04-20T09:30:00-05:00")
+ *  - JS Date.toString() ("Mon Apr 20 2026 09:30:00 GMT-0500 ...")
+ *  - Sheets español: "DD/MM/YYYY HH:MM[:SS]" o "D/M/YYYY H:MM"
+ *  - Sheets guión: "DD-MM-YYYY HH:MM[:SS]"
+ *  - YYYY-MM-DD simple
  */
-export const formatShortDateTime = (iso: string | undefined | null): string => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
+const parseTimestamp = (val: string): Date | null => {
+  if (!val) return null;
+  const s = val.trim();
+
+  // DD/MM/YYYY [HH:MM[:SS]] o DD-MM-YYYY [HH:MM[:SS]] (con día/mes/hora opcionalmente sin padding)
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (m) {
+    const d = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const y = Number(m[3]);
+    const hh = m[4] !== undefined ? Number(m[4]) : 0;
+    const mm = m[5] !== undefined ? Number(m[5]) : 0;
+    const ss = m[6] !== undefined ? Number(m[6]) : 0;
+    const parsed = new Date(y, mo, d, hh, mm, ss);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  // Fallback: ISO, JS default toString, o cualquier cosa que Date reconozca nativamente
+  const native = new Date(s);
+  return isNaN(native.getTime()) ? null : native;
+};
+
+/**
+ * Formato corto "20/abr 09:30" para listados densos (admin/user dashboard).
+ * Timezone: usa el local del navegador (Bogotá para el uso real).
+ * Si no parsea, retorna '' silencioso.
+ */
+export const formatShortDateTime = (raw: string | undefined | null): string => {
+  if (!raw) return '';
+  const d = parseTimestamp(String(raw));
+  if (!d) return '';
   const day = String(d.getDate()).padStart(2, '0');
   const month = MONTHS_ABBR_ES[d.getMonth()];
   const hh = String(d.getHours()).padStart(2, '0');
@@ -70,10 +101,10 @@ export const formatShortDateTime = (iso: string | undefined | null): string => {
 /**
  * Formato largo "20 abr 2026, 09:30" para encabezado de detalle.
  */
-export const formatLongDateTime = (iso: string | undefined | null): string => {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return '';
+export const formatLongDateTime = (raw: string | undefined | null): string => {
+  if (!raw) return '';
+  const d = parseTimestamp(String(raw));
+  if (!d) return '';
   const day = String(d.getDate()).padStart(2, '0');
   const month = MONTHS_ABBR_ES[d.getMonth()];
   const year = d.getFullYear();
