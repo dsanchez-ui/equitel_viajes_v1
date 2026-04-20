@@ -1150,29 +1150,164 @@ function destroySession_(token) {
 }
 
 /**
- * Manual cleanup utility: removes all expired sessions from ScriptProperties.
- * Run from GAS editor periodically (e.g. monthly).
+ * Cleanup de sesiones expiradas. Alias legacy — delega al cleanup
+ * comprensivo (`cleanupExpiredPropsWeekly`) que además de sesiones también
+ * limpia counters de rate-limit vencidos. Se preserva el nombre porque
+ * ya existen triggers instalados en producción apuntando a esta función.
+ *
+ * Si prefieres ejecución semanal, cambia la frecuencia del trigger desde
+ * el editor GAS (Triggers → editar cleanupExpiredSessions → Semanal).
  */
 function cleanupExpiredSessions() {
+  var result = cleanupExpiredPropsWeekly();
+  return result.sessions; // mantiene shape de retorno legacy (número)
+}
+
+// =====================================================================
+// WEEKLY CLEANUP — sessions + rate-limit counters expirados
+// =====================================================================
+/**
+ * Cleanup semanal ejecutado por trigger. Elimina:
+ *   1. SESSION_<token>      si expiresAt ya pasó
+ *   2. *_PIN_LOCKOUT_<hash> si el lockoutUntil ya pasó
+ *   3. PIN_REGEN_<hash>     si resetAt ya pasó (fin de ventana 1h)
+ *   4. CREATE_REQ_<hash>    si resetAt ya pasó (fin de ventana 24h)
+ *
+ * NO toca:
+ *   - *_PIN_FAILS_<hash>: contador de fallos activo; si lo borráramos
+ *     mid-attack reseteamos el rate-limit. Se limpia solo cuando el lockout
+ *     triggerea (en recordFailedPinAttempt_) o tras login exitoso.
+ *   - Config base (ANALYST_EMAILS, SUPER_ADMIN_EMAILS, ADMIN_PIN_HASH,
+ *     APPROVAL_LINK_SECRET, etc.): nunca tienen timestamp, nunca vencen.
+ *
+ * Idempotente — si no hay nada que limpiar, no hace nada. Seguro de correr
+ * múltiples veces o manualmente.
+ */
+function cleanupExpiredPropsWeekly() {
   var props = PropertiesService.getScriptProperties();
   var all = props.getProperties();
   var now = new Date().getTime();
-  var removed = 0;
+
+  var sessionsRemoved = 0;
+  var lockoutsRemoved = 0;
+  var regenRemoved = 0;
+  var createReqRemoved = 0;
+  var corruptRemoved = 0;
+
   Object.keys(all).forEach(function(key) {
-    if (key.indexOf('SESSION_') !== 0) return;
     try {
-      var s = JSON.parse(all[key]);
-      if (now > Number(s.expiresAt)) {
-        props.deleteProperty(key);
-        removed++;
+      // 1. Sesiones expiradas
+      if (key.indexOf('SESSION_') === 0) {
+        var s = JSON.parse(all[key]);
+        if (now > Number(s.expiresAt)) {
+          props.deleteProperty(key);
+          sessionsRemoved++;
+        }
+        return;
+      }
+
+      // 2. Lockouts vencidos (value = timestamp numérico)
+      if (key.indexOf('ADMIN_PIN_LOCKOUT_') === 0 || key.indexOf('USER_PIN_LOCKOUT_') === 0) {
+        var lockoutUntil = Number(all[key]);
+        if (isNaN(lockoutUntil) || now > lockoutUntil) {
+          props.deleteProperty(key);
+          lockoutsRemoved++;
+        }
+        return;
+      }
+
+      // 3. Ventanas de regeneración vencidas (JSON con resetAt)
+      if (key.indexOf('PIN_REGEN_') === 0) {
+        var parsedR = JSON.parse(all[key]);
+        if (now > Number(parsedR.resetAt || 0)) {
+          props.deleteProperty(key);
+          regenRemoved++;
+        }
+        return;
+      }
+
+      // 4. Ventanas de creación de solicitudes vencidas
+      if (key.indexOf('CREATE_REQ_') === 0) {
+        var parsedC = JSON.parse(all[key]);
+        if (now > Number(parsedC.resetAt || 0)) {
+          props.deleteProperty(key);
+          createReqRemoved++;
+        }
+        return;
       }
     } catch (e) {
-      props.deleteProperty(key); // corrupt → remove
-      removed++;
+      // JSON corrupto en una property que debería ser JSON → borrar
+      if (key.indexOf('SESSION_') === 0 ||
+          key.indexOf('PIN_REGEN_') === 0 ||
+          key.indexOf('CREATE_REQ_') === 0) {
+        try { props.deleteProperty(key); corruptRemoved++; } catch (err) {}
+      }
     }
   });
-  console.log('Sesiones expiradas eliminadas: ' + removed);
-  return removed;
+
+  var total = sessionsRemoved + lockoutsRemoved + regenRemoved + createReqRemoved + corruptRemoved;
+  console.log('cleanupExpiredPropsWeekly: ' +
+              sessionsRemoved + ' sesiones, ' +
+              lockoutsRemoved + ' lockouts, ' +
+              regenRemoved + ' regen, ' +
+              createReqRemoved + ' createReq, ' +
+              corruptRemoved + ' corruptas. Total: ' + total);
+  return {
+    sessions: sessionsRemoved,
+    lockouts: lockoutsRemoved,
+    pinRegen: regenRemoved,
+    createReq: createReqRemoved,
+    corrupt: corruptRemoved,
+    total: total
+  };
+}
+
+/**
+ * SETUP ÚNICO: instala el trigger semanal que llama a
+ * cleanupExpiredPropsWeekly cada 7 días (lunes a las 3 AM Bogotá).
+ *
+ * Ejecutar UNA VEZ desde el editor GAS:
+ *   1. Dropdown de funciones → setupWeeklyCleanupTrigger
+ *   2. ▶ Ejecutar
+ *   3. Autorizar scopes si lo pide
+ *   4. Ver → Registros de ejecución (confirma instalación)
+ *
+ * Idempotente: si ya existe un trigger para esta función, lo borra antes
+ * de crear el nuevo. Seguro de correr múltiples veces.
+ *
+ * Rollback: ejecutar deleteWeeklyCleanupTrigger() o borrar manualmente
+ * desde Triggers en el editor.
+ */
+function setupWeeklyCleanupTrigger() {
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === 'cleanupExpiredPropsWeekly';
+  });
+  existing.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+
+  ScriptApp.newTrigger('cleanupExpiredPropsWeekly')
+    .timeBased()
+    .onWeekDay(ScriptApp.WeekDay.MONDAY)
+    .atHour(3)
+    .inTimezone('America/Bogota')
+    .create();
+
+  var msg = 'Trigger semanal instalado: cleanupExpiredPropsWeekly se ejecutará cada lunes a las 3 AM (Bogotá).';
+  if (existing.length > 0) msg += ' (Se eliminó ' + existing.length + ' trigger(s) previo(s).)';
+  Logger.log(msg);
+  return { installed: true, previouslyRemoved: existing.length };
+}
+
+/**
+ * Desinstala el trigger semanal. Ejecutar desde el editor si se quiere
+ * desactivar la limpieza automática.
+ */
+function deleteWeeklyCleanupTrigger() {
+  var triggers = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === 'cleanupExpiredPropsWeekly';
+  });
+  triggers.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+  Logger.log('Triggers eliminados: ' + triggers.length);
+  return { removed: triggers.length };
 }
 
 // --- Public PIN endpoints ---
@@ -2171,6 +2306,7 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
         validateFileUpload_(f.fileData, f.fileName, 'application/pdf');
     });
     if (reservationNumber && String(reservationNumber).length > 100) throw new Error('Número de reserva demasiado largo.');
+    if (creditCard && String(creditCard).length > 100) throw new Error('Descripción de tarjeta demasiado larga (máx 100 caracteres).');
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -2360,6 +2496,8 @@ function amendReservation(payload) {
     var correctionNote = payload.correctionNote || '';
 
     if (!newPnr) throw new Error('Número de reserva requerido.');
+    if (newPnr.length > 100) throw new Error('Número de reserva demasiado largo (máx 100 caracteres).');
+    if (newCard && newCard.length > 100) throw new Error('Descripción de tarjeta demasiado larga (máx 100 caracteres).');
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);

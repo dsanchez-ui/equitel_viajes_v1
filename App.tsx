@@ -21,14 +21,41 @@ interface StoredSession {
   role: StoredRole;
 }
 
+// Validación estricta de shape de sesión guardada. Si el localStorage fue
+// manipulado por XSS o por un usuario cambiando manualmente el valor, los
+// campos que no cumplan el formato exacto esperado del backend se rechazan
+// y el usuario debe re-autenticarse con PIN. El PIN correcto no cuenta
+// como intento fallido — no hay riesgo de lockout por este fix.
+//
+// Formatos verificados contra Code.gs:
+//   token:     64 chars hex (dos UUIDs concatenados sin guiones)
+//   email:     regex estándar RFC-like (mismo patrón que server)
+//   expiresAt: epoch ms finito, futuro
+//   role:      enum cerrado
+const SESSION_TOKEN_REGEX = /^[a-f0-9]{64}$/;
+const SESSION_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const VALID_STORED_ROLES: ReadonlyArray<StoredRole> = ['REQUESTER', 'ANALYST', 'SUPERADMIN'];
+
 const readStoredSession = (): StoredSession | null => {
   try {
     const raw = localStorage.getItem(SESSION_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!parsed || !parsed.email || !parsed.token) return null;
-    if (parsed.expiresAt && Date.now() > Number(parsed.expiresAt)) return null;
-    return parsed;
+    if (!parsed || typeof parsed !== 'object') return null;
+
+    if (typeof parsed.email !== 'string' || !SESSION_EMAIL_REGEX.test(parsed.email)) return null;
+    if (typeof parsed.token !== 'string' || !SESSION_TOKEN_REGEX.test(parsed.token)) return null;
+    if (typeof parsed.expiresAt !== 'number' || !Number.isFinite(parsed.expiresAt)) return null;
+    if (typeof parsed.role !== 'string' || !VALID_STORED_ROLES.includes(parsed.role as StoredRole)) return null;
+
+    if (Date.now() > parsed.expiresAt) return null;
+
+    return {
+      email: parsed.email,
+      token: parsed.token,
+      expiresAt: parsed.expiresAt,
+      role: parsed.role as StoredRole
+    };
   } catch {
     return null;
   }
