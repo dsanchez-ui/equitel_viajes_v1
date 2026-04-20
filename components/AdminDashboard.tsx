@@ -11,7 +11,7 @@ import { CancellationModal } from './CancellationModal';
 import { MetricsPanel } from './MetricsPanel';
 import { ChangeRequestModal } from './ChangeRequestModal';
 import { gasService } from '../services/gasService';
-import { getDaysDiff, formatToDDMMYYYY } from '../utils/dateUtils';
+import { getDaysDiff, formatToDDMMYYYY, formatShortDateTime } from '../utils/dateUtils';
 
 interface AdminDashboardProps {
   requests: TravelRequest[];
@@ -424,6 +424,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
                             </td>
                             <td className="px-2 py-3 text-sm text-gray-500">
                               <div className="font-medium text-gray-700">{req.requesterEmail}</div>
+                              {req.timestamp && (
+                                <div className="text-[11px] text-gray-400 mt-0.5" title="Fecha y hora de creación de la solicitud">
+                                  Creada: {formatShortDateTime(req.timestamp)}
+                                </div>
+                              )}
                               <div className="text-xs text-gray-400">{req.company} / {req.site} - {req.costCenter}</div>
                               {req.workOrder && <div className="text-xs text-gray-500 mt-1">OT: {req.workOrder}</div>}
                             </td>

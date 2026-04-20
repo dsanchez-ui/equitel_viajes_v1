@@ -3,7 +3,7 @@ import { TravelRequest } from '../types';
 import { gasService } from '../services/gasService';
 import { CancellationModal } from './CancellationModal';
 import { ConfirmationDialog } from './ConfirmationDialog';
-import { getDaysDiff, formatToDDMMYYYY } from '../utils/dateUtils';
+import { getDaysDiff, formatToDDMMYYYY, formatShortDateTime } from '../utils/dateUtils';
 
 interface UserDashboardProps {
   requests: TravelRequest[];
@@ -97,6 +97,11 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                  <div className="flex justify-between items-start mb-2">
                     <div className="flex flex-col gap-1">
                         <span className="text-xs font-mono text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{req.requestId}</span>
+                        {req.timestamp && (
+                          <span className="text-[10px] text-gray-400" title="Fecha y hora de creación">
+                            Creada: {formatShortDateTime(req.timestamp)}
+                          </span>
+                        )}
                         <div className="flex gap-1">
                             {isAbandoned && !['ANULADO', 'DENEGADO'].includes(req.status) && (
                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-800" title="Fecha de vuelo pasada sin reserva">

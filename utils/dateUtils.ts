@@ -49,6 +49,39 @@ export const formatToYYYYMMDD = (dateStr: string | undefined): string => {
   return `${y}-${m}-${d}`;
 };
 
+const MONTHS_ABBR_ES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+/**
+ * Formato corto "20/abr 09:30" para listados densos (admin/user dashboard).
+ * Asume que la entrada es ISO (timestamp). Si no parsea, retorna '' silencioso.
+ * Timezone: usa el local del navegador (Bogotá para el uso real).
+ */
+export const formatShortDateTime = (iso: string | undefined | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = MONTHS_ABBR_ES[d.getMonth()];
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${month} ${hh}:${mm}`;
+};
+
+/**
+ * Formato largo "20 abr 2026, 09:30" para encabezado de detalle.
+ */
+export const formatLongDateTime = (iso: string | undefined | null): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = MONTHS_ABBR_ES[d.getMonth()];
+  const year = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${day} ${month} ${year}, ${hh}:${mm}`;
+};
+
 export const getDaysDiff = (start: string | Date, end: string | Date): number => {
   const d1 = typeof start === 'string' ? parseDate(start) : start;
   const d2 = typeof end === 'string' ? parseDate(end) : end;

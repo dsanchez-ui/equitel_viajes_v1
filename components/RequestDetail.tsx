@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { TravelRequest, RequestStatus, Integrant } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
-import { getDaysDiff, formatToDDMMYYYY } from '../utils/dateUtils';
+import { getDaysDiff, formatToDDMMYYYY, formatLongDateTime } from '../utils/dateUtils';
 
 interface RequestDetailProps {
     request: TravelRequest;
@@ -299,6 +299,11 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                 <h3 className="text-xl leading-6 font-bold text-gray-900">
                                     Detalle Solicitud <span className="text-brand-red">{request.requestId}</span>
                                 </h3>
+                                {request.timestamp && (
+                                    <div className="text-xs text-gray-500 mt-1" title="Fecha y hora de creación de la solicitud">
+                                        Creada: <span className="font-medium text-gray-700">{formatLongDateTime(request.timestamp)}</span>
+                                    </div>
+                                )}
                                 <div className={`mt-2 inline-flex px-3 py-1 text-xs font-bold rounded-full ${getStatusColor(request.status)}`}>
                                     {getDisplayStatus(request.status)}
                                 </div>

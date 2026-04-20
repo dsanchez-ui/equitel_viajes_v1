@@ -6003,6 +6003,8 @@ function onOpen() {
     .addItem('Gestionar Usuarios (Sidebar)', 'abrirSidebarUsuarios')
     .addItem('Reorganizar Base Principal (Sidebar)', 'abrirSidebarReorg')
     .addSeparator()
+    .addItem('Validar columnas actuales', 'validarColumnasActivas')
+    .addSeparator()
     .addItem(modoLabel, 'mostrarModoActivo')
     .addSeparator()
     .addItem('1. Crear hoja USUARIOS', 'crearHojaUsuarios')
@@ -6010,6 +6012,96 @@ function onOpen() {
     .addItem('3. Sincronizar con Maestro RH', 'sincronizarConMaestroRH')
     .addItem('4. Recargar resoluciones (cols H, I)', 'recargarResolucionesUsuarios')
     .addToUi();
+}
+
+/**
+ * Valida que la hoja activa de solicitudes tenga todos los headers canónicos
+ * requeridos por el código, detecta duplicados, y reporta columnas extras
+ * (agregadas manualmente — se preservan sin afectar el sistema).
+ *
+ * Este diagnóstico es SOLO LECTURA. No modifica nada en la hoja.
+ * Útil tras agregar/eliminar columnas manualmente para confirmar que el
+ * código sigue pudiendo leer la información correctamente.
+ */
+function validarColumnasActivas() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) {
+    ui.alert('Validación de columnas', 'No se encuentra la hoja "' + SHEET_NAME_REQUESTS + '".', ui.ButtonSet.OK);
+    return;
+  }
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) {
+    ui.alert('Validación de columnas', 'La hoja "' + SHEET_NAME_REQUESTS + '" no tiene columnas.', ui.ButtonSet.OK);
+    return;
+  }
+
+  var rawHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headers = rawHeaders.map(_normalizeHeader_);
+
+  var counts = {};
+  headers.forEach(function(h) {
+    if (!h) return;
+    counts[h] = (counts[h] || 0) + 1;
+  });
+  var duplicates = Object.keys(counts).filter(function(k) { return counts[k] > 1; });
+
+  var present = {};
+  headers.forEach(function(h) { if (h) present[h] = true; });
+
+  var missing = [];
+  HEADERS_REQUESTS.forEach(function(canonical) {
+    if (!present[canonical]) missing.push(canonical);
+  });
+
+  var canonicalSet = {};
+  HEADERS_REQUESTS.forEach(function(c) { canonicalSet[c] = true; });
+  var seenExtra = {};
+  var extra = headers.filter(function(h) {
+    if (!h || canonicalSet[h]) return false;
+    if (seenExtra[h]) return false;
+    seenExtra[h] = true;
+    return true;
+  });
+
+  var totalInSheet = headers.filter(function(h){ return h; }).length;
+  var lines = [];
+  lines.push('Hoja: ' + SHEET_NAME_REQUESTS);
+  lines.push('Columnas en la hoja: ' + totalInSheet);
+  lines.push('Columnas canónicas requeridas: ' + HEADERS_REQUESTS.length);
+  lines.push('');
+
+  if (missing.length === 0 && duplicates.length === 0) {
+    lines.push('✅ Estructura correcta. Todas las columnas canónicas están presentes y sin duplicados.');
+  } else {
+    if (missing.length > 0) {
+      lines.push('⚠️ Columnas canónicas que FALTAN (' + missing.length + '):');
+      missing.forEach(function(m){ lines.push('   • ' + m); });
+      lines.push('');
+      lines.push('Acción sugerida: restaurar estas columnas desde una copia de seguridad,');
+      lines.push('o recrearlas con el nombre EXACTO (mayúsculas/acentos incluidos).');
+      lines.push('');
+    }
+    if (duplicates.length > 0) {
+      lines.push('⚠️ Columnas DUPLICADAS (' + duplicates.length + '):');
+      duplicates.forEach(function(d){ lines.push('   • ' + d); });
+      lines.push('');
+      lines.push('Acción sugerida: renombrar o eliminar la columna duplicada.');
+      lines.push('El código solo lee la PRIMERA ocurrencia; las demás se ignoran.');
+      lines.push('');
+    }
+  }
+
+  if (extra.length > 0) {
+    lines.push('ℹ️ Columnas extras (no usadas por el código, se preservan): ' + extra.length);
+    extra.forEach(function(e){ lines.push('   • ' + e); });
+    lines.push('');
+    lines.push('Estas columnas son seguras: el sistema las ignora al leer/escribir.');
+    lines.push('Puede agregarlas o eliminarlas libremente sin afectar el flujo.');
+  }
+
+  ui.alert('Validación de columnas — ' + SHEET_NAME_REQUESTS, lines.join('\n'), ui.ButtonSet.OK);
 }
 
 /**

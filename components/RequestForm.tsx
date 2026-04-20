@@ -432,6 +432,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   const isPassengerInDb = (idNumber: string) => integrantes.some(i => i.idNumber === idNumber);
 
+  // El primer pasajero DEBE estar en el directorio: de él se deriva el
+  // aprobador de área. Si no existe, el backend queda con approverEmail='Por
+  // Definir' y la solicitud nunca puede avanzar. Bloqueamos el submit.
+  const firstPassengerValid = passengers.length > 0
+    && !!passengers[0].idNumber
+    && isPassengerInDb(passengers[0].idNumber);
+
   // Gemini Enhancement
   const handleEnhanceText = async () => {
     if (!changeReason.trim() || !initialData) return;
@@ -471,6 +478,16 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
     if (formData.costCenter === 'VARIOS' && variousCCList.length === 0) {
       alert('Debe agregar al menos un centro de costos en la lista de VARIOS.');
+      return;
+    }
+    // GUARD: primer pasajero obligatoriamente en directorio (define el aprobador).
+    if (!firstPassengerValid) {
+      alert(
+        'El primer pasajero debe estar registrado en el directorio de usuarios.\n\n' +
+        'Su cédula determina quién aprobará la solicitud. Si la persona que va a viajar ' +
+        'no aparece en el directorio, contacte al área de viajes o al administrador del ' +
+        'aplicativo para que la registre antes de continuar.'
+      );
       return;
     }
     // Fecha de retorno obligatoria para round-trip y hotel-only (check-out)
@@ -722,6 +739,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               // Pasajeros 2-5 pueden ser externos: si la cédula no está en el
               // directorio, habilitamos inputs manuales para nombre + correo.
               const allowManual = idx > 0 && p.idNumber && !inDb;
+              // Pasajero 1 bloqueante: si tiene cédula pero no matchea el
+              // directorio, muestra error rojo (define el aprobador de área).
+              const firstPassengerMissing = idx === 0 && p.idNumber && !inDb;
               return (
               <div key={idx} className="flex flex-col gap-3 bg-gray-50 p-4 rounded-md">
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
@@ -754,6 +774,19 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                         Esta cédula no está en el directorio. Escriba manualmente el nombre y correo (si aplica) del pasajero externo.
                       </p>
                     </div>
+                  </div>
+                )}
+                {firstPassengerMissing && (
+                  <div className="rounded-md border border-red-300 bg-red-50 p-3">
+                    <p className="text-xs text-red-800 font-semibold">
+                      ⚠️ Cédula no encontrada en el directorio.
+                    </p>
+                    <p className="text-[11px] text-red-700 mt-1 leading-relaxed">
+                      El primer pasajero debe estar registrado — de su ficha se toma el aprobador
+                      que autorizará la solicitud. Verifique el número; si la persona no está
+                      registrada, contacte al área de viajes o al administrador del aplicativo
+                      para que la agreguen antes de continuar.
+                    </p>
                   </div>
                 )}
               </div>
@@ -993,7 +1026,12 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" disabled={loading}>
               Cancelar
             </button>
-            <button type="submit" className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand-red hover:bg-red-700 focus:outline-none disabled:opacity-50" disabled={loading}>
+            <button
+              type="submit"
+              className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand-red hover:bg-red-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={loading || !firstPassengerValid}
+              title={!firstPassengerValid ? 'El primer pasajero debe estar registrado en el directorio antes de enviar.' : undefined}
+            >
               {loading ? 'Procesando...' : (isModification ? 'Confirmar Cambio' : 'Crear Solicitud')}
             </button>
           </div>
