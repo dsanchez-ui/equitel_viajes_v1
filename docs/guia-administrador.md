@@ -18,8 +18,8 @@ Una plataforma web donde los empleados piden viajes y hospedajes corporativos, s
 |---|---|---|
 | **Solicitante** | Crea solicitudes de viaje/hospedaje, selecciona opciones, sube soportes post-viaje. | Botón rojo **INGRESAR** con su correo corporativo + PIN personal. |
 | **Aprobador** | Recibe correo de aprobación, click en APROBAR o DENEGAR. NO necesita iniciar sesión en la app. | Botones firmados HMAC en el correo. |
-| **Analista / Admin (ANALYST)** | Cotiza opciones, confirma costos, registra reservas, gestiona usuarios, consulta métricas. Puede saltar la etapa de selección cuando el viaje se gestionó fuera del sistema. | Botón negro **ADMINISTRADOR** con PIN admin compartido, o botón rojo **INGRESAR** con su PIN personal si tiene fila en USUARIOS. |
-| **Superadmin (SUPERADMIN)** | Todo lo del analista **más**: saltar la etapa de aprobación, recibir escalamientos cuando los aprobadores no responden, alternar entre vista admin y vista usuario con el botón **VER USUARIO / VER ADMIN**. | Igual que analista. El rol se asigna en `SUPER_ADMIN_EMAILS` (Script Property). |
+| **Analista / Admin (ANALYST)** | Cotiza opciones, confirma costos, registra reservas, gestiona usuarios, consulta métricas. Puede saltar la etapa de selección cuando el viaje se gestionó fuera del sistema. Puede omitir el correo automático al registrar una reserva. | Botón negro **ADMINISTRADOR** con PIN admin compartido, o botón rojo **INGRESAR** con su PIN personal si tiene fila en USUARIOS. |
+| **Superadmin (SUPERADMIN)** | Todo lo del analista **más**: saltar la etapa de aprobación, recibir escalamientos cuando los aprobadores no responden, alternar entre vista admin y vista usuario con el botón **VER USUARIO / VER ADMIN**, y modificar cualquier solicitud (no solo las propias). | Igual que analista. El rol se asigna en `SUPER_ADMIN_EMAILS` (Script Property). |
 
 > **Jerarquía:** SUPERADMIN hereda todo lo de ANALYST; ANALYST hereda todo lo de SOLICITANTE. Quien está en `SUPER_ADMIN_EMAILS` NO necesita estar también en `ANALYST_EMAILS` — la herencia es automática.
 
@@ -65,6 +65,8 @@ Una plataforma web donde los empleados piden viajes y hospedajes corporativos, s
 | **REGLAS_COAPROBADOR** | Reglas de co-aprobadores (ej. internacional requiere CDS). | ⚠️ No reorganizar. |
 | **INTEGRANTES_OLD** | Antigua hoja de usuarios (legacy, antes de Plan 2). | ✅ Ignorar o borrar tras 1-2 meses de uso normal del nuevo modo. |
 
+> **Detalle operativo del spreadsheet** (qué tocar a mano, qué no, cómo usar los sidebars paso a paso): ver la [Guía del Google Sheets](./guia-hoja-calculo.md). Esta guía del administrador cubre el portal completo; aquélla se enfoca en la hoja de cálculo como base de datos y su operación diaria.
+
 ### Columnas importantes en "Nueva Base Solicitudes"
 
 No es necesario memorizar las 75, pero estas son las más relevantes día a día:
@@ -79,9 +81,9 @@ No es necesario memorizar las 75, pero estas son las más relevantes día a día
 | `COSTO_FINAL_TIQUETES`, `COSTO_FINAL_HOTEL`, `COSTO COTIZADO PARA VIAJE` | Costos confirmados por el analista (formato pesos colombianos). |
 | `No RESERVA` | PNR / número de confirmación. |
 | `SOPORTES (JSON)` | Array de archivos (factura reserva, etc.) con sus URLs de Drive. |
-| `APROBADO POR ÁREA? (AUTOMÁTICO)`, `APROBADO CDS`, `APROBADO CEO` | Log de quién aprobó y cuándo. |
-| `EVENTOS_JSON` | Timestamps de cada evento del ciclo (para métricas). |
-| `OBSERVACIONES` | Texto libre. Puede tener marcadores internos como `[CONSULTA_USUARIO_PENDIENTE]`. |
+| `APROBADO POR ÁREA? (AUTOMÁTICO)`, `APROBADO CDS`, `APROBADO CEO` | Log de quién aprobó y cuándo. Si una etapa se saltó, queda marcada como `Sí (ETAPA SALTADA por correo@…)`. |
+| `EVENTOS_JSON` | Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por los badges de cruce de día. |
+| `OBSERVACIONES` | Texto libre. Puede tener marcadores internos como `[CONSULTA_USUARIO_PENDIENTE]`, `[ETAPA SALTADA por …]` o `[RESERVA]: Registrada sin notificación al usuario`. |
 
 ---
 
@@ -114,6 +116,16 @@ No es necesario memorizar las 75, pero estas son las más relevantes día a día
 
 **Estado especial de cambios:**
 - `PENDIENTE_ANALISIS_CAMBIO` — una solicitud "hija" que reemplaza a otra. El admin decide pasarla a estudio (entra al flujo normal) o denegarla (y decidir qué hacer con la original).
+
+**Aprobadores requeridos según el tipo de solicitud:**
+
+| Tipo de solicitud | Aprobador de área | Director de Cadena de Suministro (CDS) | Gerencia General (CEO) |
+|---|---|---|---|
+| Nacional ≤ $1.200.000 | ✅ obligatorio | ❌ no aplica | ❌ no aplica |
+| Nacional > $1.200.000 | ✅ obligatorio | ✅ obligatorio | ❌ no aplica (se excluye desde el flujo) |
+| Internacional (cualquier monto) | ✅ obligatorio | ✅ al menos uno de los dos | ✅ al menos uno de los dos |
+
+Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta y los banners de "aprobación extraordinaria" / "internacional" se ocultan para no saturarlo. La app también incluye una **defensa en el mapper**: si el status global es `APROBADO` pero la celda ejecutiva quedó vacía porque el propio ejecutivo se aprobó a sí mismo, la app muestra `APROBADO` en esa fila automáticamente.
 
 ---
 
@@ -215,6 +227,25 @@ En el modal **"Registrar reserva"** hay un checkbox **"Enviar correo al usuario"
 
 Si eres analista o superadmin Y tienes solicitudes propias pendientes (p.ej. tú creaste una), puedes alternar entre el panel de analista y el panel de solicitante usando el botón **VER USUARIO / VER ADMIN** en el header. El sistema revalida tus permisos en cada switch.
 
+### 5.12 Íconos de prioridad y proxy en el panel
+
+El dashboard del analista marca con íconos las solicitudes que merecen atención especial:
+
+- **⭐** — solicitud **prioritaria**: al menos un pasajero es un ejecutivo del grupo (CEO, CDS o equivalentes). Significa que parte del viaje puede haber sido gestionado por fuera del sistema; revisa antes de pedir selección.
+- **👥** — solicitud **proxy**: el solicitante registró la solicitud a nombre de otra persona (el primer pasajero no coincide con su cédula). Útil para saber que el solicitante no es quien viaja.
+
+Ambos íconos se calculan al leer la solicitud, comparando la cédula del primer pasajero contra el directorio de USUARIOS.
+
+### 5.13 Fecha de creación visible en tabla y detalle
+
+Las tablas de admin y usuario muestran ahora la **fecha de creación** de cada solicitud junto al ID, en formato local (`DD/MM/AAAA HH:mm`). El detalle también la muestra. El parser es tolerante con el formato almacenado (ISO o `DD/MM/YYYY`) para no romperse con solicitudes antiguas.
+
+### 5.14 Conectividad y banner de fallas
+
+Al arrancar, el frontend envía un **ping de warmup** al backend. Si la red local o Apps Script están caídos, aparece un banner rojo arriba informando que hay problemas de conectividad. El banner desaparece solo cuando la conexión vuelve. Esto evita que los usuarios confundan un error de red con un problema de permisos o credenciales.
+
+Relacionado: si el login del admin falla por un error de red (no por PIN incorrecto), el mensaje ahora lo dice explícitamente y **no** consume un intento del rate-limit.
+
 ---
 
 ## 5.bis. Capacidades exclusivas de SUPERADMIN
@@ -228,6 +259,7 @@ Los **superadmins** (configurados en `SUPER_ADMIN_EMAILS` — actualmente David 
 | **Recibir escalamientos** | Correos automáticos cuando una solicitud lleva 30h laborales sin aprobación (≈3 días hábiles). |
 | **Ejecutar helpers de Script Properties** | `setScriptProperty`, `deleteScriptProperty`, `listScriptProperties` desde el editor GAS. |
 | **Ejecutar skip de aprobación vía backend** | `skipApprovalStage(requestId, justification)` — solo vía frontend; el endpoint está protegido y valida superadmin en cada request. |
+| **Modificar cualquier solicitud** | El endpoint `requestModification` valida que el solicitante sea el dueño de la solicitud, pero el bypass permite que cualquier analista o superadmin gestione modificaciones a nombre del usuario (caso típico: el área de viajes ajusta la solicitud por pedido verbal). Cualquier otro usuario autenticado solo puede modificar las suyas. |
 
 **Configurar o quitar un superadmin:**
 ```javascript
@@ -262,7 +294,7 @@ Hay dos sidebars, ambos en el menú **Equitel Viajes** dentro del Google Sheet:
 
 **Cuándo usarlo:** una vez cada pocos meses (o nunca). Cambiar el orden de columnas de la hoja principal, agregar columnas extras personales, o limpiar el layout.
 
-Ver guía completa en [guia-reorganizar-base.md](./guia-reorganizar-base.md).
+Ver guía completa en [guia-reorganizar-base.md](./guia-reorganizar-base.md). La operación diaria del spreadsheet (qué columnas son editables, cómo moverse entre las hojas, reglas de oro) está en la [Guía del Google Sheets](./guia-hoja-calculo.md).
 
 ### 6.3 Validaciones en los formularios
 
@@ -303,7 +335,7 @@ Recomendación: agregarlo a la pantalla de inicio del celular (iOS Safari → co
 
 ### Qué hace
 
-- **Login**: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 30 días en ese navegador.
+- **Login**: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 7 días en ese navegador.
 - **Crear usuario**: formulario idéntico al del sidebar (cédula, nombre, correo, empresa, sede, CC, aprobadores) con las mismas validaciones y el mismo picker de aprobador.
 - Al crear, el usuario aparece inmediatamente en la hoja USUARIOS y puede iniciar sesión en el portal.
 
@@ -325,7 +357,7 @@ Si necesitas cualquiera de esas, abre el Sheet en tu computadora y usa el sideba
 - La URL es pública pero la página es inútil sin PIN.
 - Cada operación del backend (`mobileAdmin_getBootstrap`, `mobileAdmin_createUser`) valida el token de sesión y confirma que el correo esté en `ANALYST_EMAILS` antes de ejecutarse. Sin auth válida, cualquier intento de API retorna error.
 - Si el admin es removido de `ANALYST_EMAILS` mientras tiene sesión activa, la siguiente llamada falla automáticamente y lo manda al login.
-- Sesión expira a los 30 días o si el admin cierra sesión manualmente.
+- Sesión expira a los 7 días o si el admin cierra sesión manualmente.
 
 ### Impacto en la operación mientras se usa
 
@@ -378,8 +410,8 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 | `processAdminReminders` | Resumen diario/periódico al admin de pendientes (cotizar, confirmar costos, reservar, cambios). |
 | `sendPendingConsultReminders` | Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio). |
 
-**Trigger opcional (recomendado):**
-- `cleanupExpiredSessions` (mensual) — borra sesiones `SESSION_*` expiradas de Script Properties. Previene acumulación.
+**Trigger de mantenimiento (ya configurado):**
+- `cleanupExpiredSessions` (diario, 1–2 AM) — limpia sesiones `SESSION_*` expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en `cleanupExpiredPropsWeekly`, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.
 
 ---
 
@@ -414,10 +446,17 @@ Son variables de configuración en el proyecto Apps Script. **NO editar desde la
 
 | Límite | Ventana | Acción |
 |---|---|---|
-| PIN admin fallido | 5 intentos / 15 min | Bloqueo del correo específico. |
+| PIN admin fallido | 5 intentos / 15 min | Bloqueo del correo específico (no afecta a otros admins). |
 | PIN usuario fallido | 5 intentos / 15 min | Bloqueo del correo específico. |
 | Regenerar PIN usuario ("olvidé mi PIN") | 3 regeneraciones / hora | Nueva solicitud rechazada. |
-| Crear solicitudes | 10 solicitudes / día | Excedido → error claro al usuario. |
+| Crear solicitudes | 10 solicitudes / día por solicitante | Excedido → error claro al usuario. Solo cuenta tras una creación exitosa. |
+| Payload `doPost` | 30 MB | Rechazado con error "Payload demasiado grande" antes de parsear. Previene abuso / DoS por payloads gigantes. |
+
+**Protecciones adicionales:**
+- **Firma HMAC en links de aprobación**: cada botón de aprobar/denegar en los correos lleva un `t` (timestamp) y `sig` (HMAC-SHA256 con `APPROVAL_LINK_SECRET`). Links manipulados son rechazados. Con **cutover per-request** (`APPROVAL_LINK_HMAC_CUTOVER_AT`): los correos ya enviados antes del cutover siguen funcionando; los posteriores obligatoriamente deben venir firmados.
+- **Validación de shape del token en localStorage**: si alguien manipula manualmente el token guardado (email, role, expiresAt), el frontend lo detecta por regex y fuerza relogin sin consumir rate-limit.
+- **Ownership en modificaciones**: un usuario normal no puede crear una solicitud-hija apuntando al ID de otro usuario. Solo analistas y superadmins pueden hacerlo (para gestionar a nombre de alguien).
+- **Anular con hija activa**: si la solicitud tiene una hija en `PENDIENTE_ANALISIS_CAMBIO` o en curso, no se puede anular al padre hasta resolver la hija. Evita huérfanos en la base.
 
 ---
 
@@ -460,9 +499,11 @@ Son variables de configuración en el proyecto Apps Script. **NO editar desde la
 
 ### La sesión expira muy seguido
 
-Las sesiones duran 30 días. Si expiran antes:
-- Script Properties puede estar lleno (limit 500KB total). Ejecuta `cleanupExpiredSessions()`.
-- El usuario cambió de navegador / dispositivo — normal.
+Las sesiones duran **7 días**. Si expiran antes:
+- Script Properties puede estar lleno (límite 500 KB total). El trigger diario `cleanupExpiredSessions` limpia lo vencido; si sospechas acumulación, ejecútalo manualmente desde el editor.
+- El usuario cambió de navegador o dispositivo — normal.
+- El navegador borró localStorage (modo incógnito, limpieza automática).
+- El token guardado fue manipulado o corrupto → el frontend lo detecta y fuerza relogin sin consumir rate-limit.
 
 ### Métricas muestran "sin datos" para solicitudes viejas
 
@@ -482,7 +523,20 @@ Tu correo no está en `ANALYST_EMAILS`. Actualiza el array en `actualizarAnalyst
 
 ### Un trigger falló / no corrió
 
-Revisa `Triggers` en el editor GAS. Si un trigger se eliminó manualmente, debes recrearlo (click en +, seleccionar la función, fuente=Time-driven, intervalo 2h).
+Revisa `Triggers` en el editor GAS. Si un trigger se eliminó manualmente, debes recrearlo (click en +, seleccionar la función, fuente=Time-driven, intervalo 2 h).
+
+### El usuario ve un banner rojo de "problemas de conectividad"
+
+Significa que el ping de warmup al backend falló. Causas típicas:
+- El backend GAS está desplegado pero la cuota diaria (6 h/día en Workspace) se agotó.
+- El dominio del frontend cambió y el CORS del backend no lo reconoce.
+- La URL `WEB_APP_URL` apunta a un deploy viejo o eliminado.
+
+Revisa `Ejecuciones` en el editor GAS — si ves "Se superó la cuota", espera hasta el reset diario (medianoche hora Pacífico).
+
+### El admin cree que su PIN es incorrecto pero en realidad es problema de red
+
+Desde los últimos cambios, el login distingue claramente: si falla por red, el mensaje dice "error de conexión" y **no** consume un intento del rate-limit. Si dice "PIN incorrecto" u otro mensaje de permiso, sí es un fallo real. Esto evita bloqueos accidentales por fallos temporales de red.
 
 ---
 
@@ -510,4 +564,14 @@ Recuperación: si algo sale MUY mal, abres la copia respaldada, la descargas com
 
 ---
 
-*Última actualización: 2026-04-13*
+---
+
+## 15. Referencias cruzadas
+
+- [Guía del Google Sheets](./guia-hoja-calculo.md) — operación del spreadsheet: qué es editable a mano, cómo usar los sidebars paso a paso, reglas de oro para no romper la base.
+- [Guía de reorganización de columnas](./guia-reorganizar-base.md) — workflow de 6 pasos para reordenar columnas de "Nueva Base Solicitudes" sin romper el portal.
+- [README del repo](./README.md) — arquitectura general y stack.
+
+---
+
+*Última actualización: 2026-04-20*

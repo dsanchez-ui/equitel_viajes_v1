@@ -79,6 +79,7 @@
 <blockquote>
 <p><strong>Para quién es esta guía:</strong> cualquier persona del área de viajes que vaya a manejar el Google Sheets que está detrás del portal.</p>
 <p><strong>En qué se enfoca:</strong> solo en la hoja de cálculo. Qué tiene, qué se puede tocar y qué no, y cómo usar el menú <strong>Equitel Viajes</strong> que aparece arriba del sheet.</p>
+<p><strong>Guía complementaria:</strong> para la operación del portal completo (roles, workflows del analista, Script Properties, triggers, métricas, seguridad), ver la <a href="./guia-administrador.md">Guía del Administrador</a>.</p>
 </blockquote>
 <hr>
 <h2>¿Qué es este Google Sheets?</h2>
@@ -90,13 +91,15 @@
 <p>El archivo tiene varias pestañas abajo. Aquí explico qué hay en cada una:</p>
 <h3>Nueva Base Solicitudes (la más importante)</h3>
 <p>Una fila por cada solicitud de viaje u hospedaje que se haya creado. Tiene 75 columnas con todo: quién solicita, destino, fechas, pasajeros, costos, número de reserva, observaciones, aprobaciones, archivos adjuntos.</p>
-<p><strong>¿Puedo editar a mano?</strong> Sí, pero con mucho cuidado. Las columnas con fondo amarillo claro son las “editables” (nombre de hotel, tarjeta de crédito, tipo de compra, número de factura, etc). El resto se llena automático desde el portal.</p>
+<p><strong>¿Puedo editar a mano?</strong> Sí, pero con mucho cuidado. Las columnas con fondo amarillo claro son las “editables” (nombre de hotel, tarjeta de crédito, tipo de compra, número de factura, etc.). El resto se llena automático desde el portal.</p>
 <p><strong>Lo que NO debes hacer aquí:</strong></p>
 <ul>
-<li>Borrar filas (eso rompe los IDs y la trazabilidad)</li>
-<li>Cambiar el status a mano (usa el portal — los correos automáticos no saldrán si lo haces a mano)</li>
-<li>Cambiar el ID RESPUESTA de una solicitud</li>
-<li>Eliminar columnas</li>
+<li>Borrar filas (eso rompe los IDs y la trazabilidad).</li>
+<li>Cambiar el status a mano (usa el portal — los correos automáticos no saldrán si lo haces a mano).</li>
+<li>Cambiar el <code>ID RESPUESTA</code> de una solicitud.</li>
+<li>Eliminar columnas.</li>
+<li>Editar a mano las celdas de <code>APROBADO POR ÁREA? (AUTOMÁTICO)</code>, <code>APROBADO CDS</code> o <code>APROBADO CEO</code>: el portal las llena solo y usa esas celdas para decidir si la solicitud avanza. Si ves una solicitud con <code>APROBADO</code> global pero una celda ejecutiva vacía, la app lo corrige en pantalla automáticamente (no toques la hoja).</li>
+<li>Modificar <code>EVENTOS_JSON</code> u <code>OBSERVACIONES</code> a mano: son el log de auditoría. Pueden contener marcadores internos (<code>[CONSULTA_USUARIO_PENDIENTE]</code>, <code>[ETAPA SALTADA por …]</code>, <code>[RESERVA]: Registrada sin notificación al usuario</code>) que el backend lee y respeta.</li>
 </ul>
 <h3>USUARIOS</h3>
 <p>Directorio de todas las personas que pueden usar el portal. Cada fila es una persona con:</p>
@@ -263,10 +266,10 @@
 <h3>¿Cómo entras?</h3>
 <p>La primera vez te pide:</p>
 <ul>
-<li>Tu correo administrador</li>
-<li>El PIN de 8 dígitos (el mismo que usas en el portal normal con el botón negro “Administrador”)</li>
+<li>Tu correo de administrador.</li>
+<li>El PIN de 8 dígitos (el mismo que usas en el portal normal con el botón negro “Administrador”, o tu PIN personal si tienes fila propia en USUARIOS).</li>
 </ul>
-<p>Una vez que entras, el teléfono recuerda tu sesión <strong>por 30 días</strong>. No tienes que volver a meter el PIN cada vez. Si cambias de celular o borras datos del navegador, sí hay que volver a ingresar.</p>
+<p>Una vez que entras, el teléfono recuerda tu sesión <strong>por 7 días</strong>. No tienes que volver a meter el PIN cada vez. Si cambias de celular o borras datos del navegador, sí hay que volver a ingresar.</p>
 <h3>¿Qué puedes hacer?</h3>
 <p><strong>Solo una cosa: crear usuarios.</strong> El módulo móvil tiene un formulario simple con los mismos campos que el sidebar del Sheets:</p>
 <ul>
@@ -293,9 +296,10 @@
 <h3>¿Es seguro?</h3>
 <p>Sí. Aunque el enlace sea público, <strong>sin el PIN nadie puede hacer nada</strong>. Además:</p>
 <ul>
-<li>Solo correos que están en la lista <code>ANALYST_EMAILS</code> (los admins autorizados) pueden usar el módulo. El resto verá la pantalla de login pero su PIN siempre fallará.</li>
-<li>Después de 5 intentos fallidos, el sistema bloquea por 15 minutos.</li>
-<li>Cada acción (cargar datos, crear usuario) re-verifica que tu sesión siga siendo válida. Si te quitaron de la lista de admins mientras estabas logueado, la siguiente acción te saca automáticamente.</li>
+<li>Solo correos que están en la lista <code>ANALYST_EMAILS</code> (los administradores autorizados) pueden usar el módulo. El resto verá la pantalla de login pero su PIN siempre fallará.</li>
+<li>Después de 5 intentos fallidos, el sistema bloquea <strong>a ese correo específico</strong> por 15 minutos (no afecta a los demás administradores).</li>
+<li>Si el login falla por red y no por PIN, el sistema lo detecta y <strong>no</strong> consume intentos del rate-limit.</li>
+<li>Cada acción (cargar datos, crear usuario) re-verifica que tu sesión siga siendo válida. Si te quitaron de la lista de administradores mientras estabas logueado, la siguiente acción te saca automáticamente.</li>
 </ul>
 <h3>¿Afecta a las demás personas mientras yo lo uso?</h3>
 <p><strong>No.</strong> Los aprobadores pueden seguir aprobando desde sus correos, los solicitantes pueden seguir creando solicitudes, los usuarios nuevos pueden seguir generando su PIN por primera vez — todo al mismo tiempo que tú creas un usuario desde el celular, sin conflictos.</p>
@@ -380,6 +384,12 @@
 <li>
 <p><strong>Si todo falla, siempre puedes restaurar el respaldo.</strong> Los respaldos están en tu carpeta privada de Drive (la que configuraste en el sidebar de Reorganizar).</p>
 </li>
+<li>
+<p><strong>No edites las celdas de aprobación (<code>APROBADO POR ÁREA?</code>, <code>APROBADO CDS</code>, <code>APROBADO CEO</code>).</strong> Las llena el portal. Si ves una solicitud <code>APROBADO</code> global con alguna de esas celdas vacía, no es un error: el portal la muestra como <code>APROBADO</code> en pantalla automáticamente cuando el propio ejecutivo se aprobó a sí mismo.</p>
+</li>
+<li>
+<p><strong>No toques <code>EVENTOS_JSON</code> ni los marcadores dentro de <code>OBSERVACIONES</code>.</strong> Son la bitácora que el portal usa para métricas, recordatorios y lógica de negocio. Cualquier edición manual puede romper los badges de cruce de día o impedir que los triggers funcionen.</p>
+</li>
 </ol>
 <hr>
 <h2>Preguntas frecuentes</h2>
@@ -397,8 +407,22 @@ Tienes dos opciones: (a) ctrl+Z inmediatamente para deshacer en el sheet, o (b) 
 En orden: (1) revisa que su correo esté en USUARIOS, (2) revisa que tenga un aprobador asignado (sidebar → Anomalías), (3) pídele que presione “Reenviar PIN” en el login, (4) borra su PIN manualmente desde el sidebar para forzarle uno nuevo.</p>
 <p><strong>¿Cómo sé si el portal está leyendo de USUARIOS o de INTEGRANTES?</strong>
 Menú → “Modo activo”. Te lo dice.</p>
+<p><strong>¿Qué pasa si alguien anula una solicitud que tiene un cambio en curso?</strong>
+El portal lo impide: si la solicitud tiene una “hija” (modificación) activa, no se puede anular al padre hasta resolver primero la hija. Evita que queden huérfanos en la base.</p>
+<p><strong>¿Qué significan los íconos ⭐ y 👥 en el panel del administrador?</strong></p>
+<ul>
+<li>⭐ = solicitud <strong>prioritaria</strong> (al menos un pasajero es ejecutivo del grupo — CEO, CDS o equivalentes). Puede haberse gestionado por fuera.</li>
+<li>👥 = solicitud <strong>proxy</strong> (la creó una persona distinta a quien viaja; el primer pasajero tiene cédula diferente a la del solicitante).</li>
+</ul>
+<p>Se calculan al leer la solicitud y no se guardan como columnas — son derivados.</p>
 <hr>
-<p><em>Última actualización: 2026-04-13</em></p>
+<h2>Referencias cruzadas</h2>
+<ul>
+<li><a href="./guia-administrador.md">Guía del Administrador</a> — operación completa del portal, Script Properties, triggers, métricas, seguridad.</li>
+<li><a href="./guia-reorganizar-base.md">Guía de reorganización de columnas</a> — workflow de 6 pasos para reordenar “Nueva Base Solicitudes” sin romper el portal.</li>
+</ul>
+<hr>
+<p><em>Última actualización: 2026-04-20</em></p>
 
   </div>
 </body>

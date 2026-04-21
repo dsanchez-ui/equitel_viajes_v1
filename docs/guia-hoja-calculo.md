@@ -3,6 +3,8 @@
 > **Para quién es esta guía:** cualquier persona del área de viajes que vaya a manejar el Google Sheets que está detrás del portal.
 >
 > **En qué se enfoca:** solo en la hoja de cálculo. Qué tiene, qué se puede tocar y qué no, y cómo usar el menú **Equitel Viajes** que aparece arriba del sheet.
+>
+> **Guía complementaria:** para la operación del portal completo (roles, workflows del analista, Script Properties, triggers, métricas, seguridad), ver la [Guía del Administrador](./guia-administrador.md).
 
 ---
 
@@ -24,13 +26,15 @@ El archivo tiene varias pestañas abajo. Aquí explico qué hay en cada una:
 
 Una fila por cada solicitud de viaje u hospedaje que se haya creado. Tiene 75 columnas con todo: quién solicita, destino, fechas, pasajeros, costos, número de reserva, observaciones, aprobaciones, archivos adjuntos.
 
-**¿Puedo editar a mano?** Sí, pero con mucho cuidado. Las columnas con fondo amarillo claro son las "editables" (nombre de hotel, tarjeta de crédito, tipo de compra, número de factura, etc). El resto se llena automático desde el portal.
+**¿Puedo editar a mano?** Sí, pero con mucho cuidado. Las columnas con fondo amarillo claro son las "editables" (nombre de hotel, tarjeta de crédito, tipo de compra, número de factura, etc.). El resto se llena automático desde el portal.
 
 **Lo que NO debes hacer aquí:**
-- Borrar filas (eso rompe los IDs y la trazabilidad)
-- Cambiar el status a mano (usa el portal — los correos automáticos no saldrán si lo haces a mano)
-- Cambiar el ID RESPUESTA de una solicitud
-- Eliminar columnas
+- Borrar filas (eso rompe los IDs y la trazabilidad).
+- Cambiar el status a mano (usa el portal — los correos automáticos no saldrán si lo haces a mano).
+- Cambiar el `ID RESPUESTA` de una solicitud.
+- Eliminar columnas.
+- Editar a mano las celdas de `APROBADO POR ÁREA? (AUTOMÁTICO)`, `APROBADO CDS` o `APROBADO CEO`: el portal las llena solo y usa esas celdas para decidir si la solicitud avanza. Si ves una solicitud con `APROBADO` global pero una celda ejecutiva vacía, la app lo corrige en pantalla automáticamente (no toques la hoja).
+- Modificar `EVENTOS_JSON` u `OBSERVACIONES` a mano: son el log de auditoría. Pueden contener marcadores internos (`[CONSULTA_USUARIO_PENDIENTE]`, `[ETAPA SALTADA por …]`, `[RESERVA]: Registrada sin notificación al usuario`) que el backend lee y respeta.
 
 ### USUARIOS
 
@@ -230,10 +234,10 @@ https://script.google.com/macros/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7
 ### ¿Cómo entras?
 
 La primera vez te pide:
-- Tu correo administrador
-- El PIN de 8 dígitos (el mismo que usas en el portal normal con el botón negro "Administrador")
+- Tu correo de administrador.
+- El PIN de 8 dígitos (el mismo que usas en el portal normal con el botón negro "Administrador", o tu PIN personal si tienes fila propia en USUARIOS).
 
-Una vez que entras, el teléfono recuerda tu sesión **por 30 días**. No tienes que volver a meter el PIN cada vez. Si cambias de celular o borras datos del navegador, sí hay que volver a ingresar.
+Una vez que entras, el teléfono recuerda tu sesión **por 7 días**. No tienes que volver a meter el PIN cada vez. Si cambias de celular o borras datos del navegador, sí hay que volver a ingresar.
 
 ### ¿Qué puedes hacer?
 
@@ -263,9 +267,10 @@ Si necesitas cualquiera de esas, abre el Sheets en el computador y usa el sideba
 ### ¿Es seguro?
 
 Sí. Aunque el enlace sea público, **sin el PIN nadie puede hacer nada**. Además:
-- Solo correos que están en la lista `ANALYST_EMAILS` (los admins autorizados) pueden usar el módulo. El resto verá la pantalla de login pero su PIN siempre fallará.
-- Después de 5 intentos fallidos, el sistema bloquea por 15 minutos.
-- Cada acción (cargar datos, crear usuario) re-verifica que tu sesión siga siendo válida. Si te quitaron de la lista de admins mientras estabas logueado, la siguiente acción te saca automáticamente.
+- Solo correos que están en la lista `ANALYST_EMAILS` (los administradores autorizados) pueden usar el módulo. El resto verá la pantalla de login pero su PIN siempre fallará.
+- Después de 5 intentos fallidos, el sistema bloquea **a ese correo específico** por 15 minutos (no afecta a los demás administradores).
+- Si el login falla por red y no por PIN, el sistema lo detecta y **no** consume intentos del rate-limit.
+- Cada acción (cargar datos, crear usuario) re-verifica que tu sesión siga siendo válida. Si te quitaron de la lista de administradores mientras estabas logueado, la siguiente acción te saca automáticamente.
 
 ### ¿Afecta a las demás personas mientras yo lo uso?
 
@@ -333,6 +338,10 @@ Tanto en el sidebar (pestaña Usuarios) como en el módulo móvil, los campos ti
 
 10. **Si todo falla, siempre puedes restaurar el respaldo.** Los respaldos están en tu carpeta privada de Drive (la que configuraste en el sidebar de Reorganizar).
 
+11. **No edites las celdas de aprobación (`APROBADO POR ÁREA?`, `APROBADO CDS`, `APROBADO CEO`).** Las llena el portal. Si ves una solicitud `APROBADO` global con alguna de esas celdas vacía, no es un error: el portal la muestra como `APROBADO` en pantalla automáticamente cuando el propio ejecutivo se aprobó a sí mismo.
+
+12. **No toques `EVENTOS_JSON` ni los marcadores dentro de `OBSERVACIONES`.** Son la bitácora que el portal usa para métricas, recordatorios y lógica de negocio. Cualquier edición manual puede romper los badges de cruce de día o impedir que los triggers funcionen.
+
 ---
 
 ## Preguntas frecuentes
@@ -358,6 +367,22 @@ En orden: (1) revisa que su correo esté en USUARIOS, (2) revisa que tenga un ap
 **¿Cómo sé si el portal está leyendo de USUARIOS o de INTEGRANTES?**
 Menú → "Modo activo". Te lo dice.
 
+**¿Qué pasa si alguien anula una solicitud que tiene un cambio en curso?**
+El portal lo impide: si la solicitud tiene una "hija" (modificación) activa, no se puede anular al padre hasta resolver primero la hija. Evita que queden huérfanos en la base.
+
+**¿Qué significan los íconos ⭐ y 👥 en el panel del administrador?**
+- ⭐ = solicitud **prioritaria** (al menos un pasajero es ejecutivo del grupo — CEO, CDS o equivalentes). Puede haberse gestionado por fuera.
+- 👥 = solicitud **proxy** (la creó una persona distinta a quien viaja; el primer pasajero tiene cédula diferente a la del solicitante).
+
+Se calculan al leer la solicitud y no se guardan como columnas — son derivados.
+
 ---
 
-*Última actualización: 2026-04-13*
+## Referencias cruzadas
+
+- [Guía del Administrador](./guia-administrador.md) — operación completa del portal, Script Properties, triggers, métricas, seguridad.
+- [Guía de reorganización de columnas](./guia-reorganizar-base.md) — workflow de 6 pasos para reordenar "Nueva Base Solicitudes" sin romper el portal.
+
+---
+
+*Última actualización: 2026-04-20*

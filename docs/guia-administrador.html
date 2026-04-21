@@ -84,11 +84,11 @@
 <h2>1. Vista general</h2>
 <h3>¿Qué es el sistema?</h3>
 <p>Una plataforma web donde los empleados piden viajes y hospedajes corporativos, sus jefes aprueban, y el área de viajes gestiona la compra. Todo el estado vive en un Google Sheets, la lógica en un proyecto Apps Script, y el frontend en React desplegado en Cloud Run.</p>
-<h3>Los tres tipos de usuario</h3>
+<h3>Los cuatro roles de usuario</h3>
 <table>
 <thead>
 <tr>
-<th>Tipo</th>
+<th>Rol</th>
 <th>Qué hace</th>
 <th>Dónde ingresa</th>
 </tr>
@@ -97,20 +97,28 @@
 <tr>
 <td><strong>Solicitante</strong></td>
 <td>Crea solicitudes de viaje/hospedaje, selecciona opciones, sube soportes post-viaje.</td>
-<td>Botón rojo <strong>INGRESAR</strong> con su correo corporativo + PIN.</td>
+<td>Botón rojo <strong>INGRESAR</strong> con su correo corporativo + PIN personal.</td>
 </tr>
 <tr>
 <td><strong>Aprobador</strong></td>
 <td>Recibe correo de aprobación, click en APROBAR o DENEGAR. NO necesita iniciar sesión en la app.</td>
-<td>Botones en el correo.</td>
+<td>Botones firmados HMAC en el correo.</td>
 </tr>
 <tr>
-<td><strong>Analista / Admin</strong></td>
-<td>Cotiza opciones, confirma costos, registra reservas, gestiona usuarios, consulta métricas.</td>
-<td>Botón negro <strong>ADMINISTRADOR</strong> → PIN admin de 8 dígitos.</td>
+<td><strong>Analista / Admin (ANALYST)</strong></td>
+<td>Cotiza opciones, confirma costos, registra reservas, gestiona usuarios, consulta métricas. Puede saltar la etapa de selección cuando el viaje se gestionó fuera del sistema. Puede omitir el correo automático al registrar una reserva.</td>
+<td>Botón negro <strong>ADMINISTRADOR</strong> con PIN admin compartido, o botón rojo <strong>INGRESAR</strong> con su PIN personal si tiene fila en USUARIOS.</td>
+</tr>
+<tr>
+<td><strong>Superadmin (SUPERADMIN)</strong></td>
+<td>Todo lo del analista <strong>más</strong>: saltar la etapa de aprobación, recibir escalamientos cuando los aprobadores no responden, alternar entre vista admin y vista usuario con el botón <strong>VER USUARIO / VER ADMIN</strong>, y modificar cualquier solicitud (no solo las propias).</td>
+<td>Igual que analista. El rol se asigna en <code>SUPER_ADMIN_EMAILS</code> (Script Property).</td>
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p><strong>Jerarquía:</strong> SUPERADMIN hereda todo lo de ANALYST; ANALYST hereda todo lo de SOLICITANTE. Quien está en <code>SUPER_ADMIN_EMAILS</code> NO necesita estar también en <code>ANALYST_EMAILS</code> — la herencia es automática.</p>
+</blockquote>
 <hr>
 <h2>2. Arquitectura a alto nivel</h2>
 <pre><code> ┌───────────────┐          ┌──────────────────┐         ┌─────────────────┐
@@ -183,6 +191,9 @@
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p><strong>Detalle operativo del spreadsheet</strong> (qué tocar a mano, qué no, cómo usar los sidebars paso a paso): ver la <a href="./guia-hoja-calculo.md">Guía del Google Sheets</a>. Esta guía del administrador cubre el portal completo; aquélla se enfoca en la hoja de cálculo como base de datos y su operación diaria.</p>
+</blockquote>
 <h3>Columnas importantes en “Nueva Base Solicitudes”</h3>
 <p>No es necesario memorizar las 75, pero estas son las más relevantes día a día:</p>
 <table>
@@ -227,15 +238,15 @@
 </tr>
 <tr>
 <td><code>APROBADO POR ÁREA? (AUTOMÁTICO)</code>, <code>APROBADO CDS</code>, <code>APROBADO CEO</code></td>
-<td>Log de quién aprobó y cuándo.</td>
+<td>Log de quién aprobó y cuándo. Si una etapa se saltó, queda marcada como <code>Sí (ETAPA SALTADA por correo@…)</code>.</td>
 </tr>
 <tr>
 <td><code>EVENTOS_JSON</code></td>
-<td>Timestamps de cada evento del ciclo (para métricas).</td>
+<td>Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por los badges de cruce de día.</td>
 </tr>
 <tr>
 <td><code>OBSERVACIONES</code></td>
-<td>Texto libre. Puede tener marcadores internos como <code>[CONSULTA_USUARIO_PENDIENTE]</code>.</td>
+<td>Texto libre. Puede tener marcadores internos como <code>[CONSULTA_USUARIO_PENDIENTE]</code>, <code>[ETAPA SALTADA por …]</code> o <code>[RESERVA]: Registrada sin notificación al usuario</code>.</td>
 </tr>
 </tbody>
 </table>
@@ -269,6 +280,38 @@
 <ul>
 <li><code>PENDIENTE_ANALISIS_CAMBIO</code> — una solicitud “hija” que reemplaza a otra. El admin decide pasarla a estudio (entra al flujo normal) o denegarla (y decidir qué hacer con la original).</li>
 </ul>
+<p><strong>Aprobadores requeridos según el tipo de solicitud:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Tipo de solicitud</th>
+<th>Aprobador de área</th>
+<th>Director de Cadena de Suministro (CDS)</th>
+<th>Gerencia General (CEO)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nacional ≤ $1.200.000</td>
+<td>✅ obligatorio</td>
+<td>❌ no aplica</td>
+<td>❌ no aplica</td>
+</tr>
+<tr>
+<td>Nacional &gt; $1.200.000</td>
+<td>✅ obligatorio</td>
+<td>✅ obligatorio</td>
+<td>❌ no aplica (se excluye desde el flujo)</td>
+</tr>
+<tr>
+<td>Internacional (cualquier monto)</td>
+<td>✅ obligatorio</td>
+<td>✅ al menos uno de los dos</td>
+<td>✅ al menos uno de los dos</td>
+</tr>
+</tbody>
+</table>
+<p>Cuando el solicitante <strong>es</strong> un ejecutivo (CEO o CDS), su sola aprobación basta y los banners de “aprobación extraordinaria” / “internacional” se ocultan para no saturarlo. La app también incluye una <strong>defensa en el mapper</strong>: si el status global es <code>APROBADO</code> pero la celda ejecutiva quedó vacía porque el propio ejecutivo se aprobó a sí mismo, la app muestra <code>APROBADO</code> en esa fila automáticamente.</p>
 <hr>
 <h2>5. Workflows del analista (día a día)</h2>
 <h3>5.1 Cotizar opciones (PENDIENTE_OPCIONES → PENDIENTE_SELECCION)</h3>
@@ -350,6 +393,82 @@
 <li>Detalle → <strong>“Anular”</strong></li>
 <li>Requiere motivo → queda en el campo <code>OBSERVACIONES</code> + correo al usuario</li>
 </ol>
+<h3>5.8 Saltar la etapa de SELECCIÓN (cualquier analista)</h3>
+<p>Cuando los tiquetes ya se compraron por fuera del sistema y no tiene sentido pedirle al usuario que “seleccione una opción”:</p>
+<ol>
+<li>Carga las opciones desde el modal <strong>“Subir imágenes de opciones”</strong> — desmarca el checkbox <strong>“Enviar correo al usuario”</strong> si no quieres notificarlo. Las opciones quedan guardadas solo para trazabilidad.</li>
+<li>La solicitud avanza directamente a <code>PENDIENTE_CONFIRMACION_COSTO</code>, lista para que confirmes los costos.</li>
+<li>Alternativamente, si ya está en <code>PENDIENTE_SELECCION</code>: abre el detalle → botón indigo <strong>“SALTAR SELECCIÓN”</strong> → escribe justificación (≥10 caracteres) → confirma.</li>
+</ol>
+<p>Queda registrado en OBSERVACIONES con tu correo, timestamp y justificación. No se envía correo al solicitante.</p>
+<h3>5.9 Saltar la etapa de APROBACIÓN (solo SUPERADMIN)</h3>
+<p>Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin mandar correos a los aprobadores:</p>
+<ol>
+<li>Fila con status <code>PENDIENTE_APROBACION</code> → abre el detalle.</li>
+<li>Aparece un banner ámbar <strong>“⏩ Saltar etapa de aprobación (SUPERADMIN)”</strong> con un botón <strong>“SALTAR APROBACIÓN”</strong>.</li>
+<li>Click → justificación (≥10 caracteres) → confirma.</li>
+<li>La solicitud pasa directamente a <code>APROBADO</code>. Las columnas <code>APROBADO POR ÁREA?</code>, <code>APROBADO CDS</code> y <code>APROBADO CEO</code> se marcan con <code>Sí (ETAPA SALTADA por tu.correo)</code>. El usuario sí recibe el correo “Solicitud Aprobada”; los aprobadores no reciben nada.</li>
+</ol>
+<p><strong>Alternativa equivalente durante confirmación de costos:</strong> en el modal <strong>“Confirmar costos”</strong> aparece un checkbox “Saltar etapa de aprobación” con el mismo efecto, útil cuando sabes desde antes que no quieres pasar por aprobadores.</p>
+<h3>5.10 Omitir correo al registrar reserva</h3>
+<p>En el modal <strong>“Registrar reserva”</strong> hay un checkbox <strong>“Enviar correo al usuario”</strong> marcado por default. Si el PNR ya se entregó al usuario por otro medio, desmárcalo. Aparece una confirmación doble para evitar errores. Queda nota en OBSERVACIONES.</p>
+<h3>5.11 Alternar vista admin ↔ usuario</h3>
+<p>Si eres analista o superadmin Y tienes solicitudes propias pendientes (p.ej. tú creaste una), puedes alternar entre el panel de analista y el panel de solicitante usando el botón <strong>VER USUARIO / VER ADMIN</strong> en el header. El sistema revalida tus permisos en cada switch.</p>
+<h3>5.12 Íconos de prioridad y proxy en el panel</h3>
+<p>El dashboard del analista marca con íconos las solicitudes que merecen atención especial:</p>
+<ul>
+<li><strong>⭐</strong> — solicitud <strong>prioritaria</strong>: al menos un pasajero es un ejecutivo del grupo (CEO, CDS o equivalentes). Significa que parte del viaje puede haber sido gestionado por fuera del sistema; revisa antes de pedir selección.</li>
+<li><strong>👥</strong> — solicitud <strong>proxy</strong>: el solicitante registró la solicitud a nombre de otra persona (el primer pasajero no coincide con su cédula). Útil para saber que el solicitante no es quien viaja.</li>
+</ul>
+<p>Ambos íconos se calculan al leer la solicitud, comparando la cédula del primer pasajero contra el directorio de USUARIOS.</p>
+<h3>5.13 Fecha de creación visible en tabla y detalle</h3>
+<p>Las tablas de admin y usuario muestran ahora la <strong>fecha de creación</strong> de cada solicitud junto al ID, en formato local (<code>DD/MM/AAAA HH:mm</code>). El detalle también la muestra. El parser es tolerante con el formato almacenado (ISO o <code>DD/MM/YYYY</code>) para no romperse con solicitudes antiguas.</p>
+<h3>5.14 Conectividad y banner de fallas</h3>
+<p>Al arrancar, el frontend envía un <strong>ping de warmup</strong> al backend. Si la red local o Apps Script están caídos, aparece un banner rojo arriba informando que hay problemas de conectividad. El banner desaparece solo cuando la conexión vuelve. Esto evita que los usuarios confundan un error de red con un problema de permisos o credenciales.</p>
+<p>Relacionado: si el login del admin falla por un error de red (no por PIN incorrecto), el mensaje ahora lo dice explícitamente y <strong>no</strong> consume un intento del rate-limit.</p>
+<hr>
+<h2>5.bis. Capacidades exclusivas de SUPERADMIN</h2>
+<p>Los <strong>superadmins</strong> (configurados en <code>SUPER_ADMIN_EMAILS</code> — actualmente David y Yurani) tienen capacidades adicionales que un analista normal (Wendy) no tiene:</p>
+<table>
+<thead>
+<tr>
+<th>Capacidad</th>
+<th>Disponible desde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Saltar etapa de aprobación</strong></td>
+<td>Detalle de solicitud en <code>PENDIENTE_APROBACION</code>, o checkbox en confirmar costos.</td>
+</tr>
+<tr>
+<td><strong>Botón VER USUARIO / VER ADMIN</strong></td>
+<td>Header del panel de analista — alternar vistas.</td>
+</tr>
+<tr>
+<td><strong>Recibir escalamientos</strong></td>
+<td>Correos automáticos cuando una solicitud lleva 30h laborales sin aprobación (≈3 días hábiles).</td>
+</tr>
+<tr>
+<td><strong>Ejecutar helpers de Script Properties</strong></td>
+<td><code>setScriptProperty</code>, <code>deleteScriptProperty</code>, <code>listScriptProperties</code> desde el editor GAS.</td>
+</tr>
+<tr>
+<td><strong>Ejecutar skip de aprobación vía backend</strong></td>
+<td><code>skipApprovalStage(requestId, justification)</code> — solo vía frontend; el endpoint está protegido y valida superadmin en cada request.</td>
+</tr>
+<tr>
+<td><strong>Modificar cualquier solicitud</strong></td>
+<td>El endpoint <code>requestModification</code> valida que el solicitante sea el dueño de la solicitud, pero el bypass permite que cualquier analista o superadmin gestione modificaciones a nombre del usuario (caso típico: el área de viajes ajusta la solicitud por pedido verbal). Cualquier otro usuario autenticado solo puede modificar las suyas.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Configurar o quitar un superadmin:</strong></p>
+<pre><code class="language-javascript">// Desde el editor GAS → función temporal → ejecutar UNA vez:
+setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&quot;yprieto@equitel.com.co&quot;]');
+</code></pre>
+<p>El cambio aplica <strong>inmediatamente</strong> (no requiere redeploy). Si quitas a alguien, su capacidad superadmin desaparece al siguiente request sin invalidar su sesión.</p>
+<p><strong>Escalamiento automático a superadmins:</strong> tras 30 horas laborales efectivas (L-V 7-17, Sáb 8-12) desde que una solicitud entra a <code>PENDIENTE_APROBACION</code> sin que los aprobadores respondan, el sistema envía UN correo único a todos los superadmins pidiéndoles intervenir. El correo sugiere 3 acciones: contactar al aprobador, saltar la aprobación (si el viaje ya fue autorizado por fuera) o anular. Después de ese correo, los recordatorios automáticos a los aprobadores se detienen para no saturar.</p>
 <hr>
 <h2>6. Sidebars (paneles laterales)</h2>
 <p>Hay dos sidebars, ambos en el menú <strong>Equitel Viajes</strong> dentro del Google Sheet:</p>
@@ -388,7 +507,7 @@
 </table>
 <h3>6.2 Reorganizar Base Principal (sidebar de REORG)</h3>
 <p><strong>Cuándo usarlo:</strong> una vez cada pocos meses (o nunca). Cambiar el orden de columnas de la hoja principal, agregar columnas extras personales, o limpiar el layout.</p>
-<p>Ver guía completa en <a href="./guia-reorganizar-base.md">guia-reorganizar-base.md</a>.</p>
+<p>Ver guía completa en <a href="./guia-reorganizar-base.md">guia-reorganizar-base.md</a>. La operación diaria del spreadsheet (qué columnas son editables, cómo moverse entre las hojas, reglas de oro) está en la <a href="./guia-hoja-calculo.md">Guía del Google Sheets</a>.</p>
 <h3>6.3 Validaciones en los formularios</h3>
 <p>Tanto el sidebar como el módulo móvil (§7) aplican validaciones “en vivo” mientras el admin escribe:</p>
 <table>
@@ -432,7 +551,7 @@
 <p>Recomendación: agregarlo a la pantalla de inicio del celular (iOS Safari → compartir → “Añadir a pantalla de inicio”; Chrome Android → menú → “Añadir a pantalla de inicio”) para acceso de un toque, como si fuera una app nativa.</p>
 <h3>Qué hace</h3>
 <ul>
-<li><strong>Login</strong>: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 30 días en ese navegador.</li>
+<li><strong>Login</strong>: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 7 días en ese navegador.</li>
 <li><strong>Crear usuario</strong>: formulario idéntico al del sidebar (cédula, nombre, correo, empresa, sede, CC, aprobadores) con las mismas validaciones y el mismo picker de aprobador.</li>
 <li>Al crear, el usuario aparece inmediatamente en la hoja USUARIOS y puede iniciar sesión en el portal.</li>
 </ul>
@@ -453,7 +572,7 @@
 <li>La URL es pública pero la página es inútil sin PIN.</li>
 <li>Cada operación del backend (<code>mobileAdmin_getBootstrap</code>, <code>mobileAdmin_createUser</code>) valida el token de sesión y confirma que el correo esté en <code>ANALYST_EMAILS</code> antes de ejecutarse. Sin auth válida, cualquier intento de API retorna error.</li>
 <li>Si el admin es removido de <code>ANALYST_EMAILS</code> mientras tiene sesión activa, la siguiente llamada falla automáticamente y lo manda al login.</li>
-<li>Sesión expira a los 30 días o si el admin cierra sesión manualmente.</li>
+<li>Sesión expira a los 7 días o si el admin cierra sesión manualmente.</li>
 </ul>
 <h3>Impacto en la operación mientras se usa</h3>
 <p><strong>Ninguno para aprobadores ni solicitantes.</strong> El módulo móvil escribe solo en la hoja USUARIOS, mientras que las solicitudes y aprobaciones viven en la hoja Nueva Base Solicitudes. Apps Script soporta ejecuciones concurrentes (hasta 30 por script). Un admin creando un usuario no bloquea:</p>
@@ -524,9 +643,9 @@
 </tr>
 </tbody>
 </table>
-<p><strong>Trigger opcional (recomendado):</strong></p>
+<p><strong>Trigger de mantenimiento (ya configurado):</strong></p>
 <ul>
-<li><code>cleanupExpiredSessions</code> (mensual) — borra sesiones <code>SESSION_*</code> expiradas de Script Properties. Previene acumulación.</li>
+<li><code>cleanupExpiredSessions</code> (diario, 1–2 AM) — limpia sesiones <code>SESSION_*</code> expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en <code>cleanupExpiredPropsWeekly</code>, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.</li>
 </ul>
 <hr>
 <h2>10. Script Properties (configuración)</h2>
@@ -546,9 +665,24 @@
 <td>Ejecutar <code>actualizarAnalystEmails()</code> después de editar el array en código.</td>
 </tr>
 <tr>
+<td><code>SUPER_ADMIN_EMAILS</code></td>
+<td>JSON array de correos superadmin. Actualmente David + Yurani.</td>
+<td><code>setScriptProperty('SUPER_ADMIN_EMAILS', '[...]')</code> desde el editor.</td>
+</tr>
+<tr>
 <td><code>ADMIN_PIN_HASH</code></td>
-<td>SHA-256 del PIN admin.</td>
+<td>SHA-256 del PIN admin compartido. Solo se usa si un admin NO tiene fila propia en USUARIOS (ej. <code>apcompras@</code>).</td>
 <td><code>updateAdminPin(nuevoPin)</code> desde el editor. Primera vez: <code>configurarPinInicial()</code> tras poner <code>INITIAL_ADMIN_PIN</code>.</td>
+</tr>
+<tr>
+<td><code>APPROVAL_LINK_SECRET</code></td>
+<td>Secreto HMAC para firmar los links de aprobación de correos. Se genera automáticamente la primera vez.</td>
+<td>NO tocar manualmente. Si lo borras, todos los links firmados dejan de funcionar.</td>
+</tr>
+<tr>
+<td><code>APPROVAL_LINK_HMAC_CUTOVER_AT</code></td>
+<td>ISO timestamp opcional. Tras esa fecha, los links <strong>sin firma</strong> de solicitudes que entraron a su etapa DESPUÉS del cutover se rechazan (defensa contra links manipulados). Links de solicitudes pendientes al momento del deploy siguen funcionando.</td>
+<td><code>setScriptProperty('APPROVAL_LINK_HMAC_CUTOVER_AT', '2026-04-19T00:01:00-05:00')</code>. Recomendado: setear 10-14 días después del deploy.</td>
 </tr>
 <tr>
 <td><code>USE_USUARIOS_SHEET</code></td>
@@ -588,6 +722,56 @@
 </tbody>
 </table>
 <p><strong>Diagnóstico de propiedades:</strong> ejecuta <code>verPropiedadesDelScript()</code> desde el editor para ver el estado de todas.</p>
+<h3>Detalles de autenticación (PIN admin + PIN personal)</h3>
+<ul>
+<li>Si un admin <strong>tiene fila propia en USUARIOS</strong> (caso David, Yurani, Wendy), puede ingresar con el botón negro <strong>ADMINISTRADOR</strong> usando o bien el PIN admin compartido, o bien <strong>su PIN personal</strong> (el mismo que usa para ingresar como usuario). Esto evita el “cruce” cuando Chrome autocompleta el PIN personal en el formulario de admin.</li>
+<li>Si un admin <strong>NO tiene fila en USUARIOS</strong> (caso <code>apcompras@</code>), solo puede ingresar con el PIN admin compartido.</li>
+<li>El rate-limit por intentos fallidos es <strong>por email</strong>: fallar 5 veces con un correo bloquea solo ese correo por 15 min, no al resto de admins.</li>
+</ul>
+<h3>Rate-limits y protecciones anti-abuso</h3>
+<table>
+<thead>
+<tr>
+<th>Límite</th>
+<th>Ventana</th>
+<th>Acción</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PIN admin fallido</td>
+<td>5 intentos / 15 min</td>
+<td>Bloqueo del correo específico (no afecta a otros admins).</td>
+</tr>
+<tr>
+<td>PIN usuario fallido</td>
+<td>5 intentos / 15 min</td>
+<td>Bloqueo del correo específico.</td>
+</tr>
+<tr>
+<td>Regenerar PIN usuario (“olvidé mi PIN”)</td>
+<td>3 regeneraciones / hora</td>
+<td>Nueva solicitud rechazada.</td>
+</tr>
+<tr>
+<td>Crear solicitudes</td>
+<td>10 solicitudes / día por solicitante</td>
+<td>Excedido → error claro al usuario. Solo cuenta tras una creación exitosa.</td>
+</tr>
+<tr>
+<td>Payload <code>doPost</code></td>
+<td>30 MB</td>
+<td>Rechazado con error “Payload demasiado grande” antes de parsear. Previene abuso / DoS por payloads gigantes.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Protecciones adicionales:</strong></p>
+<ul>
+<li><strong>Firma HMAC en links de aprobación</strong>: cada botón de aprobar/denegar en los correos lleva un <code>t</code> (timestamp) y <code>sig</code> (HMAC-SHA256 con <code>APPROVAL_LINK_SECRET</code>). Links manipulados son rechazados. Con <strong>cutover per-request</strong> (<code>APPROVAL_LINK_HMAC_CUTOVER_AT</code>): los correos ya enviados antes del cutover siguen funcionando; los posteriores obligatoriamente deben venir firmados.</li>
+<li><strong>Validación de shape del token en localStorage</strong>: si alguien manipula manualmente el token guardado (email, role, expiresAt), el frontend lo detecta por regex y fuerza relogin sin consumir rate-limit.</li>
+<li><strong>Ownership en modificaciones</strong>: un usuario normal no puede crear una solicitud-hija apuntando al ID de otro usuario. Solo analistas y superadmins pueden hacerlo (para gestionar a nombre de alguien).</li>
+<li><strong>Anular con hija activa</strong>: si la solicitud tiene una hija en <code>PENDIENTE_ANALISIS_CAMBIO</code> o en curso, no se puede anular al padre hasta resolver la hija. Evita huérfanos en la base.</li>
+</ul>
 <hr>
 <h2>11. Funciones admin útiles (ejecutar desde el editor Apps Script)</h2>
 <table>
@@ -642,6 +826,22 @@
 <td><code>createReportTemplate()</code></td>
 <td>Regenerar el template del PDF de reporte (raro).</td>
 </tr>
+<tr>
+<td><code>setScriptProperty(key, value)</code></td>
+<td>Editar cualquier Script Property desde el editor (workaround a la GUI bloqueada &gt;50 properties).</td>
+</tr>
+<tr>
+<td><code>deleteScriptProperty(key)</code></td>
+<td>Borrar una Script Property.</td>
+</tr>
+<tr>
+<td><code>listScriptProperties()</code></td>
+<td>Listar todas con valores enmascarados.</td>
+</tr>
+<tr>
+<td><code>diagnosticarAprobacion(requestId)</code></td>
+<td>Loguea el estado real de las columnas de aprobación de una solicitud. Útil cuando hay inconsistencia entre status global y fila.</td>
+</tr>
 </tbody>
 </table>
 <hr>
@@ -660,10 +860,12 @@
 <li>Si es internacional o &gt;$1.2M, también se envía a CEO y CDS — ver <code>CEO_EMAIL</code> / <code>DIRECTOR_EMAIL</code> en Script Properties.</li>
 </ol>
 <h3>La sesión expira muy seguido</h3>
-<p>Las sesiones duran 30 días. Si expiran antes:</p>
+<p>Las sesiones duran <strong>7 días</strong>. Si expiran antes:</p>
 <ul>
-<li>Script Properties puede estar lleno (limit 500KB total). Ejecuta <code>cleanupExpiredSessions()</code>.</li>
-<li>El usuario cambió de navegador / dispositivo — normal.</li>
+<li>Script Properties puede estar lleno (límite 500 KB total). El trigger diario <code>cleanupExpiredSessions</code> limpia lo vencido; si sospechas acumulación, ejecútalo manualmente desde el editor.</li>
+<li>El usuario cambió de navegador o dispositivo — normal.</li>
+<li>El navegador borró localStorage (modo incógnito, limpieza automática).</li>
+<li>El token guardado fue manipulado o corrupto → el frontend lo detecta y fuerza relogin sin consumir rate-limit.</li>
 </ul>
 <h3>Métricas muestran “sin datos” para solicitudes viejas</h3>
 <p>Antes del deploy de métricas (Plan 4), las solicitudes no tenían <code>EVENTOS_JSON</code>. Quedan como “sin datos” para siempre. Filtra “Excluir sin datos” (default) para ocultarlas.</p>
@@ -674,7 +876,17 @@
 <h3>El sidebar de Reorganizar no abre (“Acción no autorizada”)</h3>
 <p>Tu correo no está en <code>ANALYST_EMAILS</code>. Actualiza el array en <code>actualizarAnalystEmails()</code> y ejecuta.</p>
 <h3>Un trigger falló / no corrió</h3>
-<p>Revisa <code>Triggers</code> en el editor GAS. Si un trigger se eliminó manualmente, debes recrearlo (click en +, seleccionar la función, fuente=Time-driven, intervalo 2h).</p>
+<p>Revisa <code>Triggers</code> en el editor GAS. Si un trigger se eliminó manualmente, debes recrearlo (click en +, seleccionar la función, fuente=Time-driven, intervalo 2 h).</p>
+<h3>El usuario ve un banner rojo de “problemas de conectividad”</h3>
+<p>Significa que el ping de warmup al backend falló. Causas típicas:</p>
+<ul>
+<li>El backend GAS está desplegado pero la cuota diaria (6 h/día en Workspace) se agotó.</li>
+<li>El dominio del frontend cambió y el CORS del backend no lo reconoce.</li>
+<li>La URL <code>WEB_APP_URL</code> apunta a un deploy viejo o eliminado.</li>
+</ul>
+<p>Revisa <code>Ejecuciones</code> en el editor GAS — si ves “Se superó la cuota”, espera hasta el reset diario (medianoche hora Pacífico).</p>
+<h3>El admin cree que su PIN es incorrecto pero en realidad es problema de red</h3>
+<p>Desde los últimos cambios, el login distingue claramente: si falla por red, el mensaje dice “error de conexión” y <strong>no</strong> consume un intento del rate-limit. Si dice “PIN incorrecto” u otro mensaje de permiso, sí es un fallo real. Esto evita bloqueos accidentales por fallos temporales de red.</p>
 <hr>
 <h2>13. Backup y recuperación</h2>
 <p><strong>Antes de cualquier cambio estructural</strong> (reorganizar, migrar USUARIOS, etc.):</p>
@@ -699,7 +911,15 @@
 </li>
 </ul>
 <hr>
-<p><em>Última actualización: 2026-04-13</em></p>
+<hr>
+<h2>15. Referencias cruzadas</h2>
+<ul>
+<li><a href="./guia-hoja-calculo.md">Guía del Google Sheets</a> — operación del spreadsheet: qué es editable a mano, cómo usar los sidebars paso a paso, reglas de oro para no romper la base.</li>
+<li><a href="./guia-reorganizar-base.md">Guía de reorganización de columnas</a> — workflow de 6 pasos para reordenar columnas de “Nueva Base Solicitudes” sin romper el portal.</li>
+<li><a href="./README.md">README del repo</a> — arquitectura general y stack.</li>
+</ul>
+<hr>
+<p><em>Última actualización: 2026-04-20</em></p>
 
   </div>
 </body>
