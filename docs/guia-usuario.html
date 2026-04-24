@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guía del Usuario — Portal de Viajes Equitel</title>
+  <style>
+  :root {
+    --brand: #D71920;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --bg-light: #f9fafb;
+    --bg-code: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: white;
+    line-height: 1.6;
+    font-size: 13px;
+  }
+  .wrapper { max-width: 820px; margin: 0 auto; padding: 40px 50px; }
+  h1 {
+    color: var(--brand); font-size: 28px; margin: 0 0 8px;
+    letter-spacing: -0.5px; border-bottom: 3px solid var(--brand); padding-bottom: 12px;
+  }
+  h2 {
+    color: #111827; font-size: 20px; margin: 32px 0 12px;
+    border-top: 1px solid var(--border); padding-top: 18px;
+  }
+  h3 { color: #374151; font-size: 15px; margin: 20px 0 8px; font-weight: 600; }
+  p { margin: 10px 0; }
+  ul, ol { margin: 10px 0; padding-left: 26px; }
+  li { margin: 4px 0; }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--bg-code); padding: 1px 5px; border-radius: 3px;
+    font-size: 12px; font-family: Consolas, "Courier New", monospace;
+  }
+  pre {
+    background: #1f2937; color: #e5e7eb; padding: 14px 18px;
+    border-radius: 6px; overflow-x: auto; font-size: 11px; line-height: 1.5;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; font-size: 11px; }
+  blockquote {
+    border-left: 4px solid var(--brand); background: #fef2f2;
+    padding: 10px 16px; margin: 14px 0; color: #7f1d1d; border-radius: 0 4px 4px 0;
+  }
+  blockquote p { margin: 4px 0; }
+  table { border-collapse: collapse; margin: 14px 0; width: 100%; font-size: 12px; }
+  th, td {
+    border: 1px solid var(--border); padding: 7px 10px;
+    text-align: left; vertical-align: top;
+  }
+  th { background: var(--bg-light); font-weight: 600; color: #111827; }
+  tr:nth-child(even) td { background: #fafafa; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+  strong { color: #111827; }
+  @page { size: Letter; margin: 18mm; }
+  @media print {
+    body { font-size: 11.5px; }
+    .wrapper { max-width: 100%; padding: 0; margin: 0; }
+    h1 { font-size: 22px; page-break-before: avoid; }
+    h2 { page-break-after: avoid; font-size: 16px; }
+    h3 { page-break-after: avoid; font-size: 13px; }
+    table, pre, blockquote { page-break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>Guía del Usuario — Portal de Viajes Equitel</h1>
+<blockquote>
+<p><strong>Para quién es esta guía:</strong> cualquier empleado que necesite solicitar un viaje o un hospedaje corporativo. No necesitas conocimientos técnicos. Si sabes abrir un correo y llenar un formulario web, puedes usar el portal.</p>
+<p><strong>¿Qué cubre?</strong> Todo el ciclo de una solicitud, paso a paso, con ejemplos concretos y los errores típicos que la gente encuentra. Mantén este documento a la mano la primera vez que hagas una solicitud; después seguramente no lo vas a necesitar.</p>
+</blockquote>
+<hr>
+<h2>Índice rápido</h2>
+<ol>
+<li><a href="#1-c%C3%B3mo-ingresar-al-portal">Cómo ingresar al portal</a></li>
+<li><a href="#2-crear-una-solicitud-nueva">Crear una solicitud nueva</a></li>
+<li><a href="#3-qu%C3%A9-pasa-despu%C3%A9s-de-crear-la-solicitud">Qué pasa después de crear la solicitud</a></li>
+<li><a href="#4-describir-tu-selecci%C3%B3n-de-opciones-la-etapa-m%C3%A1s-importante">Describir tu selección de opciones</a></li>
+<li><a href="#5-recibir-los-tiquetes-o-la-confirmaci%C3%B3n-del-hotel">Recibir los tiquetes o la confirmación del hotel</a></li>
+<li><a href="#6-modificar-una-solicitud-en-curso">Modificar una solicitud</a></li>
+<li><a href="#7-anular-tu-solicitud">Anular tu solicitud</a></li>
+<li><a href="#8-responder-a-una-consulta-del-%C3%A1rea-de-viajes">Responder a una consulta del área</a></li>
+<li><a href="#9-casos-particulares">Casos particulares</a></li>
+<li><a href="#10-preguntas-frecuentes">Preguntas frecuentes</a></li>
+</ol>
+<hr>
+<h2>1. Cómo ingresar al portal</h2>
+<h3>Primera vez que entras</h3>
+<ol>
+<li>Abre el enlace del portal que te envió el área de viajes (pregunta si no lo tienes).</li>
+<li>Vas a ver una pantalla con dos botones: un botón <strong>rojo</strong> que dice <code>INGRESAR</code> y un botón <strong>negro</strong> que dice <code>ADMINISTRADOR</code>. Haz click en el <strong>rojo</strong>.</li>
+<li>Escribe tu <strong>correo corporativo</strong> (el que termina en <code>@equitel.com.co</code>) y presiona continuar.</li>
+<li>El sistema te enviará un <strong>PIN de 8 dígitos</strong> a ese mismo correo. Revisa tu bandeja de entrada — el remitente es el Sistema de Tiquetes Equitel. Si no llega en 1–2 minutos, revisa la carpeta de <strong>spam / correo no deseado</strong>.</li>
+<li>Copia el PIN, pégalo en el portal y entra. <strong>Guarda ese PIN</strong> — lo vas a necesitar cada vez que ingreses desde un navegador o dispositivo nuevo.</li>
+</ol>
+<h3>Ingresos siguientes</h3>
+<ul>
+<li>Si entras desde el <strong>mismo navegador y dispositivo</strong>, y no han pasado más de 7 días desde tu último ingreso, el portal te reconoce y entras directo.</li>
+<li>Si entras desde <strong>otro navegador, celular o computador</strong>, o si ya pasaron 7 días, te pedirá tu PIN. Úsalo — es el <strong>mismo PIN</strong> que recibiste la primera vez.</li>
+</ul>
+<h3>¿Olvidé mi PIN?</h3>
+<p>En la pantalla donde te pide el PIN, hay un enlace que dice <strong>“Reenviar PIN”</strong>. Haz click. El portal genera un PIN <strong>nuevo</strong> (el anterior queda inválido) y te lo envía por correo. Este flujo está limitado a 3 veces por hora para evitar abusos.</p>
+<h3>Mi correo no está registrado</h3>
+<p>Si al escribir tu correo el portal dice que no estás registrado, significa que el área de viajes aún no te tiene en su directorio. Escribe a <strong><a href="mailto:apcompras@equitel.com.co">apcompras@equitel.com.co</a></strong> pidiendo que te agreguen — suele tomar 5 minutos.</p>
+<hr>
+<h2>2. Crear una solicitud nueva</h2>
+<p>Una vez dentro del portal, verás tu <strong>dashboard personal</strong> con la lista de tus solicitudes anteriores (si las tienes). Para empezar una nueva, haz click en el botón <strong><code>+ Nueva Solicitud</code></strong> (arriba a la derecha, en rojo).</p>
+<p>Se abre el formulario. Te explico cada sección.</p>
+<h3>2.1 Tipo de solicitud</h3>
+<p>Arriba del formulario hay tres pestañas/opciones:</p>
+<ul>
+<li><strong>Ida y Vuelta</strong> — el caso más común. Viaje con fecha de ida y fecha de regreso.</li>
+<li><strong>Solo Ida</strong> — viaje sin regreso (traslados definitivos, reubicaciones, etc.).</li>
+<li><strong>Solo Hospedaje</strong> — necesitas hotel pero NO tiquetes de avión (por ejemplo, un evento en tu misma ciudad que requiere pernocta, o un viaje en carro donde solo necesitas dormir en el destino).</li>
+</ul>
+<p>Escoge la que aplique. La interfaz se adapta automáticamente: si escoges “Solo Hospedaje”, los campos de vuelo desaparecen.</p>
+<h3>2.2 Pasajeros</h3>
+<p><strong>El primer pasajero es el más importante.</strong> De su ficha se toma:</p>
+<ul>
+<li>Quién va a <strong>aprobar</strong> la solicitud (su jefe, su aprobador asignado).</li>
+<li>Los datos que aparecen en la documentación del viaje.</li>
+</ul>
+<p>Por eso, <strong>el primer pasajero debe estar registrado en la base de usuarios del portal</strong>.</p>
+<p>Pasos:</p>
+<ol>
+<li>En la fila del pasajero #1, escribe la <strong>cédula</strong> (solo números, sin puntos ni espacios).</li>
+<li>Si la cédula está registrada, el campo <strong>Nombre</strong> se llena automáticamente. Excelente, sigue adelante.</li>
+<li>Si aparece un banner rojo que dice <strong>“⚠️ Cédula no encontrada en el directorio”</strong>, significa que esa persona no está registrada. Dos opciones:
+<ul>
+<li>Si <strong>tú</strong> eres quien viaja, pero tu cédula no aparece: escribe a <a href="mailto:apcompras@equitel.com.co">apcompras@equitel.com.co</a> para que te registren. No puedes continuar sin esto.</li>
+<li>Si es <strong>otra persona</strong> (por ejemplo, viaja tu gerente y tú solo estás registrando la solicitud a su nombre): escribe al área de viajes pidiendo que la registren.</li>
+</ul>
+</li>
+<li>Si aparece un banner ámbar que dice <strong>“⚠️ No se pudo cargar el directorio”</strong>: no es tu cédula, es un problema temporal de carga. <strong>Presiona <code>Ctrl+Shift+R</code></strong> (o cierra la pestaña y vuelve a abrir) y vuelve a intentar.</li>
+</ol>
+<h4>Agregar más pasajeros</h4>
+<p>Si viajan varias personas en el mismo itinerario, haz click en <strong><code>+ Agregar Pasajero</code></strong>. Puedes agregar hasta <strong>5 pasajeros</strong> en una sola solicitud.</p>
+<p><strong>Pasajeros 2 al 5:</strong> no tienen que estar registrados obligatoriamente. Si la cédula que escribes no aparece en el directorio, el portal te habilita los campos de <strong>Nombre</strong> y <strong>Correo</strong> para que los escribas manualmente. Útil para pasajeros externos (consultores, invitados, clientes).</p>
+<h3>2.3 Origen y destino</h3>
+<ul>
+<li><strong>Ciudad origen:</strong> desde dónde sales. Empieza a escribir y el portal te sugiere opciones (Bogotá, Medellín, Cali, etc.). <strong>Selecciona una de la lista</strong> — no escribas a mano completo.</li>
+<li><strong>Ciudad destino:</strong> a dónde vas. Mismo comportamiento. Si escoges una ciudad fuera de Colombia, el portal marca automáticamente la solicitud como <strong>internacional</strong> (implica plazos y aprobaciones distintas, ver §9).</li>
+</ul>
+<p>Si el destino que necesitas no aparece en la lista, escribe al área de viajes — lo agregan en un minuto.</p>
+<h3>2.4 Fechas y horario</h3>
+<ul>
+<li><strong>Fecha ida:</strong> el día del viaje. No puede ser en el pasado.</li>
+<li><strong>Fecha vuelta:</strong> solo si escogiste “Ida y Vuelta”. Debe ser igual o posterior a la fecha de ida.</li>
+<li><strong>Hora Requerida de Vuelo (Ida)</strong> y <strong>(Vuelta):</strong> aquí indicas <strong>a qué hora aproximada te queda bien volar</strong>. No es la hora exacta del tiquete — es una preferencia que el área de viajes usará para buscar opciones razonables. Ejemplos: “temprano en la mañana”, “alrededor de las 8:00”, “en la tarde después de las 14:00”.</li>
+</ul>
+<h4>Política de anticipación</h4>
+<p>El portal te avisará si tu fecha de ida es demasiado próxima:</p>
+<ul>
+<li><strong>Viajes nacionales:</strong> mínimo <strong>8 días</strong> de anticipación.</li>
+<li><strong>Viajes internacionales:</strong> mínimo <strong>30 días</strong> de anticipación.</li>
+</ul>
+<p>Si ves un banner rojo que dice <strong>“Solicitud fuera de política de anticipación”</strong>, la solicitud <strong>sí se puede enviar</strong>, pero aparecerá marcada como “fuera de política” y tu aprobador verá el aviso en el correo. Úsalo solo si realmente es urgente y tienes justificación — aprobadores pueden denegarla.</p>
+<h3>2.5 Hospedaje (solo para viajes con vuelo)</h3>
+<p>Si tu viaje requiere hotel, marca la casilla <strong>“Requiere hospedaje”</strong>.</p>
+<ul>
+<li><strong>Nombre hotel sugerido:</strong> opcional. Si tienes preferencia por un hotel en particular, escríbelo. Si no, déjalo vacío y el área de viajes cotizará opciones estándar.</li>
+<li><strong>Noches:</strong> se calcula automáticamente a partir de las fechas de ida y vuelta. Si necesitas que sea distinto (por ejemplo, llegas un día antes por tu cuenta), activa el interruptor de <strong>“ajustar manualmente”</strong> y escribe el número correcto de noches.</li>
+</ul>
+<p>Para solicitudes <strong>“Solo Hospedaje”</strong>, el hospedaje es obligatorio (es lo único que estás pidiendo).</p>
+<h3>2.6 Información corporativa</h3>
+<ul>
+<li><strong>Empresa:</strong> Cumandes, Equitel, Ingenergía o LAP. Selecciona la que corresponda a ti (o al viajero principal si es para otra persona).</li>
+<li><strong>Sede:</strong> tu sede de trabajo (Bogotá, Medellín, Cali, Barranquilla, Urabá, etc.). Selecciona de la lista.</li>
+<li><strong>Unidad de negocio:</strong> dropdown que se llena según los centros de costo disponibles. Selecciona la tuya.</li>
+<li><strong>Centro de costos:</strong> se filtra según la unidad de negocio. Selecciona el que cubre este viaje.
+<ul>
+<li>Si el viaje se reparte entre varios CC, hay una opción <strong>“VARIOS”</strong> al final del listado. Al seleccionarla, el portal te muestra un campo donde puedes escribir los CC separados por coma (ej: <code>12345 - Proyecto A, 67890 - Proyecto B</code>).</li>
+</ul>
+</li>
+<li><strong>Orden de trabajo (OT):</strong> opcional. Si tu viaje está asociado a una OT específica, escríbela.</li>
+</ul>
+<h3>2.7 Observaciones / motivo del viaje</h3>
+<p>Campo de texto libre. Explica <strong>en qué consiste el viaje y por qué es necesario</strong>. Este es el campo que el aprobador lee para decidir, así que sé claro pero breve. Ejemplos buenos:</p>
+<ul>
+<li>“Visita a cliente XYZ en Medellín para cierre comercial del contrato #4532.”</li>
+<li>“Capacitación interna en sede Bogotá del 15 al 17 de abril. Asistencia obligatoria según convocatoria de RRHH.”</li>
+<li>“Hospedaje en Cartagena para participar en feria LogistiColombia 2026 — stand corporativo.”</li>
+</ul>
+<h3>2.8 Enviar la solicitud</h3>
+<p>Revisa todo y haz click en el botón rojo <strong><code>Crear Solicitud</code></strong> al final del formulario. Si hay algún campo obligatorio vacío, el portal te lo señala y no te deja continuar.</p>
+<p>Al enviar exitosamente, verás un mensaje de confirmación y un correo llegará a tu bandeja con el resumen de la solicitud. A partir de ese momento, empieza el flujo de aprobación.</p>
+<hr>
+<h2>3. Qué pasa después de crear la solicitud</h2>
+<p>El ciclo de una solicitud tiene varias etapas. Puedes consultar en qué etapa está la tuya en tu dashboard — aparece una etiqueta de color al lado de cada solicitud.</p>
+<pre><code>CREACIÓN (tú)
+   ↓
+PENDIENTE DE APROBACIÓN (tu aprobador debe aprobar por correo)
+   ↓
+PENDIENTE DE OPCIONES (el área de viajes está cotizando)
+   ↓
+PENDIENTE DE SELECCIÓN (te llegan las opciones, tú eliges)
+   ↓
+PENDIENTE DE CONFIRMACIÓN DE COSTO (el área registra el costo final)
+   ↓
+(Segunda aprobación si es &gt;$1.200.000 o internacional)
+   ↓
+APROBADO
+   ↓
+RESERVADO (tienes tiquetes / confirmación de hotel)
+   ↓
+PROCESADO (ya viajaste y cerraste el ciclo)
+</code></pre>
+<p><strong>Tú solo participas en 3 momentos:</strong></p>
+<ol>
+<li>Al <strong>crear</strong> la solicitud.</li>
+<li>Al <strong>describir tu selección</strong> de las opciones que carga el área (la etapa más crítica — ver §4).</li>
+<li>Al <strong>final</strong>, cuando terminas el viaje, para confirmar que todo salió bien.</li>
+</ol>
+<p>El resto del tiempo, <strong>no tienes que hacer nada activamente</strong>. Los correos te notifican cuando toca tu turno.</p>
+<h3>Aprobación</h3>
+<ul>
+<li>Tu jefe (o la persona que figure como aprobador en tu ficha) recibe un correo con botones <strong><code>APROBAR</code></strong> y <strong><code>DENEGAR</code></strong>. Hace click en el que corresponda directamente desde el correo. No necesita entrar al portal.</li>
+<li>Si el viaje cuesta más de <strong>$1.200.000</strong> (nacional) o es <strong>internacional</strong>, se suman más aprobadores (Dirección de Cadena de Suministro, y en internacionales también Gerencia General).</li>
+<li>Cuando todas las aprobaciones requeridas estén listas, te llega un correo de <strong>“Solicitud Aprobada”</strong> y el proceso continúa.</li>
+</ul>
+<p>Si alguna aprobación se demora más de 3 días hábiles, el sistema escala a los superadmins para que intervengan — no tienes que hacer nada, se gestiona internamente.</p>
+<hr>
+<h2>4. Describir tu selección de opciones (la etapa más importante)</h2>
+<p>Cuando el área de viajes termina de cotizar, recibes un correo con el asunto <strong>“Opciones disponibles”</strong> que contiene imágenes de las alternativas de vuelo y/o hotel.</p>
+<h3>Qué ves</h3>
+<ul>
+<li><strong>Vuelos:</strong> una imagen por cada opción de tiquete, marcada con una letra (A, B, C…). Si tu viaje es ida y vuelta, las opciones aparecen separadas por dirección: <strong>IDA</strong> o <strong>VUELTA</strong>.</li>
+<li><strong>Hoteles:</strong> una imagen por cada opción de hotel, marcada con letra.</li>
+</ul>
+<h3>Qué debes hacer</h3>
+<ol>
+<li>Revisa cuidadosamente las imágenes (horarios, aerolíneas, escalas, precios, ubicaciones del hotel).</li>
+<li>Entra al portal haciendo click en el botón <strong><code>INGRESAR Y SELECCIONAR</code></strong> del correo, o abre el portal manualmente.</li>
+<li>En tu dashboard, haz click sobre la solicitud — se abre el detalle.</li>
+<li>Busca el campo de texto que dice <strong>“Describe tu selección”</strong> (o similar) y escribe cuál opción quieres.</li>
+</ol>
+<h3>⚠️ Regla de oro: indica siempre la categoría</h3>
+<p><strong>No basta con decir “opción A”.</strong> El área de viajes necesita saber también la <strong>categoría</strong> (clase tarifaria del vuelo, tipo de habitación del hotel). Sin esto, no pueden reservar — te van a tener que volver a preguntar.</p>
+<p><strong>Categorías típicas de vuelo:</strong> Económica, Economy Plus, Premium, Business.
+<strong>Categorías típicas de hotel:</strong> Estándar, Superior, Suite.</p>
+<h3>Ejemplos de buenas descripciones</h3>
+<p>Viaje ida y vuelta con hotel:</p>
+<blockquote>
+<p>“Opción A vuelo de ida en categoría Económica, Opción C vuelo de vuelta en Economy Plus, Opción B hotel habitación Estándar.”</p>
+</blockquote>
+<p>Solo ida sin hotel:</p>
+<blockquote>
+<p>“Opción B vuelo en Business.”</p>
+</blockquote>
+<p>Solo hospedaje:</p>
+<blockquote>
+<p>“Opción A hotel, habitación Suite.”</p>
+</blockquote>
+<p>Cambio de preferencia:</p>
+<blockquote>
+<p>“Opción C vuelo de ida en Económica. Opción A vuelo de vuelta en Premium. Opción B hotel, habitación Superior con desayuno incluido.”</p>
+</blockquote>
+<h3>Ejemplos de descripciones incompletas (NO hagas esto)</h3>
+<ul>
+<li>❌ “La opción A.”</li>
+<li>❌ “Me gusta más la B.”</li>
+<li>❌ “Opción A de vuelo y opción C de hotel.” <em>(falta la categoría)</em></li>
+</ul>
+<h3>Enviar la descripción</h3>
+<p>Una vez escrita, haz click en el botón <strong><code>Enviar Selección</code></strong> (o similar). El portal marca tu solicitud como <strong>“PENDIENTE DE CONFIRMACIÓN DE COSTO”</strong> y el área de viajes recibe la notificación.</p>
+<p>A partir de acá el área de viajes confirma los costos, dispara las aprobaciones adicionales si aplican, y compra los tiquetes.</p>
+<hr>
+<h2>5. Recibir los tiquetes o la confirmación del hotel</h2>
+<p>Cuando el área de viajes registra la reserva, te llega un correo de confirmación con:</p>
+<ul>
+<li><strong>Número de reserva (PNR)</strong> en el caso de vuelos, o <strong>número de confirmación</strong> en el caso de hoteles.</li>
+<li><strong>Archivos adjuntos</strong> con los detalles (PDF del tiquete, confirmación del hotel, etc.).</li>
+</ul>
+<p>Guarda estos datos — los vas a necesitar en el aeropuerto o al llegar al hotel.</p>
+<p><strong>Importante:</strong> el correo viene del <strong>Sistema de Viajes Equitel</strong> (<code>apcompras@equitel.com.co</code>). Si respondes a ese correo, tu mensaje llega al área de viajes.</p>
+<h3>Correcciones posteriores</h3>
+<p>Si el área de viajes detecta un error después de emitir la reserva (PNR equivocado, tarjeta mal registrada, archivo faltante), puede corregirla. Recibirás un correo de <strong>“Corrección de reserva”</strong> con los datos actualizados. El correo está en el mismo hilo de Gmail que el original, así que no pierdes el historial.</p>
+<h3>Después del viaje</h3>
+<p>Al regresar, si necesitas entregar soportes (facturas de taxi, recibos, etc.), entra al portal, abre tu solicitud y busca el botón <strong><code>Subir soportes</code></strong>. Arrastra los archivos (PDF o imagen) y confirma. El área de viajes los verá y cerrará formalmente el ciclo.</p>
+<hr>
+<h2>6. Modificar una solicitud en curso</h2>
+<p>Si ya creaste la solicitud pero necesitas cambiar algo (fecha, destino, pasajeros, lo que sea), <strong>no crees una solicitud nueva</strong>. Úsa la opción de <strong>modificar</strong>.</p>
+<h3>Cuándo puedes modificar</h3>
+<p>Puedes modificar mientras la solicitud <strong>no esté en estado terminal</strong>. Es decir, <strong>no puedes modificar</strong> si la solicitud está en:</p>
+<ul>
+<li><strong>ANULADO</strong></li>
+<li><strong>DENEGADO</strong></li>
+<li><strong>PROCESADO</strong></li>
+</ul>
+<p>Si está en cualquier otro estado (pendiente de aprobación, pendiente de opciones, pendiente de selección, confirmación de costo, aprobado, e incluso RESERVADO), <strong>sí puedes modificarla</strong>. Pero atención: si ya estaba RESERVADO (tiquetes comprados), es probable que haya penalidades o costos extra — el portal te avisa con un banner rojo.</p>
+<h3>Cómo se modifica</h3>
+<ol>
+<li>
+<p>En tu dashboard, abre el detalle de la solicitud que quieres modificar.</p>
+</li>
+<li>
+<p>Busca el botón <strong><code>Modificar</code></strong> (o <strong><code>Solicitar cambio</code></strong>).</p>
+</li>
+<li>
+<p>Se abre un formulario <strong>igual al de crear</strong>, con los datos actuales pre-cargados. Cambia lo que necesitas.</p>
+</li>
+<li>
+<p>En la parte final del formulario hay un campo obligatorio llamado <strong>“Motivo del cambio”</strong>. Explica claramente por qué el cambio. Ejemplos:</p>
+<ul>
+<li>“El cliente pospuso la reunión al 15 de abril.”</li>
+<li>“Se suma un pasajero adicional que antes no se había confirmado.”</li>
+<li>“Cambio de destino: ya no es Medellín, ahora es Cali.”</li>
+</ul>
+<p>Si estás muy apurado, hay un botón <strong>✨ Mejorar con IA</strong> que reescribe tu borrador en un texto más formal (requiere que el área de viajes tenga esa función activa).</p>
+</li>
+<li>
+<p>Haz click en <strong><code>Confirmar cambio</code></strong>.</p>
+</li>
+</ol>
+<h3>Qué pasa con la solicitud original</h3>
+<p>La solicitud original <strong>NO se anula inmediatamente</strong>. Queda activa mientras el área de viajes revisa tu cambio. Hay tres posibles desenlaces:</p>
+<ol>
+<li><strong>El área acepta el cambio:</strong> la solicitud nueva (la de cambio) entra al flujo normal desde cotización, y cuando se apruebe, la original se anula automáticamente.</li>
+<li><strong>El área deniega el cambio</strong> y la original queda <strong>activa</strong>: el proceso continúa sobre la original como si nada hubiera pasado.</li>
+<li><strong>El área deniega el cambio y te pregunta qué hacer</strong>: recibes un correo de consulta con botones <strong><code>CONTINUAR</code></strong> (con la original) o <strong><code>ANULAR</code></strong> (cancelar todo). Ver §8.</li>
+</ol>
+<hr>
+<h2>7. Anular tu solicitud</h2>
+<p>Si ya no necesitas el viaje, puedes anular.</p>
+<h3>Cuándo puedes anular</h3>
+<p>Mientras la solicitud no esté en estado terminal (<code>ANULADO</code>, <code>DENEGADO</code>, <code>PROCESADO</code>). Si ya está <code>RESERVADO</code>, considera que puede haber penalidades — avisa al área de viajes antes para minimizar costos.</p>
+<h3>Cómo anulas</h3>
+<ol>
+<li>En tu dashboard, abre el detalle de la solicitud.</li>
+<li>Busca el botón <strong><code>Anular</code></strong>.</li>
+<li>El portal te pide un <strong>motivo</strong> (obligatorio). Escribe por qué anulas. Ejemplos:
+<ul>
+<li>“El cliente canceló la reunión.”</li>
+<li>“Me asignaron a otro proyecto y ya no viajo.”</li>
+<li>“Se resolvió de forma virtual.”</li>
+</ul>
+</li>
+<li>Confirma. La solicitud pasa a <strong>ANULADO</strong> y el área de viajes recibe una notificación para cerrar cualquier gestión pendiente.</li>
+</ol>
+<h3>Si anulas una solicitud que tiene un cambio pendiente</h3>
+<p>No vas a poder anular el padre si hay una solicitud-hija de cambio activa (el sistema lo bloquea para no dejar cosas huérfanas). Si estás en esa situación: primero que el área de viajes resuelva el cambio (aceptar o denegar), y después anulas.</p>
+<hr>
+<h2>8. Responder a una consulta del área de viajes</h2>
+<p>En casos particulares, el área de viajes puede enviarte un correo preguntándote si quieres <strong>continuar</strong> o <strong>anular</strong> tu solicitud. Esto suele pasar cuando:</p>
+<ul>
+<li>El cambio que pediste no se pudo gestionar, y la solicitud original sigue activa — el área quiere saber si todavía la necesitas o no.</li>
+</ul>
+<h3>Qué tiene el correo</h3>
+<ul>
+<li>Asunto: el mismo que el resto de correos de tu solicitud (para que quede en el mismo hilo en Gmail).</li>
+<li>Un banner ámbar: <strong>“¿DESEA CONTINUAR O ANULAR?”</strong>.</li>
+<li>Dos botones grandes:
+<ul>
+<li><strong>CONTINUAR CON LA SOLICITUD</strong> (verde) — sigue el proceso de la original.</li>
+<li><strong>ANULAR SOLICITUD</strong> (rojo) — cancelas todo.</li>
+</ul>
+</li>
+</ul>
+<h3>Qué hacer</h3>
+<p>Haz click en el botón que aplique. El portal te pide una <strong>confirmación</strong> (segundo click de seguridad) y después procesa tu decisión.</p>
+<p>Mientras no respondas, los recordatorios automáticos a tu aprobador y a ti quedan pausados — no te estarán hostigando. Pero sí recibirás un recordatorio periódico para que no se te olvide responder.</p>
+<hr>
+<h2>9. Casos particulares</h2>
+<h3>9.1 Viaje internacional</h3>
+<p>Si tu ciudad destino está fuera de Colombia, la solicitud se marca automáticamente como <strong>internacional</strong>. Implica:</p>
+<ul>
+<li><strong>Plazo mínimo:</strong> 30 días de anticipación (vs. 8 nacional).</li>
+<li><strong>Aprobadores adicionales:</strong> además de tu jefe directo, se suma la <strong>Dirección de Cadena de Suministro</strong> y la <strong>Gerencia General</strong>. El correo de aprobación lo reciben los tres en paralelo; basta con que <strong>uno de los dos ejecutivos</strong> apruebe (CEO o CDS) para que avance.</li>
+<li><strong>Documentos:</strong> pasaporte vigente, visa si aplica. El área de viajes NO gestiona pasaportes ni visas — eso depende de ti. Tenlos listos antes de solicitar.</li>
+</ul>
+<h3>9.2 Viaje de alto costo nacional (&gt; $1.200.000)</h3>
+<p>Además de tu jefe, aprueba el <strong>Director de Cadena de Suministro</strong>. El CEO <strong>no</strong> se involucra en este caso (solo cuando es internacional). Tu solicitud aparecerá con un banner de “<strong>APROBACIÓN EXTRAORDINARIA</strong>” en el correo del aprobador.</p>
+<h3>9.3 Solicitar un viaje para otra persona</h3>
+<p>Si tu jefe te pide que le registres un viaje a él, o si RRHH te pide registrar un viaje de un candidato externo:</p>
+<ol>
+<li>Crea la solicitud normalmente <strong>logueado con tu propio correo</strong> (tu PIN, tu cuenta).</li>
+<li>Cuando llenes los pasajeros, pon en el <strong>pasajero 1</strong> los datos de quien realmente viaja (su cédula, su nombre). No pongas los tuyos.</li>
+<li>La solicitud queda a nombre del viajero. El aprobador será <strong>el aprobador del viajero</strong>, no el tuyo.</li>
+<li>En el dashboard del área de viajes, estas solicitudes se marcan con un ícono <strong>👥</strong> (proxy) para indicar que tú la registraste pero otra persona viaja.</li>
+</ol>
+<h3>9.4 Varios pasajeros</h3>
+<p>Puedes registrar hasta 5 pasajeros en un mismo itinerario. Aplica cuando varios empleados van al mismo destino en la misma fecha, o cuando lleva invitados externos.</p>
+<p>Puntos clave:</p>
+<ul>
+<li><strong>Pasajero 1 define el aprobador.</strong> Por eso debe ser un empleado registrado.</li>
+<li><strong>Pasajeros 2 al 5</strong> pueden ser externos (sin cédula en el directorio) — el portal permite escribir su nombre y correo a mano.</li>
+<li>Los correos de confirmación y seguimiento los recibe <strong>el solicitante</strong> (tú) con copia a todos los pasajeros que tengan correo registrado.</li>
+</ul>
+<h3>9.5 Solicitud urgente fuera de política</h3>
+<p>A veces hay emergencias que no esperan 8 días. Puedes crear la solicitud igual — el portal <strong>te deja</strong>, solo la marca como “fuera de política” con un banner rojo.</p>
+<p>Recomendaciones:</p>
+<ul>
+<li>Pon en <strong>Observaciones</strong> una justificación convincente de la urgencia.</li>
+<li>Avisa verbalmente a tu aprobador para que no le tome por sorpresa.</li>
+<li>Ten en cuenta que el aprobador puede denegar si considera que la urgencia no aplica — es una decisión de negocio, no técnica.</li>
+</ul>
+<h3>9.6 El viaje ya lo pagó el área antes de que yo seleccionara</h3>
+<p>Casos raros: ejecutivos con compra urgente donde el área de viajes ya emitió los tiquetes por fuera del portal antes de que tú seleccionaras. Para estos casos, el área puede <strong>saltar la etapa de selección</strong> y avanzar directamente a confirmación de costos, con una justificación obligatoria registrada. Tú puede que:</p>
+<ul>
+<li>No recibas el correo de “Opciones disponibles” (porque se omite intencionalmente).</li>
+<li>Veas la solicitud avanzar en el portal de <code>PENDIENTE_OPCIONES</code> directamente a <code>PENDIENTE_CONFIRMACION_COSTO</code>.</li>
+</ul>
+<p>Si te pasa y no entiendes por qué, contacta al área — hay razón, solo falta que te la expliquen.</p>
+<h3>9.7 Varios centros de costo</h3>
+<p>Si el viaje se reparte entre varios CC (proyectos distintos), en el campo <strong>“Centro de Costos”</strong> selecciona la opción <strong>“VARIOS”</strong> (suele estar al final del listado). El portal te muestra un campo adicional donde escribes los CC separados por coma.</p>
+<p>Formato recomendado:</p>
+<pre><code>12345 - Proyecto Alfa
+67890 - Proyecto Beta
+54321 - Proyecto Gamma
+</code></pre>
+<p>El área de viajes los contabilizará por separado al momento de facturar.</p>
+<hr>
+<h2>10. Preguntas frecuentes</h2>
+<h3>No me llega el PIN por correo</h3>
+<ol>
+<li>Revisa la carpeta <strong>Spam / correo no deseado</strong>.</li>
+<li>Espera 2 minutos — a veces hay demora.</li>
+<li>Verifica que estás usando tu correo <strong>corporativo exacto</strong> (sin typos).</li>
+<li>En el login, haz click en <strong>“Reenviar PIN”</strong>. Si el portal te dice que tu correo no está registrado, contacta a <a href="mailto:apcompras@equitel.com.co">apcompras@equitel.com.co</a>.</li>
+</ol>
+<h3>Mi PIN no funciona</h3>
+<p>Asegúrate de estar escribiendo los <strong>8 dígitos exactos</strong> del último correo de PIN que recibiste. Si solicitaste reenviar varias veces, solo el <strong>último</strong> PIN es válido — los anteriores quedan invalidados.</p>
+<p>Si fallas 5 veces seguidas, el sistema bloquea tu correo por <strong>15 minutos</strong> como medida de seguridad. Espera y vuelve a intentar. Si sigues sin poder, pide reenviar PIN (genera uno nuevo).</p>
+<h3>¿Cuánto dura mi sesión?</h3>
+<p><strong>7 días</strong> por navegador. Tras esos 7 días, te pedirá el PIN de nuevo. Si cambias de navegador o dispositivo antes, también te pide PIN.</p>
+<h3>¿Mi aprobador es quién?</h3>
+<p>Lo define el área de RRHH cuando te registran en el directorio. Para saber quién es, entra al portal, crea una solicitud borrador llenando el pasajero 1 con tu cédula — el portal te muestra automáticamente el nombre del aprobador debajo de los pasajeros antes de enviar.</p>
+<p>Si el aprobador mostrado está mal o la persona ya no trabaja en la empresa, escribe a <a href="mailto:apcompras@equitel.com.co">apcompras@equitel.com.co</a> pidiendo que actualicen tu aprobador.</p>
+<h3>Mi aprobador no recibió el correo de aprobación</h3>
+<p>Primero confirma con él que no esté en la carpeta de spam. Si verdaderamente no llegó:</p>
+<ul>
+<li>El correo se envía <strong>solo después</strong> de que tú creaste la solicitud y describiste la selección de opciones + el área confirmó costos.</li>
+<li>Si tu solicitud todavía está en <code>PENDIENTE_OPCIONES</code> o <code>PENDIENTE_SELECCION</code>, es <strong>normal</strong> que no le haya llegado — aún no es su turno.</li>
+<li>Si está en <code>PENDIENTE_APROBACION</code> y aun así no le llegó: pídele que revise spam de nuevo, y si no está, escribe a <a href="mailto:apcompras@equitel.com.co">apcompras@equitel.com.co</a> para reenviar.</li>
+</ul>
+<h3>Cuánto tiempo tarda el proceso completo</h3>
+<p>Depende mucho del caso. Orden de magnitud:</p>
+<ul>
+<li><strong>Nacional simple:</strong> 1–3 días hábiles desde que creas hasta que tienes tiquetes (si todos los aprobadores responden pronto).</li>
+<li><strong>Nacional &gt; $1.200.000:</strong> 2–5 días hábiles (por la aprobación extra de CDS).</li>
+<li><strong>Internacional:</strong> 3–7 días hábiles o más (por las aprobaciones de CDS + CEO y la complejidad de reservar internacional).</li>
+</ul>
+<p>Si tu solicitud pasa más tiempo sin avanzar, escribe al área de viajes preguntando por el estado.</p>
+<h3>¿Cómo sé qué están esperando de mí?</h3>
+<p>En tu dashboard, cada solicitud tiene una <strong>etiqueta de estado</strong>. La más relevante para ti:</p>
+<ul>
+<li><strong>PENDIENTE_SELECCION</strong> → te toca a ti: debes describir tu selección (§4).</li>
+</ul>
+<p>Todos los demás estados significan que el área de viajes o tu aprobador están trabajando. Tú no tienes nada que hacer.</p>
+<h3>¿Puedo solicitar un cambio de silla / equipaje adicional?</h3>
+<p>Sí, usando el flujo de <strong>modificación</strong> (§6). Incluye en el motivo del cambio qué detalles adicionales necesitas (ej: “requiero equipaje de 23 kg facturado, confirmar tarifa con maleta”). El área de viajes cotizará la diferencia si hay lugar a costo extra.</p>
+<h3>El área me dijo que denegó mi solicitud</h3>
+<p>Revisa el correo de “Solicitud Denegada”. Incluye el <strong>motivo</strong> que el aprobador escribió al denegar. Si el motivo es algo que puedes resolver (por ejemplo, “necesito más justificación”), crea una <strong>nueva solicitud</strong> (no un cambio — la denegada ya no se puede modificar) incluyendo esa justificación en Observaciones.</p>
+<h3>Tengo un problema técnico con el aplicativo</h3>
+<p>Al final de todos los correos del sistema hay una línea en gris chiquito que dice algo como:</p>
+<blockquote>
+<p><em>¿Problemas técnicos con el aplicativo? Escribe a <a href="mailto:dsanchez@equitel.com.co">dsanchez@equitel.com.co</a></em></p>
+</blockquote>
+<p>Ese correo es para <strong>errores del portal</strong> (no carga, mensajes extraños, bugs visuales). Para dudas de <strong>gestión de tu viaje</strong> (opciones, tarifas, fechas), sigue escribiendo a <a href="mailto:apcompras@equitel.com.co">apcompras@equitel.com.co</a>.</p>
+<h3>Puedo entrar al portal desde el celular</h3>
+<p>Sí. El portal es responsive — funciona en celular y tablet igual que en computador. Todas las acciones están disponibles. La única diferencia visual es que los menús se reorganizan para caber en pantallas pequeñas.</p>
+<p>Recomendación: guarda el enlace del portal como <strong>acceso directo</strong> en la pantalla de inicio de tu celular (en iPhone: botón compartir → “Añadir a pantalla de inicio”; en Android: menú → “Añadir a pantalla de inicio”). Queda como si fuera una app nativa.</p>
+<h3>Veo una solicitud que no es mía en mi dashboard</h3>
+<p>No debería pasar. Cada usuario solo ve sus propias solicitudes. Si ves algo raro (solicitudes de otra persona, información que no corresponde), escríbelo al correo de soporte técnico — puede ser un error que necesitamos revisar.</p>
+<hr>
+<h2>Resumen de los botones importantes</h2>
+<table>
+<thead>
+<tr>
+<th>Botón</th>
+<th>Cuándo se usa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>INGRESAR</strong> (rojo, en login)</td>
+<td>Primera etapa del login para usuarios.</td>
+</tr>
+<tr>
+<td><strong>+ Nueva Solicitud</strong> (en dashboard)</td>
+<td>Crear una solicitud nueva.</td>
+</tr>
+<tr>
+<td><strong>+ Agregar Pasajero</strong> (en formulario)</td>
+<td>Agregar pasajeros al itinerario (hasta 5).</td>
+</tr>
+<tr>
+<td><strong>Crear Solicitud</strong> / <strong>Confirmar Cambio</strong> (al final del formulario)</td>
+<td>Enviar la solicitud o la modificación.</td>
+</tr>
+<tr>
+<td><strong>INGRESAR Y SELECCIONAR</strong> (en correo de opciones)</td>
+<td>Entrar al portal a describir tu selección.</td>
+</tr>
+<tr>
+<td><strong>Enviar Selección</strong> (en detalle)</td>
+<td>Guardar tu descripción de opciones.</td>
+</tr>
+<tr>
+<td><strong>Modificar</strong> (en detalle)</td>
+<td>Pedir un cambio a una solicitud en curso.</td>
+</tr>
+<tr>
+<td><strong>Anular</strong> (en detalle)</td>
+<td>Cancelar tu propia solicitud.</td>
+</tr>
+<tr>
+<td><strong>Subir soportes</strong> (en detalle, post-viaje)</td>
+<td>Cargar facturas, recibos, soportes.</td>
+</tr>
+<tr>
+<td><strong>CONTINUAR / ANULAR</strong> (en correo de consulta)</td>
+<td>Responder cuando el área pregunta qué hacer con una solicitud.</td>
+</tr>
+<tr>
+<td><strong>Reenviar PIN</strong> (en login)</td>
+<td>Generar un PIN nuevo si olvidaste el tuyo.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Resumen de los estados de una solicitud</h2>
+<table>
+<thead>
+<tr>
+<th>Estado</th>
+<th>Qué está pasando</th>
+<th>Qué tienes que hacer tú</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PENDIENTE_APROBACION</code></td>
+<td>Tu aprobador debe hacer click en aprobar o denegar.</td>
+<td>Nada. Espera.</td>
+</tr>
+<tr>
+<td><code>PENDIENTE_OPCIONES</code></td>
+<td>El área de viajes está buscando opciones.</td>
+<td>Nada. Espera.</td>
+</tr>
+<tr>
+<td><code>PENDIENTE_SELECCION</code></td>
+<td>Tienes opciones, debes elegir.</td>
+<td><strong>Describir tu selección</strong> (ver §4).</td>
+</tr>
+<tr>
+<td><code>PENDIENTE_CONFIRMACION_COSTO</code></td>
+<td>El área registra el costo final.</td>
+<td>Nada. Espera.</td>
+</tr>
+<tr>
+<td><code>PENDIENTE_ANALISIS_CAMBIO</code></td>
+<td>Pediste una modificación, el área la revisa.</td>
+<td>Nada. Espera la decisión.</td>
+</tr>
+<tr>
+<td><code>APROBADO</code></td>
+<td>Listo para reservar.</td>
+<td>Nada. El área está comprando.</td>
+</tr>
+<tr>
+<td><code>RESERVADO</code></td>
+<td>Ya tienes tiquetes y/o confirmación de hotel.</td>
+<td>Guardar los documentos y viajar. Al regresar, subir soportes.</td>
+</tr>
+<tr>
+<td><code>PROCESADO</code></td>
+<td>Ciclo completo, ya viajaste y cerraste.</td>
+<td>Nada. Terminó.</td>
+</tr>
+<tr>
+<td><code>DENEGADO</code></td>
+<td>Un aprobador denegó.</td>
+<td>Ver motivo en el correo. Crear una solicitud nueva si aplica.</td>
+</tr>
+<tr>
+<td><code>ANULADO</code></td>
+<td>Alguien (tú o un admin) canceló la solicitud.</td>
+<td>Nada. Si necesitas el viaje, crea una nueva.</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Contactos</h2>
+<table>
+<thead>
+<tr>
+<th>Para qué</th>
+<th>A quién escribir</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gestión del viaje (opciones, tarifas, fechas, cambios).</td>
+<td><strong><a href="mailto:apcompras@equitel.com.co">apcompras@equitel.com.co</a></strong></td>
+</tr>
+<tr>
+<td>Agregar / actualizar tu cédula, correo o aprobador en el directorio.</td>
+<td><strong><a href="mailto:apcompras@equitel.com.co">apcompras@equitel.com.co</a></strong></td>
+</tr>
+<tr>
+<td>Problemas técnicos del aplicativo (no carga, errores, bugs).</td>
+<td><strong><a href="mailto:dsanchez@equitel.com.co">dsanchez@equitel.com.co</a></strong></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<p><em>Última actualización: 2026-04-24</em></p>
+
+  </div>
+</body>
+</html>

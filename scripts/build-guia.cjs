@@ -26,6 +26,12 @@ const GUIAS = {
     pdf: path.join(ROOT, 'docs', 'guia-administrador.pdf'),
     title: 'Guía del Administrador — Equitel Viajes',
   },
+  usuario: {
+    md: path.join(ROOT, 'docs', 'guia-usuario.md'),
+    html: path.join(ROOT, 'docs', 'guia-usuario.html'),
+    pdf: path.join(ROOT, 'docs', 'guia-usuario.pdf'),
+    title: 'Guía del Usuario — Portal de Viajes Equitel',
+  },
   'hoja-calculo': {
     md: path.join(ROOT, 'docs', 'guia-hoja-calculo.md'),
     html: path.join(ROOT, 'docs', 'guia-hoja-calculo.html'),
