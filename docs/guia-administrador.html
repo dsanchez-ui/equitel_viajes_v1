@@ -686,8 +686,23 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 </tr>
 <tr>
 <td><code>USE_USUARIOS_SHEET</code></td>
-<td><code>'true'</code> (activa modo USUARIOS) / <code>'false'</code></td>
-<td>Ejecutar <code>toggleUsuariosMode()</code> — cambia entre los dos modos. Rollback = ejecutar de nuevo.</td>
+<td><strong>DEPRECADO</strong> desde 2026-04-24. Ignorado por el runtime — la app siempre lee de USUARIOS. Se puede borrar.</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>MAIL_FROM_ALIAS</code></td>
+<td>Alias de Gmail desde el que salen todos los correos del sistema (ej. <code>apcompras@equitel.com.co</code>). Requiere que ese alias esté configurado como “Send As” en la cuenta que desplegó el web app. Si no se setea, los correos salen desde la cuenta desplegadora (comportamiento legacy).</td>
+<td><code>setScriptProperty('MAIL_FROM_ALIAS', 'apcompras@equitel.com.co')</code>. Verificar luego con <code>verificarAliasCorreo()</code>.</td>
+</tr>
+<tr>
+<td><code>MAIL_FROM_NAME</code></td>
+<td>Nombre visible del remitente (ej. “Sistema Viajes Equitel”). Ignorado si <code>MAIL_FROM_ALIAS</code> no está activo.</td>
+<td><code>setScriptProperty('MAIL_FROM_NAME', 'Sistema Viajes Equitel')</code>.</td>
+</tr>
+<tr>
+<td><code>MAIL_TECH_SUPPORT_EMAIL</code></td>
+<td>Correo que aparece en el footer de todos los correos como contacto técnico del aplicativo (ej. <code>dsanchez@equitel.com.co</code>). Si no se setea, el footer no se inyecta.</td>
+<td><code>setScriptProperty('MAIL_TECH_SUPPORT_EMAIL', 'dsanchez@equitel.com.co')</code>.</td>
 </tr>
 <tr>
 <td><code>WEB_APP_URL</code></td>
@@ -722,6 +737,25 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 </tbody>
 </table>
 <p><strong>Diagnóstico de propiedades:</strong> ejecuta <code>verPropiedadesDelScript()</code> desde el editor para ver el estado de todas.</p>
+<h3>Remitente de los correos (alias “Send As”)</h3>
+<p>Por defecto, todos los correos del sistema salen desde la cuenta que desplegó el web app. Si la cuenta desplegadora es distinta del área operativa (caso típico: David despliega desde <code>dsanchez@</code>, pero los correos deberían salir desde <code>apcompras@</code> para que los usuarios respondan a Wendy), se configura un alias <code>Send As</code>.</p>
+<p><strong>Setup (una sola vez, ~5 minutos):</strong></p>
+<ol>
+<li>En el Gmail de la cuenta que desplegó el web app → <strong>Configuración → Cuentas e importación → Enviar correo como → Añadir otra dirección de correo</strong>.</li>
+<li>Escribe la dirección del alias (ej. <code>apcompras@equitel.com.co</code>), un nombre visible (ej. <code>Sistema Viajes Equitel</code>), deja marcado “Tratarlo como un alias” y continúa.</li>
+<li>Google envía un código de verificación a la bandeja del alias. Abre esa bandeja, copia el código, pégalo.</li>
+<li>En el editor GAS ejecuta <strong>una sola vez</strong>:<pre><code class="language-javascript">setScriptProperty('MAIL_FROM_ALIAS', 'apcompras@equitel.com.co');
+setScriptProperty('MAIL_FROM_NAME', 'Sistema Viajes Equitel');
+setScriptProperty('MAIL_TECH_SUPPORT_EMAIL', 'dsanchez@equitel.com.co');
+</code></pre>
+</li>
+<li>Ejecuta <code>verificarAliasCorreo()</code> — loguea si el alias está bien configurado antes de confiar. Si dice <strong>ALIAS VÁLIDO</strong> todo listo; si no, sigue los pasos que sugiere el log.</li>
+<li>Opcional: ejecuta <code>enviarCorreoDePruebaAlias()</code> para recibir un correo real y verificar que el remitente aparece como esperas.</li>
+</ol>
+<p><strong>Qué ve el usuario:</strong> <code>De: Sistema Viajes Equitel &lt;apcompras@equitel.com.co&gt;</code>. Cuando responde, la respuesta llega a la bandeja de apcompras.</p>
+<p><strong>Footer de soporte técnico:</strong> se inyecta automáticamente en todos los correos con el valor de <code>MAIL_TECH_SUPPORT_EMAIL</code>. El frontend NO lo incluye para evitar duplicación — el backend es la fuente única de verdad.</p>
+<p><strong>Rollback:</strong> si necesitas volver al comportamiento anterior (correos desde la cuenta desplegadora), ejecuta <code>deleteScriptProperty('MAIL_FROM_ALIAS')</code>. Toma efecto en el siguiente request, sin redeploy.</p>
+<p><strong>Fail-safe:</strong> si el alias queda mal configurado o Gmail bloquea el envío, el wrapper <code>_sendMail_</code> cae automáticamente a <code>MailApp.sendEmail</code> (comportamiento legacy). Los correos siempre salen — nunca se pierde nada. El fallback queda logueado en Ejecuciones.</p>
 <h3>Detalles de autenticación (PIN admin + PIN personal)</h3>
 <ul>
 <li>Si un admin <strong>tiene fila propia en USUARIOS</strong> (caso David, Yurani, Wendy), puede ingresar con el botón negro <strong>ADMINISTRADOR</strong> usando o bien el PIN admin compartido, o bien <strong>su PIN personal</strong> (el mismo que usa para ingresar como usuario). Esto evita el “cruce” cuando Chrome autocompleta el PIN personal en el formulario de admin.</li>
@@ -841,6 +875,14 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 <tr>
 <td><code>diagnosticarAprobacion(requestId)</code></td>
 <td>Loguea el estado real de las columnas de aprobación de una solicitud. Útil cuando hay inconsistencia entre status global y fila.</td>
+</tr>
+<tr>
+<td><code>verificarAliasCorreo()</code></td>
+<td>Diagnóstico del alias “Send As” para correos. Valida que <code>MAIL_FROM_ALIAS</code> esté registrado en Gmail antes de confiar en él. Ejecutar después de configurar las 3 Script Properties de correo.</td>
+</tr>
+<tr>
+<td><code>enviarCorreoDePruebaAlias()</code></td>
+<td>Envía un correo real al <code>MAIL_TECH_SUPPORT_EMAIL</code> usando el wrapper. Úsalo tras <code>verificarAliasCorreo()</code> para confirmar visualmente el remitente.</td>
 </tr>
 </tbody>
 </table>

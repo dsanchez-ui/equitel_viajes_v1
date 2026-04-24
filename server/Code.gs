@@ -1872,7 +1872,7 @@ function sendUserConsultEmail_(parentReq, childRequestId, denialReason) {
   const html = HtmlTemplates.layout(parentReq.requestId, content, '#f59e0b', '¿DESEA CONTINUAR O ANULAR?');
 
   try {
-    MailApp.sendEmail({
+    _sendMail_({
       to: parentReq.requesterEmail,
       subject: subject,
       htmlBody: html
@@ -2497,7 +2497,7 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
         } catch (e) { console.error('Error logging skipNotification: ' + e); }
     } else {
         try {
-            MailApp.sendEmail({
+            _sendMail_({
                 to: fullReq.requesterEmail,
                 cc: getCCList(fullReq),
                 subject: subject,
@@ -2769,7 +2769,7 @@ function getStandardSubject(data) {
 function sendEmailRich(to, subject, htmlBody, cc) {
     try {
         const filterEmails = (str) => (str || "").split(',').map(e=>e.trim()).filter(e=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)).join(',');
-        
+
         const ccAddress = (cc === undefined) ? ADMIN_EMAIL : cc;
         const validTo = filterEmails(to);
         const validCc = filterEmails(ccAddress);
@@ -2789,15 +2789,231 @@ function sendEmailRich(to, subject, htmlBody, cc) {
             htmlBody: htmlBody,
             body: "Este correo contiene elementos ricos en HTML. Por favor use un cliente compatible.\n\n" + (htmlBody ? htmlBody.replace(/<[^>]+>/g, ' ') : '')
         };
-        
+
         if (validCc) {
             options.cc = validCc;
         }
-        
-        MailApp.sendEmail(options);
+
+        _sendMail_(options);
     } catch(e) {
         console.error("Error sending email to " + to + ": " + e);
     }
+}
+
+// =====================================================================
+// MAIL SENDER — wrapper central con soporte de alias "Send As"
+// =====================================================================
+// Permite que todos los correos salgan desde un alias (ej: apcompras@equitel)
+// en lugar de la dirección del usuario que desplegó el web app. Requiere:
+//   1. El alias debe estar configurado como "Send As" en la cuenta Gmail de
+//      la persona que desplegó (ver Configuración → Cuentas e importación).
+//   2. Script Properties:
+//        MAIL_FROM_ALIAS          → dirección del alias (ej: apcompras@...)
+//        MAIL_FROM_NAME           → nombre visible (ej: "Sistema Viajes Equitel")
+//        MAIL_TECH_SUPPORT_EMAIL  → correo de soporte técnico para el footer
+//
+// FAIL-SAFE ABSOLUTO: si MAIL_FROM_ALIAS no está seteado, el wrapper delega
+// directamente a MailApp.sendEmail — comportamiento idéntico al pre-2026-04-24.
+// Si el alias está seteado pero falla (no configurado en Gmail, cuota, error
+// transient), catch + log + fallback a MailApp. Nunca se pierde un correo.
+// =====================================================================
+
+// Cache per-execution para no llamar GmailApp.getAliases() N veces por request.
+var _CACHED_GMAIL_ALIASES = null;
+function _getGmailAliasesCached_() {
+  if (_CACHED_GMAIL_ALIASES !== null) return _CACHED_GMAIL_ALIASES;
+  try {
+    _CACHED_GMAIL_ALIASES = GmailApp.getAliases() || [];
+  } catch (e) {
+    // Si GmailApp no está autorizado o falla, no reintentamos en esta ejecución.
+    _CACHED_GMAIL_ALIASES = [];
+    try { Logger.log('WARN _getGmailAliasesCached_: ' + e); } catch (_) { /* noop */ }
+  }
+  return _CACHED_GMAIL_ALIASES;
+}
+
+// Inyecta el footer de soporte técnico en htmlBody solo si el marker NO está
+// presente. El marker permite a otros generadores (ej: el frontend) incluir
+// su propio footer y que éste wrapper no duplique.
+function _injectTechSupportFooter_(htmlBody) {
+  if (!htmlBody) return htmlBody;
+  if (htmlBody.indexOf('TECH_FOOTER_INJECTED') >= 0) return htmlBody;
+  var techEmail = String(getConfig_('MAIL_TECH_SUPPORT_EMAIL', '') || '').trim();
+  if (!techEmail) return htmlBody;
+  var footer =
+    '<!-- TECH_FOOTER_INJECTED -->' +
+    '<div style="margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;' +
+    'font-size:11px;color:#9ca3af;text-align:center;line-height:1.5;' +
+    'font-family:Helvetica,Arial,sans-serif;">' +
+    '¿Problemas técnicos con el aplicativo? Escribe a ' +
+    '<a href="mailto:' + techEmail + '" style="color:#6b7280;text-decoration:underline;">' +
+    techEmail + '</a>' +
+    '</div>';
+  // Intenta inyectar antes de </body>; si no hay, al final.
+  if (htmlBody.indexOf('</body>') >= 0) {
+    return htmlBody.replace('</body>', footer + '</body>');
+  }
+  return htmlBody + footer;
+}
+
+/**
+ * Wrapper central de envío de correo.
+ *
+ * Acepta el mismo shape de options que MailApp.sendEmail:
+ *   { to, cc, bcc, subject, body, htmlBody, attachments, inlineImages,
+ *     replyTo, name, noReply }
+ *
+ * Comportamiento:
+ *   - Inyecta el footer de soporte técnico en htmlBody (si aplica).
+ *   - Si MAIL_FROM_ALIAS está configurado y presente en getAliases():
+ *       usa GmailApp.sendEmail con { from, name, replyTo } para que el
+ *       destinatario vea el alias como remitente.
+ *   - Si no, delega a MailApp.sendEmail (comportamiento legacy).
+ *   - Cualquier excepción del path Gmail → fallback silencioso a MailApp.
+ */
+function _sendMail_(options) {
+  if (!options || !options.to) return;
+
+  // Copia defensiva + inyección de footer.
+  var opts = {};
+  for (var k in options) { if (options.hasOwnProperty(k)) opts[k] = options[k]; }
+  if (opts.htmlBody) opts.htmlBody = _injectTechSupportFooter_(opts.htmlBody);
+
+  var fromAlias = String(getConfig_('MAIL_FROM_ALIAS', '') || '').trim().toLowerCase();
+  var fromName = String(getConfig_('MAIL_FROM_NAME', '') || '').trim();
+
+  if (fromAlias) {
+    var aliases = _getGmailAliasesCached_().map(function(a) { return String(a).toLowerCase().trim(); });
+    if (aliases.indexOf(fromAlias) >= 0) {
+      try {
+        var gmailOpts = {
+          htmlBody: opts.htmlBody || '',
+          from: fromAlias,
+          replyTo: opts.replyTo || fromAlias
+        };
+        // Si el caller pasó nombre explícito, respétalo (forward-compat);
+        // si no, usa el MAIL_FROM_NAME configurado.
+        if (opts.name) gmailOpts.name = opts.name;
+        else if (fromName) gmailOpts.name = fromName;
+        if (opts.cc) gmailOpts.cc = opts.cc;
+        if (opts.bcc) gmailOpts.bcc = opts.bcc;
+        if (opts.attachments) gmailOpts.attachments = opts.attachments;
+        if (opts.inlineImages) gmailOpts.inlineImages = opts.inlineImages;
+        if (opts.noReply) gmailOpts.noReply = opts.noReply;
+        // GmailApp.sendEmail firma: (recipient, subject, body, options)
+        GmailApp.sendEmail(opts.to, opts.subject || '', opts.body || '', gmailOpts);
+        return;
+      } catch (e) {
+        try {
+          Logger.log('WARN _sendMail_: GmailApp.sendEmail falló (' + e + '). Fallback a MailApp.');
+        } catch (_) { /* noop */ }
+        // Continúa al fallback.
+      }
+    } else {
+      try {
+        Logger.log('WARN _sendMail_: MAIL_FROM_ALIAS="' + fromAlias +
+          '" no está en GmailApp.getAliases(). Fallback a MailApp. ' +
+          'Verifica en Gmail → Configuración → Cuentas e importación → Enviar correo como.');
+      } catch (_) { /* noop */ }
+    }
+  }
+
+  // Fallback / default: MailApp.sendEmail — comportamiento idéntico al legacy.
+  MailApp.sendEmail(opts);
+}
+
+/**
+ * Diagnóstico del alias de correo. Ejecutar desde el editor una sola vez
+ * antes de confiar en que los correos salen desde el alias.
+ *
+ * Qué hace:
+ *   1. Lee las Script Properties relevantes.
+ *   2. Consulta GmailApp.getAliases() (dispara OAuth si no está autorizado).
+ *   3. Verifica que MAIL_FROM_ALIAS esté en la lista de aliases.
+ *   4. Loguea el resultado — revisar en Ejecuciones.
+ *
+ * Uso:
+ *   - Editor GAS → dropdown de funciones → verificarAliasCorreo → ▶ Ejecutar.
+ *   - Ver → Registros de ejecución.
+ */
+function verificarAliasCorreo() {
+  var fromAlias = String(getConfig_('MAIL_FROM_ALIAS', '') || '').trim();
+  var fromName = String(getConfig_('MAIL_FROM_NAME', '') || '').trim();
+  var techEmail = String(getConfig_('MAIL_TECH_SUPPORT_EMAIL', '') || '').trim();
+
+  Logger.log('=== VERIFICACIÓN DE ALIAS DE CORREO ===');
+  Logger.log('MAIL_FROM_ALIAS:          "' + fromAlias + '"');
+  Logger.log('MAIL_FROM_NAME:           "' + fromName + '"');
+  Logger.log('MAIL_TECH_SUPPORT_EMAIL:  "' + techEmail + '"');
+  Logger.log('');
+
+  if (!fromAlias) {
+    Logger.log('⚠️ MAIL_FROM_ALIAS no está configurado. Los correos se envían desde la cuenta');
+    Logger.log('   que desplegó la app (comportamiento legacy). No hay nada que verificar.');
+    Logger.log('');
+    Logger.log('   Para activar el alias ejecuta, una sola vez:');
+    Logger.log('     setScriptProperty(\'MAIL_FROM_ALIAS\', \'apcompras@equitel.com.co\')');
+    Logger.log('     setScriptProperty(\'MAIL_FROM_NAME\', \'Sistema Viajes Equitel\')');
+    Logger.log('     setScriptProperty(\'MAIL_TECH_SUPPORT_EMAIL\', \'dsanchez@equitel.com.co\')');
+    return;
+  }
+
+  var aliases;
+  try {
+    aliases = GmailApp.getAliases() || [];
+  } catch (e) {
+    Logger.log('❌ ERROR consultando GmailApp.getAliases(): ' + e);
+    Logger.log('   Probablemente el scope de Gmail no está autorizado.');
+    Logger.log('   Si es primera vez que corres esta función, el editor debería pedir');
+    Logger.log('   autorización al ejecutarla. Acepta y vuelve a correr.');
+    return;
+  }
+
+  Logger.log('Aliases disponibles en la cuenta actual (' + aliases.length + '):');
+  aliases.forEach(function(a) { Logger.log('   - ' + a); });
+  Logger.log('');
+
+  var match = aliases.some(function(a) {
+    return String(a).toLowerCase().trim() === fromAlias.toLowerCase();
+  });
+
+  if (match) {
+    Logger.log('✅ ALIAS VÁLIDO. El siguiente correo enviado desde el script saldrá con:');
+    Logger.log('   De:    ' + (fromName ? fromName + ' <' + fromAlias + '>' : fromAlias));
+    Logger.log('   Responder a: ' + fromAlias);
+    Logger.log('');
+    Logger.log('   Si quieres hacer una prueba real, ejecuta enviarCorreoDePruebaAlias().');
+  } else {
+    Logger.log('❌ ALIAS NO VÁLIDO. "' + fromAlias + '" no está en la lista de aliases.');
+    Logger.log('   Pasos para configurarlo:');
+    Logger.log('   1. Abre Gmail de la cuenta que desplegó el web app.');
+    Logger.log('   2. Configuración → Cuentas e importación → Enviar correo como');
+    Logger.log('   3. "Añadir otra dirección de correo" → ' + fromAlias);
+    Logger.log('   4. Verifica con el código que llegue a la bandeja de ' + fromAlias);
+    Logger.log('   5. Vuelve a correr verificarAliasCorreo() para confirmar.');
+    Logger.log('');
+    Logger.log('   Mientras no esté configurado, los correos se envían desde la cuenta');
+    Logger.log('   que desplegó — comportamiento idéntico al legacy.');
+  }
+}
+
+/**
+ * Prueba real: envía un correo al techEmail configurado usando el wrapper
+ * completo. Úsalo DESPUÉS de que verificarAliasCorreo() diga ALIAS VÁLIDO.
+ */
+function enviarCorreoDePruebaAlias() {
+  var techEmail = String(getConfig_('MAIL_TECH_SUPPORT_EMAIL', '') || '').trim();
+  if (!techEmail) {
+    Logger.log('❌ Configura primero MAIL_TECH_SUPPORT_EMAIL para recibir la prueba.');
+    return;
+  }
+  _sendMail_({
+    to: techEmail,
+    subject: '[PRUEBA] Verificación de alias — ' + new Date().toISOString(),
+    htmlBody: '<p>Este es un correo de prueba enviado desde el wrapper <code>_sendMail_</code>.</p>' +
+              '<p>Si ves este correo, la configuración del alias funciona correctamente.</p>'
+  });
+  Logger.log('✅ Correo de prueba despachado a ' + techEmail + '. Revisa tu bandeja.');
 }
 
 const HtmlTemplates = {
@@ -4418,7 +4634,7 @@ function getCCList(request) {
 
 function sendNewRequestNotification(data, requestId) {
     const subject = getStandardSubject({ ...data, requestId });
-    try { MailApp.sendEmail({ to: ADMIN_EMAIL, subject: subject, body: "Nueva Solicitud: " + requestId }); } catch (e) {}
+    try { _sendMail_({ to: ADMIN_EMAIL, subject: subject, body: "Nueva Solicitud: " + requestId }); } catch (e) {}
 }
 
 function sendOptionsToRequester(to, req, opts) {
@@ -5200,7 +5416,7 @@ function _escalateStalePendingApproval_(req, workingMinPending, sheet, idIdx, ev
       try { html += HtmlTemplates._getFullSummary(req); } catch (e) { /* ignore */ }
       html += '<p style="font-size:12px;color:#6b7280;margin-top:16px;">Este correo solo se envía una vez por solicitud. Si resuelves la situación, la solicitud pasará a su siguiente estado normalmente.</p>';
       html += '</div>';
-      MailApp.sendEmail({ to: to, subject: subject, htmlBody: html });
+      _sendMail_({ to: to, subject: subject, htmlBody: html });
     }
 
     // Marcar escalamiento en EVENTOS_JSON (idempotente: solo una vez).
@@ -5247,7 +5463,7 @@ function sendReminderEmail(req, toEmail, role) {
     const subject = getStandardSubject(req) + " - APROBACIÓN REQUERIDA"; // Mismo asunto exacto para threading
 
     try {
-        MailApp.sendEmail({
+        _sendMail_({
             to: toEmail,
             subject: subject,
             htmlBody: htmlBody
@@ -5350,7 +5566,7 @@ function sendUserSelectionReminderEmail_(req) {
   const html = HtmlTemplates.layout(req.requestId, banner + body, '#c2410c', 'RECORDATORIO DE SELECCIÓN');
 
   try {
-    MailApp.sendEmail({
+    _sendMail_({
       to: req.requesterEmail,
       subject: subject,
       htmlBody: html
@@ -5426,7 +5642,7 @@ function sendPendingConsultReminders() {
     var html = HtmlTemplates.layout(requestId, content, '#c2410c', isHotelOnly ? 'RECORDATORIO - HOSPEDAJE' : 'RECORDATORIO - VIAJE');
 
     try {
-      MailApp.sendEmail({ to: req.requesterEmail, subject: subject, htmlBody: html });
+      _sendMail_({ to: req.requesterEmail, subject: subject, htmlBody: html });
       remindersSent++;
     } catch (e) {
       console.error('Error enviando recordatorio de consulta a ' + req.requesterEmail + ': ' + e);

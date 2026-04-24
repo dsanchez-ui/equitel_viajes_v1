@@ -250,8 +250,8 @@ export const generateTravelRequestEmail = (data: Partial<TravelRequest>, isModif
     </div>
 
     <div class="footer">
-      &copy; ${new Date().getFullYear()} Organización Equitel. Gestión de Viajes Corporativos.<br>
-      Este es un mensaje automático, por favor no responder.
+      &copy; ${new Date().getFullYear()} Organización Equitel. Sistema de Tiquetes Equitel.<br>
+      Este es un mensaje automático generado por el Sistema de Tiquetes Equitel.
     </div>
   </body>
   </html>
