@@ -38,7 +38,13 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
   useEffect(() => {
     gasService.getSites()
       .then(s => setSites(Array.isArray(s) ? s : []))
-      .catch(() => setSites([]))
+      .catch(err => {
+        console.error('Error cargando sedes:', err);
+        alert(
+          'No se pudieron cargar las sedes. Recargue la página (Ctrl+Shift+R) ' +
+          'o contacte al administrador si el problema persiste.'
+        );
+      })
       .finally(() => setIsSitesLoading(false));
   }, []);
   

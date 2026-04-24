@@ -75,6 +75,13 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 setCreditCards(cards);
             } catch (e) {
                 console.error('Error loading credit cards:', e);
+                // Antes silenciábamos: el dropdown de tarjetas aparecía vacío y
+                // el analista no podía registrar la reserva sin saber por qué.
+                alert(
+                    'No se pudieron cargar las tarjetas de crédito.\n\n' +
+                    'Cierre este modal, recargue la página (Ctrl+Shift+R) y vuelva a intentar. ' +
+                    'Si el problema persiste, contacte al administrador.'
+                );
             } finally {
                 setLoadingCards(false);
             }

@@ -169,39 +169,78 @@ class GasService {
     if (!response.success) throw new Error(response.error);
   }
 
+  /**
+   * Helper para los fetches "bootstrap" (datos de referencia que la app
+   * necesita para funcionar: directorio, ciudades, centros de costo, reglas,
+   * etc.). Antes silenciábamos fallos con `response.data || []`, lo que
+   * causaba UI rota e invisible (ej. dropdowns vacíos sin explicación,
+   * "cédula no encontrada" para todo el mundo si el directorio fallaba).
+   *
+   * Política nueva:
+   *   - Un reintento con 800 ms para sobrevivir cold starts de GAS y
+   *     hipos transient de red (los más frecuentes).
+   *   - Si ambos intentos fallan, lanzamos error para que el caller
+   *     decida: alertar al usuario, re-login, reintentar manualmente.
+   *   - Sesión expirada NO se reintenta (runGas ya disparó el handler).
+   *
+   * @param action            Nombre de la acción en el backend.
+   * @param humanName         Nombre legible para el mensaje de error.
+   * @param payload           Payload opcional de la acción.
+   * @param expectArray       Si true, valida que `data` sea array.
+   */
+  private async _bootstrapFetch<T>(
+    action: string,
+    humanName: string,
+    payload: any = null,
+    expectArray: boolean = true
+  ): Promise<T> {
+    let response = await this.runGas(action, payload);
+    if (!response || response.success === false) {
+      if (response && response.code === 'SESSION_EXPIRED') {
+        throw new Error(response.error || 'Sesión expirada.');
+      }
+      await new Promise(r => setTimeout(r, 800));
+      response = await this.runGas(action, payload);
+    }
+    if (!response || response.success === false) {
+      throw new Error(response?.error || `No se pudo cargar ${humanName}.`);
+    }
+    if (expectArray) {
+      if (!Array.isArray(response.data)) {
+        throw new Error(`Respuesta inesperada del servidor al cargar ${humanName}.`);
+      }
+    } else if (response.data === undefined || response.data === null) {
+      throw new Error(`Respuesta inesperada del servidor al cargar ${humanName}.`);
+    }
+    return response.data as T;
+  }
+
   async getCostCenterData(): Promise<CostCenterMaster[]> {
-    const response = await this.runGas('getCostCenterData');
-    return response.data || [];
+    return this._bootstrapFetch<CostCenterMaster[]>('getCostCenterData', 'los centros de costo');
   }
 
   async getIntegrantesData(): Promise<Integrant[]> {
-    const response = await this.runGas('getIntegrantesData');
-    return response.data || [];
+    return this._bootstrapFetch<Integrant[]>('getIntegrantesData', 'el directorio de usuarios');
   }
 
   async getCitiesList(): Promise<CityMaster[]> {
-    const response = await this.runGas('getCitiesList');
-    return response.data || [];
+    return this._bootstrapFetch<CityMaster[]>('getCitiesList', 'el listado de ciudades');
   }
 
   async getCoApproverRules(): Promise<{ principalEmail: string, coApproverName: string, coApproverEmail: string, condition: string }[]> {
-    const response = await this.runGas('getCoApproverRules');
-    return response.data || [];
+    return this._bootstrapFetch<{ principalEmail: string, coApproverName: string, coApproverEmail: string, condition: string }[]>('getCoApproverRules', 'las reglas de co-aprobación');
   }
 
   async getExecutiveEmails(): Promise<{ ceoEmail: string, directorEmail: string }> {
-    const response = await this.runGas('getExecutiveEmails');
-    return response.data || { ceoEmail: '', directorEmail: '' };
+    return this._bootstrapFetch<{ ceoEmail: string, directorEmail: string }>('getExecutiveEmails', 'los correos ejecutivos', null, false);
   }
 
   async getCreditCards(): Promise<{ value: string, label: string }[]> {
-    const response = await this.runGas('getCreditCards');
-    return response.data || [];
+    return this._bootstrapFetch<{ value: string, label: string }[]>('getCreditCards', 'las tarjetas de crédito');
   }
 
   async getSites(): Promise<string[]> {
-    const response = await this.runGas('getSites');
-    return response.data || [];
+    return this._bootstrapFetch<string[]>('getSites', 'las sedes');
   }
 
   async uploadSupportFile(requestId: string, fileData: string, fileName: string, mimeType: string): Promise<SupportData> {

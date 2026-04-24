@@ -32,16 +32,21 @@ const SHEET_NAME_INTEGRANTES = 'INTEGRANTES';
 const SHEET_NAME_CITIES = 'CIUDADES DEL MUNDO';
 
 // =====================================================================
-// PHASE B FEATURE FLAG: read user data from USUARIOS instead of INTEGRANTES
+// PHASE B FLAG (DEPRECADO — 2026-04-24)
 // =====================================================================
-// To switch the runtime to USUARIOS:
-//   Script Properties → set USE_USUARIOS_SHEET = 'true'
-// To revert to INTEGRANTES:
-//   Script Properties → set to 'false' (or delete the property)
-// No redeploy required — Apps Script re-reads constants on each web app
-// invocation. The switch is instantaneous and atomic.
+// La hoja INTEGRANTES fue eliminada en producción el 2026-04-24. Desde ese
+// momento USUARIOS es la única fuente de verdad. Esta constante queda
+// HARDCODEADA en `true` para que ninguna mala configuración de la Script
+// Property `USE_USUARIOS_SHEET` (accidental o maliciosa) pueda romper la
+// autenticación ni el directorio — si el valor fuera `false`, el código
+// intentaría leer de una hoja inexistente y devolvería [] silenciosamente.
+//
+// Las funciones `toggleUsuariosMode` y el item "Modo activo" del menú se
+// conservan por compatibilidad con triggers/scripts existentes, pero ya no
+// afectan al runtime. Se puede eliminar todo el cableado legacy en una
+// limpieza futura.
 // =====================================================================
-const USE_USUARIOS_SHEET = getConfig_('USE_USUARIOS_SHEET', 'false') === 'true';
+const USE_USUARIOS_SHEET = true;
 
 // DRIVE & EMAIL CONFIG (set in ScriptProperties for production)
 const ROOT_DRIVE_FOLDER_ID = getConfig_('ROOT_DRIVE_FOLDER_ID', '1uaett_yH1qZcS-rVr_sUh73mODvX02im');
@@ -3652,10 +3657,19 @@ function getExecutiveEmails() {
 }
 
 function getIntegrantesData() {
-  if (USE_USUARIOS_SHEET) {
-    return _getIntegrantesDataFromUsuarios_();
+  // La hoja INTEGRANTES legacy fue eliminada en producción (2026-04-24).
+  // USUARIOS es la única fuente de verdad.
+  var data = _getIntegrantesDataFromUsuarios_();
+  if (!data || data.length === 0) {
+    // Caso anómalo: logueamos y lanzamos para que el frontend reciba
+    // success:false en lugar de un array vacío silencioso que haría que
+    // TODAS las cédulas aparezcan como "no encontradas" en el form.
+    try {
+      Logger.log('ERROR getIntegrantesData: hoja USUARIOS vacía o no existe.');
+    } catch (_) { /* noop */ }
+    throw new Error('No se pudo cargar el directorio de usuarios: la hoja USUARIOS está vacía o no existe.');
   }
-  return _getIntegrantesDataFromIntegrantes_();
+  return data;
 }
 
 /**

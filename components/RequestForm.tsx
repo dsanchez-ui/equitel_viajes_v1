@@ -82,12 +82,33 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const [executiveEmails, setExecutiveEmails] = useState<{ ceoEmail: string, directorEmail: string }>({ ceoEmail: '', directorEmail: '' });
 
   useEffect(() => {
-    gasService.getCoApproverRules().then(setCoApproverRules).catch(() => {});
-    gasService.getExecutiveEmails().then(setExecutiveEmails).catch(() => {});
-    gasService.getSites()
-      .then(s => setSites(Array.isArray(s) ? s : []))
-      .catch(() => setSites([]))
-      .finally(() => setIsSitesLoading(false));
+    // Los 3 fetches de bootstrap del form. Si alguno falla por red / cold
+    // start de GAS, el helper `_bootstrapFetch` ya reintentó una vez; aquí
+    // capturamos el fallo persistente y mostramos alerta clara al usuario
+    // en lugar de silenciarlo (que dejaría dropdowns vacíos sin explicación).
+    const loadFormBootstrap = async () => {
+      try {
+        const [rules, execs, sites] = await Promise.all([
+          gasService.getCoApproverRules(),
+          gasService.getExecutiveEmails(),
+          gasService.getSites(),
+        ]);
+        setCoApproverRules(rules);
+        setExecutiveEmails(execs);
+        setSites(Array.isArray(sites) ? sites : []);
+      } catch (err: any) {
+        console.error('Error cargando datos iniciales del formulario:', err);
+        alert(
+          'No se pudieron cargar los datos iniciales del formulario ' +
+          '(reglas, correos ejecutivos o sedes).\n\n' +
+          'Recargue la página (Ctrl+Shift+R). Si el problema persiste, ' +
+          'contacte al administrador del aplicativo.'
+        );
+      } finally {
+        setIsSitesLoading(false);
+      }
+    };
+    loadFormBootstrap();
   }, []);
 
   // The effective requester email — for modifications it's the original requester,
@@ -785,7 +806,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                     </div>
                   </div>
                 )}
-                {firstPassengerMissing && (
+                {firstPassengerMissing && integrantes.length > 0 && (
                   <div className="rounded-md border border-red-300 bg-red-50 p-3">
                     <p className="text-xs text-red-800 font-semibold">
                       ⚠️ Cédula no encontrada en el directorio.
@@ -795,6 +816,20 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                       que autorizará la solicitud. Verifique el número; si la persona no está
                       registrada, contacte al área de viajes o al administrador del aplicativo
                       para que la agreguen antes de continuar.
+                    </p>
+                  </div>
+                )}
+                {firstPassengerMissing && integrantes.length === 0 && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-3">
+                    <p className="text-xs text-amber-900 font-semibold">
+                      ⚠️ No se pudo cargar el directorio de usuarios.
+                    </p>
+                    <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
+                      No estamos pudiendo validar la cédula contra el directorio en este momento
+                      (posible problema temporal de red o del servidor). Por favor recargue la
+                      página con <strong>Ctrl + Shift + R</strong> o cierre la pestaña y vuelva
+                      a iniciar sesión. Si el problema persiste, contacte al administrador
+                      del aplicativo — no se debe a un problema con su cédula.
                     </p>
                   </div>
                 )}

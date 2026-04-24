@@ -144,12 +144,28 @@ const App: React.FC = () => {
           setLoading(false);
           return;
         }
-        // Session OK → load integrantes (now session-protected) and finish login
+        // Session OK → load integrantes (now session-protected) and finish login.
+        // CRÍTICO: validar que vino poblado. Si llega vacío, NO dejar pasar al
+        // dashboard — el formulario de solicitud mostraría "Cédula no encontrada"
+        // para todo el mundo. Mejor forzar recarga con mensaje claro.
         const loadedIntegrantes = await gasService.getIntegrantesData();
+        if (!Array.isArray(loadedIntegrantes) || loadedIntegrantes.length === 0) {
+          throw new Error('El directorio de usuarios vino vacío desde el servidor.');
+        }
         setIntegrantes(loadedIntegrantes);
         await handleLoginSuccess(stored.email, (validation.role as StoredRole) || 'REQUESTER', loadedIntegrantes);
-      } catch (err) {
+      } catch (err: any) {
         console.error("Init failed", err);
+        const msg = String(err?.message || err || '');
+        const isDirectoryError = msg.includes('directorio');
+        if (isDirectoryError) {
+          alert(
+            'No se pudo cargar el directorio de usuarios.\n\n' +
+            'Esto suele ser un problema temporal de red o del servidor. ' +
+            'Por favor recargue la página (Ctrl+Shift+R) o vuelva a iniciar sesión en unos segundos.\n\n' +
+            'Si el problema persiste, contacte al administrador del aplicativo.'
+          );
+        }
         clearStoredSession();
         gasService.clearSession();
         setLoading(false);
@@ -323,8 +339,33 @@ const App: React.FC = () => {
       gasService.setUserEmail(pendingPinEmail);
       gasService.setSessionToken(result.token);
 
-      // Now we can load integrantes (session-protected endpoint)
-      const loadedIntegrantes = await gasService.getIntegrantesData();
+      // Now we can load integrantes (session-protected endpoint).
+      // CRÍTICO: si la carga del directorio falla o viene vacía, NO dejamos
+      // pasar al dashboard — ver comentario en init(). El usuario recibe
+      // alerta clara y se fuerza re-login.
+      let loadedIntegrantes: Integrant[];
+      try {
+        loadedIntegrantes = await gasService.getIntegrantesData();
+      } catch (dirErr) {
+        console.error('verifyUserPin: falló carga del directorio', dirErr);
+        clearStoredSession();
+        gasService.clearSession();
+        alert(
+          'Inicio de sesión correcto, pero no se pudo cargar el directorio de usuarios.\n\n' +
+          'Recargue la página (Ctrl+Shift+R) e intente nuevamente. ' +
+          'Si persiste, contacte al administrador del aplicativo.'
+        );
+        return false;
+      }
+      if (!loadedIntegrantes || loadedIntegrantes.length === 0) {
+        clearStoredSession();
+        gasService.clearSession();
+        alert(
+          'El directorio de usuarios vino vacío desde el servidor. ' +
+          'Recargue la página e intente de nuevo. Si persiste, contacte al administrador.'
+        );
+        return false;
+      }
       setIntegrantes(loadedIntegrantes);
 
       setShowUserPinModal(false);
@@ -402,7 +443,27 @@ const App: React.FC = () => {
       gasService.setUserEmail(pendingAdminEmail);
       gasService.setSessionToken(result.token);
 
-      const loadedIntegrantes = await gasService.getIntegrantesData();
+      // Ver comentario en init() y verifyUserPin: si el directorio falla o
+      // viene vacío, NO dejar pasar al dashboard.
+      let loadedIntegrantes: Integrant[];
+      try {
+        loadedIntegrantes = await gasService.getIntegrantesData();
+      } catch (dirErr) {
+        console.error('verifyAdminPin: falló carga del directorio', dirErr);
+        clearStoredSession();
+        gasService.clearSession();
+        alert(
+          'Inicio de sesión correcto, pero no se pudo cargar el directorio de usuarios.\n\n' +
+          'Recargue la página (Ctrl+Shift+R) e intente nuevamente.'
+        );
+        return false;
+      }
+      if (!loadedIntegrantes || loadedIntegrantes.length === 0) {
+        clearStoredSession();
+        gasService.clearSession();
+        alert('El directorio de usuarios vino vacío desde el servidor. Recargue la página e intente de nuevo.');
+        return false;
+      }
       setIntegrantes(loadedIntegrantes);
 
       setShowPinModal(false);
