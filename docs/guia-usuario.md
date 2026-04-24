@@ -149,15 +149,14 @@ El ciclo de una solicitud tiene varias etapas. Puedes consultar en qué etapa es
 ```
 CREACIÓN (tú)
    ↓
-PENDIENTE DE APROBACIÓN (tu aprobador debe aprobar por correo)
-   ↓
 PENDIENTE DE OPCIONES (el área de viajes está cotizando)
    ↓
-PENDIENTE DE SELECCIÓN (te llegan las opciones, tú eliges)
+PENDIENTE DE SELECCIÓN (te llegan las opciones, tú eliges — §4)
    ↓
 PENDIENTE DE CONFIRMACIÓN DE COSTO (el área registra el costo final)
    ↓
-(Segunda aprobación si es >$1.200.000 o internacional)
+PENDIENTE DE APROBACIÓN (tu aprobador, y según el caso CDS/CEO,
+                         deben aprobar por correo)
    ↓
 APROBADO
    ↓
@@ -166,21 +165,33 @@ RESERVADO (tienes tiquetes / confirmación de hotel)
 PROCESADO (ya viajaste y cerraste el ciclo)
 ```
 
+**Clave que sorprende a muchos:** la aprobación **NO ocurre al comienzo**. El área de viajes primero cotiza, tú eliges, el área confirma el costo final, y **solo ahí** se dispara el correo de aprobación. El motivo es operativo: hasta que no hay un costo final confirmado, no se sabe qué aprobadores se requieren (ver más abajo).
+
 **Tú solo participas en 3 momentos:**
 
 1. Al **crear** la solicitud.
 2. Al **describir tu selección** de las opciones que carga el área (la etapa más crítica — ver §4).
-3. Al **final**, cuando terminas el viaje, para confirmar que todo salió bien.
+3. Al **final**, cuando terminas el viaje, para confirmar que todo salió bien y subir los soportes.
 
 El resto del tiempo, **no tienes que hacer nada activamente**. Los correos te notifican cuando toca tu turno.
 
-### Aprobación
+### Quién aprueba y cuándo
 
-- Tu jefe (o la persona que figure como aprobador en tu ficha) recibe un correo con botones **`APROBAR`** y **`DENEGAR`**. Hace click en el que corresponda directamente desde el correo. No necesita entrar al portal.
-- Si el viaje cuesta más de **$1.200.000** (nacional) o es **internacional**, se suman más aprobadores (Dirección de Cadena de Suministro, y en internacionales también Gerencia General).
-- Cuando todas las aprobaciones requeridas estén listas, te llega un correo de **"Solicitud Aprobada"** y el proceso continúa.
+El correo de aprobación se envía **una sola vez**, justo después de que el área de viajes confirma el costo final de tu solicitud. Los destinatarios del correo dependen del caso:
 
-Si alguna aprobación se demora más de 3 días hábiles, el sistema escala a los superadmins para que intervengan — no tienes que hacer nada, se gestiona internamente.
+| Tipo de solicitud | Quién aprueba |
+|---|---|
+| Nacional ≤ $1.200.000 | Tu **aprobador de área** (tu jefe directo, o quien figure en tu ficha). |
+| Nacional > $1.200.000 | Tu aprobador de área **+** el **Director de Cadena de Suministro (CDS)**. Ambos deben aprobar. |
+| Internacional (cualquier monto) | Tu aprobador de área **+** el CDS y la **Gerencia General (CEO)**. Basta con que apruebe **uno** de los dos ejecutivos (CEO o CDS), además del aprobador de área. |
+
+Cada aprobador recibe un correo con botones **`APROBAR`** y **`DENEGAR`**. Hace click directamente desde el correo — no necesita entrar al portal. Cuando todos los que debían aprobar hayan aprobado, te llega un correo de **"Solicitud Aprobada"** y el proceso continúa.
+
+Si un aprobador **deniega**, la solicitud queda en estado `DENEGADO` y el proceso se detiene. En el correo de denegación verás el motivo que escribió el aprobador.
+
+### Qué pasa si un aprobador no responde
+
+Si alguna aprobación se demora más de 3 días hábiles, el sistema **escala automáticamente a los superadmins** (David o Yurani) para que intervengan. Se detienen los recordatorios al aprobador original para no saturarlo. Los superadmins pueden contactar al aprobador, saltar la etapa manualmente (si ya hay autorización verbal fuera del sistema) o anular la solicitud. Tú no tienes que hacer nada — se gestiona internamente.
 
 ---
 
@@ -433,11 +444,20 @@ Si el aprobador mostrado está mal o la persona ya no trabaja en la empresa, esc
 
 ### Mi aprobador no recibió el correo de aprobación
 
-Primero confirma con él que no esté en la carpeta de spam. Si verdaderamente no llegó:
+Primero: el correo de aprobación se envía **solo cuando** la solicitud llega al estado `PENDIENTE_APROBACION`. Y ese estado solo se alcanza **después** de que:
 
-- El correo se envía **solo después** de que tú creaste la solicitud y describiste la selección de opciones + el área confirmó costos.
-- Si tu solicitud todavía está en `PENDIENTE_OPCIONES` o `PENDIENTE_SELECCION`, es **normal** que no le haya llegado — aún no es su turno.
-- Si está en `PENDIENTE_APROBACION` y aun así no le llegó: pídele que revise spam de nuevo, y si no está, escribe a apcompras@equitel.com.co para reenviar.
+1. Tú creaste la solicitud.
+2. El área de viajes cargó las opciones.
+3. Tú describiste tu selección.
+4. El área confirmó los costos.
+
+Hasta que la solicitud no esté en `PENDIENTE_APROBACION`, **es normal que tu aprobador no haya recibido nada** — simplemente aún no es su turno.
+
+Si tu solicitud **sí está en `PENDIENTE_APROBACION`** y el aprobador insiste en que no le llegó:
+
+- Pídele que revise la carpeta de **spam / correo no deseado** una vez más (a veces Gmail filtra correos con enlaces de aprobación).
+- Si no aparece, escribe a `apcompras@equitel.com.co` pidiendo que reenvíen.
+- Verifica en el detalle de tu solicitud (en el portal) que el correo del aprobador listado es correcto. Si está mal (ej: persona que ya no está en la empresa), eso se ajusta desde el área de viajes.
 
 ### Cuánto tiempo tarda el proceso completo
 
@@ -505,18 +525,20 @@ No debería pasar. Cada usuario solo ve sus propias solicitudes. Si ves algo rar
 
 ## Resumen de los estados de una solicitud
 
+Listados en el **orden real** en que los verás pasar:
+
 | Estado | Qué está pasando | Qué tienes que hacer tú |
 |---|---|---|
-| `PENDIENTE_APROBACION` | Tu aprobador debe hacer click en aprobar o denegar. | Nada. Espera. |
-| `PENDIENTE_OPCIONES` | El área de viajes está buscando opciones. | Nada. Espera. |
-| `PENDIENTE_SELECCION` | Tienes opciones, debes elegir. | **Describir tu selección** (ver §4). |
-| `PENDIENTE_CONFIRMACION_COSTO` | El área registra el costo final. | Nada. Espera. |
-| `PENDIENTE_ANALISIS_CAMBIO` | Pediste una modificación, el área la revisa. | Nada. Espera la decisión. |
-| `APROBADO` | Listo para reservar. | Nada. El área está comprando. |
+| `PENDIENTE_OPCIONES` | El área de viajes está cotizando opciones de vuelo y/o hotel. | Nada. Espera. |
+| `PENDIENTE_SELECCION` | Te llegaron las opciones por correo, debes describir cuál eliges. | **Describir tu selección** (ver §4) indicando siempre la categoría. |
+| `PENDIENTE_CONFIRMACION_COSTO` | El área registra el costo final según tu selección. | Nada. Espera. |
+| `PENDIENTE_APROBACION` | Tu aprobador (y según el caso, CDS/CEO) deben aprobar por correo. | Nada. Espera. Avísale a tu aprobador si no revisa correo frecuentemente. |
+| `APROBADO` | Todas las aprobaciones listas. El área está comprando. | Nada. Espera. |
 | `RESERVADO` | Ya tienes tiquetes y/o confirmación de hotel. | Guardar los documentos y viajar. Al regresar, subir soportes. |
 | `PROCESADO` | Ciclo completo, ya viajaste y cerraste. | Nada. Terminó. |
 | `DENEGADO` | Un aprobador denegó. | Ver motivo en el correo. Crear una solicitud nueva si aplica. |
 | `ANULADO` | Alguien (tú o un admin) canceló la solicitud. | Nada. Si necesitas el viaje, crea una nueva. |
+| `PENDIENTE_ANALISIS_CAMBIO` | Pediste una modificación, el área la revisa. | Nada. Espera la decisión (ver §6). |
 
 ---
 
