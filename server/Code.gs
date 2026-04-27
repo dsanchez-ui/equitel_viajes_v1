@@ -2832,6 +2832,40 @@ function _getGmailAliasesCached_() {
   return _CACHED_GMAIL_ALIASES;
 }
 
+// =====================================================================
+// FIX EMOJIS: GmailApp.sendEmail con `from` alias corrompe los caracteres
+// del PLANO SUPLEMENTARIO UTF-16 (la mayoría de emojis: 💰📥🚫🔥🔎🏨📎📅
+// 📋📄🌍🌎🛡🛒🌐). Estos emojis ocupan 4 bytes en UTF-8 y requieren un par
+// surrogado en UTF-16; algo en la traducción interna a MIME los rompe y
+// el destinatario los ve como "������".
+//
+// Los emojis BMP (3 bytes UTF-8: ✅⚠✈➝❌ℹ⏰⏩⏭) sí se preservan correctamente
+// porque encajan en un solo code unit UTF-16.
+//
+// FIX: ANTES de pasar el htmlBody a GmailApp.sendEmail, convertir los pares
+// surrogados a entidades HTML numéricas (`&#x1F4B0;`). Las entidades son
+// puro ASCII, sobreviven cualquier hipo de codificación, y los clientes de
+// correo las renderizan como el emoji original. Para el body plain-text, los
+// removemos (las entidades no se renderizan en text/plain, mejor sin ellos).
+//
+// IMPORTANTE: solo se aplica al path GmailApp. El path MailApp legacy NO
+// tiene este bug y queda intacto.
+// =====================================================================
+function _encodeSupplementaryAsHtmlEntities_(s) {
+  if (!s) return s;
+  return String(s).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, function(match) {
+    var hi = match.charCodeAt(0);
+    var lo = match.charCodeAt(1);
+    var codepoint = (hi - 0xD800) * 0x400 + (lo - 0xDC00) + 0x10000;
+    return '&#x' + codepoint.toString(16).toUpperCase() + ';';
+  });
+}
+
+function _stripSupplementary_(s) {
+  if (!s) return s;
+  return String(s).replace(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g, '');
+}
+
 // Inyecta el footer de soporte técnico en htmlBody solo si el marker NO está
 // presente. El marker permite a otros generadores (ej: el frontend) incluir
 // su propio footer y que éste wrapper no duplique.
@@ -2887,7 +2921,9 @@ function _sendMail_(options) {
     if (aliases.indexOf(fromAlias) >= 0) {
       try {
         var gmailOpts = {
-          htmlBody: opts.htmlBody || '',
+          // Encode emojis del plano suplementario como entidades HTML
+          // antes de entregar al runtime de GmailApp (ver explicación arriba).
+          htmlBody: _encodeSupplementaryAsHtmlEntities_(opts.htmlBody || ''),
           from: fromAlias,
           replyTo: opts.replyTo || fromAlias
         };
@@ -2900,8 +2936,13 @@ function _sendMail_(options) {
         if (opts.attachments) gmailOpts.attachments = opts.attachments;
         if (opts.inlineImages) gmailOpts.inlineImages = opts.inlineImages;
         if (opts.noReply) gmailOpts.noReply = opts.noReply;
+        // Body plain-text fallback: las entidades HTML no se renderizan en
+        // text/plain, por eso simplemente removemos los chars supplementary
+        // (resulta más limpio que dejarlos como '?'). Subject queda intacto:
+        // RFC2047 maneja UTF-8 correctamente en headers, sin el bug del body.
+        var safeBody = _stripSupplementary_(opts.body || '');
         // GmailApp.sendEmail firma: (recipient, subject, body, options)
-        GmailApp.sendEmail(opts.to, opts.subject || '', opts.body || '', gmailOpts);
+        GmailApp.sendEmail(opts.to, opts.subject || '', safeBody, gmailOpts);
         return;
       } catch (e) {
         try {
