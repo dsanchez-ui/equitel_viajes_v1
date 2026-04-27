@@ -2370,22 +2370,13 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     const parentId = String(sheet.getRange(rowNumber, parentIdIdx + 1).getValue()).trim();
     const isModification = parentId && parentId !== '' && parentId !== 'undefined';
 
-    // 1. Handle File Upload — toda carpeta vive en root, sea original o modificación
-    const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-    let folder;
-    const allFolders = root.getFolders();
-    while (allFolders.hasNext()) {
-        const f = allFolders.next();
-        if (f.getName().indexOf(requestId) === 0) {
-            folder = f;
-            break;
-        }
-    }
-    if (!folder) {
-        folder = root.createFolder(requestId);
-    }
+    // 1. Handle File Upload — toda carpeta vive en root, sea original o modificación.
+    // Usamos getOrCreateRequestFolder_ que ya tiene búsqueda Drive O(1) + retry,
+    // en lugar del scan lineal que rebasaba el rate limit.
+    const folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
 
-    // Upload all reservation files into the folder
+    // Upload all reservation files into the folder. Cada createFile + setSharing
+    // envuelto en _driveRetry_ para tolerar hipos transient sin romper la operación.
     const uploadedFiles = files.map(function(f, idx) {
         var safeName = String(f.fileName).replace(/[\/\\:*?"<>|]/g, '_').substring(0, 200);
         var lower = safeName.toLowerCase();
@@ -2397,8 +2388,10 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
         // Name files with the PNR + index for traceability
         var label = files.length > 1 ? `Reserva_${reservationNumber}_${idx + 1}_${requestId}` : `Reserva_${reservationNumber}_${requestId}`;
         blob.setName(label);
-        var driveFile = folder.createFile(blob);
-        driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        var driveFile = _driveRetry_(function() { return folder.createFile(blob); }, 'createFile-reserva');
+        _driveRetry_(function() {
+          driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        }, 'setSharing-reserva');
         return {
             id: driveFile.getId(),
             name: label,
@@ -2440,7 +2433,7 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     if (reservationNumber) newFolderName += ` - ${reservationNumber}`;
     if (tcShort) newFolderName += ` - ${tcShort}`;
     if (monthYear) newFolderName += ` - ${monthYear}`;
-    folder.setName(newFolderName);
+    _driveRetry_(function() { folder.setName(newFolderName); }, 'setName-reserva');
 
     // 3. Update Sheets
     sheet.getRange(rowNumber, resNoIdx + 1).setValue(safeSheetValue_(reservationNumber));
@@ -2595,20 +2588,18 @@ function amendReservation(payload) {
         }
     });
 
-    // 4. Upload new files
-    var root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+    // 4. Upload new files. Si supportData ya tiene folderId (caso típico
+    // post-reserva), usamos directamente — 0 llamadas Drive de búsqueda.
+    // Si no, getOrCreateRequestFolder_ hace search Drive O(1) + retry.
     var folder;
     if (supportData.folderId) {
-        try { folder = DriveApp.getFolderById(supportData.folderId); } catch (e) {}
+        try {
+            folder = _driveRetry_(function() { return DriveApp.getFolderById(supportData.folderId); }, 'getFolderById-cached');
+        } catch (e) { /* fallback abajo */ }
     }
     if (!folder) {
-        var allFolders = root.getFolders();
-        while (allFolders.hasNext()) {
-            var f = allFolders.next();
-            if (f.getName().indexOf(requestId) === 0) { folder = f; break; }
-        }
+        folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
     }
-    if (!folder) folder = root.createFolder(requestId);
 
     var uploadedFiles = [];
     if (newFilesData.length > 0) {
@@ -2624,8 +2615,10 @@ function amendReservation(payload) {
             var blob = Utilities.newBlob(Utilities.base64Decode(nf.fileData), mime, safeName);
             var label = 'Reserva_' + newPnr + '_' + requestId;
             blob.setName(label);
-            var driveFile = folder.createFile(blob);
-            driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+            var driveFile = _driveRetry_(function() { return folder.createFile(blob); }, 'createFile-amend');
+            _driveRetry_(function() {
+              driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+            }, 'setSharing-amend');
             var fileEntry = {
                 id: driveFile.getId(),
                 name: label,
@@ -2664,7 +2657,7 @@ function amendReservation(payload) {
     if (newPnr) newFolderName += ' - ' + newPnr;
     if (tcShort) newFolderName += ' - ' + tcShort;
     if (monthYear) newFolderName += ' - ' + monthYear;
-    folder.setName(newFolderName);
+    _driveRetry_(function() { folder.setName(newFolderName); }, 'setName-amend');
 
     SpreadsheetApp.flush();
 
@@ -4276,23 +4269,99 @@ function createNewRequest(data, emailHtml) {
   return id;
 }
 
+// =====================================================================
+// DRIVE RETRY — manejo defensivo de errores transient
+// =====================================================================
+// Drive ocasionalmente responde con "Error de servicio: Drive" cuando hay
+// hipos transient o se rebasa el rate limit (500 req/100s por usuario).
+// Este helper reintenta UNA vez con 1.5s de delay — suficiente para superar
+// la mayoría de hipos y resetear contadores de rate limit.
+//
+// Si el segundo intento también falla, la excepción se propaga al caller
+// con el mensaje original (mejor mostrar el error que silenciar el fallo).
+// =====================================================================
+function _driveRetry_(fn, label) {
+  try {
+    return fn();
+  } catch (e) {
+    var msg = String(e && e.message || e);
+    var isTransient = msg.indexOf('Error de servicio') >= 0
+                  || msg.indexOf('Service error') >= 0
+                  || msg.indexOf('try again') >= 0
+                  || msg.indexOf('try later') >= 0
+                  || msg.indexOf('temporarily') >= 0
+                  || msg.indexOf('Internal error') >= 0
+                  || msg.indexOf('rate') >= 0;
+    if (!isTransient) throw e;
+    try { Logger.log('WARN _driveRetry_(' + (label || '?') + '): primer intento falló, reintentando en 1.5s. Error: ' + msg); } catch (_) {}
+    Utilities.sleep(1500);
+    return fn();
+  }
+}
+
 /**
  * Helper: Get or create a Drive folder for a request.
+ *
  * Modificaciones y originales viven al MISMO nivel raíz. El nombre de la
  * carpeta de una modificación tiene el prefix "CAMBIO DE ${parentId}" que
  * deja clara la relación visualmente, pero no se anida físicamente. Esto
  * facilita la navegación del analista en Drive (todo en el root, sin subfolders).
+ *
+ * Estrategia de búsqueda (2026-04-27):
+ *   1. PRIMARIO: `DriveApp.searchFolders` con query parametrizado por
+ *      ROOT_DRIVE_FOLDER_ID + nombre. Una sola llamada API → O(1).
+ *   2. FALLBACK: scan lineal con `root.getFolders()`. Solo se usa si la
+ *      búsqueda falla por algún motivo raro (e.g. eventual consistency).
+ *
+ * Antes (linear-scan-only): con ~100 carpetas en root y 4-6 uploads
+ * consecutivos por solicitud, hacía 400-600 llamadas a Drive en segundos
+ * → rebasaba el rate limit de Drive (500 req/100s) → "Error de servicio:
+ * Drive" cada vez. Con search query es 1 llamada por upload.
  */
 function getOrCreateRequestFolder_(requestId, rowNumber, sheet) {
-    const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-    const allFolders = root.getFolders();
-    while (allFolders.hasNext()) {
-        const f = allFolders.next();
-        if (f.getName().indexOf(requestId) === 0) {
-            return f;
+    var root = _driveRetry_(function() {
+      return DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+    }, 'getRoot');
+
+    // 1) PRIMARIO: query Drive (O(1)) — escapa requestId por si llegara con comillas.
+    try {
+        var safeId = String(requestId).replace(/"/g, '\\"');
+        var query = '"' + ROOT_DRIVE_FOLDER_ID + '" in parents'
+                  + ' and title contains "' + safeId + '"'
+                  + ' and trashed = false';
+        var matches = _driveRetry_(function() {
+          return DriveApp.searchFolders(query);
+        }, 'searchFolders');
+        while (matches.hasNext()) {
+            var f = matches.next();
+            // El query usa "contains" (sustring), validamos que efectivamente
+            // empiece con requestId (para evitar matchear "CAMBIO DE SOL-XXX"
+            // cuando estamos buscando el padre).
+            if (f.getName().indexOf(requestId) === 0) {
+                return f;
+            }
         }
+    } catch (e) {
+        try { Logger.log('WARN getOrCreateRequestFolder_: searchFolders falló (' + e + '). Fallback a scan lineal.'); } catch (_) {}
     }
-    return root.createFolder(requestId);
+
+    // 2) FALLBACK: scan lineal (legacy). Solo se ejecuta si la búsqueda Drive
+    // falló o no encontró matches. Si la solicitud es realmente nueva, este
+    // scan también se ejecuta y termina en createFolder.
+    try {
+        var allFolders = _driveRetry_(function() { return root.getFolders(); }, 'getFolders');
+        while (allFolders.hasNext()) {
+            var f2 = allFolders.next();
+            if (f2.getName().indexOf(requestId) === 0) {
+                return f2;
+            }
+        }
+    } catch (e2) {
+        try { Logger.log('WARN getOrCreateRequestFolder_: getFolders fallback también falló (' + e2 + '). Procediendo a crear carpeta nueva.'); } catch (_) {}
+    }
+
+    // No existe → crear.
+    return _driveRetry_(function() { return root.createFolder(requestId); }, 'createFolder');
 }
 
 // NEW FUNCTION: Upload Option Image (v2.7)
@@ -4341,17 +4410,17 @@ function uploadOptionImage(requestId, fileData, fileName, type, optionLetter, di
 
     // Get or Create Folder (nested inside parent folder if modification)
     const folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
-    
-    // Ensure folder is accessible (optional based on org policy, but needed for public links if not using service account bridging)
-    // folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
     const blob = Utilities.newBlob(Utilities.base64Decode(fileData), MimeType.PNG, fileName); // Assume PNG or detect
     const newName = `Opcion_${optionLetter}_${type}_${requestId}`;
     blob.setName(newName);
-    
-    const file = folder.createFile(blob);
-    // Make file viewable to anyone with link so it can be embedded in emails/app across domains
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    // Drive ops envueltas en retry: si Drive lanza "Error de servicio: Drive"
+    // (rate limit o hipo transient), reintentamos una vez con 1.5s de delay.
+    const file = _driveRetry_(function() { return folder.createFile(blob); }, 'createFile-option');
+    _driveRetry_(function() {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }, 'setSharing-option');
 
     const publicUrl = `https://drive.google.com/thumbnail?id=${file.getId()}&sz=w1000`; // CHANGED FROM uc?export=view for reliability
     // Or use file.getThumbnailLink() if size is an issue, but view link is better for quality
@@ -4538,7 +4607,11 @@ function uploadSupportFile(requestId, fileData, fileName, mimeType, correctionNo
   let supportData = jsonStr ? JSON.parse(jsonStr) : { folderId: null, folderUrl: null, files: [] };
 
   let folder;
-  if (supportData.folderId) { try { folder = DriveApp.getFolderById(supportData.folderId); } catch(e) {} }
+  if (supportData.folderId) {
+    try {
+      folder = _driveRetry_(function() { return DriveApp.getFolderById(supportData.folderId); }, 'getFolderById-support');
+    } catch(e) {}
+  }
   if (!folder) {
      folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
      supportData.folderId = folder.getId();
@@ -4546,7 +4619,7 @@ function uploadSupportFile(requestId, fileData, fileName, mimeType, correctionNo
   }
 
   const blob = Utilities.newBlob(Utilities.base64Decode(fileData), mimeType, fileName);
-  const file = folder.createFile(blob);
+  const file = _driveRetry_(function() { return folder.createFile(blob); }, 'createFile-support');
   var fileEntry = { id: file.getId(), name: file.getName(), url: file.getUrl(), mimeType: mimeType, date: new Date().toISOString() };
   if (correctionNote) fileEntry.isCorrection = true;
   supportData.files.push(fileEntry);
@@ -4560,7 +4633,9 @@ function uploadSupportFile(requestId, fileData, fileName, mimeType, correctionNo
       var req = mapRowToRequest(rowData);
       var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
       var fileUrl = 'https://drive.google.com/file/d/' + file.getId() + '/view?usp=sharing';
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      _driveRetry_(function() {
+        file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      }, 'setSharing-support');
 
       var content = '<p style="color:#111827; font-size:14px; margin-bottom:12px;">El área de viajes ha cargado un <strong>documento corregido</strong> para su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
       if (correctionNote) {
@@ -5981,19 +6056,28 @@ function formatTable(table) {
  * Returns the URL of the generated PDF.
  */
 function generateSupportReport(requestId) {
-    // 0. Check if report already exists (cache) — avoids regenerating every click
-    const rootForCache = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-    const foldersForCache = rootForCache.getFolders();
-    while (foldersForCache.hasNext()) {
-      const f = foldersForCache.next();
-      if (f.getName().indexOf(requestId) === 0) {
-        const existing = f.getFilesByName('Soporte_' + requestId + '.pdf');
-        if (existing.hasNext()) {
-          const cached = existing.next();
-          return 'https://drive.google.com/file/d/' + cached.getId() + '/view?usp=sharing';
+    // 0. Check if report already exists (cache) — avoids regenerating every click.
+    // Usa búsqueda Drive O(1) en lugar de scan lineal sobre todas las carpetas.
+    try {
+      var safeIdC = String(requestId).replace(/"/g, '\\"');
+      var queryC = '"' + ROOT_DRIVE_FOLDER_ID + '" in parents'
+                + ' and title contains "' + safeIdC + '"'
+                + ' and trashed = false';
+      var matchesC = _driveRetry_(function() { return DriveApp.searchFolders(queryC); }, 'searchFolders-cache');
+      while (matchesC.hasNext()) {
+        var fC = matchesC.next();
+        if (fC.getName().indexOf(requestId) === 0) {
+          var existing = fC.getFilesByName('Soporte_' + requestId + '.pdf');
+          if (existing.hasNext()) {
+            var cached = existing.next();
+            return 'https://drive.google.com/file/d/' + cached.getId() + '/view?usp=sharing';
+          }
+          break;
         }
-        break;
       }
+    } catch (eC) {
+      // Si la búsqueda falla, simplemente saltamos el cache check; se regenerará el reporte.
+      try { Logger.log('WARN generateSupportReport cache check falló: ' + eC); } catch (_) {}
     }
 
     // 1. Get template ID
@@ -6047,20 +6131,27 @@ function generateSupportReport(requestId) {
     });
     if (!passengersText) passengersText = 'Sin pasajeros registrados';
     
-    // 6. Get folder URL
+    // 6. Get folder URL — usa supportData.folderUrl cacheado si existe;
+    // sino busca con query Drive O(1) en lugar de scan lineal.
     let folderUrl = 'No disponible';
     if (req.supportData && req.supportData.folderUrl) {
         folderUrl = req.supportData.folderUrl;
     } else {
-        // Try to find folder in Drive
-        const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-        const allFolders = root.getFolders();
-        while (allFolders.hasNext()) {
-            const f = allFolders.next();
-            if (f.getName().indexOf(requestId) === 0) {
-                folderUrl = f.getUrl();
-                break;
+        try {
+            var safeIdU = String(requestId).replace(/"/g, '\\"');
+            var queryU = '"' + ROOT_DRIVE_FOLDER_ID + '" in parents'
+                      + ' and title contains "' + safeIdU + '"'
+                      + ' and trashed = false';
+            var matchesU = _driveRetry_(function() { return DriveApp.searchFolders(queryU); }, 'searchFolders-folderUrl');
+            while (matchesU.hasNext()) {
+                var fU = matchesU.next();
+                if (fU.getName().indexOf(requestId) === 0) {
+                    folderUrl = fU.getUrl();
+                    break;
+                }
             }
+        } catch (eU) {
+            try { Logger.log('WARN generateSupportReport folderUrl lookup falló: ' + eU); } catch (_) {}
         }
     }
     
@@ -6120,29 +6211,19 @@ function generateSupportReport(requestId) {
     const pdfBlob = DriveApp.getFileById(copy.getId()).getAs('application/pdf');
     pdfBlob.setName(`Soporte_${requestId}.pdf`);
     
-    // 9. Save to request folder
-    const root = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-    let folder;
-    const allFolders = root.getFolders();
-    while (allFolders.hasNext()) {
-        const f = allFolders.next();
-        if (f.getName().indexOf(requestId) === 0) {
-            folder = f;
-            break;
-        }
-    }
-    if (!folder) {
-        folder = root.createFolder(requestId);
-    }
-    
+    // 9. Save to request folder — reusa el helper que tiene búsqueda Drive O(1).
+    const folder = getOrCreateRequestFolder_(requestId, null, null);
+
     // Remove old report if exists
     const existingFiles = folder.getFilesByName(`Soporte_${requestId}.pdf`);
     while (existingFiles.hasNext()) {
         existingFiles.next().setTrashed(true);
     }
-    
-    const pdfFile = folder.createFile(pdfBlob);
-    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    const pdfFile = _driveRetry_(function() { return folder.createFile(pdfBlob); }, 'createFile-report');
+    _driveRetry_(function() {
+      pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }, 'setSharing-report');
     
     // 10. Cleanup: delete temp doc
     DriveApp.getFileById(copy.getId()).setTrashed(true);
