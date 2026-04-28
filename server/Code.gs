@@ -337,6 +337,28 @@ function _getRowByRequestId_(requestId) {
 function _clearRequestRowCache_() { _REQUEST_ROW_CACHE = null; }
 
 /**
+ * Resetea TODOS los caches per-execution (declarados como `var` a nivel de
+ * archivo). Llamar al inicio de cada entry point HTTP (doGet/doPost) para
+ * garantizar que el cache es realmente per-request, no per-isolate.
+ *
+ * Por qué: los `var` a nivel de archivo persisten mientras el isolate V8
+ * sobreviva. Con `warmupPing` cada 10 min manteniendo el isolate tibio, dos
+ * invocaciones consecutivas pueden compartir caches stale construidos en
+ * una invocación anterior — ej: `_REQUEST_ROW_CACHE` no incluye una fila
+ * agregada por otro dispatch en el mismo isolate.
+ *
+ * El costo de resetear es ~0: cada cache se reconstruye lazily en la 1ra
+ * llamada del request, igual que ya hacía. Solo elimina la posibilidad de
+ * heredar estado de un request anterior.
+ */
+function _resetPerExecutionCaches_() {
+  _REQ_HEADERS_CACHE = null;
+  _REQUEST_ROW_CACHE = null;
+  _REQUESTER_CEDULA_CACHE = null;
+  _CACHED_GMAIL_ALIASES = null;
+}
+
+/**
  * Etapa 2.6: calcula el siguiente ID secuencial reusando el cache existente.
  *
  * Antes de este helper, `createNewRequest` leía toda la columna ID (N reads
@@ -419,6 +441,9 @@ function setupDatabase() {
  * Handle GET requests (Email Links)
  */
 function doGet(e) {
+  // Garantizar caches per-request (ver _resetPerExecutionCaches_).
+  _resetPerExecutionCaches_();
+
   // Return JSON status if no parameters (prevents frontend crash on default GET)
   if (!e.parameter || Object.keys(e.parameter).length === 0) {
       return ContentService.createTextOutput(JSON.stringify({
@@ -480,6 +505,9 @@ function doGet(e) {
  */
 function doPost(e) {
   try {
+    // Garantizar caches per-request (ver _resetPerExecutionCaches_).
+    _resetPerExecutionCaches_();
+
     if (!e.postData || !e.postData.contents) {
        throw new Error("Empty Request Body");
     }
