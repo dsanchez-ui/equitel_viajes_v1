@@ -64,6 +64,12 @@ class GasService {
 
   /**
    * Universal Bridge using HTTP FETCH.
+   *
+   * Timeout global de 30s vía AbortController. Sin esto, un network stall
+   * (servidor colgado, conexión limbo, GAS atorado) deja el fetch sin
+   * resolver → callers como handleViewRequest con spinner blocking quedan
+   * eternos hasta F5. 30s es generoso (cubre cold start + cómputo) pero
+   * finito; si dispara, el caller recibe un error claro y puede reintentar.
    */
   private async runGas(action: string, payload: any = null): Promise<ApiResponse<any>> {
     if (!API_BASE_URL || API_BASE_URL.includes('REPLACE')) {
@@ -71,11 +77,16 @@ class GasService {
       return { success: false, error: "API URL no configurada." };
     }
 
+    const FETCH_TIMEOUT_MS = 30000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
     try {
       const response = await fetch(API_BASE_URL, {
         method: 'POST',
         mode: 'cors',
         redirect: 'follow',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
@@ -124,22 +135,29 @@ class GasService {
       return result;
 
     } catch (error: any) {
+      // AbortError ocurre cuando el timeout disparó. Tratarlo como network
+      // error con mensaje específico.
+      const isTimeout = error?.name === 'AbortError';
       let msg = error.message || 'Error de conexión';
-      const isNetworkError = msg.includes('Failed to fetch') || msg.includes('NetworkError');
+      const isNetworkError = msg.includes('Failed to fetch') || msg.includes('NetworkError') || isTimeout;
 
       if ((action === 'getCurrentUser' || action === 'getIntegrantesData') && isNetworkError) {
         console.warn(`[API Info] Connection check failed for ${action}: Server unreachable or offline.`);
       } else {
-        console.error(`[API Error] ${action}:`, error);
+        console.error(`[API Error] ${action}${isTimeout ? ' [TIMEOUT]' : ''}:`, error);
       }
 
-      if (isNetworkError) {
+      if (isTimeout) {
+        msg = 'El servidor tardó demasiado en responder (más de 30s). Reintenta o recarga la página.';
+      } else if (isNetworkError) {
         msg = 'No se pudo conectar con el servidor. Verifique su conexión o la URL del script.';
       }
       // Transport fail: fetch lanzó, HTTP !ok, HTML en vez de JSON, etc.
       // Estos son los casos que cuentan para el health banner.
       _notifyTransport(false);
       return { success: false, error: msg };
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

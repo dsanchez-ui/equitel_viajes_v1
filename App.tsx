@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Layout } from './components/Layout';
 import { RequestForm } from './components/RequestForm';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -107,6 +107,12 @@ const App: React.FC = () => {
   // Etapa 1.2: spinner mientras getRequestById hidrata el detalle. Evita que
   // el admin clickee acciones sobre datos lite (ventana ~500ms).
   const [hydratingDetail, setHydratingDetail] = useState(false);
+  // Cancelable de hidratación: si una petición tarda demasiado o el usuario
+  // cancela manualmente, marca el flag y descarta el resultado tardío. Sin
+  // esto, un fetch lento que termina DESPUÉS de cancelar abriría el detalle
+  // de forma inesperada — y peor, si runGas se colgara sin timeout, el spinner
+  // quedaba eterno hasta F5 (bug reportado en producción).
+  const hydrationCancelRef = useRef<{ cancelled: boolean } | null>(null);
 
   // Modification State
   const [modificationRequest, setModificationRequest] = useState<TravelRequest | null>(null);
@@ -629,25 +635,59 @@ const App: React.FC = () => {
   // gasService.getRequestById ya hace 1 retry con 1.5s de backoff antes de
   // retornar null, así que llegar aquí con null implica falla persistente.
   const handleViewRequest = useCallback(async (req: TravelRequest) => {
+    // Si había una hidratación previa en curso, cancelarla. Su resultado
+    // (cuando llegue) se descartará por el flag.
+    if (hydrationCancelRef.current) hydrationCancelRef.current.cancelled = true;
+    const flag = { cancelled: false };
+    hydrationCancelRef.current = flag;
+
     setHydratingDetail(true);
     try {
       const full = await gasService.getRequestById(req.requestId);
+      // Si el usuario canceló (o disparó otra hidratación), descartar.
+      if (flag.cancelled) return;
+
       if (full) {
         setSelectedRequest(full);
         return;
       }
-      // Hidratación falló persistentemente (gasService ya hizo 1 retry).
-      // Política conservadora: NO abrir el detalle con datos parciales en
-      // ningún estado. La galería de opciones puede aparecer en cualquier
-      // estado (incluso PROCESADO/RESERVADO como referencia histórica), y
-      // mostrar `analystOptions = []` cuando realmente hay opciones es
-      // engañoso o, en el caso del admin, riesgo de sobrescribir.
-      // Cero riesgo a costa de pedir reintento explícito.
-      alert('No se pudieron cargar los detalles completos de la solicitud (problema de red). Por favor reintente.');
+      // Hidratación falló persistentemente (gasService ya hizo 1 retry interno
+      // + el timeout de 30s en runGas evita el spinner eterno). Política
+      // conservadora: NO abrir el detalle con datos parciales — la galería de
+      // opciones puede aparecer en cualquier estado (incluso PROCESADO/RESERVADO
+      // como referencia histórica) y mostrar `analystOptions = []` cuando hay
+      // opciones es engañoso o, en el caso del admin, riesgo de sobrescribir.
+      alert('No se pudieron cargar los detalles completos de la solicitud (problema de red o servidor). Por favor reintente en unos segundos.');
+    } catch (err) {
+      // Defensa final: cualquier excepción no esperada (ej. error en
+      // gasService que se escape del catch interno) cierra el spinner y
+      // notifica. Sin esto, el spinner quedaba eterno hasta F5.
+      if (!flag.cancelled) {
+        console.error('handleViewRequest error inesperado:', err);
+        alert('Ocurrió un error cargando el detalle. Reintenta en unos segundos.');
+      }
     } finally {
-      setHydratingDetail(false);
+      // Solo cerrar el spinner si esta llamada sigue siendo la "vigente".
+      // Si se canceló (porque el usuario abrió otra solicitud), la nueva
+      // llamada gestionará su propio spinner.
+      if (!flag.cancelled) setHydratingDetail(false);
     }
   }, []);
+
+  const handleCancelHydration = useCallback(() => {
+    if (hydrationCancelRef.current) hydrationCancelRef.current.cancelled = true;
+    setHydratingDetail(false);
+  }, []);
+
+  // ESC también cancela el spinner mientras está activo.
+  useEffect(() => {
+    if (!hydratingDetail) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') handleCancelHydration();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [hydratingDetail, handleCancelHydration]);
 
   const handleToggleView = async () => {
     const next = !viewAsRequester;
@@ -885,13 +925,29 @@ const App: React.FC = () => {
         // Tailwind 4: usar la sintaxis `bg-color/opacity` (no `bg-opacity-N`).
         // Mismo tono que el modal del detalle (bg-gray-500/75) para consistencia
         // visual al transicionar de spinner a contenido.
-        <div className="fixed inset-0 bg-gray-500/75 z-[10000] flex items-center justify-center transition-opacity">
-          <div className="bg-white rounded-lg shadow-xl px-6 py-4 flex items-center gap-3">
+        // Click en el fondo o botón "Cancelar" cierra el spinner — escape de
+        // emergencia si la red se cuelga (defensa adicional al timeout de 30s
+        // en runGas, que ya garantiza que el spinner no quede eterno).
+        <div
+          className="fixed inset-0 bg-gray-500/75 z-[10000] flex items-center justify-center transition-opacity"
+          onClick={handleCancelHydration}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl px-6 py-4 flex items-center gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
             <svg className="animate-spin h-5 w-5 text-brand-red" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <span className="text-sm text-gray-700">Cargando detalle…</span>
+            <button
+              type="button"
+              onClick={handleCancelHydration}
+              className="text-xs text-gray-500 hover:text-gray-800 underline focus:outline-none"
+            >
+              Cancelar
+            </button>
           </div>
         </div>
       )}
