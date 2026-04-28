@@ -803,7 +803,10 @@ const App: React.FC = () => {
         />
       )}
       {hydratingDetail && !selectedRequest && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 z-[10000] flex items-center justify-center">
+        // Tailwind 4: usar la sintaxis `bg-color/opacity` (no `bg-opacity-N`).
+        // Mismo tono que el modal del detalle (bg-gray-500/75) para consistencia
+        // visual al transicionar de spinner a contenido.
+        <div className="fixed inset-0 bg-gray-500/75 z-[10000] flex items-center justify-center transition-opacity">
           <div className="bg-white rounded-lg shadow-xl px-6 py-4 flex items-center gap-3">
             <svg className="animate-spin h-5 w-5 text-brand-red" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

@@ -2972,11 +2972,16 @@ function _sendMail_(options) {
         if (opts.noReply) gmailOpts.noReply = opts.noReply;
         // Body plain-text fallback: las entidades HTML no se renderizan en
         // text/plain, por eso simplemente removemos los chars supplementary
-        // (resulta más limpio que dejarlos como '?'). Subject queda intacto:
-        // RFC2047 maneja UTF-8 correctamente en headers, sin el bug del body.
+        // (resulta más limpio que dejarlos como '?').
         var safeBody = _stripSupplementary_(opts.body || '');
+        // Subject: el bug del plano suplementario también afecta al header
+        // cuando se envía con alias `from` (visto en correo de anulación con
+        // 🚫). Las entidades HTML no funcionan en headers RFC2047, así que
+        // simplemente removemos. Emojis BMP (⚠ ⏰ ✅ ➝ ❌ ℹ) se preservan —
+        // solo se eliminan los 4-byte (🚫 💰 📥 📅 🔥 etc).
+        var safeSubject = _stripSupplementary_(opts.subject || '');
         // GmailApp.sendEmail firma: (recipient, subject, body, options)
-        GmailApp.sendEmail(opts.to, opts.subject || '', safeBody, gmailOpts);
+        GmailApp.sendEmail(opts.to, safeSubject, safeBody, gmailOpts);
         return;
       } catch (e) {
         try {
@@ -6487,7 +6492,9 @@ function anularSolicitud(requestId, reason) {
   const userEmail = sheet.getRange(rowNumber, emailIdx + 1).getValue();
   
   try {
-    const subject = `🚫 Solicitud de Viaje ${requestId} - ANULADA`;
+    // Emoji BMP (❌) en vez de 🚫 (plano suplementario) — sobrevive el envío
+    // por GmailApp con alias sin necesidad del strip de _sendMail_.
+    const subject = `❌ Solicitud de Viaje ${requestId} - ANULADA`;
     const html = `
       <div style="font-family: Arial, sans-serif; color: #374151;">
         <h2 style="color: #D71920;">Solicitud Anulada</h2>
