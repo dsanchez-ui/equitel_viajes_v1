@@ -44,14 +44,18 @@ Para no duplicar trabajo, estas mejoras YA están en producción:
 | Cache de métricas en `metricas_cache.json` (Drive) | (legacy) | Métricas incrementales — solo recompúta solicitudes que cambiaron. |
 | `_bootstrapFetch` helper con retry para fetches críticos del frontend | (commit posterior a fix #A49) | Reintento + alerta clara al usuario en lugar de array vacío silencioso. |
 | Fix UTF-16 supplementary plane → entidades HTML en wrapper de mail | `868f04c` | Emojis 4-byte (💰📥🚫🔥🔎🏨) renderizan bien con alias activo. |
+| Strip de plano suplementario también en SUBJECT de correos con alias | `dba3c97` | Subject "🚫 Solicitud..." llegaba como "??????..." con alias. Headers RFC2047 no soportan entidades HTML, así que stripeo (BMP `⚠⏰✅❌` se preservan). |
+| Spinner overlay con sintaxis Tailwind 4 (`bg-gray-500/75`) | `dba3c97` | El overlay del spinner de hidratación quedaba negro sólido por usar la sintaxis vieja (`bg-black bg-opacity-30`) en un proyecto Tailwind 4. |
 | Trigger `cleanupExpiredPropsWeekly` | (legacy) | Limpia sesiones, lockouts y rate-limit counters expirados. |
 | `warmupPing` cada 10 min | (legacy) | Mantiene tibio el isolate de GAS para reducir cold starts. |
 
 ---
 
-# ETAPA 1 — Quick wins (riesgo bajo, alto impacto, ~2-3 h en total)
+# ETAPA 1 — Quick wins ✅ COMPLETADA (2026-04-27)
 
-> **Cuándo hacer:** ya. Son cambios de pocas líneas, baja superficie de cambio, alto retorno.
+> **Estado:** los 6 ítems están desplegados en producción y validados. Commits:
+> - `e3b5b24` — implementación principal (los 6 ítems)
+> - `dba3c97` — fixes posteriores (emoji `🚫` en subject de anulación + spinner overlay con sintaxis Tailwind 4)
 
 ## 1.1 — Cache requestId → rowNumber per ejecución
 
@@ -95,12 +99,11 @@ function _getRowByRequestId_(requestId) {
 - Test manual: crear una solicitud, modificarla, anularla. Verificar que cada acción funciona y que el log no muestra errores.
 - Confirmar que `_REQUEST_ROW_CACHE` se invalida tras `createNewRequest` (revisar test al final).
 
-**Status:** `[x] ✅ HECHO` (sin commit todavía — pendiente revisión + autorización)
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `e3b5b24` (2026-04-27)
 - Helper `_getRowByRequestId_` + cache `_REQUEST_ROW_CACHE` agregados junto a los caches existentes (línea ~285).
 - Invalidación `_clearRequestRowCache_()` insertada en `createNewRequest` justo después del `setValues` final, antes de `_recordEvent_(id, 'created')`.
 - 21 call sites refactorizados: `_getRequestStageTimestampForAction_`, `closeRequest` (dispatch), `requestModification`, `_applyChangeDecision_`, `_startUserConsultOnParent_`, `processUserConsultResponse`, `processApprovalFromEmail`, `registerReservation`, `amendReservation`, `uploadOptionImage`, `updateRequestStatus` (lookup principal + lookup del parent), `uploadSupportFile`, `diagnosticarAprobacion`, `_escalateStalePendingApproval_`, `generateSupportReport`, `cancelOwnRequest`, `anularSolicitud`, `skipSelectionStage`, `skipApprovalStage`, `_recordEvent_`.
-- Validación de sintaxis con `node --check`: limpia.
-- Pendiente: validación funcional manual (David).
+- Validación funcional manual: ✅ (smoke test contra producción con frontend viejo + frontend nuevo).
 
 ---
 
@@ -151,15 +154,15 @@ function getRequestById(id) {
 - Confirmar que detalle muestra opciones, soportes, costos, todo.
 - Probar polling: el lite se actualiza, no rompe el detalle abierto.
 
-**Status:** `[x] ✅ HECHO` (sin commit todavía)
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `e3b5b24` (2026-04-27)
 - Backend: `mapRowToRequest(row, lite)` — flag `lite` que omite parse de OPCIONES (JSON).
 - `getAllRequestsLite()`, `getMyRequestsLite(email)`, `getRequestById(id)` agregados.
 - Dispatch del POST: `getMyRequestsLite`, `getAllRequestsLite` (con check analyst), `getRequestById` (con check ownership: usuario común recibe null si la solicitud no es suya).
-- Frontend: `gasService.getMyRequestsLite/getAllRequestsLite/getRequestById` agregados.
-- `App.tsx`: `fetchRequests` ahora usa los lite endpoints. Nuevo `handleViewRequest` (useCallback) hidrata con `getRequestById` al abrir detalle. Se reemplazó `onViewRequest={setSelectedRequest}` por `handleViewRequest` en AdminDashboard y UserDashboard.
-- Hidratación silent fail: si `getRequestById` falla, se conserva el detalle con datos lite y se loga warning. Race-safe: la hidratación solo sobrescribe `selectedRequest` si su `requestId` aún coincide.
+- Frontend: `gasService.getMyRequestsLite/getAllRequestsLite/getRequestById` agregados con retry x2 + 1.5s backoff en `getRequestById`.
+- `App.tsx`: `fetchRequests` usa los lite endpoints. Nuevo `handleViewRequest` (useCallback) hidrata con `getRequestById` ANTES de mostrar el detalle, con spinner blocking modal mientras carga. Si la hidratación falla persistentemente: alert + no abre el detalle (evita que el admin actúe sobre datos parciales).
 - Endpoints legacy `getAllRequests`/`getMyRequests` permanecen disponibles para rollback.
-- `tsc --noEmit` y `npm run build` verde.
+- Validación funcional manual: ✅ confirmada en producción.
+- Fix posterior (commit `dba3c97`): spinner overlay con sintaxis Tailwind 4 (`bg-gray-500/75` en vez de `bg-black bg-opacity-30`) — el original quedaba negro sólido.
 
 ---
 
@@ -179,7 +182,7 @@ function getRequestById(id) {
 
 **Validación:** `npx tsc --noEmit && npm run build`. Test manual de cualquier flujo.
 
-**Status:** `[x] ✅ HECHO` (sin commit todavía) — `App.tsx` línea 12: `POLL_INTERVAL_MS = 30000`.
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `e3b5b24` (2026-04-27). `App.tsx` línea 12: `POLL_INTERVAL_MS = 30000`.
 
 ---
 
@@ -214,7 +217,7 @@ return dataAC.map(function(rAC, i) {
 
 **Validación:** Test manual: login, abrir form, verificar que pasajero 1 se autocompleta y aprobador aparece correctamente.
 
-**Status:** `[x] ✅ HECHO` (sin commit todavía) — `_getIntegrantesDataFromUsuarios_` lee A:C y H:I por separado. Output idéntico, lectura ~45% más liviana.
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `e3b5b24` (2026-04-27). `_getIntegrantesDataFromUsuarios_` lee A:C y H:I por separado. Output idéntico, lectura ~45% más liviana.
 
 ---
 
@@ -237,7 +240,7 @@ return dataAC.map(function(rAC, i) {
 
 **Validación:** Verificar visualmente que filtros, búsqueda, paginación siguen funcionando.
 
-**Status:** `[x] ✅ HECHO` (sin commit todavía)
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `e3b5b24` (2026-04-27)
 - `AdminDashboard` envuelto con `React.memo` (export final).
 - En `App.tsx`: `handleManualRefresh` ahora es `useCallback([userEmail, isEffectiveAdmin])` y `handleViewRequest` es `useCallback([])` — referencias estables que permiten al `React.memo` saltar re-renders cuando solo cambia estado interno del padre (modales, dialogs).
 
@@ -267,7 +270,7 @@ const handleSubmit = async (e) => {
 
 **Validación:** `npm run build`, confirmar que aparece chunk separado en `dist/assets/`. Submit de un form de prueba en localhost.
 
-**Status:** `[x] ✅ HECHO` (sin commit todavía) — `RequestForm.tsx` ya no importa estáticamente `EmailGenerator`; lo carga vía `await import('../utils/EmailGenerator')` dentro de `handleSubmit`. Build confirmado: `dist/assets/EmailGenerator-*.js` es un chunk separado de 10.58 kB / 3.30 kB gzip; bundle principal cayó de 395 kB a 386.97 kB.
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `e3b5b24` (2026-04-27). `RequestForm.tsx` ya no importa estáticamente `EmailGenerator`; lo carga vía `await import('../utils/EmailGenerator')` dentro de `handleSubmit`. Build confirmado: `dist/assets/EmailGenerator-*.js` es un chunk separado de 10.58 kB / 3.30 kB gzip; bundle principal cayó de 395 kB a 386.97 kB.
 
 ---
 
@@ -661,13 +664,13 @@ Para cualquier ítem de cualquier etapa que se commitee:
 
 # Estado consolidado
 
-**Etapa 1 — Quick wins:** 6 / 6 implementados (sin commit todavía — pendiente revisión y autorización).
+**Etapa 1 — Quick wins:** ✅ 6 / 6 completados, desplegados en producción y validados (commits `e3b5b24` + `dba3c97`).
 **Etapa 2 — Estructurales:** 0 / 6 completados.
 **Etapa 3 — Mayores:** 0 / 4 completados.
 **Etapa 4 — Avanzadas:** descartadas o pospuestas.
 
-**Próximo ítem a tomar:** 1.1 (Cache requestId → rowNumber).
+**Próximo ítem a tomar:** Etapa 2 — orden recomendado por impacto/riesgo: 2.5 (reads consolidados en `processApprovalFromEmail`) → 2.2 (pre-filtrar status en triggers) → 2.3 (`getFormBootstrap`). Las tres son aisladas y se pueden hacer en una sola pasada (~3.5 h total).
 
 ---
 
-*Última actualización: 2026-04-27*
+*Última actualización: 2026-04-27 (post-deploy Etapa 1 + fixes `dba3c97`)*
