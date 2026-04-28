@@ -179,13 +179,28 @@ class GasService {
   // Lite endpoints (Etapa 1.2): retornan solicitudes sin parsear el array
   // de OPCIONES (analystOptions = []). Usar para listas/polling. El detalle
   // hidrata con getRequestById.
+  //
+  // BUGFIX: estos endpoints LANZAN si el backend responde con error (timeout,
+  // network, 5xx). Antes retornaban `[]` silenciosamente, lo que causaba que
+  // el dashboard mostrara "0 solicitudes" cuando la realidad era una falla
+  // transient. Ahora el caller (fetchRequests) puede distinguir
+  // "verdaderamente no hay" vs "falló el fetch" y reaccionar distinto.
+  // Excepción: SESSION_EXPIRED no lanza — el handler global ya disparó re-login.
   async getMyRequestsLite(userEmail: string): Promise<TravelRequest[]> {
     const response = await this.runGas('getMyRequestsLite', { userEmail });
+    if (!response || response.success === false) {
+      if (response && response.code === 'SESSION_EXPIRED') return [];
+      throw new Error(response?.error || 'No se pudieron cargar las solicitudes.');
+    }
     return response.data || [];
   }
 
   async getAllRequestsLite(userEmail: string): Promise<TravelRequest[]> {
     const response = await this.runGas('getAllRequestsLite', { userEmail });
+    if (!response || response.success === false) {
+      if (response && response.code === 'SESSION_EXPIRED') return [];
+      throw new Error(response?.error || 'No se pudieron cargar las solicitudes.');
+    }
     return response.data || [];
   }
 

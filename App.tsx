@@ -593,6 +593,9 @@ const App: React.FC = () => {
     try {
       // Etapa 1.2: usamos los endpoints lite (sin parse de analystOptions ni
       // selectionDetails). El detalle hidrata con getRequestById al abrirse.
+      // Los lite ahora LANZAN si hay error (timeout/network) en lugar de
+      // retornar [] silencioso → el dashboard ya no muestra "0 solicitudes"
+      // por una falla transient.
       const data = isAdmin ? await gasService.getAllRequestsLite(email) : await gasService.getMyRequestsLite(email);
       // RACE (#A3): si durante el fetch el usuario alternó vista (admin↔user)
       // o el componente se desmontó, descartamos el resultado para no
@@ -616,7 +619,16 @@ const App: React.FC = () => {
         return;
       }
       setRequests(data);
-    } catch (e) { console.error(e); } finally { if (!silent) setFetchingData(false); }
+    } catch (e) {
+      console.error('fetchRequests error:', e);
+      // Si NO es silent (toggle de vista, refresh manual), avisamos al usuario
+      // y NO sobrescribimos la lista anterior — así no ve "0 solicitudes" tras
+      // una falla transient. Silent (polling) come el error como antes.
+      if (!silent) {
+        const msg = String((e as any)?.message || e || '');
+        alert('No se pudieron cargar las solicitudes:\n\n' + msg + '\n\nReintenta con el botón Refrescar.');
+      }
+    } finally { if (!silent) setFetchingData(false); }
   };
 
   // useCallback para que la referencia sea estable y React.memo en
@@ -722,8 +734,14 @@ const App: React.FC = () => {
     setView('LIST');
     setSelectedRequest(null);
     setModificationRequest(null);
-    // Refetch con el modo opuesto
-    await fetchRequests(userEmail, role === UserRole.ANALYST && next === false, false);
+    // BUGFIX: la condición vieja era `role === UserRole.ANALYST && next === false`,
+    // que dejaba afuera al SUPERADMIN. Resultado: cuando un superadmin clickeaba
+    // "VER ADMIN" desde la vista de usuario, fetchRequests recibía isAdmin=false
+    // y traía solo las solicitudes propias en lugar de todas. Ahora reusamos
+    // `isAdminRole` (= ANALYST || SUPERADMIN) que ya cubre ambos roles, y el
+    // resultado coincide con el `isEffectiveAdmin` que se computará tras el
+    // setViewAsRequester(next).
+    await fetchRequests(userEmail, isAdminRole && !next, false);
   };
 
   // --- MODIFICATION FLOW ---
