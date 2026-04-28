@@ -3,7 +3,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster } from '../types';
 import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
-import { generateTravelRequestEmail } from '../utils/EmailGenerator';
 import { formatToYYYYMMDD, formatToDDMMYYYY, parseDate } from '../utils/dateUtils';
 import { CityCombobox } from './CityCombobox';
 
@@ -619,6 +618,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         payload.parentTimestamp = initialData.timestamp;
       }
 
+      // Lazy-load: el generador HTML de correo solo es necesario al enviar.
+      // Cargarlo on-demand evita ~10kB en el bundle inicial (Etapa 1.6).
+      const { generateTravelRequestEmail } = await import('../utils/EmailGenerator');
       const emailHtml = generateTravelRequestEmail({
         ...payload,
         relatedRequestId: isModification && initialData ? initialData.requestId : undefined,

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Layout } from './components/Layout';
 import { RequestForm } from './components/RequestForm';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -9,7 +9,7 @@ import { gasService, setOnSessionExpired, setOnHealthChange } from './services/g
 import { TravelRequest, UserRole, Integrant } from './types';
 import { LOGO_URL, APP_VERSION } from './constants';
 
-const POLL_INTERVAL_MS = 15000;
+const POLL_INTERVAL_MS = 30000;
 const SESSION_STORAGE_KEY = 'equitel_session';
 
 type StoredRole = 'REQUESTER' | 'ANALYST' | 'SUPERADMIN';
@@ -76,6 +76,9 @@ const App: React.FC = () => {
   const [view, setView] = useState<'LIST' | 'NEW' | 'ADMIN'>('LIST');
   const [requests, setRequests] = useState<TravelRequest[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<TravelRequest | null>(null);
+  // Etapa 1.2: spinner mientras getRequestById hidrata el detalle. Evita que
+  // el admin clickee acciones sobre datos lite (ventana ~500ms).
+  const [hydratingDetail, setHydratingDetail] = useState(false);
 
   // Modification State
   const [modificationRequest, setModificationRequest] = useState<TravelRequest | null>(null);
@@ -503,7 +506,9 @@ const App: React.FC = () => {
   ) => {
     if (!silent) setFetchingData(true);
     try {
-      const data = isAdmin ? await gasService.getAllRequests(email) : await gasService.getMyRequests(email);
+      // Etapa 1.2: usamos los endpoints lite (sin parse de analystOptions ni
+      // selectionDetails). El detalle hidrata con getRequestById al abrirse.
+      const data = isAdmin ? await gasService.getAllRequestsLite(email) : await gasService.getMyRequestsLite(email);
       // RACE (#A3): si durante el fetch el usuario alternó vista (admin↔user)
       // o el componente se desmontó, descartamos el resultado para no
       // sobreescribir el estado actual con la lista de la vista anterior.
@@ -529,9 +534,41 @@ const App: React.FC = () => {
     } catch (e) { console.error(e); } finally { if (!silent) setFetchingData(false); }
   };
 
-  const handleManualRefresh = async () => {
+  // useCallback para que la referencia sea estable y React.memo en
+  // AdminDashboard/UserDashboard pueda evitar re-renders innecesarios (Etapa 1.5).
+  // Solo cambia si cambia el correo o el modo efectivo de admin.
+  const handleManualRefresh = useCallback(async () => {
     await fetchRequests(userEmail, isEffectiveAdmin, false);
-  };
+  }, [userEmail, isEffectiveAdmin]);
+
+  // Hidratación al abrir detalle (Etapa 1.2): el dashboard pasa solicitudes lite
+  // (sin analystOptions). Para el detalle pedimos el objeto COMPLETO antes de
+  // mostrar el modal — así evitamos la ventana donde el admin podría abrir
+  // OptionUploadModal con datos lite y sobrescribir opciones existentes.
+  // Trade-off: ~500ms de espera entre click y modal abierto. A cambio: cero
+  // riesgo de mostrar/editar datos parciales.
+  // gasService.getRequestById ya hace 1 retry con 1.5s de backoff antes de
+  // retornar null, así que llegar aquí con null implica falla persistente.
+  const handleViewRequest = useCallback(async (req: TravelRequest) => {
+    setHydratingDetail(true);
+    try {
+      const full = await gasService.getRequestById(req.requestId);
+      if (full) {
+        setSelectedRequest(full);
+        return;
+      }
+      // Hidratación falló persistentemente (gasService ya hizo 1 retry).
+      // Política conservadora: NO abrir el detalle con datos parciales en
+      // ningún estado. La galería de opciones puede aparecer en cualquier
+      // estado (incluso PROCESADO/RESERVADO como referencia histórica), y
+      // mostrar `analystOptions = []` cuando realmente hay opciones es
+      // engañoso o, en el caso del admin, riesgo de sobrescribir.
+      // Cero riesgo a costa de pedir reintento explícito.
+      alert('No se pudieron cargar los detalles completos de la solicitud (problema de red). Por favor reintente.');
+    } finally {
+      setHydratingDetail(false);
+    }
+  }, []);
 
   const handleToggleView = async () => {
     const next = !viewAsRequester;
@@ -734,7 +771,7 @@ const App: React.FC = () => {
           isLoading={fetchingData}
           isSyncing={isSyncing}
           onNewRequest={() => setView('NEW')}
-          onViewRequest={setSelectedRequest}
+          onViewRequest={handleViewRequest}
           onRefresh={handleManualRefresh}
         />
       )}
@@ -751,7 +788,7 @@ const App: React.FC = () => {
       )}
 
       {isEffectiveAdmin && view === 'LIST' && (
-        <AdminDashboard requests={requests} integrantes={integrantes} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={setSelectedRequest} isSuperAdmin={isEffectiveSuperAdmin} />
+        <AdminDashboard requests={requests} integrantes={integrantes} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={handleViewRequest} isSuperAdmin={isEffectiveSuperAdmin} />
       )}
 
       {selectedRequest && (
@@ -764,6 +801,17 @@ const App: React.FC = () => {
           isAdmin={isEffectiveAdmin}
           isSuperAdmin={isEffectiveSuperAdmin}
         />
+      )}
+      {hydratingDetail && !selectedRequest && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 z-[10000] flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl px-6 py-4 flex items-center gap-3">
+            <svg className="animate-spin h-5 w-5 text-brand-red" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="text-sm text-gray-700">Cargando detalle…</span>
+          </div>
+        </div>
       )}
       <div className="fixed bottom-2 left-4 text-xs text-gray-400 font-mono font-bold z-[9999] pointer-events-none drop-shadow-sm">
         v{APP_VERSION}

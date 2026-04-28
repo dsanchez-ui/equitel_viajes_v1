@@ -158,6 +158,54 @@ class GasService {
     return response.data || [];
   }
 
+  // Lite endpoints (Etapa 1.2): retornan solicitudes sin parsear el array
+  // de OPCIONES (analystOptions = []). Usar para listas/polling. El detalle
+  // hidrata con getRequestById.
+  async getMyRequestsLite(userEmail: string): Promise<TravelRequest[]> {
+    const response = await this.runGas('getMyRequestsLite', { userEmail });
+    return response.data || [];
+  }
+
+  async getAllRequestsLite(userEmail: string): Promise<TravelRequest[]> {
+    const response = await this.runGas('getAllRequestsLite', { userEmail });
+    return response.data || [];
+  }
+
+  /**
+   * Trae el objeto completo de una solicitud (con analystOptions).
+   * Usado para hidratar el detalle tras abrirse desde la lista lite.
+   *
+   * Retry: si el primer intento falla por error transient (network, cold
+   * start GAS, 500 transient), espera 1.5s y reintenta una vez. Si ambos
+   * fallan, retorna null y el caller decide qué mostrar — preferible que
+   * "no se hidrató" a "pantalla blanca". `SESSION_EXPIRED` no se reintenta:
+   * runGas ya disparó el handler global de re-login.
+   */
+  async getRequestById(requestId: string): Promise<TravelRequest | null> {
+    if (!requestId) return null;
+    const _attempt = async (): Promise<TravelRequest | null> => {
+      const response = await this.runGas('getRequestById', { requestId });
+      if (!response || response.success === false) {
+        // Distinguir errores que NO se deben reintentar.
+        if (response && response.code === 'SESSION_EXPIRED') return null;
+        throw new Error(response?.error || 'getRequestById failed');
+      }
+      return (response.data as TravelRequest | null) || null;
+    };
+    try {
+      return await _attempt();
+    } catch (e) {
+      console.warn('getRequestById primer intento falló, reintentando en 1.5s:', e);
+      await new Promise(r => setTimeout(r, 1500));
+      try {
+        return await _attempt();
+      } catch (e2) {
+        console.warn('getRequestById segundo intento también falló:', e2);
+        return null;
+      }
+    }
+  }
+
   async createRequest(request: Partial<TravelRequest>, emailHtml?: string): Promise<string> {
     const response = await this.runGas('createRequest', { ...request, emailHtml });
     if (!response.success) throw new Error(response.error);

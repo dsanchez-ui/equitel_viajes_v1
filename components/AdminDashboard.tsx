@@ -63,7 +63,7 @@ const isRequestPriority = (req: TravelRequest, integrantes: Integrant[]): boolea
 
 const PAGE_SIZE = 50;
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integrantes, onRefresh, isLoading, onViewRequest, isSuperAdmin }) => {
+const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrantes, onRefresh, isLoading, onViewRequest, isSuperAdmin }) => {
   const [filter, setFilter] = useState<string>('ALL');
   const [showOnlyPriority, setShowOnlyPriority] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
@@ -670,3 +670,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ requests, integr
     </div>
   );
 };
+
+// Memoización (Etapa 1.5): si los props (requests/integrantes/handlers) no
+// cambian en referencia, evita re-render del dashboard cuando el padre
+// re-renderiza por estado no relacionado (ej: abrir un modal).
+export const AdminDashboard = React.memo(AdminDashboardImpl);

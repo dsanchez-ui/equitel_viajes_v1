@@ -142,14 +142,8 @@ function _getRequestStageTimestampForAction_(action, id) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
     if (!sheet) return null;
-    var idIdx = H('ID RESPUESTA');
-    if (idIdx < 0) return null;
-    var lastRow = sheet.getLastRow();
-    if (lastRow < 2) return null;
-    var ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-    var rowIndex = ids.map(String).indexOf(String(id));
-    if (rowIndex === -1) return null;
-    var rowNumber = rowIndex + 2;
+    var rowNumber = _getRowByRequestId_(id);
+    if (rowNumber === -1) return null;
     var lastCol = sheet.getLastColumn();
     var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
     var events = {};
@@ -287,6 +281,60 @@ function H(name) {
 
 /** Limpia el cache de headers (útil después de migraciones de hoja) */
 function _clearReqHeadersCache_() { _REQ_HEADERS_CACHE = null; }
+
+// =====================================================================
+// REQUEST ROW LOOKUP CACHE (per-execution)
+// =====================================================================
+// Antes de este cache, ~20 funciones que tocan una solicitud específica
+// hacían `ids.map(String).indexOf(String(requestId))` — un scan O(n) sobre
+// toda la columna ID. Con 2000 filas, son 2000 reads + comparaciones por
+// llamada. Multiplicado por dispatches encadenados (confirmar costo →
+// aprobación → reserva), acumulaba 5-10 s.
+//
+// Este cache construye el map {requestId → rowNumber} la primera vez que
+// se pide en un dispatch; las llamadas siguientes son O(1).
+//
+// Invalidación: tras `createNewRequest` (insertó una fila nueva) llamar
+// `_clearRequestRowCache_()` para forzar reconstrucción. Updates en sitio
+// (status, observaciones) NO requieren invalidación: el rowNumber no cambió.
+// =====================================================================
+var _REQUEST_ROW_CACHE = null;
+
+function _buildRequestRowMap_() {
+  var map = {};
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    if (!sheet) return map;
+    var idIdx = H('ID RESPUESTA');
+    if (idIdx < 0) return map;
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return map;
+    var ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < ids.length; i++) {
+      var id = String(ids[i][0] == null ? '' : ids[i][0]).trim();
+      if (id) map[id] = i + 2; // rowNumber (1-based, header en fila 1)
+    }
+  } catch (e) {
+    try { Logger.log('WARN _buildRequestRowMap_ falló: ' + e); } catch (_) {}
+  }
+  return map;
+}
+
+/**
+ * Retorna el rowNumber (1-based, ≥2) de la solicitud cuyo ID coincide,
+ * o -1 si no existe. Construye un cache map en la primera llamada.
+ */
+function _getRowByRequestId_(requestId) {
+  if (!_REQUEST_ROW_CACHE) _REQUEST_ROW_CACHE = _buildRequestRowMap_();
+  var key = String(requestId == null ? '' : requestId).trim();
+  if (!key) return -1;
+  var row = _REQUEST_ROW_CACHE[key];
+  return row ? row : -1;
+}
+
+/** Invalida el cache de filas. Llamar tras insertar una fila nueva. */
+function _clearRequestRowCache_() { _REQUEST_ROW_CACHE = null; }
 
 // --- SETUP FUNCTION ---
 function setupDatabase() {
@@ -505,13 +553,37 @@ function dispatch(action, payload) {
       // SECURITY: Server-side analyst check
       case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
       case 'getMyRequests': result = getRequestsByEmail(currentUserEmail); break;
-      case 'getAllRequests': 
+      case 'getAllRequests':
         if(!isUserAnalyst(currentUserEmail)) {
            result = getRequestsByEmail(currentUserEmail);
         } else {
            result = getAllRequests();
         }
         break;
+      // Lite endpoints (Etapa 1.2): mismas reglas de autorización que los
+      // legacy. Usuario común solo ve sus propias solicitudes; analyst ve todo.
+      case 'getMyRequestsLite': result = getMyRequestsLite(currentUserEmail); break;
+      case 'getAllRequestsLite':
+        if (!isUserAnalyst(currentUserEmail)) {
+           result = getMyRequestsLite(currentUserEmail);
+        } else {
+           result = getAllRequestsLite();
+        }
+        break;
+      case 'getRequestById': {
+        // Autorización: analyst ve cualquier solicitud; usuario común solo
+        // las suyas. Si la solicitud existe pero pertenece a otro y no es
+        // analyst, retornamos null (mismo trato que "no encontrada" — no
+        // exponemos existencia de IDs ajenos).
+        var _full = getRequestById(payload.requestId);
+        if (_full && !isUserAnalyst(currentUserEmail)) {
+          var _ownerLower = String(_full.requesterEmail || '').toLowerCase().trim();
+          var _meLower = String(currentUserEmail || '').toLowerCase().trim();
+          if (_ownerLower !== _meLower) _full = null;
+        }
+        result = _full;
+        break;
+      }
       case 'createRequest': {
         // Normalize: strip internal fields (sessionToken, userEmail) that the frontend
         // sends at the payload root so they don't leak into createNewRequest as data fields.
@@ -536,12 +608,10 @@ function dispatch(action, payload) {
         // RESERVADO (flujo normal) y APROBADO (edge case: compra manual sin PNR).
         var _ss = SpreadsheetApp.getActiveSpreadsheet();
         var _sheet = _ss.getSheetByName(SHEET_NAME_REQUESTS);
-        var _idIdx = H('ID RESPUESTA');
         var _statusIdx = H('STATUS');
-        var _ids = _sheet.getRange(2, _idIdx + 1, _sheet.getLastRow() - 1, 1).getValues().flat();
-        var _rowIndex = _ids.map(String).indexOf(String(payload.requestId));
-        if (_rowIndex === -1) throw new Error('Solicitud no encontrada.');
-        var _currentStatus = String(_sheet.getRange(_rowIndex + 2, _statusIdx + 1).getValue() || '').trim();
+        var _rowNumber = _getRowByRequestId_(payload.requestId);
+        if (_rowNumber === -1) throw new Error('Solicitud no encontrada.');
+        var _currentStatus = String(_sheet.getRange(_rowNumber, _statusIdx + 1).getValue() || '').trim();
         if (_currentStatus !== 'RESERVADO' && _currentStatus !== 'APROBADO') {
           throw new Error('Solo se pueden cerrar solicitudes en estado RESERVADO o APROBADO. Estado actual: ' + _currentStatus);
         }
@@ -1538,17 +1608,13 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
    if (!sheet) throw new Error("Base de datos no encontrada");
 
-   const idIdx = H("ID RESPUESTA");
    const statusIdx = H("STATUS");
    const obsIdx = H("OBSERVACIONES");
    const dateIdx = H("FECHA SOLICITUD");
    const requesterEmailIdx = H("CORREO ENCUESTADO");
 
-   const lastRow = sheet.getLastRow();
-   const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-   const rowIndex = ids.map(String).indexOf(String(originalRequestId));
-   if (rowIndex === -1) throw new Error("ID de solicitud original no encontrado");
-   const rowNumber = rowIndex + 2;
+   const rowNumber = _getRowByRequestId_(originalRequestId);
+   if (rowNumber === -1) throw new Error("ID de solicitud original no encontrado");
 
    // #A38: OWNERSHIP CHECK — el solicitante solo puede modificar sus propias
    // solicitudes. Analysts/superadmins pueden modificar cualquier (para casos
@@ -1623,16 +1689,12 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
 function _applyChangeDecision_(childRequestId, decision, reason) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  const idIdx = H("ID RESPUESTA");
   const statusIdx = H("STATUS");
   const obsIdx = H("OBSERVACIONES");
   const requesterEmailIdx = H("CORREO ENCUESTADO");
 
-  const lastRow = sheet.getLastRow();
-  const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-  const rowIndex = ids.map(String).indexOf(String(childRequestId));
-  if (rowIndex === -1) throw new Error("Solicitud no encontrada");
-  const rowNumber = rowIndex + 2;
+  const rowNumber = _getRowByRequestId_(childRequestId);
+  if (rowNumber === -1) throw new Error("Solicitud no encontrada");
 
   const rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
   const req = mapRowToRequest(rowData);
@@ -1802,15 +1864,9 @@ function _startUserConsultOnParent_(parentRequestId, childRequestId, denialReaso
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   if (!sheet) throw new Error("Hoja de solicitudes no encontrada");
 
-  const idIdx = H("ID RESPUESTA");
   const obsIdx = H("OBSERVACIONES");
-  const lastRow = sheet.getLastRow();
-  if (lastRow < 2) throw new Error("Hoja vacía");
-
-  const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-  const rowIndex = ids.map(String).indexOf(String(parentRequestId));
-  if (rowIndex === -1) throw new Error("Solicitud padre " + parentRequestId + " no encontrada");
-  const rowNumber = rowIndex + 2;
+  const rowNumber = _getRowByRequestId_(parentRequestId);
+  if (rowNumber === -1) throw new Error("Solicitud padre " + parentRequestId + " no encontrada");
 
   const currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
   if (currentObs.indexOf(USER_CONSULT_MARKER) !== -1) {
@@ -1934,17 +1990,13 @@ function processUserConsultResponse(e) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-    const idIdx = H("ID RESPUESTA");
     const obsIdx = H("OBSERVACIONES");
     const statusIdx = H("STATUS");
 
-    const lastRow = sheet.getLastRow();
-    const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-    const rowIndex = ids.map(String).indexOf(String(id));
-    if (rowIndex === -1) {
+    const rowNumber = _getRowByRequestId_(id);
+    if (rowNumber === -1) {
       return renderMessagePage("No encontrada", "La solicitud no existe.", '#D71920');
     }
-    const rowNumber = rowIndex + 2;
 
     const currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
     if (currentObs.indexOf(USER_CONSULT_MARKER) === -1) {
@@ -2075,16 +2127,11 @@ function processApprovalFromEmail(e) {
       try {
           const ss = SpreadsheetApp.getActiveSpreadsheet();
           const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-          const lastRow = sheet.getLastRow();
-          const idIdx = H("ID RESPUESTA");
           const statusIdx = H("STATUS");
           const internationalIdx = H("ES INTERNACIONAL");
-          
-          const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-          const rowIndex = ids.map(String).indexOf(String(id));
 
-          if (rowIndex === -1) throw new Error(`Solicitud ${id} no encontrada.`);
-          const rowNumber = rowIndex + 2;
+          const rowNumber = _getRowByRequestId_(id);
+          if (rowNumber === -1) throw new Error(`Solicitud ${id} no encontrada.`);
 
           const currentStatus = sheet.getRange(rowNumber, statusIdx + 1).getValue();
           const isInternational = sheet.getRange(rowNumber, internationalIdx + 1).getValue() === "SI";
@@ -2352,17 +2399,14 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
 
     // Find Row
-    const idIdx = H("ID RESPUESTA");
     const resNoIdx = H("No RESERVA");
     const statusIdx = H("STATUS");
     const creditCardIdx = H("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA");
     const departureDateIdx = H("FECHA IDA");
     const parentIdIdx = H("ID SOLICITUD PADRE");
 
-    const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-    const rowIndex = ids.map(String).indexOf(String(requestId));
-    if (rowIndex === -1) throw new Error("Solicitud no encontrada");
-    const rowNumber = rowIndex + 2;
+    const rowNumber = _getRowByRequestId_(requestId);
+    if (rowNumber === -1) throw new Error("Solicitud no encontrada");
 
     // Check if this is a modification (has parent) — solo para etiquetar el nombre,
     // ya NO se anida la carpeta dentro del padre. Toda solicitud (original o
@@ -2534,7 +2578,6 @@ function amendReservation(payload) {
 
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-    var idIdx = H("ID RESPUESTA");
     var resNoIdx = H("No RESERVA");
     var creditCardIdx = H("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA");
     var purchaseDateIdx = H("FECHA DE COMPRA DE TIQUETE");
@@ -2542,10 +2585,8 @@ function amendReservation(payload) {
     var parentIdIdx = H("ID SOLICITUD PADRE");
     var departureDateIdx = H("FECHA IDA");
 
-    var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-    var rowIndex = ids.map(String).indexOf(requestId);
-    if (rowIndex === -1) throw new Error("Solicitud no encontrada");
-    var rowNumber = rowIndex + 2;
+    var rowNumber = _getRowByRequestId_(requestId);
+    if (rowNumber === -1) throw new Error("Solicitud no encontrada");
 
     // 1. Update PNR, card, purchase date
     sheet.getRange(rowNumber, resNoIdx + 1).setValue(safeSheetValue_(newPnr));
@@ -3836,24 +3877,104 @@ function getAllRequests() {
   if (!sheet) return [];
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) return [];
-  
+
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
   const idIdx = H("ID RESPUESTA");
-  
+
   const uniqueRequests = new Map();
-  
+
   data.forEach(row => {
       const id = String(row[idIdx]).trim();
       // Skip empty rows (no ID)
       if (!id) return;
-      
+
       // Deduplicate: Keep the first occurrence found
       if (!uniqueRequests.has(id)) {
           uniqueRequests.set(id, row);
       }
   });
-  
+
   return Array.from(uniqueRequests.values()).map(mapRowToRequest).reverse();
+}
+
+// =====================================================================
+// LITE ENDPOINTS (Etapa 1.2)
+// =====================================================================
+// Variantes de getAllRequests/getRequestsByEmail que omiten el parse del
+// JSON pesado de OPCIONES y dejan vacío selectionDetails. Pensado para el
+// dashboard y polling — esos campos solo se ven en el detalle, donde el
+// frontend invoca `getRequestById(id)` para hidratar el objeto completo.
+//
+// A 100 solicitudes el ahorro es modesto. A 2000 con OPCIONES grandes
+// (varias imágenes Drive con thumbnails) puede llegar a -50% del payload.
+// =====================================================================
+
+function getAllRequestsLite() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return [];
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  const idIdx = H("ID RESPUESTA");
+
+  const uniqueRequests = new Map();
+  data.forEach(row => {
+    const id = String(row[idIdx]).trim();
+    if (!id) return;
+    if (!uniqueRequests.has(id)) uniqueRequests.set(id, row);
+  });
+
+  return Array.from(uniqueRequests.values())
+    .map(function(row) { return mapRowToRequest(row, true); })
+    .reverse();
+}
+
+function getMyRequestsLite(email) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return [];
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return [];
+
+  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  const emailIdx = H("CORREO ENCUESTADO");
+  const idIdx = H("ID RESPUESTA");
+  const targetEmail = String(email || '').toLowerCase().trim();
+  if (!targetEmail) return [];
+
+  const uniqueRequests = new Map();
+  data.forEach(row => {
+    const id = String(row[idIdx]).trim();
+    if (!id) return;
+    const rowEmail = String(row[emailIdx]).toLowerCase().trim();
+    if (rowEmail !== targetEmail) return;
+    if (!uniqueRequests.has(id)) uniqueRequests.set(id, row);
+  });
+
+  return Array.from(uniqueRequests.values())
+    .map(function(row) { return mapRowToRequest(row, true); })
+    .reverse();
+}
+
+/**
+ * Devuelve el objeto completo (full mapRowToRequest) para una sola solicitud.
+ * Usado por el frontend al abrir el detalle, hidratando los campos pesados
+ * (analystOptions) que el lite omite.
+ *
+ * Retorna null si no encuentra la solicitud (no lanza, para que el frontend
+ * pueda fallback al lite y mostrar un warning suave).
+ */
+function getRequestById(requestId) {
+  if (!requestId) return null;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return null;
+  const rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) return null;
+  const row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+  return mapRowToRequest(row, false);
 }
 
 function getCitiesList() {
@@ -3936,18 +4057,26 @@ function _getIntegrantesDataFromUsuarios_() {
 
   // Cols: A=Cedula B=Nombre C=Correo D=Empresa E=Sede F=CC
   //       G=Cedulas Aprobadores H=Correos Aprobadores I=Nombres Aprobadores
-  const data = sheet.getRange(2, 1, lastRow - 1, 9).getValues();
-  return data
-    .filter(function(r) { return r[0] && r[2]; })
-    .map(function(r) {
-      return {
-        idNumber: String(r[0]).trim(),
-        name: String(r[1]).trim(),
-        email: String(r[2]).toLowerCase().trim(),
-        approverName: String(r[8] || '').trim(),
-        approverEmail: String(r[7] || '').toLowerCase().trim()
-      };
+  // Optimización (Etapa 1.4): solo se exponen al frontend A,B,C,H,I.
+  // Leemos los dos rangos no contiguos en lugar de A:I completo
+  // (5 cols × N en lugar de 9 cols × N → ~45% menos datos transferidos
+  // del sheet, aún más ganancia en serialización GAS↔hoja).
+  const dataABC = sheet.getRange(2, 1, lastRow - 1, 3).getValues(); // A,B,C
+  const dataHI = sheet.getRange(2, 8, lastRow - 1, 2).getValues();  // H,I
+  const out = [];
+  for (var i = 0; i < dataABC.length; i++) {
+    var rABC = dataABC[i];
+    if (!rABC[0] || !rABC[2]) continue; // mismo filtro que antes
+    var rHI = dataHI[i] || ['', ''];
+    out.push({
+      idNumber: String(rABC[0]).trim(),
+      name: String(rABC[1]).trim(),
+      email: String(rABC[2]).toLowerCase().trim(),
+      approverName: String(rHI[1] || '').trim(),
+      approverEmail: String(rHI[0] || '').toLowerCase().trim()
     });
+  }
+  return out;
 }
 
 /**
@@ -4250,6 +4379,10 @@ function createNewRequest(data, emailHtml) {
   }
   // --------------------------------------------------------------------------
 
+  // CACHE: la nueva fila no está en el cache de lookup; invalidar para que
+  // _recordEvent_ y cualquier callsite posterior la encuentren.
+  _clearRequestRowCache_();
+
   // METRICS: registrar evento de creación
   _recordEvent_(id, 'created');
 
@@ -4402,11 +4535,8 @@ function uploadOptionImage(requestId, fileData, fileName, type, optionLetter, di
     if (!/^[A-Z]$/.test(optionLetter)) throw new Error('Letra de opción inválida.');
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-    const idIdx = H("ID RESPUESTA");
-    const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-    const rowIndex = ids.map(String).indexOf(String(requestId));
-    if (rowIndex === -1) throw new Error("Solicitud no encontrada");
-    const rowNumber = rowIndex + 2;
+    const rowNumber = _getRowByRequestId_(requestId);
+    if (rowNumber === -1) throw new Error("Solicitud no encontrada");
 
     // Get or Create Folder (nested inside parent folder if modification)
     const folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
@@ -4473,12 +4603,9 @@ function deleteDriveFile(fileId) {
 function updateRequestStatus(id, status, payload) {
    const ss = SpreadsheetApp.getActiveSpreadsheet();
    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-   const idIdx = H("ID RESPUESTA");
    const statusIdx = H("STATUS");
-   const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-   const rowIndex = ids.map(String).indexOf(String(id));
-   if (rowIndex === -1) throw new Error("ID no encontrado");
-   const rowNumber = rowIndex + 2;
+   const rowNumber = _getRowByRequestId_(id);
+   if (rowNumber === -1) throw new Error("ID no encontrado");
 
    sheet.getRange(rowNumber, statusIdx + 1).setValue(status);
    
@@ -4497,11 +4624,8 @@ function updateRequestStatus(id, status, payload) {
        const parentId = sheet.getRange(rowNumber, parentIdIdx + 1).getValue();
 
        if (parentId && String(parentId).trim() !== '') {
-           const allIds = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-           const parentRowIdx = allIds.map(String).indexOf(String(parentId));
-
-           if (parentRowIdx !== -1) {
-               const parentRowNum = parentRowIdx + 2;
+           const parentRowNum = _getRowByRequestId_(parentId);
+           if (parentRowNum !== -1) {
                sheet.getRange(parentRowNum, statusIdx + 1).setValue('ANULADO');
 
                const obsIdx = H("OBSERVACIONES");
@@ -4596,11 +4720,8 @@ function uploadSupportFile(requestId, fileData, fileName, mimeType, correctionNo
   var sanitizedName = validateFileUpload_(fileData, fileName, mimeType);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  const idIdx = H("ID RESPUESTA");
-  const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-  const rowIndex = ids.map(String).indexOf(String(requestId));
-  if (rowIndex === -1) throw new Error("Solicitud no encontrada");
-  const rowNumber = rowIndex + 2;
+  const rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) throw new Error("Solicitud no encontrada");
   const supportIdx = H("SOPORTES (JSON)");
 
   const jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
@@ -5069,7 +5190,17 @@ function _getRequesterCedulaMap_() {
   return map;
 }
 
-function mapRowToRequest(row) {
+/**
+ * Mapea una fila de la hoja a un objeto TravelRequest.
+ *
+ * @param {Array} row Valores de la fila completa.
+ * @param {boolean} [lite] Cuando true, omite el parse del JSON pesado de
+ *   OPCIONES (analystOptions queda como []) y deja `selectionDetails` vacío.
+ *   Pensado para listas/polling donde esos campos no se renderizan — el
+ *   detalle hace fetch full vía `getRequestById`. Cero diferencia para los
+ *   campos de status/aprobaciones/proxy/prioridad que sí se muestran en lista.
+ */
+function mapRowToRequest(row, lite) {
   const get = (h) => { const i = H(h); return (i>-1 && i<row.length) ? row[i] : ''; };
   const safeDate = (v) => { if(!v)return ''; if(v instanceof Date) return v.toISOString().split('T')[0]; return String(v).split('T')[0]; };
   const safeTime = (v) => {
@@ -5098,17 +5229,19 @@ function mapRowToRequest(row) {
   }
 
   let analystOptions = [], selectedOption = null, supportData = undefined;
-  try {
-    analystOptions = JSON.parse(get("OPCIONES (JSON)") || '[]');
-    // DEFENSA: filtrar nulls/undefined que hayan quedado en el array por bugs
-    // previos (ej: upload parcial que escribió null). Sin esto, el frontend
-    // crashea al hacer o.type de un null → pantalla blanca en el detalle.
-    if (Array.isArray(analystOptions)) {
-      analystOptions = analystOptions.filter(function(o) { return o && typeof o === 'object'; });
-    } else {
-      analystOptions = [];
-    }
-  } catch(e){ analystOptions = []; }
+  if (!lite) {
+    try {
+      analystOptions = JSON.parse(get("OPCIONES (JSON)") || '[]');
+      // DEFENSA: filtrar nulls/undefined que hayan quedado en el array por bugs
+      // previos (ej: upload parcial que escribió null). Sin esto, el frontend
+      // crashea al hacer o.type de un null → pantalla blanca en el detalle.
+      if (Array.isArray(analystOptions)) {
+        analystOptions = analystOptions.filter(function(o) { return o && typeof o === 'object'; });
+      } else {
+        analystOptions = [];
+      }
+    } catch(e){ analystOptions = []; }
+  }
   try { selectedOption = JSON.parse(get("SELECCION (JSON)") || 'null'); } catch(e){}
   try { supportData = JSON.parse(get("SOPORTES (JSON)") || 'null'); } catch(e){}
 
@@ -5266,13 +5399,8 @@ function diagnosticarAprobacion(requestId) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   if (!sheet) { Logger.log('No se encontró la hoja de solicitudes.'); return; }
-  var idIdx = H('ID RESPUESTA');
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) { Logger.log('Hoja vacía.'); return; }
-  var ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-  var rowIndex = ids.map(String).indexOf(String(requestId));
-  if (rowIndex === -1) { Logger.log('Solicitud no encontrada: ' + requestId); return; }
-  var rowNumber = rowIndex + 2;
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) { Logger.log('Solicitud no encontrada: ' + requestId); return; }
 
   var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
   var get = function(h) { var i = H(h); return i > -1 ? row[i] : '(columna no existe)'; };
@@ -5542,9 +5670,7 @@ function _escalateStalePendingApproval_(req, workingMinPending, sheet, idIdx, ev
       // Encontrar la row number real en la hoja
       const thisId = String(row[idIdx] || '').trim();
       if (thisId) {
-        const lastRow = sheet.getLastRow();
-        const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-        const rowNumber = ids.map(String).indexOf(thisId) + 2;
+        const rowNumber = _getRowByRequestId_(thisId);
         if (rowNumber >= 2) {
           sheet.getRange(rowNumber, eventsIdx + 1).setValue(JSON.stringify(eventsObj));
         }
@@ -6087,11 +6213,8 @@ function generateSupportReport(requestId) {
     // 2. Get request data
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-    const idIdx = H("ID RESPUESTA");
-    const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-    const rowIndex = ids.map(String).indexOf(String(requestId));
-    if (rowIndex === -1) throw new Error("Solicitud no encontrada: " + requestId);
-    const rowNumber = rowIndex + 2;
+    const rowNumber = _getRowByRequestId_(requestId);
+    if (rowNumber === -1) throw new Error("Solicitud no encontrada: " + requestId);
     
     const row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
     const req = mapRowToRequest(row);
@@ -6246,15 +6369,12 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
   if (!requestId || !reason || !reason.trim()) throw new Error('ID y motivo son requeridos.');
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  var idIdx = H("ID RESPUESTA");
   var statusIdx = H("STATUS");
   var obsIdx = H("OBSERVACIONES");
   var emailIdx = H("CORREO ENCUESTADO");
 
-  var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-  var rowIndex = ids.map(String).indexOf(String(requestId));
-  if (rowIndex === -1) throw new Error("Solicitud no encontrada.");
-  var rowNumber = rowIndex + 2;
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) throw new Error("Solicitud no encontrada.");
 
   // Security: verify the caller IS the requester
   var rowEmail = String(sheet.getRange(rowNumber, emailIdx + 1).getValue()).toLowerCase().trim();
@@ -6334,16 +6454,12 @@ function _parentHasActiveChild_(sheet, parentId) {
 function anularSolicitud(requestId, reason) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  const idIdx = H("ID RESPUESTA");
   const statusIdx = H("STATUS");
   const obsIdx = H("OBSERVACIONES");
   const emailIdx = H("CORREO ENCUESTADO");
 
-  const ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-  const rowIndex = ids.map(String).indexOf(String(requestId));
-
-  if (rowIndex === -1) throw new Error("ID no encontrado");
-  const rowNumber = rowIndex + 2;
+  const rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) throw new Error("ID no encontrado");
 
   // SECURITY (#A7): no permitir anular desde estados terminales.
   // cancelOwnRequest ya validaba esto; este endpoint admin no lo hacía y
@@ -6431,14 +6547,11 @@ function skipSelectionStage(requestId, justification, currentUserEmail) {
   var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   if (!sheet) throw new Error('Hoja de solicitudes no encontrada.');
 
-  var idIdx = H('ID RESPUESTA');
   var statusIdx = H('STATUS');
   var obsIdx = H('OBSERVACIONES');
   var selTextIdx = H('SELECCION_TEXTO');
-  var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-  var rowIndex = ids.map(String).indexOf(String(requestId));
-  if (rowIndex === -1) throw new Error('Solicitud no encontrada.');
-  var rowNumber = rowIndex + 2;
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) throw new Error('Solicitud no encontrada.');
 
   var currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '').trim();
   if (currentStatus !== 'PENDIENTE_SELECCION') {
@@ -6530,7 +6643,6 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   if (!sheet) throw new Error('Hoja de solicitudes no encontrada.');
 
-  var idIdx = H('ID RESPUESTA');
   var statusIdx = H('STATUS');
   var obsIdx = H('OBSERVACIONES');
   var areaIdx = H('APROBADO POR ÁREA? (AUTOMÁTICO)');
@@ -6538,10 +6650,8 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   var ceoIdx = H('APROBADO CEO');
   var approvalDateIdx = H('FECHA/HORA (AUTOMÁTICO)');
 
-  var ids = sheet.getRange(2, idIdx + 1, sheet.getLastRow() - 1, 1).getValues().flat();
-  var rowIndex = ids.map(String).indexOf(String(requestId));
-  if (rowIndex === -1) throw new Error('Solicitud no encontrada.');
-  var rowNumber = rowIndex + 2;
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) throw new Error('Solicitud no encontrada.');
 
   var currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '').trim();
   if (currentStatus !== 'PENDIENTE_APROBACION') {
@@ -8715,13 +8825,8 @@ function _recordEvent_(requestId, eventKey, data) {
       return;
     }
 
-    const idIdx = H('ID RESPUESTA');
-    const lastRow = sheet.getLastRow();
-    if (lastRow < 2) return;
-    const ids = sheet.getRange(2, idIdx + 1, lastRow - 1, 1).getValues().flat();
-    const rowIndex = ids.map(String).indexOf(String(requestId));
-    if (rowIndex === -1) return;
-    const rowNumber = rowIndex + 2;
+    const rowNumber = _getRowByRequestId_(requestId);
+    if (rowNumber === -1) return;
 
     const existingRaw = sheet.getRange(rowNumber, eventsCol + 1).getValue();
     let events = {};
