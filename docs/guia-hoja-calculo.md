@@ -126,11 +126,36 @@ Abre un panel lateral a la derecha con **5 pestañas**. Esta es la herramienta p
 **Cómo agregar aprobadores a un usuario:**
 1. Edita el usuario
 2. En el campo "Aprobadores" escribe el nombre o cédula del aprobador
-3. Te aparece una lista — los que ya son aprobadores de alguien tienen un chip azul "aprobador" al lado
+3. Te aparece una lista — los que ya son aprobadores de alguien tienen un chip azul "aprobador" al lado, pero el listado incluye **a todos los usuarios**, no solo a los que ya aprueban a alguien
 4. Haz click en la persona que quieres → se agrega como chip amarillo arriba
 5. Puedes agregar varios
 6. Para quitar uno, click en la "×" de su chip
 7. **Guardar**
+
+**Caso especial: el usuario es su propio aprobador (autoaprobador)**
+
+Cuando llega un directivo nuevo que aprueba sus propias solicitudes (CEO, CDS, gerente), no tienes que crearlo primero y luego volver a buscarlo en el picker. El formulario tiene un **checkbox "Esta persona es su propio aprobador"** arriba de la sección de aprobadores:
+
+1. Marca el checkbox → el picker se oculta y aparece un mensaje azul confirmando la acción
+2. Llena el resto del formulario normalmente y **Guardar**
+3. El sistema escribe la cédula, correo y nombre del propio usuario en las columnas G, H e I de USUARIOS
+
+Si abres a un usuario que ya estaba registrado como autoaprobador, el checkbox aparece pre-marcado automáticamente.
+
+**Detector de duplicados al crear / editar**
+
+Mientras escribes cédula, correo o nombre, el formulario busca en tiempo real si ya existe alguien con esos datos:
+
+- 🔴 **Cédula o correo ya registrado** → aparece un badge rojo con el nombre del usuario existente. El botón **Guardar** se bloquea — no puedes crear duplicados con la misma cédula/correo. El badge incluye un botón **"→ Ver / editar este usuario"** que abre directamente al duplicado para corregir su información en lugar de crear uno nuevo.
+- 🟡 **Nombre ya registrado** → badge ámbar de advertencia, pero **no bloquea** el guardado (homónimos legítimos son posibles, ej: "JUAN PÉREZ" en sedes distintas).
+
+**Sugerencias del Maestro RH al escribir el nombre**
+
+El campo "Nombre" autocompleta con empleados del Maestro RH (la fuente externa de RRHH), pero excluye automáticamente a quienes ya están en USUARIOS. Así, las sugerencias solo muestran personas que aún no han sido registradas — útil para crear usuarios nuevos sin volver a registrar a alguien que ya existe.
+
+**Confirmación visual tras crear**
+
+Después de guardar un usuario nuevo, el listado se refresca solo, hace scroll hasta la fila del nuevo usuario y la resalta con un fondo amarillo durante 3 segundos. Te indica visualmente que quedó registrado y puedes verlo en su lugar.
 
 #### Pestaña "Anomalías"
 
@@ -251,6 +276,12 @@ Una vez que entras, el teléfono recuerda tu sesión **por 7 días**. No tienes 
 - Aprobadores (buscador)
 
 Llenas los campos, presionas "Crear usuario" y listo — el usuario queda en la hoja USUARIOS y puede iniciar sesión en el portal de inmediato.
+
+**Mismas ayudas que el sidebar:**
+- ☑️ **Checkbox "Esta persona es su propio aprobador"** — para registrar directivos autoaprobadores en un solo paso desde el celular.
+- 🔴 **Detector de duplicados** — si escribes una cédula o correo que ya existe, el botón "Crear usuario" se bloquea y aparece un mensaje con el nombre del usuario existente. Si solo el nombre coincide, se muestra una advertencia pero deja crear (homónimos posibles).
+
+Si detectas un duplicado y necesitas corregirlo, anota la cédula y abre el Sheet en el computador para editarlo desde el sidebar — el módulo móvil solo crea, no edita.
 
 ### ¿Qué NO puedes hacer desde el móvil?
 

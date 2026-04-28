@@ -290,6 +290,18 @@ Hay dos sidebars, ambos en el menú **Equitel Viajes** dentro del Google Sheet:
 | **Ed. Masiva** | Cambios masivos: asignar/agregar aprobador, cambiar empresa/sede/CC a un grupo filtrado de usuarios. |
 | **Duplicados** | Detecta filas con cédula, correo, o nombre repetido. Compara cada grupo lado-a-lado (datos + estado del PIN) y elimina las que sobran. |
 
+#### 6.1.bis Comportamiento del formulario "Nuevo / Editar usuario"
+
+El formulario tiene tres ayudas integradas para evitar errores típicos al gestionar directivos o usuarios urgentes:
+
+- **Checkbox "Esta persona es su propio aprobador (autoaprobador)"** — Útil cuando llega un nuevo directivo (CEO, CDS, gerente) que se aprueba a sí mismo. Al marcarlo, se oculta el picker de aprobadores y al guardar el sistema escribe automáticamente la propia cédula, correo y nombre en las columnas G, H e I de USUARIOS — sin necesidad de crear primero al usuario y luego buscarlo en el picker. Funciona tanto al crear como al editar. Si abres a un usuario que ya era autoaprobador, el checkbox aparece pre-marcado.
+
+- **Detector de duplicados en vivo** — A medida que escribes la cédula, correo o nombre, el formulario busca coincidencias en USUARIOS. Si la cédula o el correo ya existen, aparece un badge rojo y el botón **Guardar** se bloquea. Si solo el nombre coincide (homónimo), aparece un badge ámbar de advertencia pero deja guardar. Cada badge incluye un botón **"→ Ver / editar este usuario"** que lleva directo a editarlo, útil para corregir información en el registro existente en lugar de duplicarlo.
+
+- **Sugerencias de nombre filtradas por Maestro RH** — El campo "Nombre" autocompleta con personas del Maestro RH, pero excluye automáticamente a las que ya están en USUARIOS. Así, al crear un nuevo usuario, las sugerencias muestran solo empleados aún no registrados.
+
+- **Confirmación visual tras crear** — Después de guardar un usuario nuevo, el listado se refresca automáticamente, hace scroll hasta la fila del nuevo usuario y la resalta con un fondo amarillo durante 3 segundos. Te indica visualmente que quedó registrado.
+
 ### 6.2 Reorganizar Base Principal (sidebar de REORG)
 
 **Cuándo usarlo:** una vez cada pocos meses (o nunca). Cambiar el orden de columnas de la hoja principal, agregar columnas extras personales, o limpiar el layout.
@@ -337,6 +349,8 @@ Recomendación: agregarlo a la pantalla de inicio del celular (iOS Safari → co
 
 - **Login**: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 7 días en ese navegador.
 - **Crear usuario**: formulario idéntico al del sidebar (cédula, nombre, correo, empresa, sede, CC, aprobadores) con las mismas validaciones y el mismo picker de aprobador.
+- **Checkbox "Esta persona es su propio aprobador"** — mismo comportamiento que en el sidebar: al marcarlo, oculta el picker y registra al usuario como autoaprobador (cols G, H, I) al guardar. Pensado para registrar directivos urgentes desde el celular.
+- **Detector de duplicados** — mientras escribes cédula/correo/nombre, te avisa si ya existe alguien registrado. Cédula y correo bloquean el botón Crear; nombre solo advierte (homónimos posibles). El módulo móvil no tiene botón "Editar este usuario" porque no permite editar; si detectas un duplicado, anota la cédula y abre el sidebar del Sheet para corregir.
 - Al crear, el usuario aparece inmediatamente en la hoja USUARIOS y puede iniciar sesión en el portal.
 
 ### Qué NO hace (limitaciones por diseño)
