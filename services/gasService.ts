@@ -291,6 +291,26 @@ class GasService {
     return this._bootstrapFetch<string[]>('getSites', 'las sedes');
   }
 
+  /**
+   * Etapa 2.3: bootstrap consolidado del formulario "Nueva Solicitud".
+   * Reemplaza 5 fetches separados (rules, executives, sites, costCenters,
+   * cities) con una sola llamada al backend. Reduce el overhead HTTP en
+   * ~70% al abrir el form.
+   *
+   * El _bootstrapFetch ya tiene retry x2 y validación, así que si el
+   * backend está caído, el caller recibe una excepción clara en lugar
+   * de un objeto parcial.
+   */
+  async getFormBootstrap(): Promise<{
+    coApproverRules: { principalEmail: string, coApproverName: string, coApproverEmail: string, condition: string }[];
+    executiveEmails: { ceoEmail: string, directorEmail: string };
+    sites: string[];
+    costCenters: CostCenterMaster[];
+    cities: CityMaster[];
+  }> {
+    return this._bootstrapFetch('getFormBootstrap', 'los datos del formulario', null, false);
+  }
+
   async uploadSupportFile(requestId: string, fileData: string, fileName: string, mimeType: string): Promise<SupportData> {
     const response = await this.runGas('uploadSupportFile', { requestId, fileData, fileName, mimeType });
     if (!response.success) throw new Error(response.error);

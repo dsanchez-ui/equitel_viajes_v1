@@ -81,30 +81,42 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const [executiveEmails, setExecutiveEmails] = useState<{ ceoEmail: string, directorEmail: string }>({ ceoEmail: '', directorEmail: '' });
 
   useEffect(() => {
-    // Los 3 fetches de bootstrap del form. Si alguno falla por red / cold
-    // start de GAS, el helper `_bootstrapFetch` ya reintentó una vez; aquí
-    // capturamos el fallo persistente y mostramos alerta clara al usuario
-    // en lugar de silenciarlo (que dejaría dropdowns vacíos sin explicación).
+    // Etapa 2.3: bootstrap consolidado — una sola llamada al backend en lugar
+    // de 5 fetches paralelos (3 aquí + 2 en el segundo useEffect que abajo
+    // queda colapsado en este). Si falla persistentemente (tras retry interno
+    // de _bootstrapFetch), alertamos en lugar de dejar dropdowns vacíos sin
+    // explicación.
     const loadFormBootstrap = async () => {
       try {
-        const [rules, execs, sites] = await Promise.all([
-          gasService.getCoApproverRules(),
-          gasService.getExecutiveEmails(),
-          gasService.getSites(),
-        ]);
-        setCoApproverRules(rules);
-        setExecutiveEmails(execs);
-        setSites(Array.isArray(sites) ? sites : []);
+        setIsCitiesLoading(true);
+        const data = await gasService.getFormBootstrap();
+        setCoApproverRules(data.coApproverRules || []);
+        setExecutiveEmails(data.executiveEmails || { ceoEmail: '', directorEmail: '' });
+        setSites(Array.isArray(data.sites) ? data.sites : []);
+        setMasterData(data.costCenters || []);
+        setCities(data.cities || []);
+
+        const uniqueUnits = Array.from(new Set((data.costCenters || []).map(item => item.businessUnit)))
+          .filter(u => u && u !== 'NA')
+          .sort();
+        setAvailableBusinessUnits(uniqueUnits);
+
+        // Pre-filter if modification
+        if (initialData?.businessUnit) {
+          const filtered = (data.costCenters || []).filter(item => item.businessUnit === initialData.businessUnit);
+          const variosOption = { code: 'VARIOS', name: 'Múltiples Centros de Costo', businessUnit: initialData.businessUnit };
+          setFilteredCostCenters([...filtered, variosOption]);
+        }
       } catch (err: any) {
         console.error('Error cargando datos iniciales del formulario:', err);
         alert(
-          'No se pudieron cargar los datos iniciales del formulario ' +
-          '(reglas, correos ejecutivos o sedes).\n\n' +
+          'No se pudieron cargar los datos iniciales del formulario.\n\n' +
           'Recargue la página (Ctrl+Shift+R). Si el problema persiste, ' +
           'contacte al administrador del aplicativo.'
         );
       } finally {
         setIsSitesLoading(false);
+        setIsCitiesLoading(false);
       }
     };
     loadFormBootstrap();
@@ -219,38 +231,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     comments: initialData?.comments || '',
   });
 
-  // Load Master Data on Mount
-  useEffect(() => {
-    const fetchMasters = async () => {
-      try {
-        setIsCitiesLoading(true);
-        const [ccData, cityData] = await Promise.all([
-          gasService.getCostCenterData(),
-          gasService.getCitiesList()
-        ]);
-
-        setMasterData(ccData);
-        setCities(cityData);
-
-        const uniqueUnits = Array.from(new Set(ccData.map(item => item.businessUnit)))
-          .filter(u => u && u !== 'NA')
-          .sort();
-        setAvailableBusinessUnits(uniqueUnits);
-
-        // Pre-filter if modification
-        if (initialData?.businessUnit) {
-          const filtered = ccData.filter(item => item.businessUnit === initialData.businessUnit);
-          const variosOption = { code: 'VARIOS', name: 'Múltiples Centros de Costo', businessUnit: initialData.businessUnit };
-          setFilteredCostCenters([...filtered, variosOption]);
-        }
-      } catch (err) {
-        console.error("Error loading masters:", err);
-      } finally {
-        setIsCitiesLoading(false);
-      }
-    };
-    fetchMasters();
-  }, []);
+  // Etapa 2.3: el useEffect previo de "Load Master Data on Mount" se fusionó
+  // con el de bootstrap (arriba) — costCenters y cities ahora vienen en
+  // getFormBootstrap junto con rules, executives y sites. Una sola llamada.
 
   // Filter Cost Centers when Business Unit Changes
   useEffect(() => {

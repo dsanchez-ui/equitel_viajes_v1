@@ -155,6 +155,14 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
     const flightOptions = _validOptions.filter(o => o.type === 'FLIGHT');
     const hotelOptions = _validOptions.filter(o => o.type === 'HOTEL');
 
+    // Archivos de reserva (PNRs / vouchers cargados por el analista). Pueden ser
+    // varios — ej. tiquetes ida + vuelta + asistencia médica como PDFs separados.
+    // El botón único usaba solo el primero (request.reservationUrl); ahora se
+    // listan TODOS para que el usuario pueda recuperar cualquiera si pierde el
+    // correo original.
+    const _reservationFiles = (request.supportData?.files || [])
+        .filter((f: any) => f && f.isReservation && f.url);
+
     const handleUserSelectionSubmit = async () => {
         if (!userSelectionText.trim()) {
             alert("Por favor describa qué opción desea seleccionar.");
@@ -506,10 +514,12 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                     {request.reservationNumber || 'N/A'}
                                                 </div>
                                             </div>
-                                            <div className="text-right">
-                                                {request.reservationUrl ? (
+                                            <div className="md:text-right">
+                                                {_reservationFiles.length === 0 ? (
+                                                    <span className="text-sm text-gray-500 italic">Archivo no disponible</span>
+                                                ) : _reservationFiles.length === 1 ? (
                                                     <a
-                                                        href={request.reservationUrl}
+                                                        href={_reservationFiles[0].url}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700"
@@ -517,7 +527,23 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                         📄 Descargar Tiquetes/Reserva
                                                     </a>
                                                 ) : (
-                                                    <span className="text-sm text-gray-500 italic">Archivo no disponible</span>
+                                                    <div className="flex flex-col gap-2 md:items-end">
+                                                        <span className="text-xs text-blue-700 font-semibold uppercase tracking-wide">
+                                                            {_reservationFiles.length} archivos de reserva
+                                                        </span>
+                                                        {_reservationFiles.map((f: any, i: number) => (
+                                                            <a
+                                                                key={f.id || i}
+                                                                href={f.url}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                title={f.name || `Archivo ${i + 1}`}
+                                                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 max-w-full"
+                                                            >
+                                                                <span className="truncate">📄 {f.name || `Descargar archivo ${i + 1}`}</span>
+                                                            </a>
+                                                        ))}
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
