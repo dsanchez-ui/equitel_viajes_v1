@@ -336,6 +336,36 @@ function _getRowByRequestId_(requestId) {
 /** Invalida el cache de filas. Llamar tras insertar una fila nueva. */
 function _clearRequestRowCache_() { _REQUEST_ROW_CACHE = null; }
 
+/**
+ * Etapa 2.6: calcula el siguiente ID secuencial reusando el cache existente.
+ *
+ * Antes de este helper, `createNewRequest` leía toda la columna ID (N reads
+ * + parse regex de cada valor) para encontrar el max. Ahora se reutiliza
+ * `_REQUEST_ROW_CACHE` cuyas keys son los IDs — extraer el max es iterar
+ * sobre keys en memoria, sin ir al sheet.
+ *
+ * Si el cache aún no se construyó en este dispatch (caso típico cuando el
+ * primer call es createNewRequest), se construye aquí: 1 read = mismo
+ * costo que el código original, PERO el cache queda disponible para las
+ * siguientes operaciones del mismo dispatch (recordEvent, etc.).
+ *
+ * Concurrencia: createNewRequest está dentro de LockService, así que el
+ * cache se construye con el sheet en estado consistente. El max calculado
+ * + 1 es siempre el siguiente ID válido — no hay riesgo de duplicados.
+ */
+function _computeNextRequestIdNum_() {
+  if (!_REQUEST_ROW_CACHE) _REQUEST_ROW_CACHE = _buildRequestRowMap_();
+  var max = 0;
+  Object.keys(_REQUEST_ROW_CACHE).forEach(function(id) {
+    var m = String(id).match(/(\d+)/);
+    if (m) {
+      var n = parseInt(m[0], 10);
+      if (!isNaN(n) && n > max) max = n;
+    }
+  });
+  return max + 1;
+}
+
 // --- SETUP FUNCTION ---
 function setupDatabase() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -495,7 +525,11 @@ function dispatch(action, payload) {
 
   try {
     // SECURITY TIER 1: Actions exempt from session validation (login flow + pre-login checks)
-    const sessionExemptActions = ['getCurrentUser', 'requestUserPin', 'verifyUserPin', 'validateSession', 'logout', 'verifyAdminPin', 'checkIsAnalyst'];
+    // bootstrap es exempt: valida la sesión INTERNAMENTE para poder retornar
+    // `{valid: false}` silencioso cuando la sesión expiró naturalmente, sin
+    // disparar el handler global de SESSION_EXPIRED (que muestra alert al
+    // usuario). Init silencioso de sesión expirada → vuelta limpia al login.
+    const sessionExemptActions = ['getCurrentUser', 'requestUserPin', 'verifyUserPin', 'validateSession', 'logout', 'verifyAdminPin', 'checkIsAnalyst', 'bootstrap'];
 
     // SECURITY TIER 2: For all other actions, the user must have a valid session token
     if (!sessionExemptActions.includes(action)) {
@@ -551,6 +585,17 @@ function dispatch(action, payload) {
       case 'getExecutiveEmails': result = getExecutiveEmails(); break;
       // Etapa 2.3: bootstrap consolidado del form (5 datasets en una llamada)
       case 'getFormBootstrap': result = getFormBootstrap(); break;
+      // Etapa 2.1 + 2.4: bootstrap del LOGIN. Consolida validateSession +
+      // getIntegrantesData (con hash cache) + getXxxRequestsLite. EXEMPT en
+      // el sentido de que valida sesión internamente (para devolver
+      // valid:false silencioso si expiró, sin disparar el handler global).
+      // El email + token vienen del payload — bootstrap los valida
+      // internamente con validateUserSession_ + validateUserEmail_.
+      case 'bootstrap': result = bootstrap(
+        payload && payload.integrantesHash,
+        currentUserEmail,
+        payload && payload.sessionToken
+      ); break;
       case 'getMetrics': result = getMetrics(payload.filters || {}); break;
       // SECURITY: Server-side analyst check
       case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
@@ -4003,6 +4048,103 @@ function getRequestById(requestId) {
 }
 
 /**
+ * Bootstrap consolidado del LOGIN (Etapa 2.1 + 2.4).
+ *
+ * Antes el frontend hacía 3-4 calls en cascada al loguearse o restaurar
+ * sesión: validateSession + getIntegrantesData + getXxxRequestsLite (+
+ * checkIsAnalyst defense-in-depth en algunos paths). Cada call cuesta
+ * 500ms-2s en cold start de GAS.
+ *
+ * Este endpoint consolida todo:
+ *   1. Re-valida sesión y autorización (defense-in-depth)
+ *   2. Determina rol server-side (NUNCA confía en el cliente)
+ *   3. Carga integrantes — con cache hash: si el cliente envía un hash que
+ *      coincide con el actual, omitimos el array (response más liviano,
+ *      ~70KB → ~1.5KB). Frontend usa su localStorage cache.
+ *   4. Carga requestsLite respetando rol (admin → todas, otro → solo suyas)
+ *
+ * Seguridad:
+ *   - Acción NO-exempt en dispatch: requiere sesión válida.
+ *   - El email usado para getMyRequestsLite viene del session validado, NO
+ *     del payload del cliente — así un usuario no puede pedir las requests
+ *     de otro alterando el payload.
+ *   - El hash NO es secreto: el cliente puede mandar cualquier valor, el
+ *     servidor solo decide si responder con datos. Si miente sobre el hash,
+ *     se queda con su cache stale (afecta solo a sí mismo). No hay leak.
+ *
+ * @param {string} integrantesHash MD5 del integrantes que el cliente tiene cacheado (opcional).
+ * @param {string} sessionEmail Email del session ya validado por el dispatch.
+ * @returns {{
+ *   valid: boolean,
+ *   role: 'REQUESTER'|'ANALYST'|'SUPERADMIN',
+ *   expiresAt: number,
+ *   integrantesHash: string,
+ *   integrantes?: Array,
+ *   requestsLite: Array
+ * }}
+ */
+function bootstrap(integrantesHash, sessionEmail, sessionToken) {
+  // bootstrap es sessionExempt en el dispatch (para no disparar el handler
+  // global de SESSION_EXPIRED en cold restore con sesión vencida). Eso
+  // significa que validamos AQUÍ DENTRO la sesión y autorización — DEBE
+  // hacerse antes de retornar cualquier dato.
+  if (!sessionEmail || !sessionToken) {
+    return { valid: false, reason: 'MISSING_CREDENTIALS' };
+  }
+  var session = validateUserSession_(sessionEmail, sessionToken);
+  if (!session) {
+    // Sesión inválida o expirada. Retornamos valid:false sin error code para
+    // que el frontend simplemente vuelva al login sin mostrar alert al usuario.
+    return { valid: false, reason: 'SESSION_INVALID' };
+  }
+  if (!validateUserEmail_(sessionEmail)) {
+    return { valid: false, reason: 'NOT_AUTHORIZED' };
+  }
+
+  // Rol server-side. Misma jerarquía que verifyUserPin/verifyAdminPin —
+  // SUPERADMIN > ANALYST > REQUESTER. NUNCA se confía en role del cliente.
+  var role = isSuperAdmin(sessionEmail) ? 'SUPERADMIN'
+           : isUserAnalyst(sessionEmail) ? 'ANALYST'
+           : 'REQUESTER';
+  var isAdmin = role === 'ANALYST' || role === 'SUPERADMIN';
+
+  // Integrantes con hash cache. Si match → omitir array (cliente usa cache local).
+  var integrantes = getIntegrantesData();
+  var currentHash = _computeIntegrantesHash_(integrantes);
+  var includeIntegrantes = !integrantesHash || String(integrantesHash) !== currentHash;
+
+  // requestsLite: usar el email del SESSION, no del payload (defensa contra
+  // intentos de pedir requests de otro usuario).
+  var requestsLite = isAdmin ? getAllRequestsLite() : getMyRequestsLite(sessionEmail);
+
+  var result = {
+    valid: true,
+    role: role,
+    integrantesHash: currentHash,
+    requestsLite: requestsLite
+  };
+  if (includeIntegrantes) {
+    result.integrantes = integrantes;
+  }
+  return result;
+}
+
+/**
+ * Etapa 2.4: hash MD5 del array de integrantes para invalidación de cache.
+ * Stable serialization (control el shape — JSON.stringify es determinístico
+ * sobre arrays de objetos con keys conocidas).
+ */
+function _computeIntegrantesHash_(integrantes) {
+  try {
+    var str = JSON.stringify(integrantes || []);
+    var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, str);
+    return digest.map(function(b) { return ('0' + ((b & 0xFF).toString(16))).slice(-2); }).join('');
+  } catch (e) {
+    return '';
+  }
+}
+
+/**
  * Bootstrap consolidado para el formulario de "Nueva Solicitud" (Etapa 2.3).
  * Antes el frontend hacía 5 fetches en 2 promesas paralelas (rules, executives,
  * sites, costCenters, cities). Cada fetch tiene 500ms-2s de overhead HTTP.
@@ -4234,25 +4376,14 @@ function createNewRequest(data, emailHtml) {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-  const idColIndex = H("ID RESPUESTA") + 1; 
-  
-  // Calculate ID
-  const lastRow = sheet.getLastRow();
-  let nextIdNum = 1;
-  // Note: If lastRow is huge due to dropdowns, we might scan it all. 
-  // However, for ID calculation we only care about existing IDs.
-  if (lastRow > 1) {
-    const existingIds = sheet.getRange(2, idColIndex, lastRow - 1, 1).getValues().flat();
-    // Robust ID parsing: Extract first numeric sequence found in the string
-    const numericIds = existingIds.map(val => {
-        const str = String(val);
-        const match = str.match(/(\d+)/);
-        return match ? parseInt(match[0], 10) : NaN;
-    }).filter(val => !isNaN(val));
-    
-    if (numericIds.length > 0) nextIdNum = Math.max(...numericIds) + 1;
-  }
-  const id = `SOL-${nextIdNum.toString().padStart(6, '0')}`; 
+  const idColIndex = H("ID RESPUESTA") + 1;
+
+  // Etapa 2.6: calcular siguiente ID via cache existente (_REQUEST_ROW_CACHE).
+  // Reusa la estructura ya construida por operaciones previas del dispatch;
+  // si no existe, se construye aquí con 1 read del sheet (mismo costo que
+  // el scan anterior, pero el cache queda disponible para _recordEvent_).
+  const nextIdNum = _computeNextRequestIdNum_();
+  const id = `SOL-${nextIdNum.toString().padStart(6, '0')}`;
 
   // --- RESOLVE COST CENTER NAME ---
   let costCenterName = '';

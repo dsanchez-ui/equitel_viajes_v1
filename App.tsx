@@ -11,6 +11,34 @@ import { LOGO_URL, APP_VERSION } from './constants';
 
 const POLL_INTERVAL_MS = 30000;
 const SESSION_STORAGE_KEY = 'equitel_session';
+// Etapa 2.4: cache localStorage del directorio de usuarios. Se comparte entre
+// sesiones del mismo navegador (el directorio es organizacional, no PII
+// sensible específica del usuario). Versionado con `_v1` para poder forzar
+// invalidación masiva si cambia la estructura del Integrant en el futuro.
+const INTEGRANTES_CACHE_KEY = 'equitel_integrantes_cache_v1';
+
+interface IntegrantesCache {
+  hash: string;
+  data: Integrant[];
+}
+
+const readIntegrantesCache = (): IntegrantesCache | null => {
+  try {
+    const raw = localStorage.getItem(INTEGRANTES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (typeof parsed.hash !== 'string' || !parsed.hash) return null;
+    if (!Array.isArray(parsed.data)) return null;
+    return { hash: parsed.hash, data: parsed.data };
+  } catch {
+    return null;
+  }
+};
+
+const writeIntegrantesCache = (cache: IntegrantesCache) => {
+  try { localStorage.setItem(INTEGRANTES_CACHE_KEY, JSON.stringify(cache)); } catch { /* noop */ }
+};
 
 type StoredRole = 'REQUESTER' | 'ANALYST' | 'SUPERADMIN';
 
@@ -137,26 +165,45 @@ const App: React.FC = () => {
           setLoading(false);
           return;
         }
-        // Validate session against backend
+        // Etapa 2.1: bootstrap consolidado reemplaza validateSession +
+        // getIntegrantesData + fetchRequests + checkIsAnalyst. El backend
+        // valida la sesión y decide el rol server-side. Si la sesión está
+        // expirada, bootstrap retorna `valid: false`.
         gasService.setUserEmail(stored.email);
         gasService.setSessionToken(stored.token);
-        const validation = await gasService.validateSession(stored.email, stored.token);
-        if (!validation.valid) {
+
+        const cached = readIntegrantesCache();
+        const data = await gasService.bootstrap(cached?.hash || '');
+        if (!data.valid) {
+          // Sesión expirada o no autorizada → limpiar y volver a login.
           clearStoredSession();
           gasService.clearSession();
           setLoading(false);
           return;
         }
-        // Session OK → load integrantes (now session-protected) and finish login.
-        // CRÍTICO: validar que vino poblado. Si llega vacío, NO dejar pasar al
-        // dashboard — el formulario de solicitud mostraría "Cédula no encontrada"
-        // para todo el mundo. Mejor forzar recarga con mensaje claro.
-        const loadedIntegrantes = await gasService.getIntegrantesData();
-        if (!Array.isArray(loadedIntegrantes) || loadedIntegrantes.length === 0) {
+
+        // Etapa 2.4: integrantes cacheados — si backend dice "match", usar cache.
+        // Si vino con datos, refrescar cache y usar.
+        let resolvedIntegrantes: Integrant[];
+        if (data.integrantes && Array.isArray(data.integrantes) && data.integrantes.length > 0) {
+          resolvedIntegrantes = data.integrantes;
+          if (data.integrantesHash) {
+            writeIntegrantesCache({ hash: data.integrantesHash, data: data.integrantes });
+          }
+        } else if (cached && cached.data.length > 0) {
+          // Hash match → usar cache local
+          resolvedIntegrantes = cached.data;
+        } else {
           throw new Error('El directorio de usuarios vino vacío desde el servidor.');
         }
-        setIntegrantes(loadedIntegrantes);
-        await handleLoginSuccess(stored.email, (validation.role as StoredRole) || 'REQUESTER', loadedIntegrantes);
+        setIntegrantes(resolvedIntegrantes);
+
+        // Aplicar requestsLite directamente (ya viene del bootstrap).
+        if (Array.isArray(data.requestsLite)) {
+          setRequests(data.requestsLite);
+        }
+
+        await handleLoginSuccess(stored.email, (data.role as StoredRole) || 'REQUESTER', resolvedIntegrantes, /*skipFetch=*/true);
       } catch (err: any) {
         console.error("Init failed", err);
         const msg = String(err?.message || err || '');
@@ -221,7 +268,7 @@ const App: React.FC = () => {
     return "Hola, Integrante Equitel";
   };
 
-  const handleLoginSuccess = async (email: string, storedRole: StoredRole = 'REQUESTER', preloadedIntegrantes?: Integrant[]) => {
+  const handleLoginSuccess = async (email: string, storedRole: StoredRole = 'REQUESTER', preloadedIntegrantes?: Integrant[], skipFetch: boolean = false) => {
     // CRÍTICO: toda la función está envuelta en try/finally para GARANTIZAR
     // que setLoading(false) siempre se ejecute, aun si alguna operación lanza
     // una excepción inesperada. Sin esto, el usuario podría quedar atrapado
@@ -232,29 +279,29 @@ const App: React.FC = () => {
       gasService.setUserEmail(email);
       const list = preloadedIntegrantes || integrantes;
 
-      // DEFENSE-IN-DEPTH: si la sesión dice que somos admin (ANALYST o SUPERADMIN),
-      // re-confirmar contra el backend con checkIsAnalyst. Si el backend dice que
-      // NO, rebajar a REQUESTER (caso donde alguien fue removido de ANALYST_EMAILS
-      // pero la sesión vieja aún tiene rol admin guardado). Un superadmin también
-      // pasa checkIsAnalyst porque isUserAnalyst hereda superadmin (backend).
-      if (storedRole === 'ANALYST' || storedRole === 'SUPERADMIN') {
-        try {
-          const confirmedAnalyst = await gasService.checkIsAnalyst(email);
-          if (!confirmedAnalyst) {
-            console.warn('Session role was admin but backend downgraded to REQUESTER.');
+      // Etapa 2.1: cuando `skipFetch` es true, el rol viene de `bootstrap`
+      // (que ya lo validó server-side y trajo requestsLite). Saltamos el
+      // checkIsAnalyst defense-in-depth (redundante con la validación de
+      // bootstrap) y el fetchRequests (los datos ya están aplicados).
+      if (!skipFetch) {
+        // DEFENSE-IN-DEPTH legacy path: si la sesión dice que somos admin, re-confirmar.
+        if (storedRole === 'ANALYST' || storedRole === 'SUPERADMIN') {
+          try {
+            const confirmedAnalyst = await gasService.checkIsAnalyst(email);
+            if (!confirmedAnalyst) {
+              console.warn('Session role was admin but backend downgraded to REQUESTER.');
+              finalRole = 'REQUESTER';
+            }
+          } catch (err) {
+            console.error('checkIsAnalyst failed during login, defaulting to REQUESTER:', err);
             finalRole = 'REQUESTER';
           }
-        } catch (err) {
-          console.error('checkIsAnalyst failed during login, defaulting to REQUESTER:', err);
-          finalRole = 'REQUESTER';
         }
-      }
 
-      const isAdmin = finalRole === 'ANALYST' || finalRole === 'SUPERADMIN';
-      // Pre-cargar los requests silenciosamente (fetchRequests ya tiene su propio
-      // try/catch, nunca re-lanza). Así, cuando el dashboard aparezca, ya tendrá
-      // datos sin mostrar el indicador interno de fetching (tenemos el spinner).
-      await fetchRequests(email, isAdmin, true);
+        const isAdmin = finalRole === 'ANALYST' || finalRole === 'SUPERADMIN';
+        // Pre-cargar los requests silenciosamente.
+        await fetchRequests(email, isAdmin, true);
+      }
 
       // Batch de state updates finales: React 18 los procesa en un solo render,
       // así que la transición de spinner → dashboard correcto es atómica.
@@ -331,7 +378,7 @@ const App: React.FC = () => {
       const result = await gasService.verifyUserPin(pendingPinEmail, pin);
       if (!result.success || !result.token) return false;
 
-      // Persist session
+      // Persist session ANTES de bootstrap — bootstrap valida con el token guardado.
       const session: StoredSession = {
         email: pendingPinEmail,
         token: result.token,
@@ -342,40 +389,54 @@ const App: React.FC = () => {
       gasService.setUserEmail(pendingPinEmail);
       gasService.setSessionToken(result.token);
 
-      // Now we can load integrantes (session-protected endpoint).
-      // CRÍTICO: si la carga del directorio falla o viene vacía, NO dejamos
-      // pasar al dashboard — ver comentario en init(). El usuario recibe
-      // alerta clara y se fuerza re-login.
-      let loadedIntegrantes: Integrant[];
+      // Etapa 2.1: bootstrap consolidado en lugar de getIntegrantesData + fetchRequests.
+      // Si falla o viene vacío, limpiamos sesión y forzamos re-login.
       try {
-        loadedIntegrantes = await gasService.getIntegrantesData();
-      } catch (dirErr) {
-        console.error('verifyUserPin: falló carga del directorio', dirErr);
-        clearStoredSession();
-        gasService.clearSession();
-        alert(
-          'Inicio de sesión correcto, pero no se pudo cargar el directorio de usuarios.\n\n' +
-          'Recargue la página (Ctrl+Shift+R) e intente nuevamente. ' +
-          'Si persiste, contacte al administrador del aplicativo.'
-        );
-        return false;
-      }
-      if (!loadedIntegrantes || loadedIntegrantes.length === 0) {
-        clearStoredSession();
-        gasService.clearSession();
-        alert(
-          'El directorio de usuarios vino vacío desde el servidor. ' +
-          'Recargue la página e intente de nuevo. Si persiste, contacte al administrador.'
-        );
-        return false;
-      }
-      setIntegrantes(loadedIntegrantes);
+        const cached = readIntegrantesCache();
+        const data = await gasService.bootstrap(cached?.hash || '');
+        if (!data.valid) {
+          clearStoredSession();
+          gasService.clearSession();
+          alert('Inicio de sesión incompleto. Recargue la página e intente de nuevo.');
+          return false;
+        }
 
-      setShowUserPinModal(false);
-      setPendingPinEmail('');
-      setPinFlowMessage('');
-      await handleLoginSuccess(pendingPinEmail, session.role, loadedIntegrantes);
-      return true;
+        let resolvedIntegrantes: Integrant[];
+        if (data.integrantes && Array.isArray(data.integrantes) && data.integrantes.length > 0) {
+          resolvedIntegrantes = data.integrantes;
+          if (data.integrantesHash) {
+            writeIntegrantesCache({ hash: data.integrantesHash, data: data.integrantes });
+          }
+        } else if (cached && cached.data.length > 0) {
+          resolvedIntegrantes = cached.data;
+        } else {
+          clearStoredSession();
+          gasService.clearSession();
+          alert('El directorio de usuarios vino vacío desde el servidor. Recargue la página e intente de nuevo.');
+          return false;
+        }
+
+        setIntegrantes(resolvedIntegrantes);
+        if (Array.isArray(data.requestsLite)) {
+          setRequests(data.requestsLite);
+        }
+
+        setShowUserPinModal(false);
+        setPendingPinEmail('');
+        setPinFlowMessage('');
+        // bootstrap ya retornó rol verificado server-side y los requests.
+        await handleLoginSuccess(pendingPinEmail, (data.role as StoredRole) || session.role, resolvedIntegrantes, /*skipFetch=*/true);
+        return true;
+      } catch (bootstrapErr) {
+        console.error('handleUserPinSubmit: bootstrap falló', bootstrapErr);
+        clearStoredSession();
+        gasService.clearSession();
+        alert(
+          'Inicio de sesión correcto, pero no se pudo cargar el contenido inicial.\n\n' +
+          'Recargue la página (Ctrl+Shift+R) e intente nuevamente.'
+        );
+        return false;
+      }
     } catch (err: any) {
       console.error('verifyUserPin error', err);
       return false;
@@ -446,32 +507,50 @@ const App: React.FC = () => {
       gasService.setUserEmail(pendingAdminEmail);
       gasService.setSessionToken(result.token);
 
-      // Ver comentario en init() y verifyUserPin: si el directorio falla o
-      // viene vacío, NO dejar pasar al dashboard.
-      let loadedIntegrantes: Integrant[];
+      // Etapa 2.1: bootstrap consolidado (mismo patrón que handleUserPinSubmit).
       try {
-        loadedIntegrantes = await gasService.getIntegrantesData();
-      } catch (dirErr) {
-        console.error('verifyAdminPin: falló carga del directorio', dirErr);
+        const cached = readIntegrantesCache();
+        const data = await gasService.bootstrap(cached?.hash || '');
+        if (!data.valid) {
+          clearStoredSession();
+          gasService.clearSession();
+          alert('Inicio de sesión incompleto. Recargue la página e intente de nuevo.');
+          return false;
+        }
+
+        let loadedIntegrantes: Integrant[];
+        if (data.integrantes && Array.isArray(data.integrantes) && data.integrantes.length > 0) {
+          loadedIntegrantes = data.integrantes;
+          if (data.integrantesHash) {
+            writeIntegrantesCache({ hash: data.integrantesHash, data: data.integrantes });
+          }
+        } else if (cached && cached.data.length > 0) {
+          loadedIntegrantes = cached.data;
+        } else {
+          clearStoredSession();
+          gasService.clearSession();
+          alert('El directorio de usuarios vino vacío desde el servidor. Recargue la página e intente de nuevo.');
+          return false;
+        }
+
+        setIntegrantes(loadedIntegrantes);
+        if (Array.isArray(data.requestsLite)) {
+          setRequests(data.requestsLite);
+        }
+
+        setShowPinModal(false);
+        await handleLoginSuccess(pendingAdminEmail, (data.role as StoredRole) || sessionRole, loadedIntegrantes, /*skipFetch=*/true);
+        return true;
+      } catch (bootstrapErr) {
+        console.error('handlePinSubmit: bootstrap falló', bootstrapErr);
         clearStoredSession();
         gasService.clearSession();
         alert(
-          'Inicio de sesión correcto, pero no se pudo cargar el directorio de usuarios.\n\n' +
+          'Inicio de sesión correcto, pero no se pudo cargar el contenido inicial.\n\n' +
           'Recargue la página (Ctrl+Shift+R) e intente nuevamente.'
         );
         return false;
       }
-      if (!loadedIntegrantes || loadedIntegrantes.length === 0) {
-        clearStoredSession();
-        gasService.clearSession();
-        alert('El directorio de usuarios vino vacío desde el servidor. Recargue la página e intente de nuevo.');
-        return false;
-      }
-      setIntegrantes(loadedIntegrantes);
-
-      setShowPinModal(false);
-      await handleLoginSuccess(pendingAdminEmail, sessionRole, loadedIntegrantes);
-      return true;
     } catch (e) {
       console.error('verifyAdminPin error', e);
       return false;

@@ -292,6 +292,41 @@ class GasService {
   }
 
   /**
+   * Etapa 2.1 + 2.4: bootstrap consolidado del LOGIN.
+   *
+   * Reemplaza 3-4 calls del flujo de login (validateSession +
+   * getIntegrantesData + getXxxRequestsLite + checkIsAnalyst) con una
+   * sola llamada al backend. El servidor valida la sesión, decide el rol
+   * server-side (NUNCA confía en el cliente), y retorna todo lo necesario
+   * para mostrar el dashboard.
+   *
+   * Cache de integrantes: se envía el hash que el cliente tiene cacheado
+   * en localStorage. Si coincide con el actual del backend, la respuesta
+   * NO incluye el array (~70KB → ~1.5KB). El cliente usa su cache local.
+   *
+   * @param integrantesHash MD5 del integrantes cacheado, o '' si no hay cache.
+   */
+  async bootstrap(integrantesHash: string): Promise<{
+    valid: boolean;
+    reason?: string;
+    role?: 'REQUESTER' | 'ANALYST' | 'SUPERADMIN';
+    integrantesHash?: string;
+    integrantes?: Integrant[];
+    requestsLite?: TravelRequest[];
+  }> {
+    const response = await this.runGas('bootstrap', { integrantesHash: integrantesHash || '' });
+    if (!response || response.success === false) {
+      // Sesión expirada → handler global ya disparó re-login. Retornar valid:false
+      // para que el caller no procese resultado. Otros errores también caen aquí.
+      if (response && response.code === 'SESSION_EXPIRED') {
+        return { valid: false, reason: 'SESSION_EXPIRED' };
+      }
+      throw new Error(response?.error || 'No se pudo cargar el bootstrap del login.');
+    }
+    return response.data || { valid: false };
+  }
+
+  /**
    * Etapa 2.3: bootstrap consolidado del formulario "Nueva Solicitud".
    * Reemplaza 5 fetches separados (rules, executives, sites, costCenters,
    * cities) con una sola llamada al backend. Reduce el overhead HTTP en
