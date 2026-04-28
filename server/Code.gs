@@ -7805,6 +7805,15 @@ function usuarios_create(data) {
       throw new Error('Ya existe un usuario con esa cédula.');
     }
 
+    // Pre-construir lookup con el nuevo usuario inyectado para que cols H/I
+    // se resuelvan correctamente cuando es su propio aprobador (su cédula
+    // aparece en cedulasAprobadores antes de existir en la hoja).
+    var lookup = _buildCedulaLookup_(sheet);
+    lookup[cedula] = {
+      nombre: String(data.nombre || '').trim(),
+      correo: correo
+    };
+
     const newRow = sheet.getLastRow() + 1;
     _writeUsuarioRow_(sheet, newRow, {
       cedula: cedula,
@@ -7814,7 +7823,7 @@ function usuarios_create(data) {
       sede: data.sede,
       centroCosto: data.centroCosto,
       cedulasAprobadores: data.cedulasAprobadores
-    });
+    }, lookup);
     SpreadsheetApp.flush();
     return { success: true, cedula: cedula };
   } finally {
@@ -7845,6 +7854,19 @@ function usuarios_update(originalCedula, data) {
   // Preservar el hash de PIN existente
   const existingPin = String(sheet.getRange(row, 10).getValue() || '').trim();
 
+  // Pre-construir lookup con los datos NUEVOS del usuario (en caso de que
+  // sea su propio aprobador, o que cambió cédula/nombre/correo y aún se
+  // referencia a sí mismo). El lookup leído del sheet trae datos viejos;
+  // los override aquí garantiza que cols H/I queden con info actualizada.
+  var lookup = _buildCedulaLookup_(sheet);
+  if (newCedula !== String(originalCedula).trim()) {
+    delete lookup[String(originalCedula).trim()];
+  }
+  lookup[newCedula] = {
+    nombre: String(data.nombre || '').trim(),
+    correo: correo
+  };
+
   _writeUsuarioRow_(sheet, row, {
     cedula: newCedula,
     nombre: data.nombre,
@@ -7854,7 +7876,7 @@ function usuarios_update(originalCedula, data) {
     centroCosto: data.centroCosto,
     cedulasAprobadores: data.cedulasAprobadores,
     pinHash: existingPin
-  });
+  }, lookup);
   SpreadsheetApp.flush();
   return { success: true };
 }

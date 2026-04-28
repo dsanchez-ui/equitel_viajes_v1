@@ -247,6 +247,73 @@
       margin-top: 12px;
     }
     .form-actions button { flex: 1; }
+    /* DUPLICATE DETECTOR */
+    .dupe-alert {
+      display: none;
+      margin-top: 4px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .dupe-alert.block {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+    .dupe-alert.warn {
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      color: #92400e;
+    }
+    .dupe-alert .lnk {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 3px 8px;
+      background: white;
+      border: 1px solid currentColor;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .dupe-alert .lnk:hover { opacity: 0.85; }
+    /* SELF-APPROVER CHECKBOX */
+    .self-approver-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+      padding: 6px 8px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 4px;
+      font-size: 11px;
+      color: #1e3a8a;
+    }
+    .self-approver-row input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      margin: 0;
+      cursor: pointer;
+    }
+    .self-approver-row label {
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      margin: 0;
+      text-transform: none;
+      letter-spacing: 0;
+      color: #1e3a8a;
+    }
+    /* HIGHLIGHT JUST-CREATED USER */
+    @keyframes highlightFade {
+      0% { background: #fef3c7; }
+      100% { background: white; }
+    }
+    .list-item.just-created {
+      animation: highlightFade 3s ease-out;
+    }
     /* STATUS */
     .status {
       margin-top: 10px;
@@ -531,15 +598,18 @@
         <div class="field">
           <label>Cédula *</label>
           <input type="text" id="f_cedula" placeholder="Ej: 1234567890" />
+          <div id="dupe_cedula" class="dupe-alert"></div>
         </div>
         <div class="field">
           <label>Nombre completo *</label>
-          <input type="text" id="f_nombre" placeholder="Apellidos y Nombres" list="catalogoNombres" />
+          <input type="text" id="f_nombre" placeholder="Apellidos y Nombres" list="catalogoNombres" autocomplete="off" />
           <datalist id="catalogoNombres"></datalist>
+          <div id="dupe_nombre" class="dupe-alert"></div>
         </div>
         <div class="field">
           <label>Correo *</label>
           <input type="email" id="f_correo" placeholder="usuario@equitel.com.co" />
+          <div id="dupe_correo" class="dupe-alert"></div>
         </div>
         <div class="field">
           <label>Empresa</label>
@@ -560,12 +630,21 @@
 
         <div class="field">
           <label>Aprobadores</label>
-          <div class="approver-chips" id="approverChips"></div>
-          <div class="approver-search">
-            <input type="text" id="approverSearch" placeholder="Buscar aprobador por nombre o cédula..." />
-            <div class="approver-results" id="approverResults" style="display: none;"></div>
+          <div class="self-approver-row">
+            <input type="checkbox" id="f_selfApprover" />
+            <label for="f_selfApprover">Esta persona es su propio aprobador (autoaprobador)</label>
           </div>
-          <div class="help-text">Las cédulas se guardan en col G; los correos/nombres se resuelven automáticamente.</div>
+          <div id="approverPickerWrap">
+            <div class="approver-chips" id="approverChips"></div>
+            <div class="approver-search">
+              <input type="text" id="approverSearch" placeholder="Buscar aprobador por nombre o cédula..." />
+              <div class="approver-results" id="approverResults" style="display: none;"></div>
+            </div>
+            <div class="help-text">Las cédulas se guardan en col G; los correos/nombres se resuelven automáticamente.</div>
+          </div>
+          <div id="selfApproverHint" class="help-text" style="display:none;color:#1e3a8a;font-style:italic;">
+            Al guardar, la cédula y el correo de este usuario se registrarán automáticamente como su propio aprobador en las columnas G, H e I.
+          </div>
         </div>
 
         <div class="field" id="pinField" style="display: none;">
@@ -769,6 +848,15 @@
       document.getElementById('approverSearch').addEventListener('input', searchApprovers);
       document.getElementById('approverSearch').addEventListener('focus', searchApprovers);
 
+      // Self-approver checkbox: oculta el picker y muestra el hint informativo.
+      document.getElementById('f_selfApprover').addEventListener('change', onSelfApproverToggle);
+
+      // Detector de duplicados en cédula/correo/nombre. Corre en cada keystroke
+      // y bloquea submit si cédula o correo coinciden con un usuario existente.
+      document.getElementById('f_cedula').addEventListener('input', checkDuplicates);
+      document.getElementById('f_correo').addEventListener('input', checkDuplicates);
+      document.getElementById('f_nombre').addEventListener('input', checkDuplicates);
+
       // Validaciones de input — fuerzan formato mientras escribes:
       // Cédula y Centro de Costo: solo dígitos. Nombre: UPPERCASE auto
       // (preserva tildes/Ñ). Correo: lowercase auto.
@@ -853,15 +941,23 @@
       });
     }
 
-    function loadAll() {
+    function loadAll(onListReady) {
       google.script.run
         .withSuccessHandler(function(users) {
           allUsers = users || [];
           recomputeApproverSet();
           renderList();
+          // Repoblar el datalist filtrando RH para excluir usuarios ya en USUARIOS.
+          // Así, al crear un usuario nuevo, el autocompletado solo sugiere
+          // empleados de RH no registrados todavía (caso útil).
+          repopulateCatalogoDatalist();
           // Re-apply bulk filter if that tab is active
           if (document.getElementById('tab-bulk').classList.contains('active')) {
             bulkApplyFilter();
+          }
+          // Callback opcional (ej: highlight tras crear un usuario)
+          if (typeof onListReady === 'function') {
+            try { onListReady(); } catch (e) { /* no-op */ }
           }
           // Auto-load anomalies in background to update badge
           loadAnomaliesSilently();
@@ -875,17 +971,39 @@
       google.script.run
         .withSuccessHandler(function(c) {
           catalogo = c || [];
-          var dl = document.getElementById('catalogoNombres');
-          dl.innerHTML = '';
-          catalogo.forEach(function(item) {
-            var opt = document.createElement('option');
-            opt.value = item.nombre;
-            opt.dataset.correo = item.correo;
-            opt.dataset.cedula = item.cedula;
-            dl.appendChild(opt);
-          });
+          repopulateCatalogoDatalist();
         })
         .usuarios_getCatalogoOrg();
+    }
+
+    /**
+     * Pobla el datalist de sugerencias del campo "Nombre" filtrando el
+     * catálogo de Maestro RH para EXCLUIR los empleados que ya están en
+     * USUARIOS (por cédula o correo). Así, al crear un usuario nuevo, las
+     * sugerencias solo muestran empleados de RH aún no registrados.
+     */
+    function repopulateCatalogoDatalist() {
+      var dl = document.getElementById('catalogoNombres');
+      if (!dl) return;
+      dl.innerHTML = '';
+      if (!catalogo || catalogo.length === 0) return;
+      var existingCedulas = {};
+      var existingCorreos = {};
+      allUsers.forEach(function(u) {
+        if (u.cedula) existingCedulas[u.cedula] = true;
+        if (u.correo) existingCorreos[u.correo.toLowerCase()] = true;
+      });
+      catalogo.forEach(function(item) {
+        var ced = String(item.cedula || '').trim();
+        var corr = String(item.correo || '').toLowerCase().trim();
+        if (ced && existingCedulas[ced]) return;
+        if (corr && existingCorreos[corr]) return;
+        var opt = document.createElement('option');
+        opt.value = item.nombre;
+        opt.dataset.correo = item.correo;
+        opt.dataset.cedula = item.cedula;
+        dl.appendChild(opt);
+      });
 
       google.script.run
         .withSuccessHandler(function(s) {
@@ -957,6 +1075,8 @@
       document.getElementById('formTitle').textContent = 'Nuevo usuario';
       document.getElementById('btnDelete').style.display = 'none';
       document.getElementById('pinField').style.display = 'none';
+      document.getElementById('f_selfApprover').checked = false;
+      onSelfApproverToggle();
       clearForm();
       showForm();
     }
@@ -1002,7 +1122,19 @@
           correo: correos[i] || ''
         };
       });
+
+      // Detecta si el usuario es su propio aprobador: única cédula en col G y
+      // coincide con la propia. Pre-marca el checkbox y oculta el picker.
+      var isSelf = cedulas.length === 1 && cedulas[0] === u.cedula;
+      document.getElementById('f_selfApprover').checked = isSelf;
+      onSelfApproverToggle();
+
       renderApproverChips();
+      // Limpiar alertas de duplicados — al editar, el propio usuario NO cuenta como duplicado
+      document.getElementById('dupe_cedula').style.display = 'none';
+      document.getElementById('dupe_correo').style.display = 'none';
+      document.getElementById('dupe_nombre').style.display = 'none';
+      document.getElementById('btnSave').disabled = false;
       showForm();
     }
 
@@ -1012,6 +1144,13 @@
       });
       document.getElementById('f_empresa').value = '';
       document.getElementById('f_sede').value = '';
+      // Limpiar alertas de duplicados y desbloquear botón Guardar
+      ['dupe_cedula', 'dupe_correo', 'dupe_nombre'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) { el.style.display = 'none'; el.innerHTML = ''; }
+      });
+      var btnSave = document.getElementById('btnSave');
+      if (btnSave) { btnSave.disabled = false; btnSave.title = ''; }
       renderApproverChips();
       hideStatus();
     }
@@ -1053,6 +1192,16 @@
         return;
       }
 
+      // Self-approver: la cédula del usuario actual va sola en col G; backend
+      // resolverá H/I correctamente porque inyectamos al lookup en usuarios_create.
+      var isSelfApprover = document.getElementById('f_selfApprover').checked;
+      var cedulasAprobadoresStr;
+      if (isSelfApprover) {
+        cedulasAprobadoresStr = cedulaRaw;
+      } else {
+        cedulasAprobadoresStr = selectedApprovers.map(function(a) { return a.cedula; }).join(', ');
+      }
+
       var data = {
         cedula: cedulaRaw,
         nombre: nombreRaw,
@@ -1060,7 +1209,7 @@
         empresa: document.getElementById('f_empresa').value,
         sede: document.getElementById('f_sede').value,
         centroCosto: ccRaw,
-        cedulasAprobadores: selectedApprovers.map(function(a) { return a.cedula; }).join(', ')
+        cedulasAprobadores: cedulasAprobadoresStr
       };
 
       // Auto-completar cédula+correo desde catálogo si están vacíos
@@ -1076,11 +1225,19 @@
       btn.disabled = true;
       btn.textContent = 'Guardando...';
 
+      var savedCedula = data.cedula;
+      var wasCreating = !currentEditing;
+
       var handler = function() {
         btn.disabled = false;
         btn.textContent = 'Guardar';
         showStatus('Guardado correctamente.', 'success');
-        loadAll();
+        // Si era creación, scrollear+highlight tras refresh del listado
+        if (wasCreating) {
+          loadAll(function() { highlightUserAfterCreate(savedCedula); });
+        } else {
+          loadAll();
+        }
         setTimeout(cancelForm, 800);
       };
       var errHandler = function(err) {
@@ -1094,6 +1251,21 @@
       } else {
         google.script.run.withSuccessHandler(handler).withFailureHandler(errHandler).usuarios_create(data);
       }
+    }
+
+    /**
+     * Tras crear un usuario, busca su fila en el listado y la resalta con
+     * animación amarilla durante 3s. Sirve como confirmación visual de que
+     * el usuario quedó registrado y refrescado en la UI.
+     */
+    function highlightUserAfterCreate(cedula) {
+      if (!cedula) return;
+      // El listado se acaba de re-renderizar. Buscamos el item por data-cedula.
+      var item = document.querySelector('.list-item[data-cedula="' + cedula.replace(/"/g, '\\"') + '"]');
+      if (!item) return;
+      item.classList.add('just-created');
+      try { item.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { item.scrollIntoView(); }
+      setTimeout(function() { item.classList.remove('just-created'); }, 3500);
     }
 
     function deleteUser() {
@@ -1137,6 +1309,66 @@
           showStatus('Error: ' + err.message, 'error');
         })
         .usuarios_clearPin(currentEditing);
+    }
+
+    // ============ SELF-APPROVER CHECKBOX ============
+    function onSelfApproverToggle() {
+      var checked = document.getElementById('f_selfApprover').checked;
+      document.getElementById('approverPickerWrap').style.display = checked ? 'none' : 'block';
+      document.getElementById('selfApproverHint').style.display = checked ? 'block' : 'none';
+    }
+
+    // ============ DUPLICATE DETECTOR ============
+    // Busca duplicados en cédula/correo/nombre contra `allUsers` y muestra
+    // alertas inline. Cédula y correo bloquean submit; nombre solo advierte
+    // (homónimos legítimos son posibles). Excluye al usuario actualmente en
+    // edición para no falsear alertas al editar uno existente.
+    function checkDuplicates() {
+      var cedula = String(document.getElementById('f_cedula').value || '').replace(/\D+/g, '').trim();
+      var correo = String(document.getElementById('f_correo').value || '').toLowerCase().trim();
+      var nombre = String(document.getElementById('f_nombre').value || '').toUpperCase().trim();
+
+      var others = allUsers.filter(function(u) { return u.cedula !== currentEditing; });
+
+      var matchCed = cedula ? others.find(function(u) { return u.cedula === cedula; }) : null;
+      var matchEmail = correo ? others.find(function(u) { return u.correo === correo; }) : null;
+      var matchNombre = nombre ? others.find(function(u) { return u.nombre.toUpperCase() === nombre; }) : null;
+
+      renderDupeAlert('dupe_cedula', matchCed, 'block', '⚠️ Esta cédula ya está registrada');
+      renderDupeAlert('dupe_correo', matchEmail, 'block', '⚠️ Este correo ya está registrado');
+      renderDupeAlert('dupe_nombre', matchNombre, 'warn', 'ℹ️ Ya existe un usuario con este nombre (puede ser homónimo)');
+
+      // Bloquea botón Guardar si hay duplicado en cédula o correo
+      var btnSave = document.getElementById('btnSave');
+      if (btnSave) {
+        var blocked = !!matchCed || !!matchEmail;
+        btnSave.disabled = blocked;
+        btnSave.title = blocked ? 'Resuelve los duplicados antes de guardar' : '';
+      }
+    }
+
+    function renderDupeAlert(elementId, match, type, headline) {
+      var el = document.getElementById(elementId);
+      if (!el) return;
+      if (!match) {
+        el.style.display = 'none';
+        el.innerHTML = '';
+        return;
+      }
+      el.className = 'dupe-alert ' + type;
+      el.style.display = 'block';
+      el.innerHTML = '<strong>' + escapeHtml(headline) + '</strong>'
+        + '<div style="margin-top:2px;">'
+        + escapeHtml(match.nombre) + ' · ' + escapeHtml(match.cedula) + ' · ' + escapeHtml(match.correo)
+        + '</div>'
+        + '<button type="button" class="lnk" data-cedula="' + escapeAttr(match.cedula) + '">→ Ver / editar este usuario</button>';
+      var btn = el.querySelector('.lnk');
+      if (btn) {
+        btn.addEventListener('click', function() {
+          var ced = btn.dataset.cedula;
+          if (ced) startEdit(ced);
+        });
+      }
     }
 
     // ============ APPROVER PICKER (form) ============
