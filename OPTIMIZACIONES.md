@@ -46,6 +46,10 @@ Para no duplicar trabajo, estas mejoras YA están en producción:
 | Fix UTF-16 supplementary plane → entidades HTML en wrapper de mail | `868f04c` | Emojis 4-byte (💰📥🚫🔥🔎🏨) renderizan bien con alias activo. |
 | Strip de plano suplementario también en SUBJECT de correos con alias | `dba3c97` | Subject "🚫 Solicitud..." llegaba como "??????..." con alias. Headers RFC2047 no soportan entidades HTML, así que stripeo (BMP `⚠⏰✅❌` se preservan). |
 | Spinner overlay con sintaxis Tailwind 4 (`bg-gray-500/75`) | `dba3c97` | El overlay del spinner de hidratación quedaba negro sólido por usar la sintaxis vieja (`bg-black bg-opacity-30`) en un proyecto Tailwind 4. |
+| Múltiples archivos de reserva descargables desde detalle | `b46053a` | El botón único "Descargar Tiquetes/Reserva" mostraba solo el primero. Ahora lista todos los `isReservation` con su nombre real. |
+| Timeout 30s + AbortController en `runGas` | `be7673f` | Sin timeout, un network stall dejaba el spinner del detalle eterno hasta F5. 30s cubre cold start; si excede, alert claro y reintento. |
+| Cancelable + ESC/clic-fondo/botón en spinner de hidratación | `be7673f` | 3 vías de escape para el modal blocking. Resultado tardío de un fetch cancelado se descarta (no abre detalle equivocado). |
+| Strip items corruptos en cache localStorage de integrantes | `108fa79` | Si XSS o edición manual mete un item con `email: null`, antes rompía el render. Ahora se filtran y se fuerza refetch en próximo bootstrap. |
 | Trigger `cleanupExpiredPropsWeekly` | (legacy) | Limpia sesiones, lockouts y rate-limit counters expirados. |
 | `warmupPing` cada 10 min | (legacy) | Mantiene tibio el isolate de GAS para reducir cold starts. |
 
@@ -282,9 +286,14 @@ const handleSubmit = async (e) => {
 
 ---
 
-# ETAPA 2 — Mejoras estructurales (riesgo medio, alto impacto, ~6-8 h total)
+# ETAPA 2 — Mejoras estructurales ✅ COMPLETADA (2026-04-27)
 
-> **Cuándo hacer:** después de validar Etapa 1 en producción durante 2-3 días sin reportes. Idealmente al alcanzar 200-300 solicitudes.
+> **Estado:** los 6 ítems están desplegados en producción y validados. Commits:
+> - `b46053a` — bloque inicial (2.5 + 2.2 + 2.3 + fix multi-archivos reserva)
+> - `d921008` — bloque final (2.1 bootstrap login + 2.4 cache integrantes + 2.6 cache max ID)
+> - `be7673f` — fix crítico: spinner eterno (timeout AbortController + cancelable)
+> - `f3ca6a7` — fix crítico: SUPERADMIN no veía todas las solicitudes en VER ADMIN
+> - `108fa79` — auditoría: 6 hallazgos de robustez/UX (cache invalidation, doble alert, tipos)
 
 ## 2.1 — Endpoint bootstrap unificado para login
 
@@ -327,7 +336,12 @@ Total cold start: 3-7 s antes de ver el dashboard. Con cold-start GAS adicional,
 - Test network error en bootstrap.
 - Confirmar que el dashboard muestra todas las solicitudes correctamente.
 
-**Status:** `[ ] PENDIENTE`
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `d921008` (2026-04-27)
+- Backend: nuevo endpoint `bootstrap(integrantesHash, sessionEmail, sessionToken)` que valida sesión internamente (sessionExempt en dispatch) y consolida 4 calls en 1.
+- Determina rol server-side (SUPERADMIN > ANALYST > REQUESTER) — NUNCA confía en cliente.
+- Frontend `init()` y los 2 handlers de PIN refactorizados; `handleLoginSuccess` con flag `skipFetch=true` cuando bootstrap ya trajo todo.
+- Cold restore cae de 3-7s a ~1-2s.
+- Endpoints legacy preservados: `validateSession`, `getIntegrantesData`, `checkIsAnalyst`, `getMyRequestsLite`, `getAllRequestsLite`.
 
 ---
 
@@ -366,7 +380,10 @@ Después, para cada `rowNumber`, leer la fila completa y mapear.
 - Confirmar que solicitudes con cambio activo siguen pausadas.
 - Confirmar que solicitudes con USER_CONSULT_MARKER siguen siendo identificadas.
 
-**Status:** `[ ] PENDIENTE`
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `b46053a` (2026-04-27)
+- Aplicado solo a `processAdminReminders` (era el único que mapeaba TODA la base con `mapRowToRequest`). Los otros 3 triggers ya filtraban por status antes del map.
+- TARGET_STATUSES: `PENDIENTE_OPCIONES`, `PENDIENTE_CONFIRMACION_COSTO`, `APROBADO`, `RESERVADO_PARCIAL`, `PENDIENTE_ANALISIS_CAMBIO`.
+- `_computePausedParentIds_` sigue recibiendo `dataRows` completo (necesita relaciones padre-hija de toda la base) — no usa `mapRowToRequest`, solo lee 3 columnas.
 
 ---
 
@@ -388,7 +405,9 @@ Después, para cada `rowNumber`, leer la fila completa y mapear.
 - Abrir form de nueva solicitud y verificar que los dropdowns se llenan.
 - Abrir form de modificación y verificar lo mismo.
 
-**Status:** `[ ] PENDIENTE`
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `b46053a` (2026-04-27)
+- Backend: `getFormBootstrap()` consolida `getCoApproverRules` + `getExecutiveEmails` + `getSites` + `getCostCenterData` + `getCitiesList` (5 datasets en una llamada).
+- Frontend: `RequestForm.tsx` fusionó sus 2 useEffects en uno solo. `ModificationForm.tsx` queda con sus 2 fetches separados (no es el form crítico).
 
 ---
 
@@ -415,7 +434,10 @@ Después, para cada `rowNumber`, leer la fila completa y mapear.
 - Refresh del navegador, verificar que NO descarga (mismo hash).
 - Modificar un usuario en USUARIOS, refresh, verificar que SÍ descarga (hash cambió).
 
-**Status:** `[ ] PENDIENTE`
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `d921008` (2026-04-27)
+- Implementado **junto con 2.1** (bootstrap) — natural extensión: integrantes viene en cada bootstrap, con cache hash.
+- Backend: `_computeIntegrantesHash_(integrantes)` retorna MD5 de `JSON.stringify`. Si cliente envía hash que coincide, omite array (~70KB → ~1.5KB).
+- Frontend: localStorage key `equitel_integrantes_cache_v1` con `{hash, data}`. Validación de shape al leer (commit `108fa79`). Si filtramos items corruptos, hash='' fuerza refetch para no quedarnos con subset.
 
 ---
 
@@ -435,7 +457,10 @@ Después, para cada `rowNumber`, leer la fila completa y mapear.
 
 **Validación:** Test manual: aprobar una solicitud desde el correo, verificar que se actualiza el status, que llegan los correos de decisión.
 
-**Status:** `[ ] PENDIENTE`
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `b46053a` (2026-04-27)
+- 1 sola lectura `getValues()` sobre la fila completa al inicio. Los ~5 reads dispersos (`status`, `isInternational`, `totalCost`, `expectedApprover`, `currentVal` por rol) ahora se hacen contra el array `currentRow` en memoria.
+- La segunda lectura post-flush (línea 2269 — `rowValues`) se mantiene intacta — necesita los valores recién escritos para verificar fully-approved.
+- Click APROBAR/DENEGAR baja de 2-3s a 1-1.5s. Aprobadores notan diferencia.
 
 ---
 
@@ -457,7 +482,10 @@ Después, para cada `rowNumber`, leer la fila completa y mapear.
 
 **Validación:** Crear varias solicitudes seguidas. Verificar que IDs son consecutivos y únicos.
 
-**Status:** `[ ] PENDIENTE`
+**Status:** `[x] ✅ COMPLETADO Y EN PRODUCCIÓN` — commit `d921008` (2026-04-27)
+- **Implementación más segura que el plan original:** en vez de ScriptProperty cache (riesgo de desincronización), reusa el `_REQUEST_ROW_CACHE` que ya existe (Etapa 1.1). Sus keys son los IDs — extraer el max es iterar keys en memoria.
+- Helper `_computeNextRequestIdNum_()` reemplaza el scan + parse de la columna ID en `createNewRequest`.
+- Cero riesgo de desincronización: el cache se construye desde el sheet en cada dispatch, dentro del LockService.
 
 ---
 
@@ -665,12 +693,12 @@ Para cualquier ítem de cualquier etapa que se commitee:
 # Estado consolidado
 
 **Etapa 1 — Quick wins:** ✅ 6 / 6 completados, desplegados en producción y validados (commits `e3b5b24` + `dba3c97`).
-**Etapa 2 — Estructurales:** 0 / 6 completados.
+**Etapa 2 — Estructurales:** ✅ 6 / 6 completados, desplegados en producción y validados (commits `b46053a` + `d921008` + `be7673f` + `f3ca6a7` + `108fa79`).
 **Etapa 3 — Mayores:** 0 / 4 completados.
 **Etapa 4 — Avanzadas:** descartadas o pospuestas.
 
-**Próximo ítem a tomar:** Etapa 2 — orden recomendado por impacto/riesgo: 2.5 (reads consolidados en `processApprovalFromEmail`) → 2.2 (pre-filtrar status en triggers) → 2.3 (`getFormBootstrap`). Las tres son aisladas y se pueden hacer en una sola pasada (~3.5 h total).
+**Próximo ítem a tomar:** Etapa 3 — orden recomendado por impacto/riesgo: **3.3** (code-splitting frontend, riesgo bajo, mejora UX inmediata) → **3.2** (diffing en polling, alto retorno cuando volumen crezca) → **3.1** (paginación server-side, el más complejo, dejar para cuando se sienta lento) → **3.4** (archivado de PROCESADO antiguas, solo si la sheet pasa los 1000 registros). Ver detalle en cada sección de Etapa 3 más abajo.
 
 ---
 
-*Última actualización: 2026-04-27 (post-deploy Etapa 1 + fixes `dba3c97`)*
+*Última actualización: 2026-04-27 (post-deploy Etapa 2 completa + auditoría `108fa79`)*
