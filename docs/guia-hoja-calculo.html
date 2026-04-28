@@ -170,12 +170,30 @@
 <ol>
 <li>Edita el usuario</li>
 <li>En el campo “Aprobadores” escribe el nombre o cédula del aprobador</li>
-<li>Te aparece una lista — los que ya son aprobadores de alguien tienen un chip azul “aprobador” al lado</li>
+<li>Te aparece una lista — los que ya son aprobadores de alguien tienen un chip azul “aprobador” al lado, pero el listado incluye <strong>a todos los usuarios</strong>, no solo a los que ya aprueban a alguien</li>
 <li>Haz click en la persona que quieres → se agrega como chip amarillo arriba</li>
 <li>Puedes agregar varios</li>
 <li>Para quitar uno, click en la “×” de su chip</li>
 <li><strong>Guardar</strong></li>
 </ol>
+<p><strong>Caso especial: el usuario es su propio aprobador (autoaprobador)</strong></p>
+<p>Cuando llega un directivo nuevo que aprueba sus propias solicitudes (CEO, CDS, gerente), no tienes que crearlo primero y luego volver a buscarlo en el picker. El formulario tiene un <strong>checkbox “Esta persona es su propio aprobador”</strong> arriba de la sección de aprobadores:</p>
+<ol>
+<li>Marca el checkbox → el picker se oculta y aparece un mensaje azul confirmando la acción</li>
+<li>Llena el resto del formulario normalmente y <strong>Guardar</strong></li>
+<li>El sistema escribe la cédula, correo y nombre del propio usuario en las columnas G, H e I de USUARIOS</li>
+</ol>
+<p>Si abres a un usuario que ya estaba registrado como autoaprobador, el checkbox aparece pre-marcado automáticamente.</p>
+<p><strong>Detector de duplicados al crear / editar</strong></p>
+<p>Mientras escribes cédula, correo o nombre, el formulario busca en tiempo real si ya existe alguien con esos datos:</p>
+<ul>
+<li>🔴 <strong>Cédula o correo ya registrado</strong> → aparece un badge rojo con el nombre del usuario existente. El botón <strong>Guardar</strong> se bloquea — no puedes crear duplicados con la misma cédula/correo. El badge incluye un botón <strong>“→ Ver / editar este usuario”</strong> que abre directamente al duplicado para corregir su información en lugar de crear uno nuevo.</li>
+<li>🟡 <strong>Nombre ya registrado</strong> → badge ámbar de advertencia, pero <strong>no bloquea</strong> el guardado (homónimos legítimos son posibles, ej: “JUAN PÉREZ” en sedes distintas).</li>
+</ul>
+<p><strong>Sugerencias del Maestro RH al escribir el nombre</strong></p>
+<p>El campo “Nombre” autocompleta con empleados del Maestro RH (la fuente externa de RRHH), pero excluye automáticamente a quienes ya están en USUARIOS. Así, las sugerencias solo muestran personas que aún no han sido registradas — útil para crear usuarios nuevos sin volver a registrar a alguien que ya existe.</p>
+<p><strong>Confirmación visual tras crear</strong></p>
+<p>Después de guardar un usuario nuevo, el listado se refresca solo, hace scroll hasta la fila del nuevo usuario y la resalta con un fondo amarillo durante 3 segundos. Te indica visualmente que quedó registrado y puedes verlo en su lugar.</p>
 <h4>Pestaña “Anomalías”</h4>
 <p><strong>Para qué sirve:</strong> diagnóstico rápido de problemas en la hoja USUARIOS.</p>
 <p>Hace click en <strong>Recargar</strong> y te muestra en rojo/amarillo:</p>
@@ -282,6 +300,12 @@
 <li>Aprobadores (buscador)</li>
 </ul>
 <p>Llenas los campos, presionas “Crear usuario” y listo — el usuario queda en la hoja USUARIOS y puede iniciar sesión en el portal de inmediato.</p>
+<p><strong>Mismas ayudas que el sidebar:</strong></p>
+<ul>
+<li>☑️ <strong>Checkbox “Esta persona es su propio aprobador”</strong> — para registrar directivos autoaprobadores en un solo paso desde el celular.</li>
+<li>🔴 <strong>Detector de duplicados</strong> — si escribes una cédula o correo que ya existe, el botón “Crear usuario” se bloquea y aparece un mensaje con el nombre del usuario existente. Si solo el nombre coincide, se muestra una advertencia pero deja crear (homónimos posibles).</li>
+</ul>
+<p>Si detectas un duplicado y necesitas corregirlo, anota la cédula y abre el Sheet en el computador para editarlo desde el sidebar — el módulo móvil solo crea, no edita.</p>
 <h3>¿Qué NO puedes hacer desde el móvil?</h3>
 <p>El móvil está pensado para la acción más urgente fuera de oficina: <strong>agregar gente nueva</strong>. Todo lo demás se hace desde el sidebar del Google Sheets:</p>
 <ul>

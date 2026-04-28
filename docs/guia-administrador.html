@@ -505,6 +505,22 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 </tr>
 </tbody>
 </table>
+<h4>6.1.bis Comportamiento del formulario “Nuevo / Editar usuario”</h4>
+<p>El formulario tiene tres ayudas integradas para evitar errores típicos al gestionar directivos o usuarios urgentes:</p>
+<ul>
+<li>
+<p><strong>Checkbox “Esta persona es su propio aprobador (autoaprobador)”</strong> — Útil cuando llega un nuevo directivo (CEO, CDS, gerente) que se aprueba a sí mismo. Al marcarlo, se oculta el picker de aprobadores y al guardar el sistema escribe automáticamente la propia cédula, correo y nombre en las columnas G, H e I de USUARIOS — sin necesidad de crear primero al usuario y luego buscarlo en el picker. Funciona tanto al crear como al editar. Si abres a un usuario que ya era autoaprobador, el checkbox aparece pre-marcado.</p>
+</li>
+<li>
+<p><strong>Detector de duplicados en vivo</strong> — A medida que escribes la cédula, correo o nombre, el formulario busca coincidencias en USUARIOS. Si la cédula o el correo ya existen, aparece un badge rojo y el botón <strong>Guardar</strong> se bloquea. Si solo el nombre coincide (homónimo), aparece un badge ámbar de advertencia pero deja guardar. Cada badge incluye un botón <strong>“→ Ver / editar este usuario”</strong> que lleva directo a editarlo, útil para corregir información en el registro existente en lugar de duplicarlo.</p>
+</li>
+<li>
+<p><strong>Sugerencias de nombre filtradas por Maestro RH</strong> — El campo “Nombre” autocompleta con personas del Maestro RH, pero excluye automáticamente a las que ya están en USUARIOS. Así, al crear un nuevo usuario, las sugerencias muestran solo empleados aún no registrados.</p>
+</li>
+<li>
+<p><strong>Confirmación visual tras crear</strong> — Después de guardar un usuario nuevo, el listado se refresca automáticamente, hace scroll hasta la fila del nuevo usuario y la resalta con un fondo amarillo durante 3 segundos. Te indica visualmente que quedó registrado.</p>
+</li>
+</ul>
 <h3>6.2 Reorganizar Base Principal (sidebar de REORG)</h3>
 <p><strong>Cuándo usarlo:</strong> una vez cada pocos meses (o nunca). Cambiar el orden de columnas de la hoja principal, agregar columnas extras personales, o limpiar el layout.</p>
 <p>Ver guía completa en <a href="./guia-reorganizar-base.md">guia-reorganizar-base.md</a>. La operación diaria del spreadsheet (qué columnas son editables, cómo moverse entre las hojas, reglas de oro) está en la <a href="./guia-hoja-calculo.md">Guía del Google Sheets</a>.</p>
@@ -553,6 +569,8 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 <ul>
 <li><strong>Login</strong>: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 7 días en ese navegador.</li>
 <li><strong>Crear usuario</strong>: formulario idéntico al del sidebar (cédula, nombre, correo, empresa, sede, CC, aprobadores) con las mismas validaciones y el mismo picker de aprobador.</li>
+<li><strong>Checkbox “Esta persona es su propio aprobador”</strong> — mismo comportamiento que en el sidebar: al marcarlo, oculta el picker y registra al usuario como autoaprobador (cols G, H, I) al guardar. Pensado para registrar directivos urgentes desde el celular.</li>
+<li><strong>Detector de duplicados</strong> — mientras escribes cédula/correo/nombre, te avisa si ya existe alguien registrado. Cédula y correo bloquean el botón Crear; nombre solo advierte (homónimos posibles). El módulo móvil no tiene botón “Editar este usuario” porque no permite editar; si detectas un duplicado, anota la cédula y abre el sidebar del Sheet para corregir.</li>
 <li>Al crear, el usuario aparece inmediatamente en la hoja USUARIOS y puede iniciar sesión en el portal.</li>
 </ul>
 <h3>Qué NO hace (limitaciones por diseño)</h3>
