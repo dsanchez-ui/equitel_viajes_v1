@@ -3971,9 +3971,14 @@ function getAllRequests() {
 // LITE ENDPOINTS (Etapa 1.2)
 // =====================================================================
 // Variantes de getAllRequests/getRequestsByEmail que omiten el parse del
-// JSON pesado de OPCIONES y dejan vacío selectionDetails. Pensado para el
-// dashboard y polling — esos campos solo se ven en el detalle, donde el
-// frontend invoca `getRequestById(id)` para hidratar el objeto completo.
+// JSON pesado de OPCIONES (analystOptions = []). Pensado para el dashboard
+// y polling — ese campo solo se renderiza en el detalle (galería de
+// imágenes), donde el frontend invoca `getRequestById(id)` para hidratar
+// el objeto completo.
+//
+// SI se incluyen en lite (no se omiten porque son ligeros): selectionDetails,
+// selectedOption, supportData, todos los flags de status/aprobación, proxy,
+// effective approval. El dashboard depende de ellos para íconos/columnas.
 //
 // A 100 solicitudes el ahorro es modesto. A 2000 con OPCIONES grandes
 // (varias imágenes Drive con thumbnails) puede llegar a -50% del payload.
@@ -5372,10 +5377,11 @@ function _getRequesterCedulaMap_() {
  *
  * @param {Array} row Valores de la fila completa.
  * @param {boolean} [lite] Cuando true, omite el parse del JSON pesado de
- *   OPCIONES (analystOptions queda como []) y deja `selectionDetails` vacío.
- *   Pensado para listas/polling donde esos campos no se renderizan — el
- *   detalle hace fetch full vía `getRequestById`. Cero diferencia para los
- *   campos de status/aprobaciones/proxy/prioridad que sí se muestran en lista.
+ *   OPCIONES (analystOptions queda como []). Pensado para listas/polling
+ *   donde esa galería no se renderiza — el detalle hace fetch full vía
+ *   `getRequestById`. Cero diferencia para los demás campos
+ *   (status/aprobaciones/proxy/prioridad/selectionDetails/supportData)
+ *   que sí se muestran en lista.
  */
 function mapRowToRequest(row, lite) {
   const get = (h) => { const i = H(h); return (i>-1 && i<row.length) ? row[i] : ''; };

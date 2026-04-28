@@ -30,7 +30,27 @@ const readIntegrantesCache = (): IntegrantesCache | null => {
     if (!parsed || typeof parsed !== 'object') return null;
     if (typeof parsed.hash !== 'string' || !parsed.hash) return null;
     if (!Array.isArray(parsed.data)) return null;
-    return { hash: parsed.hash, data: parsed.data };
+    // Validación de shape de cada Integrant. Si el localStorage fue manipulado
+    // (XSS, edición manual, otro tab corrupto), descartamos los items malformados
+    // en lugar de propagarlos al form o a determineUserName, donde podrían
+    // fallar al acceder .toLowerCase() etc. Sin esta defensa, una sola fila
+    // con `email: null` rompía el render.
+    const validData = parsed.data.filter(
+      (i: any) =>
+        i &&
+        typeof i === 'object' &&
+        typeof i.email === 'string' &&
+        typeof i.name === 'string' &&
+        typeof i.idNumber === 'string'
+    );
+    if (validData.length === 0) return null;
+    // Si filtramos items, el hash guardado YA NO corresponde a la data que
+    // estamos retornando. Si lo enviáramos al bootstrap, el backend diría
+    // "match" y omitiría el array → quedaríamos con el subset filtrado para
+    // siempre. Devolver hash vacío fuerza al backend a incluir data fresca
+    // en el próximo bootstrap, restaurando el cache completo.
+    const hashToUse = validData.length === parsed.data.length ? parsed.hash : '';
+    return { hash: hashToUse, data: validData };
   } catch {
     return null;
   }
@@ -113,6 +133,11 @@ const App: React.FC = () => {
   // de forma inesperada — y peor, si runGas se colgara sin timeout, el spinner
   // quedaba eterno hasta F5 (bug reportado en producción).
   const hydrationCancelRef = useRef<{ cancelled: boolean } | null>(null);
+  // userEmailRef para detectar si la sesión se invalidó mid-fetch dentro de
+  // handleViewRequest (que tiene useCallback con deps []). Si el handler
+  // global de runGas reseteó el state por SESSION_EXPIRED, el ref refleja ''
+  // y evitamos disparar alerts redundantes encima del alert de sesión.
+  const userEmailRef = useRef(userEmail);
 
   // Modification State
   const [modificationRequest, setModificationRequest] = useState<TravelRequest | null>(null);
@@ -624,7 +649,9 @@ const App: React.FC = () => {
       // Si NO es silent (toggle de vista, refresh manual), avisamos al usuario
       // y NO sobrescribimos la lista anterior — así no ve "0 solicitudes" tras
       // una falla transient. Silent (polling) come el error como antes.
-      if (!silent) {
+      // Si la sesión expiró durante el fetch, el handler global de runGas ya
+      // mostró su alert + cleanup. Saltarse el alert local evita el doble.
+      if (!silent && userEmailRef.current) {
         const msg = String((e as any)?.message || e || '');
         alert('No se pudieron cargar las solicitudes:\n\n' + msg + '\n\nReintenta con el botón Refrescar.');
       }
@@ -658,6 +685,10 @@ const App: React.FC = () => {
       const full = await gasService.getRequestById(req.requestId);
       // Si el usuario canceló (o disparó otra hidratación), descartar.
       if (flag.cancelled) return;
+      // Si la sesión expiró durante el fetch, el handler global ya disparó
+      // su alert "Tu sesión ha expirado" + cleanup. NO mostramos el nuestro
+      // encima — sería un segundo alert redundante.
+      if (!userEmailRef.current) return;
 
       if (full) {
         setSelectedRequest(full);
@@ -674,7 +705,8 @@ const App: React.FC = () => {
       // Defensa final: cualquier excepción no esperada (ej. error en
       // gasService que se escape del catch interno) cierra el spinner y
       // notifica. Sin esto, el spinner quedaba eterno hasta F5.
-      if (!flag.cancelled) {
+      // Skip alert si la sesión ya se invalidó (ver comentario arriba).
+      if (!flag.cancelled && userEmailRef.current) {
         console.error('handleViewRequest error inesperado:', err);
         alert('Ocurrió un error cargando el detalle. Reintenta en unos segundos.');
       }
@@ -700,6 +732,12 @@ const App: React.FC = () => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [hydratingDetail, handleCancelHydration]);
+
+  // Mantener el ref de userEmail sincronizado para que handleViewRequest pueda
+  // detectar mid-fetch si la sesión fue invalidada por el handler global.
+  useEffect(() => {
+    userEmailRef.current = userEmail;
+  }, [userEmail]);
 
   const handleToggleView = async () => {
     const next = !viewAsRequester;

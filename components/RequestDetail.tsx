@@ -1,6 +1,6 @@
 
 import React, { useState, useRef } from 'react';
-import { TravelRequest, RequestStatus, Integrant } from '../types';
+import { TravelRequest, RequestStatus, Integrant, SupportFile } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { getDaysDiff, formatToDDMMYYYY, formatLongDateTime } from '../utils/dateUtils';
@@ -160,8 +160,8 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
     // El botón único usaba solo el primero (request.reservationUrl); ahora se
     // listan TODOS para que el usuario pueda recuperar cualquiera si pierde el
     // correo original.
-    const _reservationFiles = (request.supportData?.files || [])
-        .filter((f: any) => f && f.isReservation && f.url);
+    const _reservationFiles: SupportFile[] = (request.supportData?.files || [])
+        .filter((f): f is SupportFile => !!f && f.isReservation === true && !!f.url);
 
     const handleUserSelectionSubmit = async () => {
         if (!userSelectionText.trim()) {
@@ -531,7 +531,7 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                         <span className="text-xs text-blue-700 font-semibold uppercase tracking-wide">
                                                             {_reservationFiles.length} archivos de reserva
                                                         </span>
-                                                        {_reservationFiles.map((f: any, i: number) => (
+                                                        {_reservationFiles.map((f, i) => (
                                                             <a
                                                                 key={f.id || i}
                                                                 href={f.url}
