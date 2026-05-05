@@ -2551,15 +2551,23 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
         tcShort = match ? `TC ${match[1]}` : String(creditCard).split(' ')[0];
     }
 
-    const depDate = sheet.getRange(rowNumber, departureDateIdx + 1).getValue();
-    let monthYear = '';
-    if (depDate instanceof Date) {
-        monthYear = `${MONTH_NAMES_ES[depDate.getMonth()]} ${String(depDate.getFullYear()).slice(-2)}`;
-    } else {
-        const d = new Date(depDate);
-        if (!isNaN(d.getTime())) {
-            monthYear = `${MONTH_NAMES_ES[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`;
+    // MES de la carpeta: prioriza FECHA DE COMPRA DE TIQUETE para alinear con
+    // el mes contable/factura (lo que el área contable necesita). Si está
+    // vacía, fallback a FECHA IDA (comportamiento legacy). Acepta el valor
+    // del payload directamente y, si no vino, lo lee de la hoja (donde puede
+    // haber sido escrito por una operación previa).
+    var purchaseDateForMonth = purchaseDate;
+    if (!purchaseDateForMonth) {
+        var purIdxFolder = H("FECHA DE COMPRA DE TIQUETE");
+        if (purIdxFolder > -1) {
+            purchaseDateForMonth = sheet.getRange(rowNumber, purIdxFolder + 1).getValue();
         }
+    }
+    var depDateRaw = sheet.getRange(rowNumber, departureDateIdx + 1).getValue();
+    var monthDate = _resolveFolderMonthDate_(purchaseDateForMonth, depDateRaw);
+    let monthYear = '';
+    if (monthDate) {
+        monthYear = `${MONTH_NAMES_ES[monthDate.getMonth()]} ${String(monthDate.getFullYear()).slice(-2)}`;
     }
 
     // Naming: original = "${requestId} - PNR - TC - MES"
@@ -2778,10 +2786,19 @@ function amendReservation(payload) {
         var match = String(newCard).match(/TC[- ]?(\d+)/i);
         tcShort = match ? 'TC ' + match[1] : String(newCard).split(' ')[0];
     }
-    var depDate = sheet.getRange(rowNumber, departureDateIdx + 1).getValue();
+    // MES de la carpeta: misma política que en registerReservation — prioriza
+    // FECHA DE COMPRA DE TIQUETE (alineación con mes contable), fallback a
+    // FECHA IDA. La fecha de compra ya pudo haber sido actualizada arriba en
+    // la enmienda, así que la leemos de la hoja post-write.
+    var amendPurchaseRaw = newPurchaseDate;
+    if (!amendPurchaseRaw && purchaseDateIdx > -1) {
+        amendPurchaseRaw = sheet.getRange(rowNumber, purchaseDateIdx + 1).getValue();
+    }
+    var depDateRaw = sheet.getRange(rowNumber, departureDateIdx + 1).getValue();
+    var monthDate = _resolveFolderMonthDate_(amendPurchaseRaw, depDateRaw);
     var monthYear = '';
-    if (depDate instanceof Date) {
-        monthYear = MONTH_NAMES_ES[depDate.getMonth()] + ' ' + String(depDate.getFullYear()).slice(-2);
+    if (monthDate) {
+        monthYear = MONTH_NAMES_ES[monthDate.getMonth()] + ' ' + String(monthDate.getFullYear()).slice(-2);
     }
     var parentId = String(sheet.getRange(rowNumber, parentIdIdx + 1).getValue() || '').trim();
     var isModification = parentId && parentId !== '' && parentId !== 'undefined';
@@ -4643,37 +4660,87 @@ function _driveRetry_(fn, label) {
 }
 
 /**
- * Helper: Get or create a Drive folder for a request.
+ * Verifica si una carpeta es descendiente (recursiva) de ROOT_DRIVE_FOLDER_ID.
  *
- * Modificaciones y originales viven al MISMO nivel raíz. El nombre de la
- * carpeta de una modificación tiene el prefix "CAMBIO DE ${parentId}" que
- * deja clara la relación visualmente, pero no se anida físicamente. Esto
- * facilita la navegación del analista en Drive (todo en el root, sin subfolders).
+ * Útil cuando el área contable o un admin reorganiza carpetas de solicitudes
+ * dentro de subcarpetas organizativas (ej. "Mayo 2026", "Facturas Q2"). La
+ * carpeta deja de ser hija directa del root pero sigue viviendo bajo él.
+ * Esta función nos permite distinguir entre "movida dentro del root" (válida)
+ * y "carpeta homónima en otro Drive" (no válida, falso positivo a ignorar).
  *
- * Estrategia de búsqueda (2026-04-27):
- *   1. PRIMARIO: `DriveApp.searchFolders` con query parametrizado por
- *      ROOT_DRIVE_FOLDER_ID + nombre. Una sola llamada API → O(1).
- *   2. FALLBACK: scan lineal con `root.getFolders()`. Solo se usa si la
- *      búsqueda falla por algún motivo raro (e.g. eventual consistency).
- *
- * Antes (linear-scan-only): con ~100 carpetas en root y 4-6 uploads
- * consecutivos por solicitud, hacía 400-600 llamadas a Drive en segundos
- * → rebasaba el rate limit de Drive (500 req/100s) → "Error de servicio:
- * Drive" cada vez. Con search query es 1 llamada por upload.
+ * Limita la profundidad de exploración a 10 niveles para protegerse contra
+ * ciclos raros o anidamientos artificiales.
  */
-function getOrCreateRequestFolder_(requestId, rowNumber, sheet) {
-    var root = _driveRetry_(function() {
-      return DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
-    }, 'getRoot');
-
-    // 1) PRIMARIO: query Drive (O(1)) — escapa requestId por si llegara con comillas.
+function _isDescendantOfRoot_(folder) {
     try {
-        var safeId = String(requestId).replace(/"/g, '\\"');
+        var current = folder;
+        for (var depth = 0; depth < 10; depth++) {
+            var parents = current.getParents();
+            if (!parents.hasNext()) return false;
+            var parent = parents.next();
+            if (parent.getId() === ROOT_DRIVE_FOLDER_ID) return true;
+            current = parent;
+        }
+    } catch (e) { /* fall through */ }
+    return false;
+}
+
+/**
+ * Busca la carpeta de una solicitud en Drive sin crearla. Estrategia en 3
+ * capas, de más rápida y específica a más amplia:
+ *
+ *   1. CACHE folderId en SOPORTES (JSON): si rowNumber+sheet provistos, lee
+ *      el folderId guardado y resuelve por ID. Es la ruta más confiable —
+ *      el ID es estable aunque la carpeta esté movida o renombrada.
+ *
+ *   2. SEARCH ROOT: query Drive con `"ROOT" in parents` (O(1)). Caso típico:
+ *      carpeta sin mover, hija directa del root.
+ *
+ *   3. WIDE SEARCH: query Drive sin restricción de padre, validando que el
+ *      match sea descendiente de ROOT (no homónima en Drive personal del
+ *      usuario que ejecuta el script). Caso: contable o admin movió la
+ *      carpeta a una subcarpeta organizativa dentro de ROOT.
+ *
+ * Retorna null si no encuentra. NUNCA crea — esa responsabilidad es del
+ * caller (usualmente getOrCreateRequestFolder_).
+ */
+function _findRequestFolder_(requestId, rowNumber, sheet) {
+    if (!requestId) return null;
+
+    // 1) CACHE: folderId desde SOPORTES JSON. Funciona aunque la carpeta esté
+    //    movida a una subcarpeta o renombrada — el ID es estable.
+    if (rowNumber && sheet) {
+        try {
+            var supportIdx = H("SOPORTES (JSON)");
+            if (supportIdx > -1) {
+                var jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
+                if (jsonStr) {
+                    var supportData = null;
+                    try { supportData = JSON.parse(jsonStr); } catch (eP) { supportData = null; }
+                    if (supportData && supportData.folderId) {
+                        try {
+                            var cached = _driveRetry_(function() {
+                                return DriveApp.getFolderById(supportData.folderId);
+                            }, 'getFolderById-cached');
+                            if (cached && !cached.isTrashed()) {
+                                return cached;
+                            }
+                        } catch (eC) { /* fall through */ }
+                    }
+                }
+            }
+        } catch (e) { /* fall through */ }
+    }
+
+    var safeId = String(requestId).replace(/"/g, '\\"');
+
+    // 2) SEARCH ROOT: hija directa del root (caso típico, O(1)).
+    try {
         var query = '"' + ROOT_DRIVE_FOLDER_ID + '" in parents'
                   + ' and title contains "' + safeId + '"'
                   + ' and trashed = false';
         var matches = _driveRetry_(function() {
-          return DriveApp.searchFolders(query);
+            return DriveApp.searchFolders(query);
         }, 'searchFolders');
         while (matches.hasNext()) {
             var f = matches.next();
@@ -4685,26 +4752,95 @@ function getOrCreateRequestFolder_(requestId, rowNumber, sheet) {
             }
         }
     } catch (e) {
-        try { Logger.log('WARN getOrCreateRequestFolder_: searchFolders falló (' + e + '). Fallback a scan lineal.'); } catch (_) {}
+        try { Logger.log('WARN _findRequestFolder_: searchFolders root falló (' + e + ').'); } catch (_) {}
     }
 
-    // 2) FALLBACK: scan lineal (legacy). Solo se ejecuta si la búsqueda Drive
-    // falló o no encontró matches. Si la solicitud es realmente nueva, este
-    // scan también se ejecuta y termina en createFolder.
+    // 3) WIDE SEARCH: la carpeta puede haber sido movida a una subcarpeta
+    //    organizativa dentro de ROOT (ej. el contable la metió en
+    //    "Mayo 2026" para reconciliar facturas). Buscamos sin restricción de
+    //    padre y validamos que el match sea descendiente de ROOT — esto evita
+    //    falsos positivos de carpetas homónimas en otros Drives.
+    //    Cap de seguridad: evaluamos máximo 20 candidatos (caso normal: 1).
     try {
-        var allFolders = _driveRetry_(function() { return root.getFolders(); }, 'getFolders');
-        while (allFolders.hasNext()) {
-            var f2 = allFolders.next();
-            if (f2.getName().indexOf(requestId) === 0) {
-                return f2;
+        var wideQuery = 'title contains "' + safeId + '" and trashed = false'
+                      + ' and mimeType = "application/vnd.google-apps.folder"';
+        var wideMatches = _driveRetry_(function() {
+            return DriveApp.searchFolders(wideQuery);
+        }, 'searchFolders-wide');
+        var evaluated = 0;
+        while (wideMatches.hasNext() && evaluated < 20) {
+            var fW = wideMatches.next();
+            if (fW.getName().indexOf(requestId) !== 0) continue;
+            evaluated++;
+            if (_isDescendantOfRoot_(fW)) {
+                return fW;
             }
         }
     } catch (e2) {
-        try { Logger.log('WARN getOrCreateRequestFolder_: getFolders fallback también falló (' + e2 + '). Procediendo a crear carpeta nueva.'); } catch (_) {}
+        try { Logger.log('WARN _findRequestFolder_: wide search falló (' + e2 + ').'); } catch (_) {}
     }
 
-    // No existe → crear.
+    return null;
+}
+
+/**
+ * Helper: obtiene o crea la carpeta Drive de una solicitud.
+ *
+ * Búsqueda delegada a `_findRequestFolder_` (3 capas: cache folderId, search
+ * root, wide search con validación de descendencia). Si no se encuentra,
+ * crea una carpeta nueva como hija directa de ROOT_DRIVE_FOLDER_ID.
+ *
+ * Modificaciones y originales viven al MISMO nivel del root al crearse. El
+ * nombre de la carpeta de una modificación tiene prefix "CAMBIO DE ${parentId}"
+ * que deja clara la relación visualmente, pero no se anida físicamente.
+ *
+ * El área contable u otros admins pueden mover carpetas a subcarpetas
+ * organizativas (ej. "Mayo 2026", "Facturas Q2") dentro del root y el sistema
+ * sigue encontrándolas. NO mueva carpetas FUERA del root — quedarían huérfanas.
+ */
+function getOrCreateRequestFolder_(requestId, rowNumber, sheet) {
+    var found = _findRequestFolder_(requestId, rowNumber, sheet);
+    if (found) return found;
+
+    // No existe → crear como hija directa de ROOT.
+    var root = _driveRetry_(function() {
+        return DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+    }, 'getRoot');
     return _driveRetry_(function() { return root.createFolder(requestId); }, 'createFolder');
+}
+
+/**
+ * Resuelve la fecha que se usará para etiquetar el MES en el nombre de la
+ * carpeta de una solicitud al registrar/enmendar una reserva.
+ *
+ * Política (2026-05-05): el mes contable importa más que el mes del viaje
+ * para reconciliación de facturas. Prioridad:
+ *   1. FECHA DE COMPRA DE TIQUETE (si está llena) — alineado con factura.
+ *   2. FECHA IDA (fallback) — comportamiento legacy.
+ *
+ * Acepta múltiples formatos: Date object, "DD/MM/YYYY", "DD-MM-YYYY", ISO,
+ * o cualquier cosa parseable por `new Date()`. Retorna Date válido o null.
+ */
+function _resolveFolderMonthDate_(purchaseDateRaw, departureDateRaw) {
+    function parseFlexible(v) {
+        if (!v) return null;
+        if (v instanceof Date) {
+            return isNaN(v.getTime()) ? null : v;
+        }
+        var s = String(v).trim();
+        if (!s) return null;
+        // "DD/MM/YYYY" o "DD-MM-YYYY"
+        var m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (m) {
+            var d1 = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+            return isNaN(d1.getTime()) ? null : d1;
+        }
+        var d2 = new Date(s);
+        return isNaN(d2.getTime()) ? null : d2;
+    }
+    var preferred = parseFlexible(purchaseDateRaw);
+    if (preferred) return preferred;
+    return parseFlexible(departureDateRaw);
 }
 
 // NEW FUNCTION: Upload Option Image (v2.7)
@@ -6413,26 +6549,22 @@ function formatTable(table) {
  */
 function generateSupportReport(requestId) {
     // 0. Check if report already exists (cache) — avoids regenerating every click.
-    // Usa búsqueda Drive O(1) en lugar de scan lineal sobre todas las carpetas.
+    // Usa _findRequestFolder_ que tolera carpetas movidas a subcarpetas
+    // organizativas dentro del root (caso del área contable que reorganiza
+    // por mes). Si la búsqueda falla, saltamos el cache check.
     try {
-      var safeIdC = String(requestId).replace(/"/g, '\\"');
-      var queryC = '"' + ROOT_DRIVE_FOLDER_ID + '" in parents'
-                + ' and title contains "' + safeIdC + '"'
-                + ' and trashed = false';
-      var matchesC = _driveRetry_(function() { return DriveApp.searchFolders(queryC); }, 'searchFolders-cache');
-      while (matchesC.hasNext()) {
-        var fC = matchesC.next();
-        if (fC.getName().indexOf(requestId) === 0) {
-          var existing = fC.getFilesByName('Soporte_' + requestId + '.pdf');
-          if (existing.hasNext()) {
-            var cached = existing.next();
-            return 'https://drive.google.com/file/d/' + cached.getId() + '/view?usp=sharing';
-          }
-          break;
+      var ssCache = SpreadsheetApp.getActiveSpreadsheet();
+      var sheetCache = ssCache.getSheetByName(SHEET_NAME_REQUESTS);
+      var rowCache = _getRowByRequestId_(requestId);
+      var folderCache = _findRequestFolder_(requestId, rowCache > 0 ? rowCache : null, sheetCache);
+      if (folderCache) {
+        var existing = folderCache.getFilesByName('Soporte_' + requestId + '.pdf');
+        if (existing.hasNext()) {
+          var cached = existing.next();
+          return 'https://drive.google.com/file/d/' + cached.getId() + '/view?usp=sharing';
         }
       }
     } catch (eC) {
-      // Si la búsqueda falla, simplemente saltamos el cache check; se regenerará el reporte.
       try { Logger.log('WARN generateSupportReport cache check falló: ' + eC); } catch (_) {}
     }
 
@@ -6485,24 +6617,14 @@ function generateSupportReport(requestId) {
     if (!passengersText) passengersText = 'Sin pasajeros registrados';
     
     // 6. Get folder URL — usa supportData.folderUrl cacheado si existe;
-    // sino busca con query Drive O(1) en lugar de scan lineal.
+    // sino busca con _findRequestFolder_ (tolerante a movimientos a subcarpetas).
     let folderUrl = 'No disponible';
     if (req.supportData && req.supportData.folderUrl) {
         folderUrl = req.supportData.folderUrl;
     } else {
         try {
-            var safeIdU = String(requestId).replace(/"/g, '\\"');
-            var queryU = '"' + ROOT_DRIVE_FOLDER_ID + '" in parents'
-                      + ' and title contains "' + safeIdU + '"'
-                      + ' and trashed = false';
-            var matchesU = _driveRetry_(function() { return DriveApp.searchFolders(queryU); }, 'searchFolders-folderUrl');
-            while (matchesU.hasNext()) {
-                var fU = matchesU.next();
-                if (fU.getName().indexOf(requestId) === 0) {
-                    folderUrl = fU.getUrl();
-                    break;
-                }
-            }
+            var fU = _findRequestFolder_(requestId, rowNumber, sheet);
+            if (fU) folderUrl = fU.getUrl();
         } catch (eU) {
             try { Logger.log('WARN generateSupportReport folderUrl lookup falló: ' + eU); } catch (_) {}
         }
