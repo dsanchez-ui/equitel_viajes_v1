@@ -572,7 +572,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -704,6 +704,8 @@ function dispatch(action, payload) {
       // SUPERADMIN: saltar etapa PENDIENTE_SELECCION
       case 'skipSelectionStage': result = skipSelectionStage(payload.requestId, payload.justification, currentUserEmail); break;
       case 'skipApprovalStage': result = skipApprovalStage(payload.requestId, payload.justification, currentUserEmail); break;
+      // ADMIN: revertir PENDIENTE_CONFIRMACION_COSTO → PENDIENTE_SELECCION
+      case 'revertToSelectionStage': result = revertToSelectionStage(payload.requestId, payload.reason, payload.notifyUser, currentUserEmail); break;
       
       // PIN FEATURES
       case 'verifyAdminPin': result = verifyAdminPin(payload.pin, payload.email); break;
@@ -5025,7 +5027,11 @@ function updateRequestStatus(id, status, payload) {
           try {
               var obsIdx = H('OBSERVACIONES');
               var currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
+              var justText = String((payload && payload.skipJustification) || '').trim();
               var note = '[OPCIONES]: Cargadas solo para trazabilidad — no se envió correo de selección al usuario.';
+              if (justText) {
+                  note += ' Justificación: ' + justText;
+              }
               sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + '\n' : '') + note);
           } catch (e) { console.error('Error logging options skipNotification: ' + e); }
       } else {
@@ -6979,6 +6985,141 @@ function skipSelectionStage(requestId, justification, currentUserEmail) {
   }
 
   return { success: true, requestId: requestId, skippedBy: actorEmail };
+}
+
+// =====================================================================
+// ADMIN/SUPERADMIN: revertir a etapa PENDIENTE_SELECCION
+// =====================================================================
+/**
+ * Recupera una solicitud que avanzó por error a PENDIENTE_CONFIRMACION_COSTO
+ * (típicamente porque el analista desmarcó "Enviar correo al usuario" al
+ * cargar opciones — el flag es para casos donde la compra ya se hizo fuera
+ * del sistema, pero si se usa por error el usuario nunca ve las opciones).
+ *
+ * Devuelve el status a PENDIENTE_SELECCION, limpia SELECCION_TEXTO y
+ * (opcionalmente) reenvía el correo al usuario con las opciones existentes
+ * para que pueda elegir normalmente.
+ *
+ * Validaciones:
+ *   - requestId requerido
+ *   - reason mín 10 chars (queda en OBSERVACIONES)
+ *   - status actual DEBE ser PENDIENTE_CONFIRMACION_COSTO
+ *   - debe haber al menos una opción cargada (sin opciones no tiene sentido
+ *     volver a "selección"; el caller debe usar otra ruta)
+ *
+ * Efectos:
+ *   - SELECCION_TEXTO se limpia
+ *   - OBSERVACIONES: nota con autor + timestamp + razón
+ *   - EVENTOS_JSON: marca selectionMade como deshecho (revertedBy/revertedAt)
+ *   - STATUS: vuelve a PENDIENTE_SELECCION
+ *   - Si notifyUser=true: reenvía correo con las opciones al solicitante
+ *   - NUNCA toca aprobaciones, costos finales, reserva, ni opciones cargadas
+ */
+function revertToSelectionStage(requestId, reason, notifyUser, currentUserEmail) {
+  if (!requestId) throw new Error('requestId requerido.');
+  var rsn = String(reason || '').trim();
+  if (rsn.length < 10) {
+    throw new Error('La razón es obligatoria y debe tener al menos 10 caracteres.');
+  }
+  if (rsn.length > 2000) {
+    throw new Error('La razón es demasiado larga (máx 2000 caracteres).');
+  }
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error('Hoja de solicitudes no encontrada.');
+
+  var statusIdx = H('STATUS');
+  var obsIdx = H('OBSERVACIONES');
+  var selTextIdx = H('SELECCION_TEXTO');
+  var optionsIdx = H('OPCIONES (JSON)');
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) throw new Error('Solicitud no encontrada.');
+
+  var currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '').trim();
+  if (currentStatus !== 'PENDIENTE_CONFIRMACION_COSTO') {
+    throw new Error('Solo se puede revertir a selección desde PENDIENTE_CONFIRMACION_COSTO. Estado actual: ' + currentStatus);
+  }
+
+  // Validar que existan opciones cargadas — sin ellas la reversión no tiene
+  // sentido (el usuario no tendría qué elegir).
+  var optionsRaw = optionsIdx > -1 ? String(sheet.getRange(rowNumber, optionsIdx + 1).getValue() || '') : '';
+  var optionsCount = 0;
+  try {
+    var optsArr = JSON.parse(optionsRaw || '[]');
+    if (Array.isArray(optsArr)) {
+      optionsCount = optsArr.filter(function(o) { return o && typeof o === 'object'; }).length;
+    }
+  } catch (e) { optionsCount = 0; }
+  if (optionsCount === 0) {
+    throw new Error('No hay opciones cargadas en esta solicitud. Use el flujo de carga de opciones en lugar de revertir.');
+  }
+
+  var now = new Date();
+  var timestampStr = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd HH:mm');
+  var actorEmail = String(currentUserEmail || 'desconocido').toLowerCase().trim();
+  var notify = notifyUser !== false; // default true
+
+  // 1. Limpiar SELECCION_TEXTO (texto sintético o no, queda vacío para que el
+  // usuario escriba su selección real).
+  if (selTextIdx > -1) {
+    sheet.getRange(rowNumber, selTextIdx + 1).setValue('');
+  }
+
+  // 2. OBSERVACIONES: traza legible
+  var currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
+  var note = '[REVERSION A SELECCION por ' + actorEmail + ' - ' + timestampStr + ']: ' + rsn +
+             (notify ? ' (se reenvió correo al usuario con las opciones)' : ' (sin reenvío de correo)');
+  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + '\n' : '') + note);
+
+  // 3. EVENTOS_JSON: deshacer selectionMade (mantener histórico con revertedAt)
+  try {
+    var lastCol = sheet.getLastColumn();
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var eventsCol = headers.indexOf(EVENTOS_JSON_HEADER);
+    if (eventsCol >= 0) {
+      var raw = sheet.getRange(rowNumber, eventsCol + 1).getValue();
+      var events = {};
+      if (raw) { try { events = JSON.parse(raw); } catch (e) { events = {}; } }
+      var nowIso = now.toISOString();
+      // Borrar selectionMade para que las métricas no cuenten una selección
+      // que en realidad no ocurrió. Conservamos la traza en revertedFromCost.
+      if (events.selectionMade) {
+        events.selectionMadeReverted = events.selectionMade;
+        delete events.selectionMade;
+      }
+      events.revertedFromCostBy = actorEmail;
+      events.revertedFromCostAt = nowIso;
+      sheet.getRange(rowNumber, eventsCol + 1).setValue(JSON.stringify(events));
+    }
+  } catch (e) {
+    console.error('revertToSelectionStage: error registrando evento: ' + e);
+  }
+
+  // 4. Volver el status
+  sheet.getRange(rowNumber, statusIdx + 1).setValue('PENDIENTE_SELECCION');
+  SpreadsheetApp.flush();
+
+  // 5. Reenviar correo al usuario con las opciones cargadas (si se pidió).
+  // Si falla el envío, NO revertimos el cambio de status — el admin puede
+  // reenviar manualmente desde el flujo normal. Solo logueamos.
+  if (notify) {
+    try {
+      var rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+      var req = mapRowToRequest(rowData);
+      sendOptionsToRequester(req.requesterEmail, req, req.analystOptions || []);
+    } catch (e) {
+      console.error('revertToSelectionStage: error reenviando opciones al usuario: ' + e);
+    }
+  }
+
+  return {
+    success: true,
+    requestId: requestId,
+    revertedBy: actorEmail,
+    notifiedUser: notify,
+    optionsCount: optionsCount
+  };
 }
 
 // =====================================================================

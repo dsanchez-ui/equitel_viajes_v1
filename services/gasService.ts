@@ -435,6 +435,18 @@ class GasService {
   }
 
   /**
+   * Recupera una solicitud que avanzó por error a PENDIENTE_CONFIRMACION_COSTO
+   * (típicamente porque se cargaron opciones con "no notificar" sin querer).
+   * Revierte el status a PENDIENTE_SELECCION, limpia el texto de selección y
+   * opcionalmente reenvía el correo al usuario con las opciones existentes.
+   * Solo admin/superadmin. Queda registro en OBSERVACIONES y EVENTOS_JSON.
+   */
+  async revertToSelectionStage(requestId: string, reason: string, notifyUser: boolean = true): Promise<void> {
+    const response = await this.runGas('revertToSelectionStage', { requestId, reason, notifyUser });
+    if (!response.success) throw new Error(response.error);
+  }
+
+  /**
    * Amend an existing reservation: update PNR/card/date, delete old files,
    * upload new files, and send a correction email to the user.
    */

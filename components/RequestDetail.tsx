@@ -107,6 +107,13 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
     // 'approval'  = PENDIENTE_APROBACION → APROBADO (solo superadmin)
     const [skipMode, setSkipMode] = useState<'selection' | 'approval'>('selection');
 
+    // Admin: revertir PENDIENTE_CONFIRMACION_COSTO → PENDIENTE_SELECCION
+    const [revertModalOpen, setRevertModalOpen] = useState(false);
+    const [revertReason, setRevertReason] = useState('');
+    const [revertNotify, setRevertNotify] = useState(true);
+    const [revertLoading, setRevertLoading] = useState(false);
+    const revertSubmittingRef = useRef(false);
+
     const [dialog, setDialog] = useState<{
         isOpen: boolean;
         title: string;
@@ -228,6 +235,33 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
         }
     };
 
+    const handleRevertSubmit = async () => {
+        if (revertSubmittingRef.current) return;
+        const trimmed = revertReason.trim();
+        if (trimmed.length < 10) {
+            alert('La razón es obligatoria y debe tener al menos 10 caracteres.');
+            return;
+        }
+        revertSubmittingRef.current = true;
+        setRevertLoading(true);
+        try {
+            await gasService.revertToSelectionStage(request.requestId, trimmed, revertNotify);
+            setRevertModalOpen(false);
+            setRevertReason('');
+            setRevertNotify(true);
+            onSuccessAction(
+                revertNotify
+                    ? 'Solicitud revertida a PENDIENTE DE SELECCIÓN. Se reenvió el correo al usuario con las opciones cargadas.'
+                    : 'Solicitud revertida a PENDIENTE DE SELECCIÓN. NO se notificó al usuario (debe avisarle por otro medio).'
+            );
+        } catch (e: any) {
+            alert('Error: ' + (e?.message || e));
+            setRevertLoading(false);
+        } finally {
+            revertSubmittingRef.current = false;
+        }
+    };
+
     const handleModifyClick = () => {
         if (request.status === RequestStatus.RESERVED) {
             setDialog({
@@ -299,6 +333,68 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                 className="px-4 py-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 text-sm font-bold shadow disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {skipLoading ? 'Procesando...' : 'CONFIRMAR Y SALTAR'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de revertir a PENDIENTE_SELECCION */}
+            {revertModalOpen && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4">
+                    <div className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6">
+                        <h3 className="text-lg font-bold text-emerald-900 mb-2">↩️ Revertir a selección de usuario</h3>
+                        <p className="text-sm text-gray-700 mb-3">
+                            La solicitud <strong>{request.requestId}</strong> volverá al estado <strong>PENDIENTE DE SELECCIÓN</strong>.
+                            Se borra el texto de selección actual; las opciones cargadas se conservan. Úsalo cuando avanzaste por error sin que el usuario eligiera.
+                        </p>
+                        <label className="block text-xs font-bold uppercase text-gray-600 mb-1 tracking-wide">
+                            Razón (mínimo 10 caracteres)
+                        </label>
+                        <textarea
+                            className="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-emerald-500 text-gray-900"
+                            rows={3}
+                            placeholder='Ej: Avancé sin querer marcando "no notificar"; el usuario sí debe seleccionar.'
+                            value={revertReason}
+                            onChange={(e) => setRevertReason(e.target.value)}
+                            disabled={revertLoading}
+                        />
+                        <div className="mt-1 text-xs text-gray-500">
+                            {revertReason.trim().length}/10 caracteres mínimos
+                        </div>
+
+                        <label className="mt-4 flex items-start gap-2 text-sm cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={revertNotify}
+                                onChange={(e) => setRevertNotify(e.target.checked)}
+                                disabled={revertLoading}
+                                className="mt-1"
+                            />
+                            <span className="text-gray-700">
+                                <strong>Reenviar correo al usuario</strong> con las opciones cargadas (recomendado).
+                                {!revertNotify && (
+                                    <span className="block text-xs text-amber-700 mt-1">
+                                        ⚠️ Si lo desmarcas, el usuario NO sabrá que la solicitud volvió a su etapa. Debes avisarle manualmente.
+                                    </span>
+                                )}
+                            </span>
+                        </label>
+
+                        <div className="mt-5 flex justify-end gap-2">
+                            <button
+                                onClick={() => { setRevertModalOpen(false); setRevertReason(''); setRevertNotify(true); }}
+                                disabled={revertLoading}
+                                className="px-4 py-2 rounded border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 text-sm font-medium disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleRevertSubmit}
+                                disabled={revertLoading || revertReason.trim().length < 10}
+                                className="px-4 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-bold shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {revertLoading ? 'Procesando...' : 'CONFIRMAR Y REVERTIR'}
                             </button>
                         </div>
                     </div>
@@ -743,6 +839,26 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                 className="bg-yellow-600 text-white px-6 py-2 rounded font-bold hover:bg-yellow-700 shadow transition"
                                             >
                                                 {loading ? 'Enviando...' : 'Confirmar Selección'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* --- SECTION 5A: ADMIN — REVERTIR A SELECCIÓN (PENDIENTE_CONFIRMACION_COSTO) --- */}
+                                {isCostPhase && isAdmin && _validOptions.length > 0 && (
+                                    <div className="bg-emerald-50 border-2 border-emerald-300 rounded-lg p-4 mt-6 shadow-sm">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="flex-1">
+                                                <h4 className="text-sm font-bold text-emerald-900 mb-1">↩️ Revertir a selección de usuario</h4>
+                                                <p className="text-xs text-emerald-800 leading-relaxed">
+                                                    Si avanzaste por error a esta etapa sin que el usuario haya seleccionado (por ejemplo desmarcando &ldquo;Enviar correo al usuario&rdquo; al cargar opciones), puedes devolver la solicitud a <strong>PENDIENTE DE SELECCIÓN</strong>. Las opciones cargadas se conservan; el texto de selección se borra. Opcionalmente reenvía el correo al usuario.
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => { setRevertReason(''); setRevertNotify(true); setRevertModalOpen(true); }}
+                                                className="flex-shrink-0 bg-emerald-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-emerald-700 shadow whitespace-nowrap"
+                                            >
+                                                REVERTIR A SELECCIÓN
                                             </button>
                                         </div>
                                     </div>

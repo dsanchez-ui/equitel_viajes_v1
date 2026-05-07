@@ -62,6 +62,10 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
     // "seleccione opción" Y salta directo a PENDIENTE_CONFIRMACION_COSTO sin
     // esperar la selección del usuario (él ya tiene los tiquetes).
     const [sendUserNotification, setSendUserNotification] = useState(true);
+    // Si se desmarca "Enviar correo al usuario", se exige justificación
+    // (mín. 10 chars). Queda en OBSERVACIONES para auditoría. Esto previene
+    // que un analista avance por error sin que el usuario seleccione.
+    const [skipJustification, setSkipJustification] = useState('');
 
     const flightInputRef = useRef<HTMLInputElement>(null);
     const hotelInputRef = useRef<HTMLInputElement>(null);
@@ -180,13 +184,25 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
             return;
         }
 
-        // R8b: si se desmarcó "Enviar al usuario", exigir confirmación EXTRA
-        // con advertencia antes del confirm normal.
+        // R8b: si se desmarcó "Enviar al usuario", exigir justificación obligatoria
+        // (mín. 10 chars) ANTES del confirm. Esto previene que un analista avance
+        // por error sin que el usuario seleccione (caso real: SOL-000144 en abril).
         if (!sendUserNotification) {
+            const trimmed = skipJustification.trim();
+            if (trimmed.length < 10) {
+                setDialog({
+                    isOpen: true,
+                    title: '⚠️ Justificación obligatoria',
+                    message: 'Desmarcaste "Enviar correo al usuario". Esta acción avanza la solicitud directamente a PENDIENTE DE CONFIRMACIÓN DE COSTOS sin que el usuario seleccione, así que requiere una razón escrita (mínimo 10 caracteres) que quede en observaciones.\n\nEjemplo: "Tiquetes gestionados por fuera del sistema el 2026-05-07 por urgencia ejecutiva".',
+                    type: 'ALERT',
+                    onConfirm: closeDialog
+                });
+                return;
+            }
             setDialog({
                 isOpen: true,
                 title: '⚠️ El usuario NO recibirá correo automático',
-                message: 'Desmarcaste "Enviar correo al usuario". Se guardarán las opciones SOLO para trazabilidad y la solicitud avanzará directamente a PENDIENTE DE CONFIRMACIÓN DE COSTOS sin esperar la selección del usuario.\n\n⚠️ Úsalo solo cuando los tiquetes/hotel ya fueron gestionados por fuera del sistema. El usuario NO sabrá que estas opciones están cargadas.\n\n¿Continuar sin notificar al usuario?',
+                message: `Desmarcaste "Enviar correo al usuario". Se guardarán las opciones SOLO para trazabilidad y la solicitud avanzará directamente a PENDIENTE DE CONFIRMACIÓN DE COSTOS sin esperar la selección del usuario.\n\n⚠️ Úsalo solo cuando los tiquetes/hotel ya fueron gestionados por fuera del sistema. El usuario NO sabrá que estas opciones están cargadas.\n\nJustificación que se guardará: "${trimmed}"\n\n¿Continuar sin notificar al usuario?`,
                 type: 'CONFIRM',
                 onConfirm: () => { closeDialog(); promptFinalConfirm(); },
                 onCancel: closeDialog
@@ -266,17 +282,25 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
             // le dice al backend que NO envíe correo al usuario en este paso.
             // Si no se notifica, hacemos un segundo update inmediato a
             // PENDING_CONFIRMACION_COSTO para que el admin continúe con costos.
+            const skipNote = skipJustification.trim();
             await gasService.updateRequestStatus(request.requestId, RequestStatus.PENDING_SELECTION, {
                 analystOptions: allOptions,
-                skipNotification: !sendUserNotification
+                skipNotification: !sendUserNotification,
+                // La justificación SOLO viaja cuando hay skip — se guarda en
+                // OBSERVACIONES para auditoría (ver updateRequestStatus en Code.gs).
+                skipJustification: !sendUserNotification ? skipNote : undefined
             });
 
             if (!sendUserNotification) {
                 // Avanza a PENDIENTE_CONFIRMACION_COSTO con un texto de selección
                 // sintético para trazabilidad (refleja que la selección fue implícita
-                // por gestión off-system).
+                // por gestión off-system). Incluye la justificación para que se vea
+                // en el correo "Selección Realizada" que recibe el área.
+                const synthetic = skipNote
+                    ? `[OPCIONES CARGADAS SOLO POR TRAZABILIDAD — gestión fuera del sistema]: ${skipNote}`
+                    : '[OPCIONES CARGADAS SOLO POR TRAZABILIDAD — gestión fuera del sistema]';
                 await gasService.updateRequestStatus(request.requestId, RequestStatus.PENDING_CONFIRMACION_COSTO, {
-                    selectionDetails: '[OPCIONES CARGADAS SOLO POR TRAZABILIDAD — gestión fuera del sistema]'
+                    selectionDetails: synthetic
                 });
             }
 
@@ -536,7 +560,10 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                 <input
                                     type="checkbox"
                                     checked={sendUserNotification}
-                                    onChange={(e) => setSendUserNotification(e.target.checked)}
+                                    onChange={(e) => {
+                                        setSendUserNotification(e.target.checked);
+                                        if (e.target.checked) setSkipJustification('');
+                                    }}
                                     disabled={loading}
                                     className="mt-1 w-4 h-4 accent-brand-red flex-shrink-0"
                                 />
@@ -549,6 +576,24 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                     )}
                                 </span>
                             </label>
+                            {!sendUserNotification && (
+                                <div className="mt-3 ml-7">
+                                    <label className="block text-xs font-bold uppercase text-amber-900 mb-1 tracking-wide">
+                                        Justificación (obligatoria, mínimo 10 caracteres)
+                                    </label>
+                                    <textarea
+                                        className="w-full p-2 border border-amber-300 rounded text-sm bg-white text-gray-900 focus:ring-2 focus:ring-amber-500"
+                                        rows={2}
+                                        placeholder="Ej: Tiquetes ya gestionados fuera del sistema el 2026-05-07 por urgencia ejecutiva."
+                                        value={skipJustification}
+                                        onChange={(e) => setSkipJustification(e.target.value)}
+                                        disabled={loading}
+                                    />
+                                    <div className="mt-1 text-xs text-amber-800">
+                                        {skipJustification.trim().length}/10 caracteres mínimos. Queda registrada en observaciones con tu correo.
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
                         <div className="mt-6 flex justify-end gap-3 border-t pt-4">
