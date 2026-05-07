@@ -5048,7 +5048,22 @@ function updateRequestStatus(id, status, payload) {
       _recordEvent_(id, 'costConfirmed'); // métricas: analista confirmó costos
       // This is now triggered AFTER Admin inputs costs
       const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
-      sendApprovalRequestEmail(fullReq);
+      // Si el modal de "Confirmar costos" marcó el checkbox de saltar
+      // aprobación (skipApprovalStage se invoca inmediatamente después), NO
+      // enviamos correo a los aprobadores — su intervención fue saltada.
+      // Sin este flag, los aprobadores recibirían el correo y luego nunca
+      // tendrían oportunidad de aprobar antes de que el status pase a
+      // APROBADO en el siguiente call → correos desconcertantes.
+      if (payload && payload.skipApprovalNotification === true) {
+         try {
+            var obsIdxSkip = H('OBSERVACIONES');
+            var currentObsSkip = sheet.getRange(rowNumber, obsIdxSkip + 1).getValue();
+            var noteSkip = '[COSTOS]: Confirmados con intención de saltar aprobación — no se envió correo a aprobadores.';
+            sheet.getRange(rowNumber, obsIdxSkip + 1).setValue((currentObsSkip ? currentObsSkip + '\n' : '') + noteSkip);
+         } catch (e) { console.error('Error logging skipApprovalNotification: ' + e); }
+      } else {
+         sendApprovalRequestEmail(fullReq);
+      }
    }
 
    if (status === 'APROBADO' || status === 'DENEGADO') {
@@ -7055,15 +7070,17 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   sheet.getRange(rowNumber, statusIdx + 1).setValue('APROBADO');
   SpreadsheetApp.flush();
 
-  // 5. Notificar al usuario (decisión final). NO se notifica a los aprobadores
-  // (no participaron y sería confuso).
-  try {
-    var rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
-    var req = mapRowToRequest(rowData);
-    sendDecisionNotification(req, 'APROBADO');
-  } catch (e) {
-    console.error('skipApprovalStage: error notificando usuario: ' + e);
-  }
+  // 5. Política (2026-05-07): NO se envía correo de "Solicitud Aprobada" al
+  // solicitante cuando se salta la aprobación. Razones:
+  //   - Los aprobadores nunca participaron formalmente — el correo automático
+  //     sería desconcertante para ellos si llegara a verlo en CC.
+  //   - El solicitante sabe del proceso por el canal externo que motivó el
+  //     skip (urgencia ejecutiva, gestión por WhatsApp, llamada directa).
+  //   - El registro queda en OBSERVACIONES, en EVENTOS_JSON, y en el portal:
+  //     el solicitante puede consultar el estado APROBADO en cualquier momento.
+  //   - Cuando Wendy registre la reserva, el solicitante SÍ recibe el correo
+  //     "Tiquetes Comprados" con el PNR — ahí es cuando aporta valor real.
+  // Aprobadores: no se les envía nada (igual que antes).
 
   return { success: true, requestId: requestId, skippedBy: actorEmail };
 }

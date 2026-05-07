@@ -111,13 +111,18 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
           await gasService.updateRequestStatus(request.requestId, RequestStatus.PENDING_APPROVAL, {
               finalCostTickets: costTickets,
               finalCostHotel: costHotel,
-              totalCost: costTickets + costHotel
+              totalCost: costTickets + costHotel,
+              // Si vamos a saltar aprobación inmediatamente, le decimos al
+              // backend que NO envíe correo a los aprobadores en este paso
+              // intermedio — nunca van a actuar sobre la solicitud.
+              skipApprovalNotification: skipApproval
           });
 
           if (skipApproval) {
               // Salto inmediatamente después de confirmar costos: backend
               // pasará de PENDIENTE_APROBACION → APROBADO sin enviar correos
-              // de aprobación. Se registra justificación + autor.
+              // de aprobación NI correo de "Solicitud Aprobada" al solicitante.
+              // El registro queda en OBSERVACIONES y EVENTOS_JSON.
               await gasService.skipApprovalStage(request.requestId, skipJustification.trim());
           }
 
