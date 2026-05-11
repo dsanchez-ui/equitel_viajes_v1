@@ -356,6 +356,7 @@ function _resetPerExecutionCaches_() {
   _REQUEST_ROW_CACHE = null;
   _REQUESTER_CEDULA_CACHE = null;
   _CACHED_GMAIL_ALIASES = null;
+  _CS_APPROVERS_CACHE = null;
 }
 
 /**
@@ -486,6 +487,17 @@ function doGet(e) {
       .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
   }
 
+  // 3d. Dashboard de costos — página HTML standalone con login inline
+  // (email + PIN), filtros, gráfico, exportación CSV/PDF. Seguridad:
+  // cada llamada al backend pasa por dispatch que valida sesión y rol.
+  // Accept both ?action=costs-dashboard y ?view=costs-dashboard.
+  if (action === 'costs-dashboard' || e.parameter.view === 'costs-dashboard') {
+    return HtmlService.createHtmlOutputFromFile('CostsDashboard')
+      .setTitle('Equitel Viajes — Dashboard de Costos')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT)
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
+  }
+
   // 4. API Action via GET (Returns JSON)
   if (action) {
     const result = dispatch(action, e.parameter);
@@ -585,7 +597,7 @@ function dispatch(action, payload) {
     // necesita saltarse selección cuando gestiona compra por fuera.)
     // skipApprovalStage SÍ es superadmin: saltarse una aprobación ejecutiva
     // es decisión que solo David/Yurani pueden tomar.
-    const superAdminOnlyActions = ['skipApprovalStage'];
+    const superAdminOnlyActions = ['skipApprovalStage', 'setCostsDashboardConfig', 'resetCostsDashboardConfig'];
     if (superAdminOnlyActions.includes(action) && !isSuperAdmin(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de superadmin.' };
     }
@@ -706,6 +718,14 @@ function dispatch(action, payload) {
       case 'skipApprovalStage': result = skipApprovalStage(payload.requestId, payload.justification, currentUserEmail); break;
       // ADMIN: revertir PENDIENTE_CONFIRMACION_COSTO → PENDIENTE_SELECCION
       case 'revertToSelectionStage': result = revertToSelectionStage(payload.requestId, payload.reason, payload.notifyUser, currentUserEmail); break;
+
+      // DASHBOARD DE COSTOS (cualquier sesión válida puede leer; solo SUPERADMIN
+      // puede modificar config — el check superadmin ya pasó arriba en
+      // superAdminOnlyActions para los set/reset).
+      case 'getCostsDashboard': result = getCostsDashboard(payload.filters, currentUserEmail); break;
+      case 'getCostsDashboardConfig': result = getCostsDashboardConfig(currentUserEmail); break;
+      case 'setCostsDashboardConfig': result = setCostsDashboardConfig(payload.config, currentUserEmail); break;
+      case 'resetCostsDashboardConfig': result = resetCostsDashboardConfig(currentUserEmail); break;
       
       // PIN FEATURES
       case 'verifyAdminPin': result = verifyAdminPin(payload.pin, payload.email); break;
@@ -10306,6 +10326,128 @@ function _csLoadConfig_() {
   }
 }
 
+// ---------- CACHE EN DRIVE (auto-invalidante por hash) ----------
+// Patrón idéntico al usado por metricas_cache.json. Cada entry guarda un
+// rowHash que combina:
+//   - configHash (si cambia el config global, todas las entries quedan stale)
+//   - valores actuales de TODOS los campos que influyen en el cómputo
+// Si la fila o el config no cambiaron, reusamos el cómputo. Si algo cambió,
+// el hash deja de coincidir y se recomputa automáticamente. Sin invalidación
+// manual: el cache se mantiene fresco solo. Crecimiento: ~500 B por solicitud.
+
+var COSTS_DASHBOARD_CACHE_FILENAME = 'costos_dashboard_cache.json';
+var COSTS_DASHBOARD_CACHE_VERSION = 1;
+
+function _csGetCacheFile_() {
+  var folder = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
+  var files = folder.getFilesByName(COSTS_DASHBOARD_CACHE_FILENAME);
+  if (files.hasNext()) return files.next();
+  return folder.createFile(COSTS_DASHBOARD_CACHE_FILENAME, JSON.stringify({
+    version: COSTS_DASHBOARD_CACHE_VERSION,
+    lastBuild: new Date().toISOString(),
+    entries: {}
+  }), 'application/json');
+}
+
+function _csLoadCache_() {
+  try {
+    var file = _csGetCacheFile_();
+    var content = file.getBlob().getDataAsString();
+    var cache = JSON.parse(content);
+    if (!cache || cache.version !== COSTS_DASHBOARD_CACHE_VERSION || !cache.entries) {
+      return { version: COSTS_DASHBOARD_CACHE_VERSION, lastBuild: new Date().toISOString(), entries: {} };
+    }
+    return cache;
+  } catch (e) {
+    console.warn('CostsDashboard cache: failed to load, starting fresh: ' + e);
+    return { version: COSTS_DASHBOARD_CACHE_VERSION, lastBuild: new Date().toISOString(), entries: {} };
+  }
+}
+
+function _csSaveCache_(cache) {
+  try {
+    cache.lastBuild = new Date().toISOString();
+    var file = _csGetCacheFile_();
+    file.setContent(JSON.stringify(cache));
+  } catch (e) {
+    // Persistencia es non-critical — si falla, la próxima ejecución recomputa.
+    console.error('CostsDashboard cache: failed to save: ' + e);
+  }
+}
+
+/**
+ * Hash MD5 del config completo. Cualquier cambio en config (headers,
+ * fallbacks, statuses contables) cambia este hash y deja stale todas las
+ * entries del cache.
+ */
+function _csComputeConfigHash_(config) {
+  try {
+    var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, JSON.stringify(config));
+    return digest.map(function(b) { return ('0' + ((b & 0xFF).toString(16))).slice(-2); }).join('');
+  } catch (e) { return ''; }
+}
+
+/**
+ * Hash MD5 de los valores actuales de las columnas relevantes de la fila.
+ * Incluye configHashPrefix para que si cambia el config, el hash también
+ * cambie. Cubre exactamente los campos que `_csComputeRowExecuted_` y
+ * `_csResolveMonthYear_` consumen — si alguno cambia, recomputamos.
+ */
+function _csComputeRowHash_(row, headerMap, config, configHashPrefix) {
+  var parts = [configHashPrefix || '', config.version || ''];
+  // Campos que afectan filtrado y agrupación
+  parts.push(String(_csReadCell_(row, headerMap, config.statusHeader) || ''));
+  parts.push(String(_csReadCell_(row, headerMap, config.purchaseDateHeader) || ''));
+  parts.push(String(_csReadCell_(row, headerMap, config.unitHeader) || ''));
+  parts.push(String(_csReadCell_(row, headerMap, config.companyHeader) || ''));
+  parts.push(String(_csReadCell_(row, headerMap, config.requesterHeader) || ''));
+  parts.push(String(_csReadCell_(row, headerMap, config.requestIdHeader) || ''));
+  // Campos de facturas (totales + fallbacks)
+  for (var i = 0; i < config.facturas.length; i++) {
+    var f = config.facturas[i];
+    parts.push(String(_csReadCell_(row, headerMap, f.totalHeader) || ''));
+    if (f.fallback) {
+      if (f.fallback.type === 'sum' && Array.isArray(f.fallback.headers)) {
+        for (var j = 0; j < f.fallback.headers.length; j++) {
+          parts.push(String(_csReadCell_(row, headerMap, f.fallback.headers[j]) || ''));
+        }
+      } else if (f.fallback.type === 'valuePlusIva') {
+        parts.push(String(_csReadCell_(row, headerMap, f.fallback.valueHeader) || ''));
+        parts.push(String(_csReadCell_(row, headerMap, f.fallback.ivaHeader) || ''));
+      }
+    }
+  }
+  // Campos del proxy estimado
+  if (config.estimateFallback) {
+    parts.push(String(_csReadCell_(row, headerMap, config.estimateFallback.ticketsHeader) || ''));
+    parts.push(String(_csReadCell_(row, headerMap, config.estimateFallback.hotelHeader) || ''));
+  }
+  try {
+    var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, parts.join('||'));
+    return digest.map(function(b) { return ('0' + ((b & 0xFF).toString(16))).slice(-2); }).join('');
+  } catch (e) { return ''; }
+}
+
+/**
+ * Stats del cache para diagnóstico. NO modifica nada.
+ */
+function _csCacheStats_() {
+  try {
+    var cache = _csLoadCache_();
+    var entryCount = Object.keys(cache.entries || {}).length;
+    var serialized = JSON.stringify(cache);
+    return {
+      version: cache.version,
+      lastBuild: cache.lastBuild,
+      entryCount: entryCount,
+      sizeBytes: serialized.length,
+      sizeKB: Math.round(serialized.length / 1024 * 10) / 10
+    };
+  } catch (e) {
+    return { error: String(e) };
+  }
+}
+
 /**
  * Normaliza nombres de unidad/empresa para matching robusto entre el
  * sheet principal y PPTOS UNIDADES. Resuelve: tildes, espacio no-breaking
@@ -10532,6 +10674,7 @@ function _csResolveMonthYear_(v) {
 function _csBuildData_(filters) {
   filters = filters || {};
   var config = _csLoadConfig_();
+  var configHash = _csComputeConfigHash_(config);
   var now = new Date();
   var currentYear = parseInt(Utilities.formatDate(now, 'America/Bogota', 'yyyy'), 10);
   var year = parseInt(filters.year || currentYear, 10);
@@ -10568,6 +10711,14 @@ function _csBuildData_(filters) {
   // Leer todas las filas en bulk (1 read del sheet)
   var allRows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
 
+  // CACHE: cargar cómputos per-row precomputados desde Drive. Si el rowHash
+  // (config + valores de columnas relevantes) coincide, reusamos el cómputo
+  // sin tocar `_csComputeRowExecuted_` ni `_csResolveMonthYear_`.
+  var cache = _csLoadCache_();
+  var cacheChanged = false;
+  var cacheHits = 0;
+  var cacheMisses = 0;
+
   // Acumuladores por unidad
   var unitsAgg = {}; // key = unidadNorm
   var totalsByMonth = {};
@@ -10589,21 +10740,61 @@ function _csBuildData_(filters) {
     var row = allRows[r];
     if (!row[0]) continue; // fila sin ID, skip
 
-    var status = String(_csReadCell_(row, headerMap, config.statusHeader) || '').toUpperCase().trim();
-    if (countableStatuses.indexOf(status) === -1) { requestsExcluded.byStatus++; continue; }
+    var requestId = String(_csReadCell_(row, headerMap, config.requestIdHeader) || '').trim();
+    if (!requestId) continue;
 
-    var fechaCompra = _csReadCell_(row, headerMap, config.purchaseDateHeader);
-    var my = _csResolveMonthYear_(fechaCompra);
-    if (!my) { requestsExcluded.noPurchaseDate++; continue; }
-    if (my.year !== year) { requestsExcluded.byMonthYear++; continue; }
-    if (my.month < fromMonth || my.month > toMonth) { requestsExcluded.byMonthYear++; continue; }
+    // Compute hash and decide if cache is valid
+    var rowHash = _csComputeRowHash_(row, headerMap, config, configHash);
+    var cached = cache.entries[requestId];
+    var perRow;
 
-    var unidadRaw = _csReadCell_(row, headerMap, config.unitHeader);
-    var empresaRaw = _csReadCell_(row, headerMap, config.companyHeader);
-    var unidadNorm = _csNormalize_(unidadRaw);
-    var empresaNorm = _csNormalize_(empresaRaw);
+    if (cached && cached.rowHash === rowHash && cached.computed) {
+      perRow = cached.computed;
+      cacheHits++;
+    } else {
+      // Recomputar: status, fecha, ejecutado real/estimado, identificadores
+      var statusRaw = String(_csReadCell_(row, headerMap, config.statusHeader) || '').toUpperCase().trim();
+      var fechaCompraRaw = _csReadCell_(row, headerMap, config.purchaseDateHeader);
+      var my = _csResolveMonthYear_(fechaCompraRaw);
+      var executed = _csComputeRowExecuted_(row, headerMap, config);
+      var purchaseDateOut = '';
+      if (fechaCompraRaw instanceof Date) purchaseDateOut = fechaCompraRaw.toISOString().split('T')[0];
+      else if (fechaCompraRaw) purchaseDateOut = String(fechaCompraRaw);
 
-    if (!unidadNorm) continue; // sin unidad no podemos agregar
+      perRow = {
+        requestId: requestId,
+        status: statusRaw,
+        unidadRaw: String(_csReadCell_(row, headerMap, config.unitHeader) || ''),
+        empresaRaw: String(_csReadCell_(row, headerMap, config.companyHeader) || ''),
+        requesterEmail: String(_csReadCell_(row, headerMap, config.requesterHeader) || ''),
+        purchaseDate: purchaseDateOut,
+        month: my ? my.month : null,
+        year: my ? my.year : null,
+        real: executed.real,
+        estimated: executed.estimated,
+        isEstimated: executed.isEstimated,
+        breakdown: executed.breakdown
+      };
+
+      cache.entries[requestId] = {
+        rowHash: rowHash,
+        computedAt: new Date().toISOString(),
+        computed: perRow
+      };
+      cacheChanged = true;
+      cacheMisses++;
+    }
+
+    // Aplicar filtros usando los valores del cache (filtros NO se cachean,
+    // se aplican post-fetch — un mismo cómputo sirve para múltiples filtros).
+    if (countableStatuses.indexOf(perRow.status) === -1) { requestsExcluded.byStatus++; continue; }
+    if (!perRow.month || !perRow.year) { requestsExcluded.noPurchaseDate++; continue; }
+    if (perRow.year !== year) { requestsExcluded.byMonthYear++; continue; }
+    if (perRow.month < fromMonth || perRow.month > toMonth) { requestsExcluded.byMonthYear++; continue; }
+
+    var unidadNorm = _csNormalize_(perRow.unidadRaw);
+    var empresaNorm = _csNormalize_(perRow.empresaRaw);
+    if (!unidadNorm) continue;
 
     if (businessUnitsFilter.length && businessUnitsFilter.indexOf(unidadNorm) === -1) {
       requestsExcluded.byUnitFilter++; continue;
@@ -10612,12 +10803,11 @@ function _csBuildData_(filters) {
       requestsExcluded.byCompanyFilter++; continue;
     }
 
-    var executed = _csComputeRowExecuted_(row, headerMap, config);
-    if (!includeEstimated && executed.isEstimated) continue;
+    if (!includeEstimated && perRow.isEstimated) continue;
 
     // Catalogar empresa/unidad observada
-    if (empresaRaw) observedCompanies[empresaNorm] = String(empresaRaw).trim();
-    observedUnits[unidadNorm] = String(unidadRaw).trim();
+    if (perRow.empresaRaw) observedCompanies[empresaNorm] = String(perRow.empresaRaw).trim();
+    observedUnits[unidadNorm] = String(perRow.unidadRaw).trim();
 
     // Inicializar bucket de la unidad si no existe
     if (!unitsAgg[unidadNorm]) {
@@ -10630,9 +10820,9 @@ function _csBuildData_(filters) {
         pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
       }
       unitsAgg[unidadNorm] = {
-        unit: String(unidadRaw).trim(),
+        unit: String(perRow.unidadRaw).trim(),
         unitNormalized: unidadNorm,
-        company: String(empresaRaw || '').trim(),
+        company: String(perRow.empresaRaw || '').trim(),
         year: year,
         hasBudget: !!pptoEntry,
         monthlyBudget: pptoEntry ? pptoEntry.monthly.slice() : new Array(12).fill(0),
@@ -10648,34 +10838,37 @@ function _csBuildData_(filters) {
 
     // Aplicar filtro includeNoPresupuesto
     if (!includeNoPresupuesto && !unitsAgg[unidadNorm].hasBudget) {
-      // No agregar este request al bucket. Si no quedan requests para la unidad,
-      // el bucket queda vacío y se filtrará al final.
       continue;
     }
 
     var bucket = unitsAgg[unidadNorm];
-    var monthIdx = my.month - 1;
-    if (executed.isEstimated) {
-      bucket.monthlyExecutedEstimated[monthIdx] += executed.estimated;
-      bucket.totalExecutedEstimated += executed.estimated;
-      totalsByMonth[my.month].estimated += executed.estimated;
+    var monthIdx = perRow.month - 1;
+    if (perRow.isEstimated) {
+      bucket.monthlyExecutedEstimated[monthIdx] += perRow.estimated;
+      bucket.totalExecutedEstimated += perRow.estimated;
+      totalsByMonth[perRow.month].estimated += perRow.estimated;
     } else {
-      bucket.monthlyExecutedReal[monthIdx] += executed.real;
-      bucket.totalExecutedReal += executed.real;
-      totalsByMonth[my.month].real += executed.real;
+      bucket.monthlyExecutedReal[monthIdx] += perRow.real;
+      bucket.totalExecutedReal += perRow.real;
+      totalsByMonth[perRow.month].real += perRow.real;
     }
     bucket.requestCount++;
     bucket.requests.push({
-      requestId: String(_csReadCell_(row, headerMap, config.requestIdHeader || 'ID RESPUESTA') || ''),
-      requesterEmail: String(_csReadCell_(row, headerMap, config.requesterHeader || 'CORREO ENCUESTADO') || ''),
-      purchaseDate: fechaCompra instanceof Date ? fechaCompra.toISOString().split('T')[0] : String(fechaCompra),
-      month: my.month,
-      executed: executed.isEstimated ? executed.estimated : executed.real,
-      isEstimated: executed.isEstimated,
-      breakdown: executed.breakdown,
-      status: status
+      requestId: perRow.requestId,
+      requesterEmail: perRow.requesterEmail,
+      purchaseDate: perRow.purchaseDate,
+      month: perRow.month,
+      executed: perRow.isEstimated ? perRow.estimated : perRow.real,
+      isEstimated: perRow.isEstimated,
+      breakdown: perRow.breakdown,
+      status: perRow.status
     });
     requestsCounted++;
+  }
+
+  // Persistir cache solo si hubo cambios (evita Drive write innecesario)
+  if (cacheChanged) {
+    _csSaveCache_(cache);
   }
 
   // Calcular budget total del rango por unidad
@@ -10737,6 +10930,7 @@ function _csBuildData_(filters) {
       units: Object.keys(observedUnits).map(function(k) { return { norm: k, label: observedUnits[k] }; }),
       requestsCounted: requestsCounted,
       requestsExcluded: requestsExcluded,
+      cache: { hits: cacheHits, misses: cacheMisses, savedToDrive: cacheChanged },
       computedAt: now.toISOString()
     }
   };
@@ -10753,17 +10947,74 @@ function _csEmptyResult_(year, fromMonth, toMonth, config) {
 }
 
 /**
+ * Construye un Set con todos los emails que figuran como aprobador de al
+ * menos un usuario en USUARIOS (col H "Correos Aprobadores (auto)"). Se
+ * cachea por ejecución (perfectamente seguro: la hoja se actualiza poco y
+ * cada dispatch resetea el cache via _resetPerExecutionCaches_ si fuera
+ * necesario).
+ */
+var _CS_APPROVERS_CACHE = null;
+function _csGetApproverEmails_() {
+  if (_CS_APPROVERS_CACHE) return _CS_APPROVERS_CACHE;
+  var set = {};
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+    if (sheet && sheet.getLastRow() > 1) {
+      // Col H = "Correos Aprobadores (auto)" — separados por coma
+      var col = sheet.getRange(2, 8, sheet.getLastRow() - 1, 1).getValues();
+      for (var i = 0; i < col.length; i++) {
+        var raw = String(col[i][0] || '').toLowerCase();
+        if (!raw) continue;
+        var parts = raw.split(',');
+        for (var j = 0; j < parts.length; j++) {
+          var em = parts[j].trim();
+          // Filtrar entradas placeholder "(no resuelto)" etc.
+          if (em && em.indexOf('@') > -1 && em.indexOf('(') === -1) {
+            set[em] = true;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('CostsDashboard: error leyendo USUARIOS para aprobadores: ' + e);
+  }
+  _CS_APPROVERS_CACHE = set;
+  return set;
+}
+
+function _csIsApprover_(email) {
+  if (!email) return false;
+  var set = _csGetApproverEmails_();
+  return !!set[String(email).toLowerCase().trim()];
+}
+
+/**
  * Resuelve permisos del usuario actual para el dashboard de costos.
- * Acceso de lectura: cualquier sesión válida (decisión de David — el
- * dispatch ya validó token+email antes de llegar acá). Acceso de
- * configuración: solo SUPERADMIN.
+ *
+ * Acceso de lectura (canView): solo
+ *   - analyst (incluye superadmin por herencia), o
+ *   - aprobador (alguien que figura como aprobador en USUARIOS col H)
+ * Cualquier otro usuario registrado pero sin ese rol → canView = false
+ * y el endpoint retorna error de autorización.
+ *
+ * Acceso de configuración (canConfig): solo SUPERADMIN.
+ *
+ * Decisión (2026-05-11): no se permite acceso "abierto a cualquier
+ * sesión válida" porque expone información financiera de unidades de
+ * negocio a usuarios que no la necesitan. Los aprobadores tienen el
+ * legítimo interés operativo + jerárquico para verlo.
  */
 function _csResolveAccess_(currentUserEmail) {
   var email = String(currentUserEmail || '').toLowerCase().trim();
+  if (!email) return { canView: false, canConfig: false, email: '' };
+  var isAdmin = isUserAnalyst(email); // incluye superadmin por herencia
+  var isAppr = !isAdmin && _csIsApprover_(email);
   return {
-    canView: !!email, // si llegó email validado, ya pasó la sesión
+    canView: isAdmin || isAppr,
     canConfig: isSuperAdmin(email),
-    email: email
+    email: email,
+    role: isAdmin ? (isSuperAdmin(email) ? 'SUPERADMIN' : 'ANALYST') : (isAppr ? 'APPROVER' : 'NONE')
   };
 }
 
@@ -10841,10 +11092,13 @@ function diagnosticarCostosDashboard(year, opts) {
   var filters = Object.assign({}, opts || {}, { year: year || 2026 });
   Logger.log('=== DIAGNÓSTICO DASHBOARD COSTOS ===');
   Logger.log('Año: ' + filters.year + ', Meses: ' + (filters.fromMonth || 1) + '..' + (filters.toMonth || 12));
+  var preCacheStats = _csCacheStats_();
+  Logger.log('Cache previo: ' + preCacheStats.entryCount + ' entries, ' + preCacheStats.sizeKB + ' KB (lastBuild: ' + preCacheStats.lastBuild + ')');
   var startMs = new Date().getTime();
   var result = _csBuildData_(filters);
   var elapsed = new Date().getTime() - startMs;
   Logger.log('Tiempo de cómputo: ' + elapsed + ' ms');
+  Logger.log('Cache hits/misses: ' + result.meta.cache.hits + ' / ' + result.meta.cache.misses + (result.meta.cache.savedToDrive ? ' (cache actualizado en Drive)' : ' (cache sin cambios)'));
   Logger.log('');
   Logger.log('TOTALES GLOBALES:');
   Logger.log('  Ejecutado real:       $' + result.totals.executedReal.toLocaleString('es-CO'));
@@ -10876,6 +11130,25 @@ function diagnosticarCostosDashboard(year, opts) {
     Logger.log('  Mes ' + m + ': real=$' + t.real.toLocaleString('es-CO') + '  est=$' + t.estimated.toLocaleString('es-CO') + '  ppto=$' + t.budget.toLocaleString('es-CO'));
   });
   return result;
+}
+
+// ---------- WRAPPERS top-level llamables desde CostsDashboard.html -----
+// `google.script.run` solo invoca funciones top-level del proyecto. Estos
+// wrappers son la API pública que la página HTML usa, y delegan a
+// `dispatch` para reusar TODA la lógica de seguridad: validación de sesión,
+// rate limit, locking, y el check de superAdminOnlyActions. NO bypassean.
+
+function costsDashboard_getData(payload) {
+  return dispatch('getCostsDashboard', payload || {});
+}
+function costsDashboard_getConfig(payload) {
+  return dispatch('getCostsDashboardConfig', payload || {});
+}
+function costsDashboard_saveConfig(payload) {
+  return dispatch('setCostsDashboardConfig', payload || {});
+}
+function costsDashboard_resetConfig(payload) {
+  return dispatch('resetCostsDashboardConfig', payload || {});
 }
 
 // =====================================================================

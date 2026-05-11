@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#D71920" />
+  <base target="_top" />
+  <title>Dashboard de Costos — Equitel Viajes</title>
+  <!-- Chart.js via CDN. Versión pinneada para reproducibilidad. -->
+  <!-- TODO opcional: agregar `integrity="sha384-..."` con hash real de jsdelivr para SRI. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --brand: #D71920;
+      --brand-dark: #9a0f14;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #d1d5db;
+      --bg: #f9fafb;
+      --bg-card: #ffffff;
+      --green: #059669;
+      --amber: #d97706;
+      --red: #dc2626;
+      --blue: #2563eb;
+    }
+    html, body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      font-size: 14px;
+      min-height: 100vh;
+    }
+    .app { max-width: 1280px; margin: 0 auto; padding: 16px; }
+    .header {
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+      color: white;
+      padding: 18px 22px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(215,25,32,0.18);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .header h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.2px; }
+    .header .sub { font-size: 12px; opacity: 0.92; margin-top: 2px; }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+    .header-actions .email { font-size: 12px; opacity: 0.9; margin-right: 8px; }
+    .btn-ghost {
+      background: rgba(255,255,255,0.15);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.25);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn-ghost:hover { background: rgba(255,255,255,0.25); }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: 10px;
+      padding: 18px 18px;
+      margin-bottom: 14px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      border: 1px solid #e5e7eb;
+    }
+    .card h2 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      font-weight: 700;
+    }
+
+    /* ===== LOGIN ===== */
+    .login-wrap {
+      max-width: 420px;
+      margin: 60px auto;
+    }
+    .login-wrap .card { padding: 24px 22px; }
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: #374151;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .field input, .field select {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 15px;
+      background: white;
+      color: var(--text);
+    }
+    .field input:focus, .field select:focus {
+      outline: none;
+      border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(215,25,32,0.12);
+    }
+    .btn-primary {
+      width: 100%;
+      padding: 13px;
+      background: var(--brand);
+      color: white;
+      border: 0;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary:hover { background: var(--brand-dark); }
+    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-secondary {
+      padding: 8px 14px;
+      background: white;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-secondary:hover { background: #f3f4f6; }
+
+    .status {
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 12px;
+      display: none;
+    }
+    .status.show { display: block; }
+    .status.error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .status.success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .status.info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== FILTROS ===== */
+    .filters-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .filters-toggles {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      padding-top: 6px;
+      border-top: 1px solid #e5e7eb;
+      margin-top: 10px;
+    }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .toggle input { width: 16px; height: 16px; cursor: pointer; }
+
+    /* ===== KPI CARDS ===== */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .kpi {
+      background: white;
+      padding: 14px 16px;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+    .kpi .value { font-size: 22px; font-weight: 800; color: var(--text); margin-top: 4px; line-height: 1.2; }
+    .kpi .extra { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .kpi.real { border-left: 4px solid var(--brand); }
+    .kpi.estimated { border-left: 4px solid var(--amber); }
+    .kpi.budget { border-left: 4px solid var(--blue); }
+    .kpi.delta { border-left: 4px solid var(--green); }
+    .kpi.delta.over { border-left-color: var(--red); }
+    .kpi.delta.over .value { color: var(--red); }
+
+    /* ===== TABLA UNIDADES ===== */
+    .table-wrap { overflow-x: auto; }
+    table.units {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    table.units th, table.units td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    table.units th {
+      background: #f9fafb;
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+    }
+    table.units td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    table.units tr.unit-row { cursor: pointer; }
+    table.units tr.unit-row:hover { background: #f9fafb; }
+    table.units tr.no-budget td { color: #6b7280; font-style: italic; }
+    .semaphore {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .semaphore.green { background: var(--green); }
+    .semaphore.amber { background: var(--amber); }
+    .semaphore.red { background: var(--red); }
+    .semaphore.gray { background: #9ca3af; }
+
+    .badge-est {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 6px;
+      background: #fef3c7;
+      color: #92400e;
+      border-radius: 4px;
+      margin-left: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    /* ===== DETALLE EXPANDIBLE ===== */
+    .detail-row { display: none; background: #f9fafb; }
+    .detail-row.show { display: table-row; }
+    .detail-row td { padding: 0; }
+    .detail-content {
+      padding: 14px 18px;
+      border-top: 2px solid var(--brand);
+    }
+    table.requests {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    table.requests th, table.requests td {
+      padding: 6px 10px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    table.requests th { background: white; font-weight: 600; color: var(--muted); font-size: 10px; text-transform: uppercase; }
+    table.requests td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* ===== EXPORT BUTTONS ===== */
+    .export-bar {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }
+
+    /* ===== CONFIG SECTION ===== */
+    #configCard { display: none; }
+    #configCard.show { display: block; }
+    #configEditor {
+      width: 100%;
+      min-height: 320px;
+      font-family: "SF Mono", Monaco, Consolas, monospace;
+      font-size: 12px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fafafa;
+    }
+
+    /* ===== CHART ===== */
+    .chart-wrap { position: relative; height: 320px; width: 100%; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    /* ===== PRINT ===== */
+    @media print {
+      @page { size: A4 landscape; margin: 1cm; }
+      body { background: white; font-size: 11px; }
+      .app { max-width: 100%; padding: 0; }
+      .header {
+        background: var(--brand) !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        page-break-inside: avoid;
+        margin-bottom: 8px;
+      }
+      .header-actions, .export-bar, #btnLogout, #configCard, #btnConfig {
+        display: none !important;
+      }
+      .card {
+        box-shadow: none !important;
+        border: 1px solid #d1d5db;
+        page-break-inside: avoid;
+      }
+      .kpi-grid { page-break-inside: avoid; }
+      .kpi {
+        box-shadow: none !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      table.units { page-break-inside: auto; }
+      table.units tr { page-break-inside: avoid; }
+      table.units thead { display: table-header-group; }
+      .chart-wrap { page-break-inside: avoid; }
+      .detail-row { display: none !important; }
+      .filters-grid input, .filters-grid select { border: none !important; padding: 0 !important; }
+      .filters-toggles { display: none; }
+      .semaphore {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <!-- ============================================================== -->
+  <!-- LOGIN SCREEN                                                    -->
+  <!-- ============================================================== -->
+  <div id="loginScreen" class="login-wrap">
+    <div class="card">
+      <h2 style="text-align: center; color: var(--brand); font-size: 16px; letter-spacing: 0; text-transform: none; margin-bottom: 4px;">📊 Dashboard de Costos</h2>
+      <p style="font-size: 12px; color: var(--muted); text-align: center; margin-bottom: 18px;">Equitel Viajes — Acceso restringido</p>
+      <div id="loginStatus" class="status"></div>
+      <div class="field">
+        <label>Correo corporativo</label>
+        <input type="email" id="loginEmail" autocomplete="email" placeholder="usuario@equitel.com.co" />
+      </div>
+      <div class="field">
+        <label>PIN (8 dígitos)</label>
+        <input type="password" id="loginPin" inputmode="numeric" autocomplete="current-password" maxlength="8" />
+      </div>
+      <button id="btnLogin" class="btn-primary">Ingresar</button>
+      <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 14px;">¿No tienes PIN? Ve al portal principal y solicítalo.</p>
+      <p style="font-size: 10px; color: var(--muted); text-align: center; margin-top: 8px; line-height: 1.5;">Acceso restringido a aprobadores, analistas y administradores.</p>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- DASHBOARD SCREEN                                                -->
+  <!-- ============================================================== -->
+  <div id="dashboardScreen" style="display: none;">
+    <div class="header">
+      <div>
+        <h1>📊 Dashboard de Costos por Unidad de Negocio</h1>
+        <div class="sub">Equitel Viajes — comparativo ejecutado vs presupuesto</div>
+      </div>
+      <div class="header-actions">
+        <span class="email" id="loggedEmail"></span>
+        <button id="btnConfig" class="btn-ghost" style="display: none;">⚙️ Configuración</button>
+        <button id="btnLogout" class="btn-ghost">Salir</button>
+      </div>
+    </div>
+
+    <div id="dashStatus" class="status"></div>
+
+    <!-- FILTROS -->
+    <div class="card">
+      <h2>Filtros</h2>
+      <div class="filters-grid">
+        <div class="field" style="margin: 0;">
+          <label>Año</label>
+          <select id="f_year"></select>
+        </div>
+        <div class="field" style="margin: 0;">
+          <label>Mes desde</label>
+          <select id="f_fromMonth"></select>
+        </div>
+        <div class="field" style="margin: 0;">
+          <label>Mes hasta</label>
+          <select id="f_toMonth"></select>
+        </div>
+        <div class="field" style="margin: 0;">
+          <label>Empresa</label>
+          <select id="f_company"><option value="">— Todas —</option></select>
+        </div>
+        <div class="field" style="margin: 0;">
+          <label>Unidad de negocio</label>
+          <select id="f_unit"><option value="">— Todas —</option></select>
+        </div>
+      </div>
+      <div class="filters-toggles">
+        <label class="toggle"><input type="checkbox" id="f_includeEstimated" checked /> Incluir ejecutado estimado (RESERVADO sin factura)</label>
+        <label class="toggle"><input type="checkbox" id="f_includeNoPresupuesto" checked /> Incluir unidades sin presupuesto asignado</label>
+        <button id="btnApply" class="btn-secondary" style="margin-left: auto;">Aplicar filtros</button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div id="kpiContainer" class="kpi-grid"></div>
+
+    <!-- TABLA POR UNIDAD -->
+    <div class="card">
+      <h2>Unidades de negocio <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="unitCount"></span></h2>
+      <div class="table-wrap">
+        <table class="units">
+          <thead>
+            <tr>
+              <th>Unidad</th>
+              <th>Empresa</th>
+              <th class="num">Presupuesto rango</th>
+              <th class="num">Ejecutado real</th>
+              <th class="num">Ejecutado estimado</th>
+              <th class="num">Δ vs ppto</th>
+              <th class="num">% usado</th>
+              <th class="num">Solicitudes</th>
+            </tr>
+          </thead>
+          <tbody id="unitsBody"></tbody>
+        </table>
+      </div>
+      <div id="emptyState" class="empty-state" style="display: none;">No hay datos para los filtros seleccionados.</div>
+    </div>
+
+    <!-- GRÁFICO -->
+    <div class="card">
+      <h2>Ejecutado vs Presupuesto — mes a mes</h2>
+      <div class="chart-wrap">
+        <canvas id="monthlyChart"></canvas>
+      </div>
+    </div>
+
+    <!-- META INFO -->
+    <div class="card" style="font-size: 11px; color: var(--muted);">
+      <div id="metaInfo"></div>
+    </div>
+
+    <!-- EXPORT BUTTONS -->
+    <div class="export-bar">
+      <button id="btnExportCSV" class="btn-secondary">📥 Exportar CSV</button>
+      <button id="btnExportPDF" class="btn-secondary">🖨️ Exportar PDF (imprimir)</button>
+    </div>
+
+    <!-- CONFIG (solo superadmin) -->
+    <div id="configCard" class="card">
+      <h2>⚙️ Configuración de columnas (solo superadmin)</h2>
+      <div id="configStatus" class="status"></div>
+      <p style="font-size: 12px; color: var(--muted); margin-bottom: 10px;">
+        Edita el JSON con los nombres de columnas que el dashboard usa para calcular ejecutado y presupuesto.
+        Si dejas el JSON en blanco o lo restauras, vuelve al default. Cambios afectan inmediatamente al cálculo.
+      </p>
+      <textarea id="configEditor" spellcheck="false"></textarea>
+      <div style="display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end;">
+        <button id="btnConfigReset" class="btn-secondary">Restaurar default</button>
+        <button id="btnConfigSave" class="btn-primary" style="width: auto; padding: 8px 18px;">Guardar configuración</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// SECURITY: escape HTML antes de inyectar valores dinámicos al DOM.
+// Para textos planos usamos textContent (más seguro). Esta función queda
+// como backup para casos donde necesitamos insertar HTML construido.
+// =====================================================================
+function esc(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// =====================================================================
+// SESSION HANDLING
+// =====================================================================
+// Token + email viven en sessionStorage (NO localStorage). Se pierden al
+// cerrar pestaña, decisión consciente: info financiera, queremos que cada
+// vez que un líder abra el link tenga que reautenticarse con PIN.
+// =====================================================================
+var session = null;
+var lastData = null;
+var lastConfig = null;
+var canEditConfig = false;
+var monthlyChart = null;
+
+var SESSION_KEY = '_costsDashSession';
+
+function loadSession() {
+  try {
+    var raw = sessionStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    var s = JSON.parse(raw);
+    if (!s || !s.email || !s.token) return null;
+    if (s.expiresAt && Date.now() > s.expiresAt) return null;
+    return s;
+  } catch (e) { return null; }
+}
+
+function saveSession(s) {
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) {}
+  session = s;
+}
+
+function clearSession() {
+  try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+  session = null;
+}
+
+// =====================================================================
+// UI HELPERS
+// =====================================================================
+function showStatus(id, msg, type) {
+  var el = document.getElementById(id);
+  el.className = 'status show ' + (type || 'info');
+  el.textContent = msg;
+}
+function hideStatus(id) {
+  var el = document.getElementById(id);
+  el.className = 'status';
+  el.textContent = '';
+}
+
+function fmtMoney(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return '$' + Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 });
+}
+function fmtPct(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return n.toFixed(1) + '%';
+}
+
+function semaphoreClass(pct) {
+  if (pct === null || pct === undefined) return 'gray';
+  if (pct < 70) return 'green';
+  if (pct <= 100) return 'amber';
+  return 'red';
+}
+
+function showLogin() {
+  document.getElementById('loginScreen').style.display = '';
+  document.getElementById('dashboardScreen').style.display = 'none';
+}
+
+function showDashboard() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('dashboardScreen').style.display = '';
+  document.getElementById('loggedEmail').textContent = session.email;
+}
+
+// =====================================================================
+// LOGIN HANDLER
+// =====================================================================
+function handleLogin() {
+  var email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  var pin = document.getElementById('loginPin').value.trim();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showStatus('loginStatus', 'Correo inválido.', 'error');
+    return;
+  }
+  if (!/^\d{8}$/.test(pin)) {
+    showStatus('loginStatus', 'El PIN debe ser exactamente 8 dígitos.', 'error');
+    return;
+  }
+  var btn = document.getElementById('btnLogin');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Verificando...';
+  hideStatus('loginStatus');
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      btn.disabled = false;
+      btn.textContent = 'Ingresar';
+      if (!result || !result.success || !result.token) {
+        showStatus('loginStatus', 'PIN incorrecto.', 'error');
+        return;
+      }
+      saveSession({
+        email: email,
+        token: result.token,
+        expiresAt: result.expiresAt || (Date.now() + 7 * 24 * 60 * 60 * 1000),
+        role: result.role || 'REQUESTER'
+      });
+      document.getElementById('loginPin').value = '';
+      showDashboard();
+      initFilters();
+      loadDashboard();
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      btn.textContent = 'Ingresar';
+      var msg = (err && err.message) || 'Error al verificar.';
+      showStatus('loginStatus', msg, 'error');
+    })
+    .verifyUserPin(email, pin);
+}
+
+function handleLogout() {
+  clearSession();
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPin').value = '';
+  showLogin();
+}
+
+// =====================================================================
+// FILTROS — init dropdowns
+// =====================================================================
+var MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+function initFilters() {
+  var currentYear = new Date().getFullYear();
+  var ySel = document.getElementById('f_year');
+  ySel.innerHTML = '';
+  // 2 años atrás + año actual + 1 adelante. Filtra al año actual por default.
+  for (var y = currentYear - 2; y <= currentYear + 1; y++) {
+    var opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if (y === currentYear) opt.selected = true;
+    ySel.appendChild(opt);
+  }
+  var fromSel = document.getElementById('f_fromMonth');
+  var toSel = document.getElementById('f_toMonth');
+  fromSel.innerHTML = '';
+  toSel.innerHTML = '';
+  for (var m = 1; m <= 12; m++) {
+    var optF = document.createElement('option');
+    optF.value = m;
+    optF.textContent = MONTHS[m - 1];
+    if (m === 1) optF.selected = true;
+    fromSel.appendChild(optF);
+    var optT = document.createElement('option');
+    optT.value = m;
+    optT.textContent = MONTHS[m - 1];
+    if (m === 12) optT.selected = true;
+    toSel.appendChild(optT);
+  }
+}
+
+function getCurrentFilters() {
+  var filters = {
+    year: parseInt(document.getElementById('f_year').value, 10),
+    fromMonth: parseInt(document.getElementById('f_fromMonth').value, 10),
+    toMonth: parseInt(document.getElementById('f_toMonth').value, 10),
+    includeEstimated: document.getElementById('f_includeEstimated').checked,
+    includeNoPresupuesto: document.getElementById('f_includeNoPresupuesto').checked
+  };
+  var company = document.getElementById('f_company').value;
+  var unit = document.getElementById('f_unit').value;
+  if (company) filters.companies = [company];
+  if (unit) filters.businessUnits = [unit];
+  return filters;
+}
+
+// =====================================================================
+// LOAD DATA
+// =====================================================================
+function loadDashboard() {
+  if (!session) return;
+  showStatus('dashStatus', 'Cargando...', 'info');
+  google.script.run
+    .withSuccessHandler(function(data) {
+      hideStatus('dashStatus');
+      if (!data || !data.success) {
+        var errMsg = (data && data.error) || 'Error cargando datos.';
+        // Si el error es por no autorización al dashboard, cerrar sesión
+        // para evitar que el usuario quede atrapado en una página vacía.
+        if (errMsg.indexOf('no autorizado') !== -1 || errMsg.indexOf('Acceso no autorizado') !== -1) {
+          clearSession();
+          showLogin();
+          showStatus('loginStatus', 'Tu cuenta no tiene permiso para ver este dashboard. Solo aprobadores, analistas y administradores pueden acceder.', 'error');
+          return;
+        }
+        showStatus('dashStatus', errMsg, 'error');
+        if (data && data.code === 'SESSION_EXPIRED') {
+          clearSession();
+          showLogin();
+        }
+        return;
+      }
+      lastData = data.data;
+      canEditConfig = !!(lastData.meta && lastData.meta.access && lastData.meta.access.canConfig);
+      document.getElementById('btnConfig').style.display = canEditConfig ? '' : 'none';
+      renderAll();
+    })
+    .withFailureHandler(function(err) {
+      var msg = (err && err.message) || 'Error de conexión.';
+      showStatus('dashStatus', msg, 'error');
+      if (msg.indexOf('Sesión') !== -1 || msg.indexOf('autoriza') !== -1) {
+        clearSession();
+        showLogin();
+      }
+    })
+    .costsDashboard_getData({
+      filters: getCurrentFilters(),
+      userEmail: session.email,
+      sessionToken: session.token
+    });
+}
+
+// =====================================================================
+// RENDER
+// =====================================================================
+function renderAll() {
+  renderKPIs();
+  renderCompanyUnitOptions();
+  renderUnitsTable();
+  renderChart();
+  renderMeta();
+}
+
+function renderKPIs() {
+  var t = lastData.totals;
+  var container = document.getElementById('kpiContainer');
+  container.innerHTML = '';
+
+  var execTotal = (t.executedReal || 0) + (t.executedEstimated || 0);
+  var deltaOver = (t.budget > 0 && execTotal > t.budget);
+
+  var kpis = [
+    { cls: 'real', label: 'Ejecutado real', value: fmtMoney(t.executedReal), extra: 'Facturas registradas' },
+    { cls: 'estimated', label: 'Ejecutado estimado', value: fmtMoney(t.executedEstimated), extra: 'RESERVADO sin factura aún' },
+    { cls: 'budget', label: 'Presupuesto del rango', value: fmtMoney(t.budget), extra: 'Suma del PPTOS UNIDADES' },
+    { cls: 'delta' + (deltaOver ? ' over' : ''), label: deltaOver ? 'Sobre-ejecución' : 'Disponible', value: fmtMoney(Math.abs(t.delta)), extra: fmtPct(t.percentUsed) + ' usado' }
+  ];
+
+  kpis.forEach(function(k) {
+    var div = document.createElement('div');
+    div.className = 'kpi ' + k.cls;
+    var lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = k.label;
+    var val = document.createElement('div'); val.className = 'value'; val.textContent = k.value;
+    var ext = document.createElement('div'); ext.className = 'extra'; ext.textContent = k.extra;
+    div.appendChild(lbl); div.appendChild(val); div.appendChild(ext);
+    container.appendChild(div);
+  });
+}
+
+function renderCompanyUnitOptions() {
+  // Solo en la primera carga (o cuando cambia data significativamente)
+  var cSel = document.getElementById('f_company');
+  var uSel = document.getElementById('f_unit');
+  var currentC = cSel.value;
+  var currentU = uSel.value;
+  cSel.innerHTML = '<option value="">— Todas —</option>';
+  uSel.innerHTML = '<option value="">— Todas —</option>';
+  (lastData.meta.companies || []).slice().sort(function(a, b) { return a.label.localeCompare(b.label); }).forEach(function(c) {
+    var o = document.createElement('option');
+    o.value = c.label;
+    o.textContent = c.label;
+    if (c.label === currentC) o.selected = true;
+    cSel.appendChild(o);
+  });
+  (lastData.meta.units || []).slice().sort(function(a, b) { return a.label.localeCompare(b.label); }).forEach(function(u) {
+    var o = document.createElement('option');
+    o.value = u.label;
+    o.textContent = u.label;
+    if (u.label === currentU) o.selected = true;
+    uSel.appendChild(o);
+  });
+}
+
+function renderUnitsTable() {
+  var body = document.getElementById('unitsBody');
+  body.innerHTML = '';
+  var rows = lastData.rows || [];
+  document.getElementById('unitCount').textContent = '(' + rows.length + ')';
+  document.getElementById('emptyState').style.display = rows.length === 0 ? '' : 'none';
+
+  rows.forEach(function(b, idx) {
+    var tr = document.createElement('tr');
+    tr.className = 'unit-row' + (b.hasBudget ? '' : ' no-budget');
+    tr.dataset.idx = idx;
+    tr.addEventListener('click', function() { toggleDetail(idx); });
+
+    var sem = semaphoreClass(b.percentUsed);
+    var unitTd = document.createElement('td');
+    var semSpan = document.createElement('span');
+    semSpan.className = 'semaphore ' + sem;
+    unitTd.appendChild(semSpan);
+    unitTd.appendChild(document.createTextNode(b.unit));
+    if (!b.hasBudget) {
+      var span = document.createElement('span');
+      span.className = 'badge-est';
+      span.textContent = 'sin ppto';
+      unitTd.appendChild(span);
+    }
+    tr.appendChild(unitTd);
+
+    var companyTd = document.createElement('td'); companyTd.textContent = b.company || '—';
+    tr.appendChild(companyTd);
+
+    var bTd = document.createElement('td'); bTd.className = 'num';
+    bTd.textContent = b.hasBudget ? fmtMoney(b.budgetInRange) : '—';
+    tr.appendChild(bTd);
+
+    var rTd = document.createElement('td'); rTd.className = 'num';
+    rTd.textContent = fmtMoney(b.totalExecutedReal);
+    tr.appendChild(rTd);
+
+    var eTd = document.createElement('td'); eTd.className = 'num';
+    eTd.textContent = fmtMoney(b.totalExecutedEstimated);
+    tr.appendChild(eTd);
+
+    var dTd = document.createElement('td'); dTd.className = 'num';
+    if (b.hasBudget) {
+      var delta = b.deltaInRange;
+      dTd.textContent = (delta < 0 ? '-' : '') + fmtMoney(Math.abs(delta));
+      if (delta < 0) dTd.style.color = 'var(--red)';
+    } else {
+      dTd.textContent = '—';
+    }
+    tr.appendChild(dTd);
+
+    var pTd = document.createElement('td'); pTd.className = 'num';
+    pTd.textContent = b.hasBudget ? fmtPct(b.percentUsed) : '—';
+    tr.appendChild(pTd);
+
+    var qTd = document.createElement('td'); qTd.className = 'num';
+    qTd.textContent = b.requestCount;
+    tr.appendChild(qTd);
+
+    body.appendChild(tr);
+
+    // DETAIL ROW (hidden by default)
+    var detailTr = document.createElement('tr');
+    detailTr.className = 'detail-row';
+    detailTr.id = 'detail-' + idx;
+    var detailTd = document.createElement('td');
+    detailTd.colSpan = 8;
+    detailTd.appendChild(buildDetailContent(b));
+    detailTr.appendChild(detailTd);
+    body.appendChild(detailTr);
+  });
+}
+
+function buildDetailContent(bucket) {
+  var div = document.createElement('div');
+  div.className = 'detail-content';
+
+  var h = document.createElement('div');
+  h.style.fontSize = '11px';
+  h.style.textTransform = 'uppercase';
+  h.style.fontWeight = '600';
+  h.style.color = 'var(--muted)';
+  h.style.marginBottom = '8px';
+  h.textContent = 'Solicitudes que componen el ejecutado (' + (bucket.requests || []).length + ')';
+  div.appendChild(h);
+
+  if (!bucket.requests || bucket.requests.length === 0) {
+    var p = document.createElement('p');
+    p.style.color = 'var(--muted)';
+    p.textContent = 'Sin solicitudes.';
+    div.appendChild(p);
+    return div;
+  }
+
+  var table = document.createElement('table');
+  table.className = 'requests';
+  var thead = document.createElement('thead');
+  thead.innerHTML = '<tr><th>ID</th><th>Solicitante</th><th>Fecha compra</th><th>Mes</th><th>Estado</th><th class="num">Ejecutado</th></tr>';
+  table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  bucket.requests.slice().sort(function(a, b) {
+    return (a.purchaseDate || '').localeCompare(b.purchaseDate || '');
+  }).forEach(function(r) {
+    var tr = document.createElement('tr');
+    var c1 = document.createElement('td'); c1.textContent = r.requestId; tr.appendChild(c1);
+    var c2 = document.createElement('td'); c2.textContent = r.requesterEmail; tr.appendChild(c2);
+    var c3 = document.createElement('td'); c3.textContent = r.purchaseDate || '—'; tr.appendChild(c3);
+    var c4 = document.createElement('td'); c4.textContent = MONTHS[(r.month || 1) - 1]; tr.appendChild(c4);
+    var c5 = document.createElement('td'); c5.textContent = r.status + (r.isEstimated ? ' (est.)' : ''); tr.appendChild(c5);
+    var c6 = document.createElement('td'); c6.className = 'num'; c6.textContent = fmtMoney(r.executed); tr.appendChild(c6);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  div.appendChild(table);
+  return div;
+}
+
+function toggleDetail(idx) {
+  var row = document.getElementById('detail-' + idx);
+  if (!row) return;
+  row.classList.toggle('show');
+}
+
+function renderChart() {
+  var canvas = document.getElementById('monthlyChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  var byMonth = lastData.totals.byMonth || {};
+  var fromMonth = lastData.meta.fromMonth || 1;
+  var toMonth = lastData.meta.toMonth || 12;
+  var labels = [];
+  var realData = [];
+  var estData = [];
+  var budgetData = [];
+  for (var m = fromMonth; m <= toMonth; m++) {
+    labels.push(MONTHS[m - 1]);
+    var bm = byMonth[m] || { real: 0, estimated: 0, budget: 0 };
+    realData.push(bm.real || 0);
+    estData.push(bm.estimated || 0);
+    budgetData.push(bm.budget || 0);
+  }
+
+  if (monthlyChart) {
+    monthlyChart.destroy();
+  }
+  monthlyChart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Ejecutado real', data: realData, backgroundColor: '#D71920' },
+        { label: 'Ejecutado estimado', data: estData, backgroundColor: '#d97706' },
+        { label: 'Presupuesto', data: budgetData, backgroundColor: '#2563eb', type: 'line', borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.08)', tension: 0.2, pointRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.dataset.label + ': $' + Number(ctx.parsed.y || 0).toLocaleString('es-CO');
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            callback: function(v) { return '$' + Number(v).toLocaleString('es-CO'); }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderMeta() {
+  var meta = lastData.meta;
+  var rec = meta.requestsCounted || 0;
+  var exc = meta.requestsExcluded || {};
+  var lines = [];
+  lines.push('Solicitudes contadas: ' + rec);
+  lines.push('Excluidas — sin fecha de compra: ' + (exc.noPurchaseDate || 0) +
+             ', status no contable: ' + (exc.byStatus || 0) +
+             ', fuera del rango de meses: ' + (exc.byMonthYear || 0));
+  if (meta.cache) {
+    lines.push('Cache: ' + meta.cache.hits + ' hits, ' + meta.cache.misses + ' misses' + (meta.cache.savedToDrive ? ' (actualizado)' : ''));
+  }
+  lines.push('Calculado: ' + new Date(meta.computedAt).toLocaleString('es-CO'));
+  document.getElementById('metaInfo').textContent = lines.join(' • ');
+}
+
+// =====================================================================
+// EXPORT CSV
+// =====================================================================
+// Sanitización anti-CSV injection: si una celda empieza con = + - @ o tab,
+// prefijamos comilla simple para neutralizar fórmulas. Importante porque
+// el CSV puede abrir en Excel y un nombre como "=SUM(...)" se ejecutaría.
+// =====================================================================
+function csvSafe(v) {
+  if (v === null || v === undefined) return '';
+  var s = String(v);
+  if (/^[=+\-@\t]/.test(s)) s = "'" + s;
+  // Escape de comillas + envolver si contiene coma, salto o comilla
+  if (/[",\n\r]/.test(s)) {
+    s = '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function exportCSV() {
+  if (!lastData) return;
+  var meta = lastData.meta;
+  var year = meta.year;
+  var fromM = MONTHS[(meta.fromMonth || 1) - 1];
+  var toM = MONTHS[(meta.toMonth || 12) - 1];
+
+  var rows = [];
+  rows.push(['Dashboard de Costos - Equitel Viajes'].map(csvSafe).join(','));
+  rows.push(['Año: ' + year + ' | Rango: ' + fromM + ' - ' + toM + ' | Generado: ' + new Date().toLocaleString('es-CO')].map(csvSafe).join(','));
+  rows.push('');
+  rows.push(['Unidad', 'Empresa', 'Tiene presupuesto', 'Presupuesto rango', 'Ejecutado real', 'Ejecutado estimado', 'Delta', '% usado', 'Solicitudes'].map(csvSafe).join(','));
+  (lastData.rows || []).forEach(function(b) {
+    rows.push([
+      b.unit,
+      b.company || '',
+      b.hasBudget ? 'Sí' : 'No',
+      b.hasBudget ? b.budgetInRange : '',
+      b.totalExecutedReal,
+      b.totalExecutedEstimated,
+      b.hasBudget ? b.deltaInRange : '',
+      b.hasBudget && b.percentUsed !== null ? b.percentUsed : '',
+      b.requestCount
+    ].map(csvSafe).join(','));
+  });
+
+  // Sección 2: detalle de solicitudes
+  rows.push('');
+  rows.push(['DETALLE DE SOLICITUDES'].map(csvSafe).join(','));
+  rows.push(['Unidad', 'ID solicitud', 'Solicitante', 'Fecha compra', 'Mes', 'Estado', 'Es estimado', 'Ejecutado'].map(csvSafe).join(','));
+  (lastData.rows || []).forEach(function(b) {
+    (b.requests || []).forEach(function(r) {
+      rows.push([
+        b.unit,
+        r.requestId,
+        r.requesterEmail,
+        r.purchaseDate || '',
+        MONTHS[(r.month || 1) - 1],
+        r.status,
+        r.isEstimated ? 'Sí' : 'No',
+        r.executed
+      ].map(csvSafe).join(','));
+    });
+  });
+
+  var content = '﻿' + rows.join('\n'); // BOM para Excel + UTF-8
+  var blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'costos_' + year + '_' + (meta.fromMonth || 1) + '-' + (meta.toMonth || 12) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() {
+    URL.revokeObjectURL(url);
+    a.remove();
+  }, 200);
+}
+
+// =====================================================================
+// EXPORT PDF — invoca window.print(). Antes, fuerza al chart a re-render
+// como imagen base64 para que se imprima nítido (Canvas no siempre se
+// imprime bien en algunos navegadores).
+// =====================================================================
+function exportPDF() {
+  if (!lastData || !monthlyChart) {
+    window.print();
+    return;
+  }
+  // Genera imagen del chart y la inserta antes de imprimir; restaura después.
+  var canvas = document.getElementById('monthlyChart');
+  var wrap = canvas.parentElement;
+  var dataUrl = monthlyChart.toBase64Image('image/png', 1.0);
+  var img = document.createElement('img');
+  img.src = dataUrl;
+  img.style.width = '100%';
+  img.style.maxHeight = '320px';
+  img.style.objectFit = 'contain';
+  img.id = '_printChart';
+  canvas.style.display = 'none';
+  wrap.appendChild(img);
+
+  // Pequeño delay para asegurar que la imagen se decode antes del print dialog.
+  setTimeout(function() {
+    window.print();
+    // Restaurar canvas
+    setTimeout(function() {
+      img.remove();
+      canvas.style.display = '';
+    }, 500);
+  }, 150);
+}
+
+// =====================================================================
+// CONFIG SECTION
+// =====================================================================
+function openConfig() {
+  if (!canEditConfig) return;
+  var card = document.getElementById('configCard');
+  card.classList.toggle('show');
+  if (card.classList.contains('show')) {
+    loadConfig();
+  }
+}
+
+function loadConfig() {
+  hideStatus('configStatus');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (!result || !result.success) {
+        showStatus('configStatus', (result && result.error) || 'Error cargando config.', 'error');
+        return;
+      }
+      lastConfig = result.data.config;
+      document.getElementById('configEditor').value = JSON.stringify(lastConfig, null, 2);
+      showStatus('configStatus', result.data.isDefault ? 'Mostrando configuración por defecto (no hay override guardado).' : 'Configuración personalizada activa.', 'info');
+    })
+    .withFailureHandler(function(err) {
+      showStatus('configStatus', (err && err.message) || 'Error.', 'error');
+    })
+    .costsDashboard_getConfig({ userEmail: session.email, sessionToken: session.token });
+}
+
+function saveConfig() {
+  if (!canEditConfig) return;
+  var raw = document.getElementById('configEditor').value;
+  var parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    showStatus('configStatus', 'JSON inválido: ' + e.message, 'error');
+    return;
+  }
+  showStatus('configStatus', 'Guardando...', 'info');
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (!result || !result.success) {
+        showStatus('configStatus', (result && result.error) || 'Error guardando.', 'error');
+        return;
+      }
+      showStatus('configStatus', 'Configuración guardada. Recargando datos...', 'success');
+      setTimeout(function() {
+        loadDashboard();
+        loadConfig();
+      }, 400);
+    })
+    .withFailureHandler(function(err) {
+      showStatus('configStatus', (err && err.message) || 'Error guardando.', 'error');
+    })
+    .costsDashboard_saveConfig({ config: parsed, userEmail: session.email, sessionToken: session.token });
+}
+
+function resetConfig() {
+  if (!canEditConfig) return;
+  if (!confirm('¿Restaurar la configuración por defecto? Tu personalización se perderá.')) return;
+  google.script.run
+    .withSuccessHandler(function(result) {
+      if (!result || !result.success) {
+        showStatus('configStatus', (result && result.error) || 'Error.', 'error');
+        return;
+      }
+      showStatus('configStatus', 'Restaurado al default. Recargando...', 'success');
+      setTimeout(function() {
+        loadDashboard();
+        loadConfig();
+      }, 400);
+    })
+    .withFailureHandler(function(err) {
+      showStatus('configStatus', (err && err.message) || 'Error.', 'error');
+    })
+    .costsDashboard_resetConfig({ userEmail: session.email, sessionToken: session.token });
+}
+
+// =====================================================================
+// EVENT BINDINGS
+// =====================================================================
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('btnLogin').addEventListener('click', handleLogin);
+  document.getElementById('loginPin').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') handleLogin();
+  });
+  document.getElementById('btnLogout').addEventListener('click', handleLogout);
+  document.getElementById('btnApply').addEventListener('click', loadDashboard);
+  document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
+  document.getElementById('btnExportPDF').addEventListener('click', exportPDF);
+  document.getElementById('btnConfig').addEventListener('click', openConfig);
+  document.getElementById('btnConfigSave').addEventListener('click', saveConfig);
+  document.getElementById('btnConfigReset').addEventListener('click', resetConfig);
+
+  // Auto-aplicar filtros cuando cambia algo (excepto config toggles que necesitan applyBtn)
+  ['f_year', 'f_fromMonth', 'f_toMonth', 'f_company', 'f_unit'].forEach(function(id) {
+    document.getElementById(id).addEventListener('change', loadDashboard);
+  });
+  ['f_includeEstimated', 'f_includeNoPresupuesto'].forEach(function(id) {
+    document.getElementById(id).addEventListener('change', loadDashboard);
+  });
+
+  // Bootstrap: si hay sesión guardada, entrar directo
+  session = loadSession();
+  if (session) {
+    showDashboard();
+    initFilters();
+    loadDashboard();
+  } else {
+    showLogin();
+  }
+});
+</script>
+</body>
+</html>

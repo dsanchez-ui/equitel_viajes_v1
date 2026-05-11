@@ -1,6 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { TravelRequest, RequestStatus, Integrant } from '../types';
+import { API_BASE_URL } from '../constants';
 import { OptionUploadModal } from './OptionUploadModal';
 import { SupportUploadModal } from './SupportUploadModal';
 import { ReservationModal } from './ReservationModal';
@@ -367,6 +368,18 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
           >
             <span>📊</span>
             Métricas
+          </button>
+          <button
+            onClick={() => {
+              const sep = API_BASE_URL.indexOf('?') > -1 ? '&' : '?';
+              window.open(API_BASE_URL + sep + 'view=costs-dashboard', '_blank', 'noopener,noreferrer');
+            }}
+            disabled={isLoading}
+            className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 gap-2"
+            title="Dashboard de costos por unidad de negocio (también se puede compartir a aprobadores con el link)"
+          >
+            <span>💰</span>
+            Costos por Unidad
           </button>
           <button
             onClick={() => setShowPinChangeModal(true)}
