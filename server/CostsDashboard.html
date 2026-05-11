@@ -382,6 +382,41 @@
     }
     .donut-center.over .pct { color: var(--red); }
 
+    /* ===== STICKY FILTERS ===== */
+    /* La card de filtros queda pegada al top al scrollear, así siempre se ve
+       qué año/empresa/unidad está aplicado. */
+    .filters-card {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: var(--bg-card);
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    }
+    /* Resumen del filtro activo en una sola línea, visible en sticky mode.
+       Aparece debajo de los selectores para refuerzo visual. */
+    .filter-summary {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #e5e7eb;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+    }
+    .filter-summary strong {
+      color: var(--brand);
+      font-weight: 700;
+    }
+
+    /* ===== PRINT REPLACEMENT (imagen de chart para impresión) ===== */
+    /* La img se inserta junto al canvas pero solo se ve al imprimir.
+       Esto evita el bug de "expansion infinita" que pasaba al ocultar el
+       canvas con display:none mientras el contenedor tenía aspect-ratio. */
+    .print-replacement {
+      display: none;
+    }
+
     /* ===== PRINT ===== */
     @media print {
       @page { size: A4 landscape; margin: 1cm; }
@@ -396,6 +431,12 @@
       }
       .header-actions, .export-bar, #btnLogout, #configCard, #btnConfig {
         display: none !important;
+      }
+      /* Quitar sticky en print — la card de filtros no debe quedar pegada
+         al imprimir, debe fluir normalmente. */
+      .filters-card {
+        position: static !important;
+        box-shadow: none !important;
       }
       .card {
         box-shadow: none !important;
@@ -419,6 +460,10 @@
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
+      /* Swap canvas → img solo durante print. El canvas se queda visible
+         en pantalla mientras la img solo aparece al imprimir. */
+      canvas.hide-on-print { display: none !important; }
+      .print-replacement { display: block !important; }
     }
   </style>
 </head>
@@ -464,8 +509,8 @@
 
     <div id="dashStatus" class="status"></div>
 
-    <!-- FILTROS -->
-    <div class="card">
+    <!-- FILTROS (sticky al hacer scroll) -->
+    <div class="card filters-card">
       <h2>Filtros</h2>
       <div class="filters-grid">
         <div class="field" style="margin: 0;">
@@ -483,7 +528,13 @@
       </div>
       <div class="filters-toggles">
         <label class="toggle"><input type="checkbox" id="f_includeEstimated" checked /> Incluir ejecutado estimado (RESERVADO sin factura)</label>
-        <label class="toggle"><input type="checkbox" id="f_includeNoPresupuesto" checked /> Incluir unidades sin presupuesto asignado</label>
+        <label class="toggle"><input type="checkbox" id="f_includeNoPresupuesto" checked /> Mostrar unidades sin presupuesto asignado en tablas</label>
+      </div>
+      <div class="filter-summary" id="filterSummary">
+        <span>Viendo:</span>
+        <span id="fsYear"></span>
+        <span id="fsCompany"></span>
+        <span id="fsUnit"></span>
       </div>
     </div>
 
@@ -886,6 +937,32 @@ function refreshView() {
   renderAnnualView(filteredData);
   renderMonthlyView(filteredData, selectedMonth);
   renderMeta();
+  renderFilterSummary();
+}
+
+/**
+ * Pinta un resumen del filtro activo en la card de filtros (siempre visible
+ * cuando ésta queda pegada al top en sticky). Refuerzo visual para que el
+ * lector sepa en todo momento qué está viendo, especialmente al scrollear.
+ */
+function renderFilterSummary() {
+  if (!fullYearData) return;
+  var year = fullYearData.meta.year;
+  var company = document.getElementById('f_company').value || '— Todas —';
+  var unit = document.getElementById('f_unit').value || '— Todas —';
+  var yEl = document.getElementById('fsYear');
+  var cEl = document.getElementById('fsCompany');
+  var uEl = document.getElementById('fsUnit');
+  yEl.innerHTML = '';
+  cEl.innerHTML = '';
+  uEl.innerHTML = '';
+  // textContent + childNodes para preservar la negrita brand-colored del strong
+  yEl.appendChild(document.createTextNode('Año '));
+  var ys = document.createElement('strong'); ys.textContent = year; yEl.appendChild(ys);
+  cEl.appendChild(document.createTextNode('· Empresa '));
+  var cs = document.createElement('strong'); cs.textContent = company; cEl.appendChild(cs);
+  uEl.appendChild(document.createTextNode('· Unidad '));
+  var us = document.createElement('strong'); us.textContent = unit; uEl.appendChild(us);
 }
 
 /**
@@ -919,10 +996,19 @@ function applyClientFilters(raw) {
     return b;
   });
 
-  // Recomputar totales y byMonth desde las filas filtradas
+  // Recomputar totales y byMonth desde las filas filtradas.
+  // Distinguimos dos grupos:
+  //   - "grand"          = TODO el ejecutado (incluye unidades sin ppto). Sirve
+  //                        para mostrar cuánto se gastó en total, panorama informativo.
+  //   - "grandBudgeted"  = SOLO unidades con presupuesto asignado. Sirve para
+  //                        calcular % usado y Δ vs presupuesto correctamente —
+  //                        no tiene sentido comparar el ejecutado de unidades sin
+  //                        ppto contra el presupuesto de OTRAS unidades.
   var totalsByMonth = {};
   for (var m = 1; m <= 12; m++) totalsByMonth[m] = { real: 0, estimated: 0, budget: 0 };
   var grand = { real: 0, estimated: 0, budget: 0 };
+  var grandBudgeted = { real: 0, estimated: 0 };
+  var unbudgetedUnitCount = 0;
 
   rows.forEach(function(b) {
     grand.real += b.totalExecutedReal || 0;
@@ -933,7 +1019,13 @@ function applyClientFilters(raw) {
       totalsByMonth[m].estimated += (b.monthlyExecutedEstimated[idx] || 0);
       if (b.hasBudget) totalsByMonth[m].budget += (b.monthlyBudget[idx] || 0);
     }
-    if (b.hasBudget) grand.budget += b.totalBudgetAnnual || 0;
+    if (b.hasBudget) {
+      grand.budget += b.totalBudgetAnnual || 0;
+      grandBudgeted.real += b.totalExecutedReal || 0;
+      grandBudgeted.estimated += b.totalExecutedEstimated || 0;
+    } else {
+      unbudgetedUnitCount++;
+    }
     // budgetInRange = totalBudgetAnnual cuando rango es 1-12 (vista anual)
     b.budgetInRange = b.hasBudget ? b.totalBudgetAnnual : 0;
     b.deltaInRange = b.hasBudget ? (b.budgetInRange - (b.totalExecutedReal + b.totalExecutedEstimated)) : null;
@@ -952,6 +1044,7 @@ function applyClientFilters(raw) {
     return (b.totalExecutedReal + b.totalExecutedEstimated) - (a.totalExecutedReal + a.totalExecutedEstimated);
   });
 
+  var executedBudgetedTotal = grandBudgeted.real + grandBudgeted.estimated;
   return {
     rows: rows,
     totals: {
@@ -959,9 +1052,27 @@ function applyClientFilters(raw) {
       executedEstimated: grand.estimated,
       executedTotal: grand.real + grand.estimated,
       budget: grand.budget,
-      delta: grand.budget - (grand.real + grand.estimated),
-      percentUsed: grand.budget > 0 ? Math.round(((grand.real + grand.estimated) / grand.budget) * 1000) / 10 : null,
+      // delta y percentUsed ahora reflejan SOLO unidades con presupuesto —
+      // el ejecutado de unidades sin ppto se reporta por separado en `unbudgeted`.
+      delta: grand.budget - executedBudgetedTotal,
+      percentUsed: grand.budget > 0 ? Math.round((executedBudgetedTotal / grand.budget) * 1000) / 10 : null,
       byMonth: totalsByMonth
+    },
+    // Cifras "limpias" para el donut: solo lo que tiene presupuesto.
+    totalsBudgeted: {
+      executedReal: grandBudgeted.real,
+      executedEstimated: grandBudgeted.estimated,
+      executedTotal: executedBudgetedTotal,
+      budget: grand.budget,
+      delta: grand.budget - executedBudgetedTotal,
+      percentUsed: grand.budget > 0 ? Math.round((executedBudgetedTotal / grand.budget) * 1000) / 10 : null
+    },
+    // Información de las unidades sin presupuesto (para KPI separado).
+    unbudgeted: {
+      executedReal: grand.real - grandBudgeted.real,
+      executedEstimated: grand.estimated - grandBudgeted.estimated,
+      executedTotal: (grand.real - grandBudgeted.real) + (grand.estimated - grandBudgeted.estimated),
+      unitCount: unbudgetedUnitCount
     },
     meta: raw.meta
   };
@@ -993,23 +1104,36 @@ function populateCompanyUnitDropdowns() {
 // RENDER VISTA ANUAL
 // =====================================================================
 function renderAnnualView(data) {
-  renderKpis('annualKpis', data.totals, 'Acumulado anual');
+  renderKpis('annualKpis', data, 'Acumulado anual');
   renderAnnualDonutPct(data);
   renderAnnualDonutDist(data);
   renderMonthlyBarsChart(data);
   renderUnitsTable('annualUnitsBody', 'annualUnitCount', 'annualEmptyState', data.rows, 'annual');
 }
 
-function renderKpis(containerId, totals, contextLabel) {
+/**
+ * Renderiza los KPIs principales.
+ *
+ * IMPORTANTE: "Ejecutado real" y "Ejecutado estimado" muestran SOLO el
+ * ejecutado de unidades CON presupuesto. Esto preserva la consistencia
+ * matemática con el % usado y el donut.
+ *
+ * Si hay unidades sin presupuesto que también ejecutaron, se agrega un
+ * KPI adicional "Sin presupuesto" en color gris/ámbar — para que sea
+ * visible que existe ese gasto pero sin distorsionar el comparativo.
+ */
+function renderKpis(containerId, data, contextLabel) {
   var container = document.getElementById(containerId);
   container.innerHTML = '';
-  var execTotal = (totals.executedReal || 0) + (totals.executedEstimated || 0);
-  var deltaOver = (totals.budget > 0 && execTotal > totals.budget);
+  var tb = data.totalsBudgeted || data.totals; // fallback por si computeMonthly aún no actualizó
+  var unb = data.unbudgeted || { executedTotal: 0, unitCount: 0 };
+  var deltaOver = (tb.budget > 0 && tb.executedTotal > tb.budget);
+
   var kpis = [
-    { cls: 'real', label: 'Ejecutado real', value: fmtMoney(totals.executedReal), extra: 'Facturas registradas' },
-    { cls: 'estimated', label: 'Ejecutado estimado', value: fmtMoney(totals.executedEstimated), extra: 'RESERVADO sin factura aún' },
-    { cls: 'budget', label: 'Presupuesto', value: fmtMoney(totals.budget), extra: contextLabel },
-    { cls: 'delta' + (deltaOver ? ' over' : ''), label: deltaOver ? 'Sobre-ejecución' : 'Disponible', value: fmtMoney(Math.abs(totals.delta || 0)), extra: fmtPct(totals.percentUsed) + ' usado' }
+    { cls: 'real', label: 'Ejecutado real', value: fmtMoney(tb.executedReal), extra: 'Facturas en unidades con presupuesto' },
+    { cls: 'estimated', label: 'Ejecutado estimado', value: fmtMoney(tb.executedEstimated), extra: 'RESERVADO sin factura aún' },
+    { cls: 'budget', label: 'Presupuesto', value: fmtMoney(tb.budget), extra: contextLabel },
+    { cls: 'delta' + (deltaOver ? ' over' : ''), label: deltaOver ? 'Sobre-ejecución' : 'Disponible', value: fmtMoney(Math.abs(tb.delta || 0)), extra: fmtPct(tb.percentUsed) + ' usado' }
   ];
   kpis.forEach(function(k) {
     var div = document.createElement('div');
@@ -1020,12 +1144,30 @@ function renderKpis(containerId, totals, contextLabel) {
     div.appendChild(lbl); div.appendChild(val); div.appendChild(ext);
     container.appendChild(div);
   });
+
+  // KPI EXTRA: gasto en unidades sin presupuesto (si lo hay).
+  // No entra al cálculo de % ni delta — solo informa.
+  if (unb.executedTotal > 0) {
+    var div = document.createElement('div');
+    div.className = 'kpi estimated';
+    div.style.borderLeftColor = '#9ca3af';
+    var lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = 'Sin presupuesto';
+    var val = document.createElement('div'); val.className = 'value'; val.textContent = fmtMoney(unb.executedTotal);
+    val.style.color = '#6b7280';
+    var ext = document.createElement('div'); ext.className = 'extra';
+    ext.textContent = unb.unitCount + ' unidad(es) sin ppto asignado. Pedir a compras que lo defina.';
+    div.appendChild(lbl); div.appendChild(val); div.appendChild(ext);
+    container.appendChild(div);
+  }
 }
 
 function renderAnnualDonutPct(data) {
   var canvas = document.getElementById('annualDonutPct');
   if (!canvas || typeof Chart === 'undefined') return;
-  var t = data.totals;
+  // CORRECTO: usar solo unidades con presupuesto (totalsBudgeted) para que
+  // el % refleje la realidad del comparativo. Sin esto, el ejecutado de
+  // unidades sin ppto distorsiona el cociente.
+  var t = data.totalsBudgeted || data.totals;
   var real = t.executedReal || 0;
   var est = t.executedEstimated || 0;
   var budget = t.budget || 0;
@@ -1185,7 +1327,7 @@ function renderMonthlyBarsChart(data) {
 function renderMonthlyView(data, month) {
   var monthData = computeMonthlyData(data, month);
   var label = MONTHS_FULL[month - 1] + ' ' + (fullYearData ? fullYearData.meta.year : '');
-  renderKpis('monthlyKpis', monthData.totals, label);
+  renderKpis('monthlyKpis', monthData, label);
   renderMonthlyDonut(monthData);
   renderUnitsTable('monthlyUnitsBody', 'monthlyUnitCount', 'monthlyEmptyState', monthData.rows, 'monthly');
 }
@@ -1197,6 +1339,8 @@ function renderMonthlyView(data, month) {
 function computeMonthlyData(filtered, month) {
   var rows = [];
   var grand = { real: 0, estimated: 0, budget: 0 };
+  var grandBudgeted = { real: 0, estimated: 0 };
+  var unbudgetedUnitCount = 0;
   var idx = month - 1;
 
   (filtered.rows || []).forEach(function(b) {
@@ -1224,6 +1368,12 @@ function computeMonthlyData(filtered, month) {
     grand.real += realM;
     grand.estimated += estM;
     grand.budget += budgetM;
+    if (b.hasBudget) {
+      grandBudgeted.real += realM;
+      grandBudgeted.estimated += estM;
+    } else if (execTotal > 0) {
+      unbudgetedUnitCount++;
+    }
   });
 
   rows.sort(function(a, b) {
@@ -1236,6 +1386,7 @@ function computeMonthlyData(filtered, month) {
     return (b.totalExecutedReal + b.totalExecutedEstimated) - (a.totalExecutedReal + a.totalExecutedEstimated);
   });
 
+  var execBudgetedTotal = grandBudgeted.real + grandBudgeted.estimated;
   return {
     rows: rows,
     totals: {
@@ -1243,8 +1394,22 @@ function computeMonthlyData(filtered, month) {
       executedEstimated: grand.estimated,
       executedTotal: grand.real + grand.estimated,
       budget: grand.budget,
-      delta: grand.budget - (grand.real + grand.estimated),
-      percentUsed: grand.budget > 0 ? Math.round(((grand.real + grand.estimated) / grand.budget) * 1000) / 10 : null
+      delta: grand.budget - execBudgetedTotal,
+      percentUsed: grand.budget > 0 ? Math.round((execBudgetedTotal / grand.budget) * 1000) / 10 : null
+    },
+    totalsBudgeted: {
+      executedReal: grandBudgeted.real,
+      executedEstimated: grandBudgeted.estimated,
+      executedTotal: execBudgetedTotal,
+      budget: grand.budget,
+      delta: grand.budget - execBudgetedTotal,
+      percentUsed: grand.budget > 0 ? Math.round((execBudgetedTotal / grand.budget) * 1000) / 10 : null
+    },
+    unbudgeted: {
+      executedReal: grand.real - grandBudgeted.real,
+      executedEstimated: grand.estimated - grandBudgeted.estimated,
+      executedTotal: (grand.real - grandBudgeted.real) + (grand.estimated - grandBudgeted.estimated),
+      unitCount: unbudgetedUnitCount
     },
     month: month
   };
@@ -1253,7 +1418,9 @@ function computeMonthlyData(filtered, month) {
 function renderMonthlyDonut(monthData) {
   var canvas = document.getElementById('monthlyDonut');
   if (!canvas || typeof Chart === 'undefined') return;
-  var t = monthData.totals;
+  // Mismo razonamiento que renderAnnualDonutPct: usar totalsBudgeted
+  // para no contaminar el % con ejecutado de unidades sin presupuesto.
+  var t = monthData.totalsBudgeted || monthData.totals;
   var real = t.executedReal || 0;
   var est = t.executedEstimated || 0;
   var budget = t.budget || 0;
@@ -1548,20 +1715,20 @@ function exportCSV() {
 // imprime bien en algunos navegadores).
 // =====================================================================
 function exportPDF() {
-  if (!filteredData) {
-    window.print();
-    return;
-  }
-  // Convierte cada canvas activo a imagen base64 antes de imprimir para
-  // garantizar que no quede en negro en algunos navegadores. Restaura
-  // los canvases después del print dialog.
+  if (!filteredData) { window.print(); return; }
+  // ESTRATEGIA: insertamos una <img> con el chart renderizado al lado del
+  // canvas (no encima, no ocultando el canvas). CSS @media print muestra
+  // la img y oculta el canvas durante el print; en pantalla la img está
+  // display:none. Así NUNCA tocamos display:none del canvas en runtime,
+  // lo que evita el bug de "el contenedor se expande al perder al canvas"
+  // cuando el usuario cancela el diálogo de impresión.
   var chartCanvases = [
     { id: 'monthlyChart', chart: charts.monthlyBars },
     { id: 'annualDonutPct', chart: charts.annualDonutPct },
     { id: 'annualDonutDist', chart: charts.annualDonutDist },
     { id: 'monthlyDonut', chart: charts.monthlyDonut }
   ];
-  var swappedImages = [];
+  var inserted = [];
   chartCanvases.forEach(function(c) {
     if (!c.chart) return;
     var canvas = document.getElementById(c.id);
@@ -1571,25 +1738,48 @@ function exportPDF() {
       var dataUrl = c.chart.toBase64Image('image/png', 1.0);
       var img = document.createElement('img');
       img.src = dataUrl;
+      img.className = 'print-replacement';
+      // Absolute positioning para no afectar el layout en pantalla.
+      // En print, el canvas (con display:none) deja su espacio libre y la
+      // img static muestra el chart en su lugar.
+      img.style.position = 'absolute';
+      img.style.top = '0';
+      img.style.left = '0';
       img.style.width = '100%';
       img.style.height = '100%';
       img.style.objectFit = 'contain';
-      img.dataset.printSwap = c.id;
-      canvas.style.display = 'none';
+      if (window.getComputedStyle(wrap).position === 'static') {
+        wrap.style.position = 'relative';
+      }
       wrap.appendChild(img);
-      swappedImages.push({ canvas: canvas, img: img });
-    } catch (e) { /* si falla, dejamos el canvas */ }
+      canvas.classList.add('hide-on-print');
+      inserted.push({ canvas: canvas, img: img });
+    } catch (e) { /* si falla, ignoramos esa imagen y dejamos el canvas */ }
   });
 
-  setTimeout(function() {
-    window.print();
-    setTimeout(function() {
-      swappedImages.forEach(function(s) {
-        s.img.remove();
-        s.canvas.style.display = '';
-      });
-    }, 500);
-  }, 200);
+  // Cleanup vía afterprint event (más confiable que setTimeout).
+  // Fallback de 30s por si afterprint no dispara (algunos browsers viejos).
+  var done = false;
+  function cleanup() {
+    if (done) return;
+    done = true;
+    inserted.forEach(function(s) {
+      try { s.img.remove(); } catch (e) {}
+      s.canvas.classList.remove('hide-on-print');
+    });
+    // Forzar resize de cada chart por si el contenedor cambió de tamaño
+    // durante el dialog de impresión.
+    Object.keys(charts).forEach(function(k) {
+      if (charts[k] && typeof charts[k].resize === 'function') {
+        try { charts[k].resize(); } catch (e) {}
+      }
+    });
+    window.removeEventListener('afterprint', cleanup);
+  }
+  window.addEventListener('afterprint', cleanup);
+  setTimeout(cleanup, 30000);
+
+  window.print();
 }
 
 // =====================================================================
