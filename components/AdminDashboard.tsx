@@ -63,10 +63,29 @@ const isRequestPriority = (req: TravelRequest, integrantes: Integrant[]): boolea
 
 const PAGE_SIZE = 50;
 
+// Normaliza para búsqueda: lowercase + sin tildes + collapsa espacios.
+// Se aplica TANTO al término del usuario como al texto indexado, así
+// "MEDELLÍN" matchea "medellin" y viceversa. El espacio no-breaking
+// (\xa0, común en datos pegados de Excel) se trata como espacio normal.
+const _normalizeForSearch = (s: string): string =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ /g, ' ')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrantes, onRefresh, isLoading, onViewRequest, isSuperAdmin }) => {
   const [filter, setFilter] = useState<string>('ALL');
   const [showOnlyPriority, setShowOnlyPriority] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  // Toggles de visibilidad: por defecto se excluyen ANULADO y DENEGADO porque
+  // no requieren acción y ensucian el listado. Si el usuario explícitamente
+  // filtra por uno de esos estados con el combo de pills, hacemos override.
+  const [includeAnulada, setIncludeAnulada] = useState<boolean>(false);
+  const [includeDenegada, setIncludeDenegada] = useState<boolean>(false);
 
   // Pre-compute priority flag por requestId para evitar O(N*M) en cada render
   const priorityMap = useMemo(() => {
@@ -80,6 +99,37 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
     priorityMap.forEach(v => { if (v) count++; });
     return count;
   }, [priorityMap]);
+
+  // Indexa cada solicitud en una única cadena buscable normalizada. Se
+  // recomputa solo cuando cambian las requests (no en cada keystroke), así
+  // tipear es prácticamente gratis aunque haya 1000+ filas. Los campos
+  // están todos en la versión lite — no hay roundtrip al backend.
+  const searchableMap = useMemo(() => {
+    const m = new Map<string, string>();
+    requests.forEach(r => {
+      const parts: string[] = [
+        r.requestId,
+        // Soportar buscar por número solo: "143" → matchea "SOL-000143"
+        String(r.requestId || '').replace(/^SOL-?0*/i, ''),
+        r.requesterEmail,
+        r.origin,
+        r.destination,
+        r.company,
+        r.businessUnit,
+        r.site,
+        r.costCenter,
+        r.costCenterName,
+        r.workOrder,
+        r.approverName,
+        r.approverEmail,
+        r.hotelName,
+        // pasajeros: nombre + cédula + correo (todos buscables)
+        ...(r.passengers || []).flatMap(p => [p.name, p.idNumber, p.email]),
+      ].filter(Boolean) as string[];
+      m.set(r.requestId, _normalizeForSearch(parts.join(' ')));
+    });
+    return m;
+  }, [requests]);
   const [selectedRequestForOptions, setSelectedRequestForOptions] = useState<TravelRequest | null>(null);
   const [selectedRequestForSupports, setSelectedRequestForSupports] = useState<TravelRequest | null>(null);
   const [selectedRequestForReservation, setSelectedRequestForReservation] = useState<TravelRequest | null>(null);
@@ -110,11 +160,30 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
 
   // Orden descendente por timestamp (más recientes primero) para que la página 1
   // siempre muestre lo reciente sin importar el orden del backend.
+  // Búsqueda: AND multi-palabra contra el índice precomputado. Toggles de
+  // anulada/denegada hacen override automático si el filter de status
+  // apunta explícitamente a ese estado (sino quedaría el listado vacío).
   const filteredRequests = useMemo(() => {
+    const normalizedTerm = _normalizeForSearch(searchTerm);
+    const terms = normalizedTerm ? normalizedTerm.split(/\s+/).filter(Boolean) : [];
+    const allowAnulada = includeAnulada || filter === 'ANULADO';
+    const allowDenegada = includeDenegada || filter === 'DENEGADO';
+
     const out = requests.filter(r => {
+      // Exclusiones por defecto (overrideables)
+      if (!allowAnulada && r.status === 'ANULADO') return false;
+      if (!allowDenegada && r.status === 'DENEGADO') return false;
+      // Filtros existentes
       if (showOnlyPriority && !priorityMap.get(r.requestId)) return false;
-      if (filter === 'ALL') return true;
-      return r.status === filter;
+      if (filter !== 'ALL' && r.status !== filter) return false;
+      // Búsqueda (AND): cada término debe estar contenido en el índice
+      if (terms.length > 0) {
+        const hay = searchableMap.get(r.requestId) || '';
+        for (const t of terms) {
+          if (!hay.includes(t)) return false;
+        }
+      }
+      return true;
     });
     out.sort((a, b) => {
       const ta = new Date(a.timestamp || 0).getTime() || 0;
@@ -122,7 +191,12 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
       return tb - ta;
     });
     return out;
-  }, [requests, priorityMap, showOnlyPriority, filter]);
+  }, [requests, priorityMap, showOnlyPriority, filter, searchTerm, includeAnulada, includeDenegada, searchableMap]);
+
+  // Si los filtros reducen el resultado y la página actual queda fuera de
+  // rango, volver a la 1. (El effect de totalPages ya lo hace, pero también
+  // queremos reset cuando el usuario cambia la query — feedback inmediato.)
+  React.useEffect(() => { setPage(1); }, [searchTerm, includeAnulada, includeDenegada, filter, showOnlyPriority]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRequests.length / PAGE_SIZE));
   // Si el filtro reduce el total y la página actual queda fuera de rango, resetear.
@@ -329,6 +403,62 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
           <span className="text-xs text-gray-500 italic">Combinable con los filtros de estado abajo</span>
         )}
       </div>
+
+      {/* Barra de búsqueda + toggles de visibilidad por estado terminal */}
+      <div className="bg-white border border-gray-200 rounded-md p-3 flex flex-col md:flex-row gap-3 md:items-center">
+        <div className="flex-1 relative">
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar por ID (143), solicitante, origen, destino, pasajero, cédula, empresa, unidad..."
+            className="w-full pl-9 pr-9 py-2 border border-gray-300 rounded text-sm text-gray-900 placeholder-gray-400 focus:ring-2 focus:ring-brand-red focus:border-brand-red"
+            aria-label="Buscar solicitudes"
+          />
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">🔍</span>
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-lg leading-none px-1"
+              title="Limpiar búsqueda"
+              aria-label="Limpiar búsqueda"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-3 flex-wrap text-xs">
+          <label className="flex items-center gap-1.5 cursor-pointer select-none text-gray-700">
+            <input
+              type="checkbox"
+              checked={includeAnulada}
+              onChange={(e) => setIncludeAnulada(e.target.checked)}
+              className="w-4 h-4 accent-brand-red"
+            />
+            <span>Incluir anuladas</span>
+          </label>
+          <label className="flex items-center gap-1.5 cursor-pointer select-none text-gray-700">
+            <input
+              type="checkbox"
+              checked={includeDenegada}
+              onChange={(e) => setIncludeDenegada(e.target.checked)}
+              className="w-4 h-4 accent-brand-red"
+            />
+            <span>Incluir denegadas</span>
+          </label>
+          <span className="text-gray-500 whitespace-nowrap" title="Coincidencias visibles tras aplicar filtros y búsqueda">
+            <strong className="text-gray-900">{filteredRequests.length}</strong> de {requests.length}
+          </span>
+        </div>
+      </div>
+
+      {/* Aviso si el filter de status apunta a un estado oculto por toggles
+          → se mostró el override en filteredRequests, esto solo da contexto. */}
+      {((filter === 'ANULADO' && !includeAnulada) || (filter === 'DENEGADO' && !includeDenegada)) && (
+        <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5">
+          ℹ️ Estás filtrando por <strong>{filter}</strong>. Se muestran aunque el toggle de inclusión esté apagado.
+        </div>
+      )}
 
       {/* Filters — PENDIENTE_CONFIRMACION_COSTO removido del filtro visual */}
       {/* (el estado sigue existiendo en el flujo, solo no aparece como pill) */}
@@ -566,7 +696,9 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
                       {filteredRequests.length === 0 && (
                         <tr>
                           <td colSpan={6} className="px-3 py-8 text-center text-sm text-gray-500">
-                            No se encontraron solicitudes.
+                            {searchTerm.trim()
+                              ? <>No hay solicitudes que coincidan con <strong>"{searchTerm.trim()}"</strong>{(filter !== 'ALL' || showOnlyPriority || !includeAnulada || !includeDenegada) ? ' con los filtros actuales' : ''}.</>
+                              : 'No se encontraron solicitudes.'}
                           </td>
                         </tr>
                       )}
