@@ -10186,3 +10186,698 @@ function toggleUsuariosMode() {
     flagValue: newValue
   };
 }
+
+// =====================================================================
+// ===== INICIO DASHBOARD COSTOS =======================================
+// =====================================================================
+// Bloque autocontenido para el Dashboard de Costos por Unidad de Negocio.
+// Diseño:
+//   - No modifica funciones existentes. Solo lectura del sheet principal.
+//   - Helpers prefijados con `_cs` (Costs Stat) para evitar colisión.
+//   - Endpoints públicos prefijados con `costs` (cuando se expongan en
+//     dispatch en la Fase 2 del plan).
+//   - Config persistida en Script Property `COSTS_DASHBOARD_CONFIG` con
+//     default hard-coded como fallback si está vacía o malformada.
+//   - Acceso: cualquier sesión válida puede leer; solo SUPERADMIN puede
+//     guardar config. Auth se valida fuera (en dispatch) ANTES de llegar
+//     a estas funciones.
+//
+// Fuentes de datos:
+//   - Hoja `Nueva Base Solicitudes`: cols AK..AS = facturas, AT = ppto
+//     ya cruzado en la fila.
+//   - Hoja `PPTOS UNIDADES`: presupuesto por unidad/año, 12 columnas
+//     mensuales (D..O) + total (P) + año vigencia (Q).
+//
+// IMPORTANTE: este bloque NO debe ser tocado por el flujo principal.
+// Si algún cálculo cambia, se ajusta SOLO acá.
+// =====================================================================
+
+var SHEET_NAME_PPTOS = 'PPTOS UNIDADES';
+var COSTS_DASHBOARD_CONFIG_KEY = 'COSTS_DASHBOARD_CONFIG';
+
+/**
+ * Config por defecto. Refleja la estructura actual del sheet (AK..AS).
+ * Si SuperAdmin cambia headers vía setCostsDashboardConfig, se sobrescribe
+ * en la Script Property. Si el JSON guardado está corrupto o le faltan
+ * campos, este default actúa como fallback (defensa en profundidad).
+ */
+function _csDefaultConfig_() {
+  return {
+    version: 1,
+    facturas: [
+      {
+        name: 'Factura 1',
+        totalHeader: 'TOTAL FACTURA',
+        fallback: {
+          type: 'sum',
+          headers: ['VALOR PAGADO A AEROLINEA Y/O HOTEL', 'VALOR PAGADO A AVIATUR Y/O IVA']
+        }
+      },
+      {
+        name: 'Factura 2',
+        totalHeader: 'TOTAL FACTURA 2',
+        fallback: {
+          type: 'valuePlusIva',
+          valueHeader: 'VALOR FACTURA 2',
+          ivaHeader: 'IVA FACTURA 2'
+        }
+      },
+      {
+        name: 'Factura 3',
+        totalHeader: 'TOTAL FACTURA 3',
+        fallback: {
+          type: 'valuePlusIva',
+          valueHeader: 'VALOR FACTURA 3',
+          ivaHeader: 'IVA FACTURA 3'
+        }
+      }
+    ],
+    estimateFallback: {
+      ticketsHeader: 'COSTO_FINAL_TIQUETES',
+      hotelHeader: 'COSTO_FINAL_HOTEL'
+    },
+    purchaseDateHeader: 'FECHA DE COMPRA DE TIQUETE',
+    unitHeader: 'UNIDAD DE NEGOCIO',
+    companyHeader: 'EMPRESA',
+    statusHeader: 'STATUS',
+    requesterHeader: 'CORREO ENCUESTADO',
+    requestIdHeader: 'ID RESPUESTA',
+    countableStatuses: ['RESERVADO', 'PROCESADO'],
+    estimatedStatuses: ['RESERVADO']  // status donde aplica el proxy estimado si no hay facturas
+  };
+}
+
+/**
+ * Valida que el objeto config tenga la forma mínima esperada. Si falla,
+ * retorna false para que el caller use el default. Evita crashes en runtime.
+ */
+function _csIsConfigValid_(cfg) {
+  if (!cfg || typeof cfg !== 'object') return false;
+  if (!Array.isArray(cfg.facturas) || cfg.facturas.length === 0) return false;
+  for (var i = 0; i < cfg.facturas.length; i++) {
+    var f = cfg.facturas[i];
+    if (!f || !f.totalHeader || !f.fallback || !f.fallback.type) return false;
+    if (f.fallback.type === 'sum' && !Array.isArray(f.fallback.headers)) return false;
+    if (f.fallback.type === 'valuePlusIva' && !f.fallback.valueHeader) return false;
+  }
+  if (!cfg.purchaseDateHeader || !cfg.unitHeader || !cfg.statusHeader) return false;
+  if (!cfg.estimateFallback || !cfg.estimateFallback.ticketsHeader || !cfg.estimateFallback.hotelHeader) return false;
+  if (!Array.isArray(cfg.countableStatuses) || cfg.countableStatuses.length === 0) return false;
+  return true;
+}
+
+/**
+ * Lee la config desde Script Property. Si está vacía o corrupta, retorna
+ * el default. Siempre retorna un objeto válido — el caller puede confiar.
+ */
+function _csLoadConfig_() {
+  try {
+    var raw = PropertiesService.getScriptProperties().getProperty(COSTS_DASHBOARD_CONFIG_KEY);
+    if (!raw) return _csDefaultConfig_();
+    var parsed = JSON.parse(raw);
+    if (!_csIsConfigValid_(parsed)) {
+      console.warn('CostsDashboard: config en Script Property tiene forma inválida, usando default.');
+      return _csDefaultConfig_();
+    }
+    return parsed;
+  } catch (e) {
+    console.error('CostsDashboard: error parseando config, usando default. ' + e);
+    return _csDefaultConfig_();
+  }
+}
+
+/**
+ * Normaliza nombres de unidad/empresa para matching robusto entre el
+ * sheet principal y PPTOS UNIDADES. Resuelve: tildes, espacio no-breaking
+ * (\xa0, común en datos pegados de Excel), casing, espacios múltiples.
+ */
+function _csNormalize_(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/ /g, ' ')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Convierte un valor de celda (string/number/Date/null) a número seguro.
+ * "" / null / undefined / NaN → 0. Conserva 0 explícito como 0.
+ */
+function _csToNumber_(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return isFinite(v) ? v : 0;
+  if (typeof v === 'string') {
+    // Tolerar formatos con separadores latinos: "1.200.000,50" → 1200000.5
+    var s = v.trim();
+    if (!s) return 0;
+    // Quitar prefijo de moneda y espacios
+    s = s.replace(/[$\s]/g, '');
+    if (s.indexOf(',') > -1 && s.indexOf('.') > -1) {
+      // Tiene ambos → formato latino: puntos = miles, coma = decimal
+      s = s.split('.').join('').replace(',', '.');
+    } else if (s.indexOf(',') > -1) {
+      // Solo coma → decimal latino
+      s = s.replace(',', '.');
+    } else if ((s.match(/\./g) || []).length > 1) {
+      // Múltiples puntos sin coma → separadores de miles (ej: "1.200.000")
+      s = s.split('.').join('');
+    }
+    // Un solo punto se deja como decimal estándar (ej: "1500.50")
+    var n = parseFloat(s);
+    return isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+/**
+ * Lee una columna por header desde un map { headerName → colIndex0 }.
+ * Si el header no existe en la hoja, retorna undefined (el caller decide
+ * qué hacer — la mayoría tratan undefined como 0).
+ */
+function _csReadCell_(row, headerMap, headerName) {
+  if (!headerName) return undefined;
+  var idx = headerMap[headerName];
+  if (idx === undefined || idx < 0 || idx >= row.length) return undefined;
+  return row[idx];
+}
+
+/**
+ * Calcula ejecutado REAL (suma de facturas según config) y ESTIMADO
+ * (proxy desde costos finales si el status lo permite y no hay facturas).
+ * Retorna: { real, estimated, isEstimated, breakdown }
+ *
+ * Reglas de fallback (acordadas con David):
+ *   - Factura N: si totalHeader > 0 → usar total. Sino → sumar fallback.
+ *     - fallback.type === 'sum': suma de todos los headers listados (cualquier
+ *       vacío cuenta como 0). Para factura 1: AK + AL.
+ *     - fallback.type === 'valuePlusIva': valor + (IVA || 0). Si valor vacío,
+ *       esa factura aporta 0. Para facturas 2 y 3.
+ *   - Estimado: si la fila está en `estimatedStatuses` y `real === 0`,
+ *     usar tickets + hotel como proxy. Marca `isEstimated = true`.
+ */
+function _csComputeRowExecuted_(row, headerMap, config) {
+  var real = 0;
+  var breakdown = {};
+
+  for (var i = 0; i < config.facturas.length; i++) {
+    var f = config.facturas[i];
+    var totalVal = _csToNumber_(_csReadCell_(row, headerMap, f.totalHeader));
+    var subtotal = 0;
+    if (totalVal > 0) {
+      subtotal = totalVal;
+    } else if (f.fallback) {
+      if (f.fallback.type === 'sum') {
+        for (var j = 0; j < f.fallback.headers.length; j++) {
+          subtotal += _csToNumber_(_csReadCell_(row, headerMap, f.fallback.headers[j]));
+        }
+      } else if (f.fallback.type === 'valuePlusIva') {
+        var valueNum = _csToNumber_(_csReadCell_(row, headerMap, f.fallback.valueHeader));
+        if (valueNum > 0) {
+          // IVA es opcional — si no hay header o está vacío, suma 0
+          var ivaNum = _csToNumber_(_csReadCell_(row, headerMap, f.fallback.ivaHeader));
+          subtotal = valueNum + ivaNum;
+        }
+        // si valueNum es 0, esa factura aporta 0 (David: "si no hay un valor,
+        // pues ahí sí ya definitivamente no se puede tomar")
+      }
+    }
+    breakdown[f.name || f.totalHeader] = subtotal;
+    real += subtotal;
+  }
+
+  // Estimado: solo si no hay nada facturado y la fila está en status que aplica
+  var status = String(_csReadCell_(row, headerMap, config.statusHeader) || '').trim().toUpperCase();
+  var allowEstimate = config.estimatedStatuses && config.estimatedStatuses.indexOf(status) !== -1;
+  var estimated = 0;
+  var isEstimated = false;
+  if (allowEstimate && real === 0) {
+    var tickets = _csToNumber_(_csReadCell_(row, headerMap, config.estimateFallback.ticketsHeader));
+    var hotel = _csToNumber_(_csReadCell_(row, headerMap, config.estimateFallback.hotelHeader));
+    if (tickets + hotel > 0) {
+      estimated = tickets + hotel;
+      isEstimated = true;
+      breakdown._estimadoFromCotizado = estimated;
+    }
+  }
+
+  return { real: real, estimated: estimated, isEstimated: isEstimated, breakdown: breakdown };
+}
+
+/**
+ * Lee hoja PPTOS UNIDADES y retorna un Map indexado por clave
+ * normalizada (`${empresaNorm}|${unidadNorm}|${year}`) y también una
+ * versión solo por unidad+año para casos donde la empresa no está
+ * registrada en PPTOS pero sí en el sheet.
+ *
+ * Estructura del row de PPTOS:
+ *   A: ID interno (no usar)
+ *   B: Empresa
+ *   C: Unidad de Negocio
+ *   D..O: presupuesto mensual mes 1..12
+ *   P: total anual
+ *   Q: año vigencia
+ */
+function _csLoadPptos_(filterYear) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_PPTOS);
+  if (!sheet) {
+    console.warn('CostsDashboard: hoja "' + SHEET_NAME_PPTOS + '" no encontrada. Todos los presupuestos serán 0.');
+    return { byEmpresaUnit: {}, byUnit: {} };
+  }
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { byEmpresaUnit: {}, byUnit: {} };
+
+  var data = sheet.getRange(2, 1, lastRow - 1, 17).getValues();
+  var byEmpresaUnit = {};
+  var byUnit = {};
+
+  for (var r = 0; r < data.length; r++) {
+    var row = data[r];
+    var empresaRaw = row[1];
+    var unidadRaw = row[2];
+    var yearRaw = row[16];
+
+    if (!unidadRaw) continue;
+    var year = (typeof yearRaw === 'number') ? Math.round(yearRaw) : parseInt(String(yearRaw || '').trim(), 10);
+    if (!year) continue;
+    if (filterYear && year !== filterYear) continue;
+
+    var monthly = [];
+    for (var m = 0; m < 12; m++) {
+      monthly.push(_csToNumber_(row[3 + m]));
+    }
+    var totalAnual = _csToNumber_(row[15]);
+    if (!totalAnual) {
+      // Si no hay total explícito en P, lo calculamos
+      totalAnual = monthly.reduce(function(a, b) { return a + b; }, 0);
+    }
+
+    var unidadNorm = _csNormalize_(unidadRaw);
+    var empresaNorm = _csNormalize_(empresaRaw || '');
+    var entry = {
+      empresa: empresaRaw || '',
+      unidad: unidadRaw,
+      year: year,
+      monthly: monthly,
+      totalAnual: totalAnual
+    };
+    byUnit[unidadNorm + '|' + year] = entry;
+    if (empresaNorm) {
+      byEmpresaUnit[empresaNorm + '|' + unidadNorm + '|' + year] = entry;
+    }
+  }
+  return { byEmpresaUnit: byEmpresaUnit, byUnit: byUnit };
+}
+
+/**
+ * Resuelve el mes contable (1..12) y el año desde una celda de fecha.
+ * Acepta Date object o string ISO. Si no parsea → null.
+ */
+function _csResolveMonthYear_(v) {
+  if (!v) return null;
+  var d = null;
+  if (v instanceof Date) d = v;
+  else {
+    var s = String(v).trim();
+    if (!s) return null;
+    var parsed = new Date(s);
+    if (!isNaN(parsed.getTime())) d = parsed;
+  }
+  if (!d) return null;
+  // Usar timezone Bogotá para evitar off-by-one en límite de mes
+  var month = parseInt(Utilities.formatDate(d, 'America/Bogota', 'M'), 10);
+  var year = parseInt(Utilities.formatDate(d, 'America/Bogota', 'yyyy'), 10);
+  if (!month || !year) return null;
+  return { month: month, year: year };
+}
+
+/**
+ * AGREGADOR PRINCIPAL. Lee sheet completo 1 vez, cruza con PPTOS, retorna
+ * estructura agregada por unidad. Es la función pesada — cachear su
+ * resultado en el caller para reusar entre filtros.
+ *
+ * filters = {
+ *   year: number (default: año actual en Bogotá),
+ *   fromMonth: number 1..12 (default: 1),
+ *   toMonth: number 1..12 (default: 12),
+ *   businessUnits: string[] (opcional, filtra unidades),
+ *   companies: string[] (opcional, filtra empresas),
+ *   includeEstimated: boolean (default: true),
+ *   includeNoPresupuesto: boolean (default: true)
+ * }
+ */
+function _csBuildData_(filters) {
+  filters = filters || {};
+  var config = _csLoadConfig_();
+  var now = new Date();
+  var currentYear = parseInt(Utilities.formatDate(now, 'America/Bogota', 'yyyy'), 10);
+  var year = parseInt(filters.year || currentYear, 10);
+  var fromMonth = Math.max(1, Math.min(12, parseInt(filters.fromMonth || 1, 10)));
+  var toMonth = Math.max(fromMonth, Math.min(12, parseInt(filters.toMonth || 12, 10)));
+  var includeEstimated = filters.includeEstimated !== false;
+  var includeNoPresupuesto = filters.includeNoPresupuesto !== false;
+  var businessUnitsFilter = Array.isArray(filters.businessUnits)
+    ? filters.businessUnits.map(_csNormalize_).filter(Boolean)
+    : [];
+  var companiesFilter = Array.isArray(filters.companies)
+    ? filters.companies.map(_csNormalize_).filter(Boolean)
+    : [];
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error('Hoja "' + SHEET_NAME_REQUESTS + '" no encontrada.');
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2) return _csEmptyResult_(year, fromMonth, toMonth, config);
+
+  // Leer headers y construir map { name → colIndex0 }
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headerMap = {};
+  for (var i = 0; i < headers.length; i++) {
+    var h = String(headers[i] || '').trim();
+    if (h) headerMap[h] = i;
+  }
+
+  // Cargar PPTOS del año filtrado (más liviano que cargar todos los años)
+  var pptos = _csLoadPptos_(year);
+
+  // Leer todas las filas en bulk (1 read del sheet)
+  var allRows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+
+  // Acumuladores por unidad
+  var unitsAgg = {}; // key = unidadNorm
+  var totalsByMonth = {};
+  for (var mi = fromMonth; mi <= toMonth; mi++) {
+    totalsByMonth[mi] = { real: 0, estimated: 0, budget: 0 };
+  }
+
+  var countableStatuses = (config.countableStatuses || ['RESERVADO', 'PROCESADO'])
+    .map(function(s) { return String(s).toUpperCase().trim(); });
+
+  // Catálogos de empresas/unidades observados (para filtros UI)
+  var observedCompanies = {};
+  var observedUnits = {};
+
+  var requestsCounted = 0;
+  var requestsExcluded = { byStatus: 0, byMonthYear: 0, byUnitFilter: 0, byCompanyFilter: 0, noPurchaseDate: 0 };
+
+  for (var r = 0; r < allRows.length; r++) {
+    var row = allRows[r];
+    if (!row[0]) continue; // fila sin ID, skip
+
+    var status = String(_csReadCell_(row, headerMap, config.statusHeader) || '').toUpperCase().trim();
+    if (countableStatuses.indexOf(status) === -1) { requestsExcluded.byStatus++; continue; }
+
+    var fechaCompra = _csReadCell_(row, headerMap, config.purchaseDateHeader);
+    var my = _csResolveMonthYear_(fechaCompra);
+    if (!my) { requestsExcluded.noPurchaseDate++; continue; }
+    if (my.year !== year) { requestsExcluded.byMonthYear++; continue; }
+    if (my.month < fromMonth || my.month > toMonth) { requestsExcluded.byMonthYear++; continue; }
+
+    var unidadRaw = _csReadCell_(row, headerMap, config.unitHeader);
+    var empresaRaw = _csReadCell_(row, headerMap, config.companyHeader);
+    var unidadNorm = _csNormalize_(unidadRaw);
+    var empresaNorm = _csNormalize_(empresaRaw);
+
+    if (!unidadNorm) continue; // sin unidad no podemos agregar
+
+    if (businessUnitsFilter.length && businessUnitsFilter.indexOf(unidadNorm) === -1) {
+      requestsExcluded.byUnitFilter++; continue;
+    }
+    if (companiesFilter.length && companiesFilter.indexOf(empresaNorm) === -1) {
+      requestsExcluded.byCompanyFilter++; continue;
+    }
+
+    var executed = _csComputeRowExecuted_(row, headerMap, config);
+    if (!includeEstimated && executed.isEstimated) continue;
+
+    // Catalogar empresa/unidad observada
+    if (empresaRaw) observedCompanies[empresaNorm] = String(empresaRaw).trim();
+    observedUnits[unidadNorm] = String(unidadRaw).trim();
+
+    // Inicializar bucket de la unidad si no existe
+    if (!unitsAgg[unidadNorm]) {
+      // Cruce con PPTOS: priorizar match empresa+unidad+año, sino solo unidad+año
+      var pptoEntry = null;
+      if (empresaNorm) {
+        pptoEntry = pptos.byEmpresaUnit[empresaNorm + '|' + unidadNorm + '|' + year] || null;
+      }
+      if (!pptoEntry) {
+        pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
+      }
+      unitsAgg[unidadNorm] = {
+        unit: String(unidadRaw).trim(),
+        unitNormalized: unidadNorm,
+        company: String(empresaRaw || '').trim(),
+        year: year,
+        hasBudget: !!pptoEntry,
+        monthlyBudget: pptoEntry ? pptoEntry.monthly.slice() : new Array(12).fill(0),
+        totalBudgetAnnual: pptoEntry ? pptoEntry.totalAnual : 0,
+        monthlyExecutedReal: new Array(12).fill(0),
+        monthlyExecutedEstimated: new Array(12).fill(0),
+        totalExecutedReal: 0,
+        totalExecutedEstimated: 0,
+        requestCount: 0,
+        requests: []
+      };
+    }
+
+    // Aplicar filtro includeNoPresupuesto
+    if (!includeNoPresupuesto && !unitsAgg[unidadNorm].hasBudget) {
+      // No agregar este request al bucket. Si no quedan requests para la unidad,
+      // el bucket queda vacío y se filtrará al final.
+      continue;
+    }
+
+    var bucket = unitsAgg[unidadNorm];
+    var monthIdx = my.month - 1;
+    if (executed.isEstimated) {
+      bucket.monthlyExecutedEstimated[monthIdx] += executed.estimated;
+      bucket.totalExecutedEstimated += executed.estimated;
+      totalsByMonth[my.month].estimated += executed.estimated;
+    } else {
+      bucket.monthlyExecutedReal[monthIdx] += executed.real;
+      bucket.totalExecutedReal += executed.real;
+      totalsByMonth[my.month].real += executed.real;
+    }
+    bucket.requestCount++;
+    bucket.requests.push({
+      requestId: String(_csReadCell_(row, headerMap, config.requestIdHeader || 'ID RESPUESTA') || ''),
+      requesterEmail: String(_csReadCell_(row, headerMap, config.requesterHeader || 'CORREO ENCUESTADO') || ''),
+      purchaseDate: fechaCompra instanceof Date ? fechaCompra.toISOString().split('T')[0] : String(fechaCompra),
+      month: my.month,
+      executed: executed.isEstimated ? executed.estimated : executed.real,
+      isEstimated: executed.isEstimated,
+      breakdown: executed.breakdown,
+      status: status
+    });
+    requestsCounted++;
+  }
+
+  // Calcular budget total del rango por unidad
+  var rowsOut = [];
+  Object.keys(unitsAgg).forEach(function(key) {
+    var b = unitsAgg[key];
+    var budgetInRange = 0;
+    for (var m = fromMonth; m <= toMonth; m++) {
+      budgetInRange += b.monthlyBudget[m - 1];
+      totalsByMonth[m].budget += b.monthlyBudget[m - 1];
+    }
+    b.budgetInRange = budgetInRange;
+    b.totalExecutedInRange = b.totalExecutedReal + b.totalExecutedEstimated;
+    b.deltaInRange = budgetInRange - b.totalExecutedInRange;
+    b.percentUsed = budgetInRange > 0 ? Math.round((b.totalExecutedInRange / budgetInRange) * 1000) / 10 : null;
+    rowsOut.push(b);
+  });
+
+  // Filtrar buckets que quedaron vacíos por filtro includeNoPresupuesto
+  rowsOut = rowsOut.filter(function(b) { return b.requestCount > 0; });
+
+  // Orden: con presupuesto primero (por % desc), luego sin presupuesto
+  rowsOut.sort(function(a, b) {
+    if (a.hasBudget !== b.hasBudget) return a.hasBudget ? -1 : 1;
+    if (a.hasBudget && b.hasBudget) {
+      var pa = a.percentUsed === null ? -1 : a.percentUsed;
+      var pb = b.percentUsed === null ? -1 : b.percentUsed;
+      return pb - pa;
+    }
+    return b.totalExecutedInRange - a.totalExecutedInRange;
+  });
+
+  // Totales agregados
+  var grand = { real: 0, estimated: 0, budget: 0 };
+  rowsOut.forEach(function(b) {
+    grand.real += b.totalExecutedReal;
+    grand.estimated += b.totalExecutedEstimated;
+    grand.budget += b.budgetInRange;
+  });
+
+  return {
+    rows: rowsOut,
+    totals: {
+      executedReal: grand.real,
+      executedEstimated: grand.estimated,
+      executedTotal: grand.real + grand.estimated,
+      budget: grand.budget,
+      delta: grand.budget - (grand.real + grand.estimated),
+      percentUsed: grand.budget > 0 ? Math.round(((grand.real + grand.estimated) / grand.budget) * 1000) / 10 : null,
+      byMonth: totalsByMonth
+    },
+    meta: {
+      year: year,
+      fromMonth: fromMonth,
+      toMonth: toMonth,
+      includeEstimated: includeEstimated,
+      includeNoPresupuesto: includeNoPresupuesto,
+      companies: Object.keys(observedCompanies).map(function(k) { return { norm: k, label: observedCompanies[k] }; }),
+      units: Object.keys(observedUnits).map(function(k) { return { norm: k, label: observedUnits[k] }; }),
+      requestsCounted: requestsCounted,
+      requestsExcluded: requestsExcluded,
+      computedAt: now.toISOString()
+    }
+  };
+}
+
+function _csEmptyResult_(year, fromMonth, toMonth, config) {
+  var months = {};
+  for (var m = fromMonth; m <= toMonth; m++) months[m] = { real: 0, estimated: 0, budget: 0 };
+  return {
+    rows: [],
+    totals: { executedReal: 0, executedEstimated: 0, executedTotal: 0, budget: 0, delta: 0, percentUsed: null, byMonth: months },
+    meta: { year: year, fromMonth: fromMonth, toMonth: toMonth, companies: [], units: [], requestsCounted: 0, computedAt: new Date().toISOString() }
+  };
+}
+
+/**
+ * Resuelve permisos del usuario actual para el dashboard de costos.
+ * Acceso de lectura: cualquier sesión válida (decisión de David — el
+ * dispatch ya validó token+email antes de llegar acá). Acceso de
+ * configuración: solo SUPERADMIN.
+ */
+function _csResolveAccess_(currentUserEmail) {
+  var email = String(currentUserEmail || '').toLowerCase().trim();
+  return {
+    canView: !!email, // si llegó email validado, ya pasó la sesión
+    canConfig: isSuperAdmin(email),
+    email: email
+  };
+}
+
+// ---------- ENDPOINTS PÚBLICOS (se exponen en dispatch en Fase 2) ----------
+
+/**
+ * Endpoint público: retorna datos agregados del dashboard.
+ * El caller (dispatch) ya validó sesión + email. Esta función vuelve
+ * a chequear acceso por defensa en profundidad.
+ */
+function getCostsDashboard(filters, currentUserEmail) {
+  var access = _csResolveAccess_(currentUserEmail);
+  if (!access.canView) throw new Error('Acceso no autorizado al dashboard de costos.');
+  var data = _csBuildData_(filters);
+  data.meta.access = { canView: access.canView, canConfig: access.canConfig };
+  return data;
+}
+
+/**
+ * Endpoint público (config): retorna la config actual. Cualquier sesión
+ * puede leerla; solo SUPERADMIN puede editar. La separación de get/set
+ * permite al frontend mostrar la sección "Configuración" en read-only
+ * para no-superadmins.
+ */
+function getCostsDashboardConfig(currentUserEmail) {
+  var access = _csResolveAccess_(currentUserEmail);
+  if (!access.canView) throw new Error('Acceso no autorizado.');
+  return {
+    config: _csLoadConfig_(),
+    canEdit: access.canConfig,
+    isDefault: !PropertiesService.getScriptProperties().getProperty(COSTS_DASHBOARD_CONFIG_KEY)
+  };
+}
+
+/**
+ * Endpoint público (config): guarda la config. Solo SUPERADMIN.
+ * Valida shape antes de persistir — si es inválida, lanza error y NO
+ * sobrescribe la config existente (defensa contra corrupción).
+ */
+function setCostsDashboardConfig(config, currentUserEmail) {
+  var access = _csResolveAccess_(currentUserEmail);
+  if (!access.canConfig) throw new Error('Solo SUPERADMIN puede modificar la configuración del dashboard.');
+  if (!_csIsConfigValid_(config)) {
+    throw new Error('La configuración no tiene la forma esperada (faltan campos obligatorios o están vacíos).');
+  }
+  PropertiesService.getScriptProperties().setProperty(COSTS_DASHBOARD_CONFIG_KEY, JSON.stringify(config));
+  return { success: true, savedAt: new Date().toISOString() };
+}
+
+/**
+ * Restaura la config al default. Solo SUPERADMIN. Útil si una edición
+ * dejó la config en estado raro y se quiere volver a empezar.
+ */
+function resetCostsDashboardConfig(currentUserEmail) {
+  var access = _csResolveAccess_(currentUserEmail);
+  if (!access.canConfig) throw new Error('Solo SUPERADMIN puede restaurar la configuración.');
+  PropertiesService.getScriptProperties().deleteProperty(COSTS_DASHBOARD_CONFIG_KEY);
+  return { success: true, restoredAt: new Date().toISOString() };
+}
+
+// ---------- HELPER DE DIAGNÓSTICO (ejecutable desde editor GAS) ----------
+
+/**
+ * Imprime un resumen del dashboard para un año dado, sin pasar por
+ * dispatch ni auth. Útil para QA manual antes de exponer el endpoint.
+ *
+ * Uso desde editor GAS:
+ *   diagnosticarCostosDashboard(2026)
+ *   diagnosticarCostosDashboard(2026, { fromMonth: 4, toMonth: 5 })
+ *
+ * Loguea: totales globales, unidades top, totales por mes, contadores
+ * de exclusión. NO modifica nada — solo lee.
+ */
+function diagnosticarCostosDashboard(year, opts) {
+  var filters = Object.assign({}, opts || {}, { year: year || 2026 });
+  Logger.log('=== DIAGNÓSTICO DASHBOARD COSTOS ===');
+  Logger.log('Año: ' + filters.year + ', Meses: ' + (filters.fromMonth || 1) + '..' + (filters.toMonth || 12));
+  var startMs = new Date().getTime();
+  var result = _csBuildData_(filters);
+  var elapsed = new Date().getTime() - startMs;
+  Logger.log('Tiempo de cómputo: ' + elapsed + ' ms');
+  Logger.log('');
+  Logger.log('TOTALES GLOBALES:');
+  Logger.log('  Ejecutado real:       $' + result.totals.executedReal.toLocaleString('es-CO'));
+  Logger.log('  Ejecutado estimado:   $' + result.totals.executedEstimated.toLocaleString('es-CO'));
+  Logger.log('  Presupuesto del rango:$' + result.totals.budget.toLocaleString('es-CO'));
+  Logger.log('  Δ vs presupuesto:     $' + result.totals.delta.toLocaleString('es-CO'));
+  Logger.log('  % usado:              ' + (result.totals.percentUsed === null ? 'N/A' : result.totals.percentUsed + '%'));
+  Logger.log('');
+  Logger.log('Solicitudes contadas: ' + result.meta.requestsCounted);
+  Logger.log('Solicitudes excluidas:');
+  Object.keys(result.meta.requestsExcluded).forEach(function(k) {
+    Logger.log('  - ' + k + ': ' + result.meta.requestsExcluded[k]);
+  });
+  Logger.log('');
+  Logger.log('UNIDADES (top 15 por % usado):');
+  result.rows.slice(0, 15).forEach(function(b) {
+    var marker = b.hasBudget ? '' : ' [SIN PPTO]';
+    Logger.log('  ' + b.unit + ' (' + (b.company || '?') + ')' + marker);
+    Logger.log('    Presupuesto rango: $' + b.budgetInRange.toLocaleString('es-CO'));
+    Logger.log('    Ejecutado real:    $' + b.totalExecutedReal.toLocaleString('es-CO'));
+    Logger.log('    Ejecutado est.:    $' + b.totalExecutedEstimated.toLocaleString('es-CO'));
+    Logger.log('    % usado:           ' + (b.percentUsed === null ? 'N/A' : b.percentUsed + '%'));
+    Logger.log('    Solicitudes:       ' + b.requestCount);
+  });
+  Logger.log('');
+  Logger.log('TOTALES POR MES:');
+  Object.keys(result.totals.byMonth).forEach(function(m) {
+    var t = result.totals.byMonth[m];
+    Logger.log('  Mes ' + m + ': real=$' + t.real.toLocaleString('es-CO') + '  est=$' + t.estimated.toLocaleString('es-CO') + '  ppto=$' + t.budget.toLocaleString('es-CO'));
+  });
+  return result;
+}
+
+// =====================================================================
+// ===== FIN DASHBOARD COSTOS ==========================================
+// =====================================================================
