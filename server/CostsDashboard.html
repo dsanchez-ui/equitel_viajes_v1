@@ -312,6 +312,76 @@
       font-size: 14px;
     }
 
+    /* ===== VISTAS (anual + mensual) ===== */
+    .view-section {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 3px solid #e5e7eb;
+    }
+    .view-section:first-of-type { border-top: none; padding-top: 0; }
+    .view-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .view-title select {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--brand);
+      background: white;
+      cursor: pointer;
+    }
+    .view-subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 400;
+      margin-left: 4px;
+    }
+
+    /* Dos donuts lado a lado, responsive */
+    .charts-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+    .chart-wrap-square {
+      position: relative;
+      width: 100%;
+      max-width: 320px;
+      aspect-ratio: 1 / 1;
+      margin: 0 auto;
+    }
+    .donut-center {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+    }
+    .donut-center .pct {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+    }
+    .donut-center .label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+    .donut-center.over .pct { color: var(--red); }
+
     /* ===== PRINT ===== */
     @media print {
       @page { size: A4 landscape; margin: 1cm; }
@@ -403,14 +473,6 @@
           <select id="f_year"></select>
         </div>
         <div class="field" style="margin: 0;">
-          <label>Mes desde</label>
-          <select id="f_fromMonth"></select>
-        </div>
-        <div class="field" style="margin: 0;">
-          <label>Mes hasta</label>
-          <select id="f_toMonth"></select>
-        </div>
-        <div class="field" style="margin: 0;">
           <label>Empresa</label>
           <select id="f_company"><option value="">— Todas —</option></select>
         </div>
@@ -422,41 +484,124 @@
       <div class="filters-toggles">
         <label class="toggle"><input type="checkbox" id="f_includeEstimated" checked /> Incluir ejecutado estimado (RESERVADO sin factura)</label>
         <label class="toggle"><input type="checkbox" id="f_includeNoPresupuesto" checked /> Incluir unidades sin presupuesto asignado</label>
-        <button id="btnApply" class="btn-secondary" style="margin-left: auto;">Aplicar filtros</button>
       </div>
     </div>
 
-    <!-- KPIs -->
-    <div id="kpiContainer" class="kpi-grid"></div>
-
-    <!-- TABLA POR UNIDAD -->
-    <div class="card">
-      <h2>Unidades de negocio <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="unitCount"></span></h2>
-      <div class="table-wrap">
-        <table class="units">
-          <thead>
-            <tr>
-              <th>Unidad</th>
-              <th>Empresa</th>
-              <th class="num">Presupuesto rango</th>
-              <th class="num">Ejecutado real</th>
-              <th class="num">Ejecutado estimado</th>
-              <th class="num">Δ vs ppto</th>
-              <th class="num">% usado</th>
-              <th class="num">Solicitudes</th>
-            </tr>
-          </thead>
-          <tbody id="unitsBody"></tbody>
-        </table>
+    <!-- ============================================================== -->
+    <!-- VISTA ANUAL                                                     -->
+    <!-- ============================================================== -->
+    <div class="view-section">
+      <div class="view-title">
+        📅 Vista Anual — Acumulado <span id="yearLabel" style="color: var(--brand);"></span>
+        <span class="view-subtitle">(YTD: enero a diciembre)</span>
       </div>
-      <div id="emptyState" class="empty-state" style="display: none;">No hay datos para los filtros seleccionados.</div>
+
+      <!-- KPIs anuales -->
+      <div id="annualKpis" class="kpi-grid"></div>
+
+      <!-- Donuts lado a lado -->
+      <div class="charts-row">
+        <div class="card">
+          <h2>% del presupuesto anual usado</h2>
+          <div class="chart-wrap-square">
+            <canvas id="annualDonutPct"></canvas>
+            <div id="annualDonutCenter" class="donut-center">
+              <div class="pct" id="annualDonutPctValue">—</div>
+              <div class="label">usado</div>
+            </div>
+          </div>
+          <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px;" id="annualDonutCaption"></p>
+        </div>
+        <div class="card">
+          <h2>Distribución del ejecutado por unidad</h2>
+          <div class="chart-wrap-square">
+            <canvas id="annualDonutDist"></canvas>
+          </div>
+          <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px;">Cada segmento es una unidad. Toca para ver el monto y % del total.</p>
+        </div>
+      </div>
+
+      <!-- Barras meses -->
+      <div class="card">
+        <h2>Ejecutado vs Presupuesto — mes a mes</h2>
+        <div class="chart-wrap">
+          <canvas id="monthlyChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Tabla anual -->
+      <div class="card">
+        <h2>Detalle por unidad — anual <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="annualUnitCount"></span></h2>
+        <div class="table-wrap">
+          <table class="units">
+            <thead>
+              <tr>
+                <th>Unidad</th>
+                <th>Empresa</th>
+                <th class="num">Presupuesto anual</th>
+                <th class="num">Ejecutado real</th>
+                <th class="num">Ejecutado estimado</th>
+                <th class="num">Δ vs ppto</th>
+                <th class="num">% usado</th>
+                <th class="num">Solicitudes</th>
+              </tr>
+            </thead>
+            <tbody id="annualUnitsBody"></tbody>
+          </table>
+        </div>
+        <div id="annualEmptyState" class="empty-state" style="display: none;">No hay datos para los filtros seleccionados.</div>
+      </div>
     </div>
 
-    <!-- GRÁFICO -->
-    <div class="card">
-      <h2>Ejecutado vs Presupuesto — mes a mes</h2>
-      <div class="chart-wrap">
-        <canvas id="monthlyChart"></canvas>
+    <!-- ============================================================== -->
+    <!-- VISTA MENSUAL                                                   -->
+    <!-- ============================================================== -->
+    <div class="view-section">
+      <div class="view-title">
+        📆 Vista Mensual —
+        <select id="monthlySelector"></select>
+        <span class="view-subtitle">presupuesto y ejecución del mes seleccionado</span>
+      </div>
+
+      <!-- KPIs mensuales -->
+      <div id="monthlyKpis" class="kpi-grid"></div>
+
+      <!-- Donut mensual -->
+      <div class="charts-row" style="grid-template-columns: 1fr;">
+        <div class="card" style="max-width: 380px; margin: 0 auto; width: 100%;">
+          <h2>% del presupuesto del mes usado</h2>
+          <div class="chart-wrap-square">
+            <canvas id="monthlyDonut"></canvas>
+            <div id="monthlyDonutCenter" class="donut-center">
+              <div class="pct" id="monthlyDonutPctValue">—</div>
+              <div class="label">usado</div>
+            </div>
+          </div>
+          <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px;" id="monthlyDonutCaption"></p>
+        </div>
+      </div>
+
+      <!-- Tabla mensual -->
+      <div class="card">
+        <h2>Detalle por unidad — mes <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="monthlyUnitCount"></span></h2>
+        <div class="table-wrap">
+          <table class="units">
+            <thead>
+              <tr>
+                <th>Unidad</th>
+                <th>Empresa</th>
+                <th class="num">Presupuesto mes</th>
+                <th class="num">Ejecutado real</th>
+                <th class="num">Ejecutado estimado</th>
+                <th class="num">Δ vs ppto</th>
+                <th class="num">% usado</th>
+                <th class="num">Solicitudes</th>
+              </tr>
+            </thead>
+            <tbody id="monthlyUnitsBody"></tbody>
+          </table>
+        </div>
+        <div id="monthlyEmptyState" class="empty-state" style="display: none;">No hay movimientos en este mes con los filtros seleccionados.</div>
       </div>
     </div>
 
@@ -512,10 +657,10 @@ function esc(s) {
 // vez que un líder abra el link tenga que reautenticarse con PIN.
 // =====================================================================
 var session = null;
-var lastData = null;
+var fullYearData = null;     // data cruda del backend (sin filtros de cliente aplicados)
+var filteredData = null;     // tras applyClientFilters — usado por la vista anual
 var lastConfig = null;
 var canEditConfig = false;
-var monthlyChart = null;
 
 var SESSION_KEY = '_costsDashSession';
 
@@ -639,6 +784,18 @@ function handleLogout() {
 // FILTROS — init dropdowns
 // =====================================================================
 var MONTHS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+var MONTHS_FULL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+// Charts (instances reusadas en cada render — destroy + new para evitar leaks)
+var charts = {
+  monthlyBars: null,
+  annualDonutPct: null,
+  annualDonutDist: null,
+  monthlyDonut: null
+};
+
+// Mes activo para vista mensual. Default: mes actual.
+var selectedMonth = new Date().getMonth() + 1;
 
 function initFilters() {
   var currentYear = new Date().getFullYear();
@@ -652,52 +809,31 @@ function initFilters() {
     if (y === currentYear) opt.selected = true;
     ySel.appendChild(opt);
   }
-  var fromSel = document.getElementById('f_fromMonth');
-  var toSel = document.getElementById('f_toMonth');
-  fromSel.innerHTML = '';
-  toSel.innerHTML = '';
+  // Selector de mes para vista mensual
+  var mSel = document.getElementById('monthlySelector');
+  mSel.innerHTML = '';
   for (var m = 1; m <= 12; m++) {
-    var optF = document.createElement('option');
-    optF.value = m;
-    optF.textContent = MONTHS[m - 1];
-    if (m === 1) optF.selected = true;
-    fromSel.appendChild(optF);
-    var optT = document.createElement('option');
-    optT.value = m;
-    optT.textContent = MONTHS[m - 1];
-    if (m === 12) optT.selected = true;
-    toSel.appendChild(optT);
+    var optM = document.createElement('option');
+    optM.value = m;
+    optM.textContent = MONTHS_FULL[m - 1];
+    if (m === selectedMonth) optM.selected = true;
+    mSel.appendChild(optM);
   }
 }
 
-function getCurrentFilters() {
-  var filters = {
-    year: parseInt(document.getElementById('f_year').value, 10),
-    fromMonth: parseInt(document.getElementById('f_fromMonth').value, 10),
-    toMonth: parseInt(document.getElementById('f_toMonth').value, 10),
-    includeEstimated: document.getElementById('f_includeEstimated').checked,
-    includeNoPresupuesto: document.getElementById('f_includeNoPresupuesto').checked
-  };
-  var company = document.getElementById('f_company').value;
-  var unit = document.getElementById('f_unit').value;
-  if (company) filters.companies = [company];
-  if (unit) filters.businessUnits = [unit];
-  return filters;
-}
-
 // =====================================================================
-// LOAD DATA
+// LOAD DATA (solo se llama al cambiar AÑO o al loguear)
+// El backend retorna TODOS los datos del año (sin filtros de empresa/
+// unidad/toggles aplicados). Los filtros se aplican localmente en JS.
 // =====================================================================
 function loadDashboard() {
   if (!session) return;
-  showStatus('dashStatus', 'Cargando...', 'info');
+  showStatus('dashStatus', 'Cargando datos del año...', 'info');
   google.script.run
     .withSuccessHandler(function(data) {
       hideStatus('dashStatus');
       if (!data || !data.success) {
         var errMsg = (data && data.error) || 'Error cargando datos.';
-        // Si el error es por no autorización al dashboard, cerrar sesión
-        // para evitar que el usuario quede atrapado en una página vacía.
         if (errMsg.indexOf('no autorizado') !== -1 || errMsg.indexOf('Acceso no autorizado') !== -1) {
           clearSession();
           showLogin();
@@ -711,10 +847,11 @@ function loadDashboard() {
         }
         return;
       }
-      lastData = data.data;
-      canEditConfig = !!(lastData.meta && lastData.meta.access && lastData.meta.access.canConfig);
+      fullYearData = data.data;
+      canEditConfig = !!(fullYearData.meta && fullYearData.meta.access && fullYearData.meta.access.canConfig);
       document.getElementById('btnConfig').style.display = canEditConfig ? '' : 'none';
-      renderAll();
+      populateCompanyUnitDropdowns();
+      refreshView();
     })
     .withFailureHandler(function(err) {
       var msg = (err && err.message) || 'Error de conexión.';
@@ -725,38 +862,155 @@ function loadDashboard() {
       }
     })
     .costsDashboard_getData({
-      filters: getCurrentFilters(),
+      filters: {
+        year: parseInt(document.getElementById('f_year').value, 10),
+        // SIN fromMonth/toMonth/companies/businessUnits — todo se filtra en cliente.
+        // includeEstimated + includeNoPresupuesto en TRUE para traer todo;
+        // los toggles del frontend filtran después en applyClientFilters().
+        includeEstimated: true,
+        includeNoPresupuesto: true
+      },
       userEmail: session.email,
       sessionToken: session.token
     });
 }
 
 // =====================================================================
-// RENDER
+// CLIENT-SIDE FILTERS + RENDER (instantáneo, sin roundtrip)
 // =====================================================================
-function renderAll() {
-  renderKPIs();
-  renderCompanyUnitOptions();
-  renderUnitsTable();
-  renderChart();
+
+function refreshView() {
+  if (!fullYearData) return;
+  document.getElementById('yearLabel').textContent = fullYearData.meta.year;
+  filteredData = applyClientFilters(fullYearData);
+  renderAnnualView(filteredData);
+  renderMonthlyView(filteredData, selectedMonth);
   renderMeta();
 }
 
-function renderKPIs() {
-  var t = lastData.totals;
-  var container = document.getElementById('kpiContainer');
+/**
+ * Aplica los filtros del cliente (empresa, unidad, toggles) sobre la data
+ * cruda del año. Retorna estructura similar pero filtrada y con totales
+ * recomputados desde cero (no se usan los del backend, que vienen sin
+ * filtros aplicados).
+ */
+function applyClientFilters(raw) {
+  var companyFilter = document.getElementById('f_company').value;
+  var unitFilter = document.getElementById('f_unit').value;
+  var includeEst = document.getElementById('f_includeEstimated').checked;
+  var includeNoPpto = document.getElementById('f_includeNoPresupuesto').checked;
+
+  var rows = (raw.rows || []).filter(function(b) {
+    if (companyFilter && b.company !== companyFilter) return false;
+    if (unitFilter && b.unit !== unitFilter) return false;
+    if (!includeNoPpto && !b.hasBudget) return false;
+    return true;
+  }).map(function(b) {
+    // Si el toggle de estimado está OFF, "limpiamos" el estimado pero
+    // mantenemos el real. Esto se hace per-mes y total.
+    if (!includeEst) {
+      var clone = Object.assign({}, b);
+      clone.monthlyExecutedEstimated = b.monthlyExecutedEstimated.map(function() { return 0; });
+      clone.totalExecutedEstimated = 0;
+      clone.requests = (b.requests || []).filter(function(r) { return !r.isEstimated; });
+      clone.requestCount = clone.requests.length;
+      return clone;
+    }
+    return b;
+  });
+
+  // Recomputar totales y byMonth desde las filas filtradas
+  var totalsByMonth = {};
+  for (var m = 1; m <= 12; m++) totalsByMonth[m] = { real: 0, estimated: 0, budget: 0 };
+  var grand = { real: 0, estimated: 0, budget: 0 };
+
+  rows.forEach(function(b) {
+    grand.real += b.totalExecutedReal || 0;
+    grand.estimated += b.totalExecutedEstimated || 0;
+    for (var m = 1; m <= 12; m++) {
+      var idx = m - 1;
+      totalsByMonth[m].real += (b.monthlyExecutedReal[idx] || 0);
+      totalsByMonth[m].estimated += (b.monthlyExecutedEstimated[idx] || 0);
+      if (b.hasBudget) totalsByMonth[m].budget += (b.monthlyBudget[idx] || 0);
+    }
+    if (b.hasBudget) grand.budget += b.totalBudgetAnnual || 0;
+    // budgetInRange = totalBudgetAnnual cuando rango es 1-12 (vista anual)
+    b.budgetInRange = b.hasBudget ? b.totalBudgetAnnual : 0;
+    b.deltaInRange = b.hasBudget ? (b.budgetInRange - (b.totalExecutedReal + b.totalExecutedEstimated)) : null;
+    b.percentUsed = b.hasBudget && b.budgetInRange > 0
+      ? Math.round(((b.totalExecutedReal + b.totalExecutedEstimated) / b.budgetInRange) * 1000) / 10
+      : null;
+  });
+
+  rows.sort(function(a, b) {
+    if (a.hasBudget !== b.hasBudget) return a.hasBudget ? -1 : 1;
+    if (a.hasBudget && b.hasBudget) {
+      var pa = a.percentUsed === null ? -1 : a.percentUsed;
+      var pb = b.percentUsed === null ? -1 : b.percentUsed;
+      return pb - pa;
+    }
+    return (b.totalExecutedReal + b.totalExecutedEstimated) - (a.totalExecutedReal + a.totalExecutedEstimated);
+  });
+
+  return {
+    rows: rows,
+    totals: {
+      executedReal: grand.real,
+      executedEstimated: grand.estimated,
+      executedTotal: grand.real + grand.estimated,
+      budget: grand.budget,
+      delta: grand.budget - (grand.real + grand.estimated),
+      percentUsed: grand.budget > 0 ? Math.round(((grand.real + grand.estimated) / grand.budget) * 1000) / 10 : null,
+      byMonth: totalsByMonth
+    },
+    meta: raw.meta
+  };
+}
+
+function populateCompanyUnitDropdowns() {
+  if (!fullYearData || !fullYearData.meta) return;
+  var cSel = document.getElementById('f_company');
+  var uSel = document.getElementById('f_unit');
+  var currentC = cSel.value;
+  var currentU = uSel.value;
+  cSel.innerHTML = '<option value="">— Todas —</option>';
+  uSel.innerHTML = '<option value="">— Todas —</option>';
+  (fullYearData.meta.companies || []).slice().sort(function(a, b) { return a.label.localeCompare(b.label); }).forEach(function(c) {
+    var o = document.createElement('option');
+    o.value = c.label; o.textContent = c.label;
+    if (c.label === currentC) o.selected = true;
+    cSel.appendChild(o);
+  });
+  (fullYearData.meta.units || []).slice().sort(function(a, b) { return a.label.localeCompare(b.label); }).forEach(function(u) {
+    var o = document.createElement('option');
+    o.value = u.label; o.textContent = u.label;
+    if (u.label === currentU) o.selected = true;
+    uSel.appendChild(o);
+  });
+}
+
+// =====================================================================
+// RENDER VISTA ANUAL
+// =====================================================================
+function renderAnnualView(data) {
+  renderKpis('annualKpis', data.totals, 'Acumulado anual');
+  renderAnnualDonutPct(data);
+  renderAnnualDonutDist(data);
+  renderMonthlyBarsChart(data);
+  renderUnitsTable('annualUnitsBody', 'annualUnitCount', 'annualEmptyState', data.rows, 'annual');
+}
+
+function renderKpis(containerId, totals, contextLabel) {
+  var container = document.getElementById(containerId);
   container.innerHTML = '';
-
-  var execTotal = (t.executedReal || 0) + (t.executedEstimated || 0);
-  var deltaOver = (t.budget > 0 && execTotal > t.budget);
-
+  var execTotal = (totals.executedReal || 0) + (totals.executedEstimated || 0);
+  var deltaOver = (totals.budget > 0 && execTotal > totals.budget);
   var kpis = [
-    { cls: 'real', label: 'Ejecutado real', value: fmtMoney(t.executedReal), extra: 'Facturas registradas' },
-    { cls: 'estimated', label: 'Ejecutado estimado', value: fmtMoney(t.executedEstimated), extra: 'RESERVADO sin factura aún' },
-    { cls: 'budget', label: 'Presupuesto del rango', value: fmtMoney(t.budget), extra: 'Suma del PPTOS UNIDADES' },
-    { cls: 'delta' + (deltaOver ? ' over' : ''), label: deltaOver ? 'Sobre-ejecución' : 'Disponible', value: fmtMoney(Math.abs(t.delta)), extra: fmtPct(t.percentUsed) + ' usado' }
+    { cls: 'real', label: 'Ejecutado real', value: fmtMoney(totals.executedReal), extra: 'Facturas registradas' },
+    { cls: 'estimated', label: 'Ejecutado estimado', value: fmtMoney(totals.executedEstimated), extra: 'RESERVADO sin factura aún' },
+    { cls: 'budget', label: 'Presupuesto', value: fmtMoney(totals.budget), extra: contextLabel },
+    { cls: 'delta' + (deltaOver ? ' over' : ''), label: deltaOver ? 'Sobre-ejecución' : 'Disponible', value: fmtMoney(Math.abs(totals.delta || 0)), extra: fmtPct(totals.percentUsed) + ' usado' }
   ];
-
   kpis.forEach(function(k) {
     var div = document.createElement('div');
     div.className = 'kpi ' + k.cls;
@@ -768,42 +1022,310 @@ function renderKPIs() {
   });
 }
 
-function renderCompanyUnitOptions() {
-  // Solo en la primera carga (o cuando cambia data significativamente)
-  var cSel = document.getElementById('f_company');
-  var uSel = document.getElementById('f_unit');
-  var currentC = cSel.value;
-  var currentU = uSel.value;
-  cSel.innerHTML = '<option value="">— Todas —</option>';
-  uSel.innerHTML = '<option value="">— Todas —</option>';
-  (lastData.meta.companies || []).slice().sort(function(a, b) { return a.label.localeCompare(b.label); }).forEach(function(c) {
-    var o = document.createElement('option');
-    o.value = c.label;
-    o.textContent = c.label;
-    if (c.label === currentC) o.selected = true;
-    cSel.appendChild(o);
-  });
-  (lastData.meta.units || []).slice().sort(function(a, b) { return a.label.localeCompare(b.label); }).forEach(function(u) {
-    var o = document.createElement('option');
-    o.value = u.label;
-    o.textContent = u.label;
-    if (u.label === currentU) o.selected = true;
-    uSel.appendChild(o);
+function renderAnnualDonutPct(data) {
+  var canvas = document.getElementById('annualDonutPct');
+  if (!canvas || typeof Chart === 'undefined') return;
+  var t = data.totals;
+  var real = t.executedReal || 0;
+  var est = t.executedEstimated || 0;
+  var budget = t.budget || 0;
+  var disponible = Math.max(0, budget - real - est);
+  var overBudget = (budget > 0 && (real + est) > budget);
+
+  var centerEl = document.getElementById('annualDonutCenter');
+  var pctEl = document.getElementById('annualDonutPctValue');
+  var capEl = document.getElementById('annualDonutCaption');
+
+  if (budget === 0) {
+    pctEl.textContent = '—';
+    centerEl.classList.remove('over');
+    capEl.textContent = 'Sin presupuesto definido en las unidades filtradas.';
+  } else {
+    pctEl.textContent = fmtPct(t.percentUsed);
+    centerEl.classList.toggle('over', overBudget);
+    capEl.textContent = overBudget
+      ? 'Sobre-ejecutado: ' + fmtMoney((real + est) - budget) + ' por encima'
+      : 'Disponible: ' + fmtMoney(disponible) + ' de ' + fmtMoney(budget);
+  }
+
+  var labels = ['Ejecutado real', 'Ejecutado estimado'];
+  var values = [real, est];
+  var colors = ['#D71920', '#d97706'];
+  if (!overBudget && budget > 0) {
+    labels.push('Disponible');
+    values.push(disponible);
+    colors.push('#e5e7eb');
+  }
+
+  if (charts.annualDonutPct) charts.annualDonutPct.destroy();
+  charts.annualDonutPct = new Chart(canvas, {
+    type: 'doughnut',
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#ffffff' }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      cutout: '65%',
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.label + ': $' + Number(ctx.parsed || 0).toLocaleString('es-CO');
+            }
+          }
+        }
+      }
+    }
   });
 }
 
-function renderUnitsTable() {
-  var body = document.getElementById('unitsBody');
+function renderAnnualDonutDist(data) {
+  var canvas = document.getElementById('annualDonutDist');
+  if (!canvas || typeof Chart === 'undefined') return;
+  // Top 10 unidades por ejecutado total + "Otras"
+  var sorted = (data.rows || []).map(function(b) {
+    return { label: b.unit, value: (b.totalExecutedReal || 0) + (b.totalExecutedEstimated || 0) };
+  }).filter(function(x) { return x.value > 0; })
+    .sort(function(a, b) { return b.value - a.value; });
+
+  var topN = 10;
+  var labels = [], values = [];
+  sorted.slice(0, topN).forEach(function(x) { labels.push(x.label); values.push(x.value); });
+  if (sorted.length > topN) {
+    var rest = sorted.slice(topN).reduce(function(s, x) { return s + x.value; }, 0);
+    if (rest > 0) { labels.push('Otras (' + (sorted.length - topN) + ')'); values.push(rest); }
+  }
+  var total = values.reduce(function(s, v) { return s + v; }, 0);
+
+  var palette = ['#D71920','#d97706','#059669','#2563eb','#7c3aed','#db2777','#0891b2','#65a30d','#ea580c','#475569','#9ca3af'];
+  var colors = labels.map(function(_, i) { return palette[i % palette.length]; });
+
+  if (charts.annualDonutDist) charts.annualDonutDist.destroy();
+  if (labels.length === 0) {
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+  charts.annualDonutDist = new Chart(canvas, {
+    type: 'doughnut',
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#ffffff' }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      cutout: '60%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              var pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : '0';
+              return ctx.label + ': $' + Number(ctx.parsed || 0).toLocaleString('es-CO') + ' (' + pct + '%)';
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+function renderMonthlyBarsChart(data) {
+  var canvas = document.getElementById('monthlyChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  var byMonth = data.totals.byMonth || {};
+  var labels = [], realData = [], estData = [], budgetData = [];
+  for (var m = 1; m <= 12; m++) {
+    labels.push(MONTHS[m - 1]);
+    var bm = byMonth[m] || { real: 0, estimated: 0, budget: 0 };
+    realData.push(bm.real || 0);
+    estData.push(bm.estimated || 0);
+    budgetData.push(bm.budget || 0);
+  }
+  if (charts.monthlyBars) charts.monthlyBars.destroy();
+  charts.monthlyBars = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: 'Ejecutado real', data: realData, backgroundColor: '#D71920', stack: 'ejec' },
+        { label: 'Ejecutado estimado', data: estData, backgroundColor: '#d97706', stack: 'ejec' },
+        { label: 'Presupuesto', data: budgetData, type: 'line', borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.08)', tension: 0.2, pointRadius: 4, fill: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.dataset.label + ': $' + Number(ctx.parsed.y || 0).toLocaleString('es-CO');
+            }
+          }
+        }
+      },
+      scales: {
+        x: { stacked: true },
+        y: {
+          stacked: false,
+          beginAtZero: true,
+          ticks: { callback: function(v) { return '$' + Number(v).toLocaleString('es-CO'); } }
+        }
+      }
+    }
+  });
+}
+
+// =====================================================================
+// RENDER VISTA MENSUAL
+// =====================================================================
+function renderMonthlyView(data, month) {
+  var monthData = computeMonthlyData(data, month);
+  var label = MONTHS_FULL[month - 1] + ' ' + (fullYearData ? fullYearData.meta.year : '');
+  renderKpis('monthlyKpis', monthData.totals, label);
+  renderMonthlyDonut(monthData);
+  renderUnitsTable('monthlyUnitsBody', 'monthlyUnitCount', 'monthlyEmptyState', monthData.rows, 'monthly');
+}
+
+/**
+ * Calcula vista mensual desde filteredData: extrae presupuesto y ejecución
+ * del mes seleccionado en cada unidad. Omite unidades sin movimiento.
+ */
+function computeMonthlyData(filtered, month) {
+  var rows = [];
+  var grand = { real: 0, estimated: 0, budget: 0 };
+  var idx = month - 1;
+
+  (filtered.rows || []).forEach(function(b) {
+    var realM = b.monthlyExecutedReal[idx] || 0;
+    var estM = b.monthlyExecutedEstimated[idx] || 0;
+    var budgetM = b.hasBudget ? (b.monthlyBudget[idx] || 0) : 0;
+    var execTotal = realM + estM;
+    if (execTotal === 0 && budgetM === 0) return;
+
+    var pct = budgetM > 0 ? Math.round((execTotal / budgetM) * 1000) / 10 : null;
+    var requestsM = (b.requests || []).filter(function(r) { return r.month === month; });
+
+    rows.push({
+      unit: b.unit,
+      company: b.company,
+      hasBudget: b.hasBudget,
+      budgetInRange: budgetM,
+      totalExecutedReal: realM,
+      totalExecutedEstimated: estM,
+      deltaInRange: b.hasBudget ? (budgetM - execTotal) : null,
+      percentUsed: pct,
+      requestCount: requestsM.length,
+      requests: requestsM
+    });
+    grand.real += realM;
+    grand.estimated += estM;
+    grand.budget += budgetM;
+  });
+
+  rows.sort(function(a, b) {
+    if (a.hasBudget !== b.hasBudget) return a.hasBudget ? -1 : 1;
+    if (a.hasBudget && b.hasBudget) {
+      var pa = a.percentUsed === null ? -1 : a.percentUsed;
+      var pb = b.percentUsed === null ? -1 : b.percentUsed;
+      return pb - pa;
+    }
+    return (b.totalExecutedReal + b.totalExecutedEstimated) - (a.totalExecutedReal + a.totalExecutedEstimated);
+  });
+
+  return {
+    rows: rows,
+    totals: {
+      executedReal: grand.real,
+      executedEstimated: grand.estimated,
+      executedTotal: grand.real + grand.estimated,
+      budget: grand.budget,
+      delta: grand.budget - (grand.real + grand.estimated),
+      percentUsed: grand.budget > 0 ? Math.round(((grand.real + grand.estimated) / grand.budget) * 1000) / 10 : null
+    },
+    month: month
+  };
+}
+
+function renderMonthlyDonut(monthData) {
+  var canvas = document.getElementById('monthlyDonut');
+  if (!canvas || typeof Chart === 'undefined') return;
+  var t = monthData.totals;
+  var real = t.executedReal || 0;
+  var est = t.executedEstimated || 0;
+  var budget = t.budget || 0;
+  var disponible = Math.max(0, budget - real - est);
+  var overBudget = (budget > 0 && (real + est) > budget);
+
+  var centerEl = document.getElementById('monthlyDonutCenter');
+  var pctEl = document.getElementById('monthlyDonutPctValue');
+  var capEl = document.getElementById('monthlyDonutCaption');
+
+  if (budget === 0) {
+    pctEl.textContent = '—';
+    centerEl.classList.remove('over');
+    capEl.textContent = 'Sin presupuesto definido en este mes para las unidades filtradas.';
+  } else {
+    pctEl.textContent = fmtPct(t.percentUsed);
+    centerEl.classList.toggle('over', overBudget);
+    capEl.textContent = overBudget
+      ? 'Sobre-ejecutado: ' + fmtMoney((real + est) - budget) + ' por encima'
+      : 'Disponible: ' + fmtMoney(disponible) + ' de ' + fmtMoney(budget);
+  }
+
+  var labels = ['Ejecutado real', 'Ejecutado estimado'];
+  var values = [real, est];
+  var colors = ['#D71920', '#d97706'];
+  if (!overBudget && budget > 0) {
+    labels.push('Disponible');
+    values.push(disponible);
+    colors.push('#e5e7eb');
+  }
+
+  if (charts.monthlyDonut) charts.monthlyDonut.destroy();
+  charts.monthlyDonut = new Chart(canvas, {
+    type: 'doughnut',
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#ffffff' }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      cutout: '65%',
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.label + ': $' + Number(ctx.parsed || 0).toLocaleString('es-CO');
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// =====================================================================
+// TABLA UNIDADES (compartida por anual y mensual)
+// =====================================================================
+function renderUnitsTable(bodyId, countId, emptyId, rows, viewKey) {
+  var body = document.getElementById(bodyId);
   body.innerHTML = '';
-  var rows = lastData.rows || [];
-  document.getElementById('unitCount').textContent = '(' + rows.length + ')';
-  document.getElementById('emptyState').style.display = rows.length === 0 ? '' : 'none';
+  document.getElementById(countId).textContent = '(' + rows.length + ')';
+  document.getElementById(emptyId).style.display = rows.length === 0 ? '' : 'none';
 
   rows.forEach(function(b, idx) {
     var tr = document.createElement('tr');
     tr.className = 'unit-row' + (b.hasBudget ? '' : ' no-budget');
-    tr.dataset.idx = idx;
-    tr.addEventListener('click', function() { toggleDetail(idx); });
+
+    var detailId = viewKey + '-detail-' + idx;
+    tr.addEventListener('click', function() {
+      var row = document.getElementById(detailId);
+      if (row) row.classList.toggle('show');
+    });
 
     var sem = semaphoreClass(b.percentUsed);
     var unitTd = document.createElement('td');
@@ -813,8 +1335,7 @@ function renderUnitsTable() {
     unitTd.appendChild(document.createTextNode(b.unit));
     if (!b.hasBudget) {
       var span = document.createElement('span');
-      span.className = 'badge-est';
-      span.textContent = 'sin ppto';
+      span.className = 'badge-est'; span.textContent = 'sin ppto';
       unitTd.appendChild(span);
     }
     tr.appendChild(unitTd);
@@ -854,10 +1375,10 @@ function renderUnitsTable() {
 
     body.appendChild(tr);
 
-    // DETAIL ROW (hidden by default)
+    // DETAIL ROW
     var detailTr = document.createElement('tr');
     detailTr.className = 'detail-row';
-    detailTr.id = 'detail-' + idx;
+    detailTr.id = detailId;
     var detailTd = document.createElement('td');
     detailTd.colSpan = 8;
     detailTd.appendChild(buildDetailContent(b));
@@ -869,7 +1390,6 @@ function renderUnitsTable() {
 function buildDetailContent(bucket) {
   var div = document.createElement('div');
   div.className = 'detail-content';
-
   var h = document.createElement('div');
   h.style.fontSize = '11px';
   h.style.textTransform = 'uppercase';
@@ -910,78 +1430,15 @@ function buildDetailContent(bucket) {
   return div;
 }
 
-function toggleDetail(idx) {
-  var row = document.getElementById('detail-' + idx);
-  if (!row) return;
-  row.classList.toggle('show');
-}
-
-function renderChart() {
-  var canvas = document.getElementById('monthlyChart');
-  if (!canvas || typeof Chart === 'undefined') return;
-  var byMonth = lastData.totals.byMonth || {};
-  var fromMonth = lastData.meta.fromMonth || 1;
-  var toMonth = lastData.meta.toMonth || 12;
-  var labels = [];
-  var realData = [];
-  var estData = [];
-  var budgetData = [];
-  for (var m = fromMonth; m <= toMonth; m++) {
-    labels.push(MONTHS[m - 1]);
-    var bm = byMonth[m] || { real: 0, estimated: 0, budget: 0 };
-    realData.push(bm.real || 0);
-    estData.push(bm.estimated || 0);
-    budgetData.push(bm.budget || 0);
-  }
-
-  if (monthlyChart) {
-    monthlyChart.destroy();
-  }
-  monthlyChart = new Chart(canvas, {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [
-        { label: 'Ejecutado real', data: realData, backgroundColor: '#D71920' },
-        { label: 'Ejecutado estimado', data: estData, backgroundColor: '#d97706' },
-        { label: 'Presupuesto', data: budgetData, backgroundColor: '#2563eb', type: 'line', borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.08)', tension: 0.2, pointRadius: 4 }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      plugins: {
-        legend: { position: 'bottom' },
-        tooltip: {
-          callbacks: {
-            label: function(ctx) {
-              return ctx.dataset.label + ': $' + Number(ctx.parsed.y || 0).toLocaleString('es-CO');
-            }
-          }
-        }
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            callback: function(v) { return '$' + Number(v).toLocaleString('es-CO'); }
-          }
-        }
-      }
-    }
-  });
-}
-
 function renderMeta() {
-  var meta = lastData.meta;
+  if (!fullYearData) return;
+  var meta = fullYearData.meta;
   var rec = meta.requestsCounted || 0;
   var exc = meta.requestsExcluded || {};
   var lines = [];
   lines.push('Solicitudes contadas: ' + rec);
   lines.push('Excluidas — sin fecha de compra: ' + (exc.noPurchaseDate || 0) +
-             ', status no contable: ' + (exc.byStatus || 0) +
-             ', fuera del rango de meses: ' + (exc.byMonthYear || 0));
+             ', status no contable: ' + (exc.byStatus || 0));
   if (meta.cache) {
     lines.push('Cache: ' + meta.cache.hits + ' hits, ' + meta.cache.misses + ' misses' + (meta.cache.savedToDrive ? ' (actualizado)' : ''));
   }
@@ -1008,18 +1465,18 @@ function csvSafe(v) {
 }
 
 function exportCSV() {
-  if (!lastData) return;
-  var meta = lastData.meta;
-  var year = meta.year;
-  var fromM = MONTHS[(meta.fromMonth || 1) - 1];
-  var toM = MONTHS[(meta.toMonth || 12) - 1];
+  if (!filteredData || !fullYearData) return;
+  var year = fullYearData.meta.year;
 
   var rows = [];
   rows.push(['Dashboard de Costos - Equitel Viajes'].map(csvSafe).join(','));
-  rows.push(['Año: ' + year + ' | Rango: ' + fromM + ' - ' + toM + ' | Generado: ' + new Date().toLocaleString('es-CO')].map(csvSafe).join(','));
+  rows.push(['Año: ' + year + ' | Generado: ' + new Date().toLocaleString('es-CO')].map(csvSafe).join(','));
   rows.push('');
-  rows.push(['Unidad', 'Empresa', 'Tiene presupuesto', 'Presupuesto rango', 'Ejecutado real', 'Ejecutado estimado', 'Delta', '% usado', 'Solicitudes'].map(csvSafe).join(','));
-  (lastData.rows || []).forEach(function(b) {
+
+  // SECCIÓN 1: Vista anual
+  rows.push(['VISTA ANUAL — Acumulado del año'].map(csvSafe).join(','));
+  rows.push(['Unidad', 'Empresa', 'Tiene presupuesto', 'Presupuesto anual', 'Ejecutado real', 'Ejecutado estimado', 'Delta', '% usado', 'Solicitudes'].map(csvSafe).join(','));
+  (filteredData.rows || []).forEach(function(b) {
     rows.push([
       b.unit,
       b.company || '',
@@ -1033,11 +1490,30 @@ function exportCSV() {
     ].map(csvSafe).join(','));
   });
 
-  // Sección 2: detalle de solicitudes
+  // SECCIÓN 2: Vista mensual (mes seleccionado actualmente)
+  var monthData = computeMonthlyData(filteredData, selectedMonth);
+  rows.push('');
+  rows.push(['VISTA MENSUAL — ' + MONTHS_FULL[selectedMonth - 1] + ' ' + year].map(csvSafe).join(','));
+  rows.push(['Unidad', 'Empresa', 'Tiene presupuesto', 'Presupuesto mes', 'Ejecutado real', 'Ejecutado estimado', 'Delta', '% usado', 'Solicitudes'].map(csvSafe).join(','));
+  monthData.rows.forEach(function(b) {
+    rows.push([
+      b.unit,
+      b.company || '',
+      b.hasBudget ? 'Sí' : 'No',
+      b.hasBudget ? b.budgetInRange : '',
+      b.totalExecutedReal,
+      b.totalExecutedEstimated,
+      b.hasBudget ? b.deltaInRange : '',
+      b.hasBudget && b.percentUsed !== null ? b.percentUsed : '',
+      b.requestCount
+    ].map(csvSafe).join(','));
+  });
+
+  // SECCIÓN 3: detalle de solicitudes (todas las del año filtradas)
   rows.push('');
   rows.push(['DETALLE DE SOLICITUDES'].map(csvSafe).join(','));
   rows.push(['Unidad', 'ID solicitud', 'Solicitante', 'Fecha compra', 'Mes', 'Estado', 'Es estimado', 'Ejecutado'].map(csvSafe).join(','));
-  (lastData.rows || []).forEach(function(b) {
+  (filteredData.rows || []).forEach(function(b) {
     (b.requests || []).forEach(function(r) {
       rows.push([
         b.unit,
@@ -1057,7 +1533,7 @@ function exportCSV() {
   var url = URL.createObjectURL(blob);
   var a = document.createElement('a');
   a.href = url;
-  a.download = 'costos_' + year + '_' + (meta.fromMonth || 1) + '-' + (meta.toMonth || 12) + '.csv';
+  a.download = 'costos_' + year + '_anual_y_mensual.csv';
   document.body.appendChild(a);
   a.click();
   setTimeout(function() {
@@ -1072,32 +1548,48 @@ function exportCSV() {
 // imprime bien en algunos navegadores).
 // =====================================================================
 function exportPDF() {
-  if (!lastData || !monthlyChart) {
+  if (!filteredData) {
     window.print();
     return;
   }
-  // Genera imagen del chart y la inserta antes de imprimir; restaura después.
-  var canvas = document.getElementById('monthlyChart');
-  var wrap = canvas.parentElement;
-  var dataUrl = monthlyChart.toBase64Image('image/png', 1.0);
-  var img = document.createElement('img');
-  img.src = dataUrl;
-  img.style.width = '100%';
-  img.style.maxHeight = '320px';
-  img.style.objectFit = 'contain';
-  img.id = '_printChart';
-  canvas.style.display = 'none';
-  wrap.appendChild(img);
+  // Convierte cada canvas activo a imagen base64 antes de imprimir para
+  // garantizar que no quede en negro en algunos navegadores. Restaura
+  // los canvases después del print dialog.
+  var chartCanvases = [
+    { id: 'monthlyChart', chart: charts.monthlyBars },
+    { id: 'annualDonutPct', chart: charts.annualDonutPct },
+    { id: 'annualDonutDist', chart: charts.annualDonutDist },
+    { id: 'monthlyDonut', chart: charts.monthlyDonut }
+  ];
+  var swappedImages = [];
+  chartCanvases.forEach(function(c) {
+    if (!c.chart) return;
+    var canvas = document.getElementById(c.id);
+    if (!canvas) return;
+    var wrap = canvas.parentElement;
+    try {
+      var dataUrl = c.chart.toBase64Image('image/png', 1.0);
+      var img = document.createElement('img');
+      img.src = dataUrl;
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'contain';
+      img.dataset.printSwap = c.id;
+      canvas.style.display = 'none';
+      wrap.appendChild(img);
+      swappedImages.push({ canvas: canvas, img: img });
+    } catch (e) { /* si falla, dejamos el canvas */ }
+  });
 
-  // Pequeño delay para asegurar que la imagen se decode antes del print dialog.
   setTimeout(function() {
     window.print();
-    // Restaurar canvas
     setTimeout(function() {
-      img.remove();
-      canvas.style.display = '';
+      swappedImages.forEach(function(s) {
+        s.img.remove();
+        s.canvas.style.display = '';
+      });
     }, 500);
-  }, 150);
+  }, 200);
 }
 
 // =====================================================================
@@ -1189,19 +1681,24 @@ document.addEventListener('DOMContentLoaded', function() {
     if (e.key === 'Enter') handleLogin();
   });
   document.getElementById('btnLogout').addEventListener('click', handleLogout);
-  document.getElementById('btnApply').addEventListener('click', loadDashboard);
   document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
   document.getElementById('btnExportPDF').addEventListener('click', exportPDF);
   document.getElementById('btnConfig').addEventListener('click', openConfig);
   document.getElementById('btnConfigSave').addEventListener('click', saveConfig);
   document.getElementById('btnConfigReset').addEventListener('click', resetConfig);
 
-  // Auto-aplicar filtros cuando cambia algo (excepto config toggles que necesitan applyBtn)
-  ['f_year', 'f_fromMonth', 'f_toMonth', 'f_company', 'f_unit'].forEach(function(id) {
-    document.getElementById(id).addEventListener('change', loadDashboard);
+  // Cambio de AÑO → re-fetch al backend (única operación lenta)
+  document.getElementById('f_year').addEventListener('change', loadDashboard);
+
+  // Cambios de empresa, unidad, toggles → filtro local instantáneo
+  ['f_company', 'f_unit', 'f_includeEstimated', 'f_includeNoPresupuesto'].forEach(function(id) {
+    document.getElementById(id).addEventListener('change', refreshView);
   });
-  ['f_includeEstimated', 'f_includeNoPresupuesto'].forEach(function(id) {
-    document.getElementById(id).addEventListener('change', loadDashboard);
+
+  // Selector de mes → recalcula solo la vista mensual (resto sigue igual)
+  document.getElementById('monthlySelector').addEventListener('change', function(e) {
+    selectedMonth = parseInt(e.target.value, 10) || 1;
+    if (filteredData) renderMonthlyView(filteredData, selectedMonth);
   });
 
   // Bootstrap: si hay sesión guardada, entrar directo
