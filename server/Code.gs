@@ -2434,8 +2434,16 @@ function processApprovalFromEmail(e) {
               const effectiveAreaApproved = areaApproved
                   || (ceoIsAreaApprover && ceoApproved)
                   || (cdsIsAreaApprover && cdsApproved);
+              // SIMETRÍA (2026-05-12): si el aprobador de área ES el CEO/CDS y
+              // ya aprobó como área, su rol ejecutivo se considera satisfecho.
+              // Sin esto, si una sola persona es ambos roles (caso SOL-000155
+              // con Yurani = aprobadora + CDS) y hace UN solo click en el correo
+              // de área, la solicitud queda en limbo esperando una segunda
+              // aprobación "ejecutiva" que nunca llegará.
               const executiveSatisfied = (requiresCeoApproval && ceoApproved)
-                                       || (requiresCdsApproval && cdsApproved);
+                                       || (requiresCdsApproval && cdsApproved)
+                                       || (requiresCeoApproval && ceoIsAreaApprover && areaApproved)
+                                       || (requiresCdsApproval && cdsIsAreaApprover && areaApproved);
               // LEGACY FALLBACK R10: solicitudes alto costo nacional creadas ANTES
               // del deploy recibieron correo al CEO bajo las reglas antiguas
               // "CEO o CDS". Si el CEO ya aprobó antes del deploy, honrar esa
@@ -5492,9 +5500,14 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
     }
 
     // CEO: solo se evalúa si requiresCeoApproval (= isInternational).
+    // SIMETRÍA: si el CEO ES el aprobador de área y aprobó como área, su rol
+    // ejecutivo se considera implícitamente aprobado (mismo principio que
+    // `effectiveAreaApproved` arriba, pero al revés).
     if (requiresCeoApproval) {
       if (ceoApproved) ceo = 'APPROVED';
+      else if (ceoIsAreaApprover && areaApproved) ceo = 'APPROVED';
       else if (ceoDenied) ceo = 'DENIED';
+      else if (ceoIsAreaApprover && areaDenied) ceo = 'DENIED';
       else ceo = 'PENDING';
     } else {
       ceo = 'NA';
@@ -5504,9 +5517,12 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
     }
 
     // CDS: se evalúa tanto en internacional como en alto costo nacional.
+    // Misma simetría que CEO: aprobación como área cubre el rol ejecutivo.
     if (requiresCdsApproval) {
       if (cdsApproved) cds = 'APPROVED';
+      else if (cdsIsAreaApprover && areaApproved) cds = 'APPROVED';
       else if (cdsDenied) cds = 'DENIED';
+      else if (cdsIsAreaApprover && areaDenied) cds = 'DENIED';
       else cds = 'PENDING';
     } else {
       cds = 'NA';
@@ -5769,6 +5785,89 @@ function mapRowToRequest(row, lite) {
 }
 
 /**
+ * Re-evalúa el estado de una solicitud PENDIENTE_APROBACION aplicando la
+ * lógica vigente de simetría de roles (un aprobador de área que también ES
+ * CEO/CDS satisface ambos roles con un solo click). Si la solicitud cumple
+ * los criterios de aprobación completa, avanza a APROBADO y dispara la
+ * notificación normal al solicitante.
+ *
+ * Use case: solicitudes que quedaron varadas por bugs previos (ej:
+ * SOL-000155 con Yurani como aprobadora de área Y Director CDS — clickeó
+ * el correo de área pero la solicitud quedó esperando un segundo click
+ * "ejecutivo" que nunca iba a llegar porque ella es ambos roles).
+ *
+ * Uso desde editor GAS:
+ *   1. Crear función temporal:  function _fix155() { reevaluarAprobacionPendiente('SOL-000155'); }
+ *   2. Ejecutar
+ *   3. Ver registros — confirma si avanzó a APROBADO o explica por qué no
+ *
+ * Seguridad: solo lee y eventualmente avanza el status (vía updateRequestStatus
+ * que ya tiene sus propias validaciones). NO escribe en columnas de aprobación
+ * ni modifica timestamps — solo valida y eventualmente avanza.
+ */
+function reevaluarAprobacionPendiente(requestId) {
+  if (!requestId) {
+    Logger.log('reevaluarAprobacionPendiente: requestId requerido.');
+    return { ok: false, reason: 'requestId requerido' };
+  }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return { ok: false, reason: 'Hoja no encontrada' };
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) return { ok: false, reason: 'Solicitud no encontrada' };
+
+  var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var req = mapRowToRequest(row);
+
+  Logger.log('=== REEVALUAR ' + requestId + ' ===');
+  Logger.log('Status actual: ' + req.status);
+  if (req.status !== 'PENDIENTE_APROBACION') {
+    Logger.log('  → No está en PENDIENTE_APROBACION, no hay nada que reevaluar.');
+    return { ok: false, reason: 'Status actual no es PENDIENTE_APROBACION', currentStatus: req.status };
+  }
+
+  var totalCost = Number(req.totalCost) || 0;
+  var requiresCeoApproval = req.isInternational;
+  var requiresCdsApproval = req.isInternational || totalCost > 1200000;
+  var requiresExec = requiresCeoApproval || requiresCdsApproval;
+
+  var areaApproved = req.effectiveApprovalArea === 'APPROVED';
+  var ceoApproved = req.effectiveApprovalCeo === 'APPROVED';
+  var cdsApproved = req.effectiveApprovalCds === 'APPROVED';
+
+  Logger.log('Flags efectivos: area=' + req.effectiveApprovalArea + ', ceo=' + req.effectiveApprovalCeo + ', cds=' + req.effectiveApprovalCds);
+  Logger.log('Requiere: ceo=' + requiresCeoApproval + ', cds=' + requiresCdsApproval);
+  Logger.log('Aprobador área es CEO: ' + req.ceoIsAreaApprover + ', CDS: ' + req.cdsIsAreaApprover);
+
+  var isFullyApproved = false;
+  if (req.requesterIsCeo) {
+    if (ceoApproved) isFullyApproved = true;
+  } else if (req.requesterIsCds) {
+    if (cdsApproved) isFullyApproved = true;
+  } else if (requiresExec) {
+    // effectiveApprovalArea ya incluye el caso "ejecutivo cubre área"
+    // effectiveApprovalCeo/Cds ya incluye el caso "área cubre ejecutivo" (con el fix de 2026-05-12)
+    var executiveSatisfied = (requiresCeoApproval && ceoApproved) || (requiresCdsApproval && cdsApproved);
+    if (areaApproved && executiveSatisfied) isFullyApproved = true;
+  } else {
+    if (areaApproved) isFullyApproved = true;
+  }
+
+  Logger.log('¿Cumple criterio de aprobación completa? ' + isFullyApproved);
+
+  if (!isFullyApproved) {
+    Logger.log('  → No cumple. La solicitud sigue PENDIENTE_APROBACION.');
+    return { ok: false, reason: 'Aún faltan aprobaciones', isFullyApproved: false };
+  }
+
+  Logger.log('  → CUMPLE. Avanzando a APROBADO...');
+  _recordEvent_(requestId, 'fullyApproved');
+  updateRequestStatus(requestId, 'APROBADO', {});
+  Logger.log('  ✅ Solicitud avanzada a APROBADO. Se notificó al solicitante.');
+  return { ok: true, requestId: requestId, newStatus: 'APROBADO' };
+}
+
+/**
  * Helper para investigar manualmente el estado de aprobación de una solicitud.
  * Loguea los valores reales de las columnas (APROBADO POR ÁREA?, APROBADO CEO,
  * APROBADO CDS, STATUS, CORREO ENCUESTADO) junto con los flags efectivos
@@ -5975,34 +6074,49 @@ function sendPendingApprovalReminders() {
         }
       }
 
-      let recipients = [];
-
       const isAreaApproved = String(row[areaApproveIdx]).startsWith("Sí");
       const totalCost = Number(request.totalCost) || 0;
       // R10: CEO solo en internacional, CDS en internacional + alto costo.
       const requiresCeoApproval = request.isInternational;
       const requiresCdsApproval = request.isInternational || totalCost > 1200000;
       const requiresExecutiveApproval = requiresCeoApproval || requiresCdsApproval;
+      const ceoLowerRem = String(CEO_EMAIL).toLowerCase().trim();
+      const cdsLowerRem = String(DIRECTOR_EMAIL).toLowerCase().trim();
+      const approverEmailsRaw = String(request.approverEmail || '')
+          .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
+      const ceoIsAreaApproverRem = approverEmailsRaw.map(function(e) { return e.toLowerCase(); }).indexOf(ceoLowerRem) !== -1;
+      const cdsIsAreaApproverRem = approverEmailsRaw.map(function(e) { return e.toLowerCase(); }).indexOf(cdsLowerRem) !== -1;
 
-      if (requiresExecutiveApproval) {
-         const isCdsApproved = String(row[cdsApproveIdx]).startsWith("Sí");
-         const isCeoApproved = String(row[ceoApproveIdx]).startsWith("Sí");
+      // DEDUP: planeamos los recipients en un Map indexado por email lowercase,
+      // priorizando el rol ejecutivo (CEO/CDS) sobre NORMAL cuando una misma
+      // persona ocupa ambos roles. Sin esto, alguien como Yurani (aprobadora
+      // de área Y Director CDS) recibía DOS recordatorios y al clickear el
+      // de área no satisfacía el rol ejecutivo → solicitud quedaba en limbo.
+      //
+      // SATISFACCIÓN EFECTIVA: si el CEO/CDS ES el aprobador de área y el área
+      // ya está aprobada, su rol ejecutivo se considera implícitamente cubierto
+      // (mismo principio que processApprovalFromEmail).
+      const isCdsApproved = requiresExecutiveApproval ? String(row[cdsApproveIdx]).startsWith("Sí") : false;
+      const isCeoApproved = requiresExecutiveApproval ? String(row[ceoApproveIdx]).startsWith("Sí") : false;
+      const effectiveCdsApproved = isCdsApproved || (cdsIsAreaApproverRem && isAreaApproved);
+      const effectiveCeoApproved = isCeoApproved || (ceoIsAreaApproverRem && isAreaApproved);
 
-         // Lógica Ejecutiva: Solo notificar a quien falte Y esté requerido.
-         if (!isAreaApproved && request.approverEmail) {
-             const emails = request.approverEmail.split(',').map(e => e.trim()).filter(e => e);
-             emails.forEach(e => recipients.push({email: e, role: 'NORMAL'}));
-         }
-         if (requiresCdsApproval && !isCdsApproved) recipients.push({email: DIRECTOR_EMAIL, role: 'CDS'});
-         if (requiresCeoApproval && !isCeoApproved) recipients.push({email: CEO_EMAIL, role: 'CEO'});
-
-      } else {
-         // Lógica Nacional
-         if (!isAreaApproved && request.approverEmail) {
-             const emails = request.approverEmail.split(',').map(e => e.trim()).filter(e => e);
-             emails.forEach(e => recipients.push({email: e, role: 'NORMAL'}));
-         }
+      const plannedRem = new Map();
+      if (requiresCeoApproval && !effectiveCeoApproved) {
+          plannedRem.set(ceoLowerRem, { email: CEO_EMAIL, role: 'CEO' });
       }
+      if (requiresCdsApproval && !effectiveCdsApproved) {
+          plannedRem.set(cdsLowerRem, { email: DIRECTOR_EMAIL, role: 'CDS' });
+      }
+      if (!isAreaApproved) {
+          approverEmailsRaw.forEach(function(email) {
+              const lower = email.toLowerCase();
+              if (!plannedRem.has(lower)) {
+                  plannedRem.set(lower, { email: email, role: 'NORMAL' });
+              }
+          });
+      }
+      const recipients = Array.from(plannedRem.values());
 
       // Enviar correos a los identificados
       if (recipients.length > 0) {
