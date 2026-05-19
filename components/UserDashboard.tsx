@@ -30,12 +30,20 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   const [page, setPage] = useState<number>(1);
 
   // Orden descendente por timestamp para que las recientes salgan primero.
+  // Si timestamp está vacío o inválido (sheet editado manualmente), cae al ID
+  // numérico como criterio — IDs son monotónicos secuenciales. Evita el caso
+  // de solicitudes con timestamp ausente cayendo al fondo (epoch 1970).
   const sortedRequests = useMemo(() => {
     const out = [...requests];
     out.sort((a, b) => {
-      const ta = new Date(a.timestamp || 0).getTime() || 0;
-      const tb = new Date(b.timestamp || 0).getTime() || 0;
-      return tb - ta;
+      const ta = new Date(a.timestamp || 0).getTime();
+      const tb = new Date(b.timestamp || 0).getTime();
+      const validA = !isNaN(ta) && ta > 0;
+      const validB = !isNaN(tb) && tb > 0;
+      if (validA && validB) return tb - ta;
+      const idNumA = parseInt((String(a.requestId || '').match(/\d+/) || ['0'])[0], 10);
+      const idNumB = parseInt((String(b.requestId || '').match(/\d+/) || ['0'])[0], 10);
+      return idNumB - idNumA;
     });
     return out;
   }, [requests]);

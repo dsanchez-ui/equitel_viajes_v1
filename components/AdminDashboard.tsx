@@ -186,10 +186,23 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
       }
       return true;
     });
+    // Sort por timestamp DESC. Si AMBOS son válidos, comparar por fecha real.
+    // Si AL MENOS UNO es inválido o vacío (caso: solicitudes con FECHA SOLICITUD
+    // editada/borrada en el sheet), caer al ID numérico — que también es
+    // monotónico (createNewRequest asigna IDs secuenciales). Esto evita que
+    // solicitudes con timestamp ausente caigan al fondo de la lista (epoch 1970)
+    // y se "pierdan" en una página remota — caso real: SOL-000157 quedó al
+    // final aunque está en estado RESERVADO/PROCESADO y debe ser visible.
     out.sort((a, b) => {
-      const ta = new Date(a.timestamp || 0).getTime() || 0;
-      const tb = new Date(b.timestamp || 0).getTime() || 0;
-      return tb - ta;
+      const ta = new Date(a.timestamp || 0).getTime();
+      const tb = new Date(b.timestamp || 0).getTime();
+      const validA = !isNaN(ta) && ta > 0;
+      const validB = !isNaN(tb) && tb > 0;
+      if (validA && validB) return tb - ta;
+      // Fallback: comparar por número de ID (SOL-000157 → 157). DESC.
+      const idNumA = parseInt((String(a.requestId || '').match(/\d+/) || ['0'])[0], 10);
+      const idNumB = parseInt((String(b.requestId || '').match(/\d+/) || ['0'])[0], 10);
+      return idNumB - idNumA;
     });
     return out;
   }, [requests, priorityMap, showOnlyPriority, filter, searchTerm, includeAnulada, includeDenegada, searchableMap]);
