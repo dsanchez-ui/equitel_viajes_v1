@@ -159,6 +159,16 @@ export interface TravelRequest {
   requiresExecutiveApproval?: boolean;
   requiresCeoApproval?: boolean;
   requiresCdsApproval?: boolean;
+  // BUDGET_OVERRUN (2026-05-21): aprobación adicional cuando la solicitud
+  // causa que el presupuesto del periodo de la unidad se exceda. Configurable
+  // desde el dashboard de costos (deshabilitado por default).
+  requiresBudgetOverrunApproval?: boolean;
+  effectiveApprovalBudgetOverrun?: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA';
+  effectiveApprovalBudgetOverrunReason?: string;
+  approvalStatusBudgetOverrun?: string;
+  budgetApproverEmail?: string;
+  budgetApproverName?: string;
+  budgetApproverIsAreaApprover?: boolean;
   // True cuando el solicitante no es ninguno de los pasajeros (detección por cédula
   // contra directorio + fallback por correo). Se usa para mostrar el ícono 👥 en
   // dashboards. No afecta el flujo de aprobación.

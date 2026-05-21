@@ -232,7 +232,9 @@ const HEADERS_REQUESTS = [
   "SELECCION_TEXTO", "COSTO_FINAL_TIQUETES", "COSTO_FINAL_HOTEL",
   "ES_CAMBIO_CON_COSTO", "FECHA_SOLICITUD_PADRE", // Nuevos headers para trazabilidad de cambios
   "EVENTOS_JSON", // Métricas: timestamps de cada evento del ciclo
-  "MODO_SOLICITUD" // 'VIAJE' (default) o 'SOLO_HOSPEDAJE' — determina flujo visual (emails, modales, form)
+  "MODO_SOLICITUD", // 'VIAJE' (default) o 'SOLO_HOSPEDAJE' — determina flujo visual (emails, modales, form)
+  "REQUIERE APROB PPTO",  // "SI" o vacío — marca persistente del chequeo de presupuesto excedido (calculado en confirmación de costos)
+  "APROBADO PRESUPUESTO"   // "Sí_email_fecha" / "No_email_fecha" / vacío — voto del aprobador de presupuesto (Alejandro o quien configure)
 ];
 
 // =====================================================================
@@ -2245,6 +2247,8 @@ function processApprovalFromEmail(e) {
           const areaAutoColIdx = H("APROBADO POR ÁREA? (AUTOMÁTICO)");
           const areaLegacyColIdx = H("APROBADO POR ÁREA?");
           const areaTimeColIdx = H("FECHA/HORA (AUTOMÁTICO)");
+          const budgetColIdx = H("APROBADO PRESUPUESTO");
+          const requiereApPptoIdx = H("REQUIERE APROB PPTO");
 
           const currentStatus = currentRow[statusIdx];
           const isInternational = currentRow[internationalIdx] === "SI";
@@ -2272,6 +2276,17 @@ function processApprovalFromEmail(e) {
           let approverEmail = "";
           if (role === 'CEO') approverEmail = CEO_EMAIL;
           else if (role === 'CDS') approverEmail = DIRECTOR_EMAIL;
+          else if (role === 'BUDGET_OVERRUN') {
+              // El aprobador de presupuesto se configura en el dashboard. El
+              // link se firma con su email como actor — confiamos en el actor
+              // si la firma HMAC verificó (el cutover/legacy ya pasó la
+              // validación arriba). Como defensa, también validamos contra
+              // la config actual: si el actor NO coincide con el config, registramos
+              // el actor del link (lo que firmamos cuando se envió el correo) — esto
+              // permite que aunque cambien el email en el config después, los links
+              // ya enviados sigan funcionando.
+              approverEmail = actor || 'desconocido';
+          }
           else {
               // Etapa 2.5: leemos del array currentRow en lugar de un getRange extra.
               // Use expected approver from sheet; only use actor if it matches to prevent impersonation
@@ -2311,6 +2326,22 @@ function processApprovalFromEmail(e) {
                   if (parts.length >= 3) previousDecisionDate = parts[2];
               } else {
                   sheet.getRange(rowNumber, cdsColIdx + 1).setValue(logStringFull);
+              }
+          } else if (role === 'BUDGET_OVERRUN') {
+              if (budgetColIdx < 0) {
+                  // Defensa: la columna no existe en el sheet (no se hizo la
+                  // migración). Logueamos y dejamos seguir el flujo — el voto se
+                  // perderá pero la app no rompe.
+                  console.error('processApprovalFromEmail: columna "APROBADO PRESUPUESTO" no existe; rol BUDGET_OVERRUN no se puede registrar.');
+              } else {
+                  const currentVal = currentRow[budgetColIdx];
+                  if (currentVal && String(currentVal).trim() !== "") {
+                      alreadyDecided = true;
+                      const parts = String(currentVal).split('_');
+                      if (parts.length >= 3) previousDecisionDate = parts[2];
+                  } else {
+                      sheet.getRange(rowNumber, budgetColIdx + 1).setValue(logStringFull);
+                  }
               }
           } else {
               // Normal Approver
@@ -2393,6 +2424,13 @@ function processApprovalFromEmail(e) {
           const ceoApproved = String(ceoVal).startsWith("Sí");
           const areaApproved = String(areaVal).startsWith("Sí");
 
+          // BUDGET_OVERRUN: leer flag + voto. Tolerante a columna faltante.
+          const budgetVal = (budgetColIdx >= 0) ? rowValues[budgetColIdx] : '';
+          const budgetApproved = String(budgetVal).startsWith("Sí");
+          const requiresBudgetOverrun = (requiereApPptoIdx >= 0)
+              ? String(rowValues[requiereApPptoIdx] || '').toUpperCase().trim() === 'SI'
+              : false;
+
           // Detect special cases: requester is CEO/CDS, or the assigned area approver
           // happens to be CEO/CDS (so a single click on the deduped email implicitly
           // covers both the area and the executive role).
@@ -2408,6 +2446,27 @@ function processApprovalFromEmail(e) {
               .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
           const ceoIsAreaApprover = assignedAreaApprovers.indexOf(ceoLowerHere) !== -1;
           const cdsIsAreaApprover = assignedAreaApprovers.indexOf(cdsLowerHere) !== -1;
+
+          // Budget approver del config — para simetría área↔budget.
+          var budgetApproverLowerHere = '';
+          try {
+              var _cfgB = _csLoadConfig_();
+              budgetApproverLowerHere = String(_cfgB.budgetApproverEmail || '').toLowerCase().trim();
+          } catch (e) { budgetApproverLowerHere = ''; }
+          const budgetApproverIsAreaApprover = budgetApproverLowerHere &&
+              assignedAreaApprovers.indexOf(budgetApproverLowerHere) !== -1;
+
+          // BUDGET satisfecho: voto directo, O simetrías:
+          //   - budget approver = área aprobador y aprobó como área
+          //   - budget approver = CEO y aprobó como CEO (dedup en sendApprovalRequestEmail)
+          //   - budget approver = CDS y aprobó como CDS (idem)
+          const budgetIsCeoHere = budgetApproverLowerHere && budgetApproverLowerHere === ceoLowerHere;
+          const budgetIsCdsHere = budgetApproverLowerHere && budgetApproverLowerHere === cdsLowerHere;
+          const budgetSatisfied = !requiresBudgetOverrun
+              || budgetApproved
+              || (budgetApproverIsAreaApprover && areaApproved)
+              || (budgetIsCeoHere && ceoApproved)
+              || (budgetIsCdsHere && cdsApproved);
 
           let isFullyApproved = false;
 
@@ -2458,6 +2517,18 @@ function processApprovalFromEmail(e) {
               if (areaApproved) {
                   isFullyApproved = true;
               }
+          }
+
+          // BUDGET_OVERRUN (2026-05-21): condición adicional que se aplica a
+          // TODAS las ramas anteriores. Si la solicitud requiere aprobación
+          // de presupuesto y el aprobador (Alejandro o quien esté configurado)
+          // aún no votó, la solicitud NO está completamente aprobada — sin
+          // importar si CEO/CDS/área ya hicieron lo suyo.
+          // `budgetSatisfied` se calculó arriba y ya incluye la simetría
+          // (si el budget approver es también área aprobador y aprobó como
+          // área, queda cubierto).
+          if (isFullyApproved && !budgetSatisfied) {
+              isFullyApproved = false;
           }
 
           if (isFullyApproved) {
@@ -3691,7 +3762,14 @@ const HtmlTemplates = {
         if (request.isInternational && !isPriorityAppr) {
             alertHtml += `<div style="background-color: #eff6ff; border: 1px solid #93c5fd; color: #1e3a8a; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🌍 ${isHotelOnlyAppr ? 'HOSPEDAJE INTERNACIONAL' : 'VIAJE INTERNACIONAL'}:</strong> Esta solicitud requiere aprobación de Gerencia General, Gerencia de Cadena de Suministro y Aprobador de Área.</div>`;
         }
-        
+
+        // BUDGET OVERRUN BANNER (2026-05-21): cuando la solicitud causa que la
+        // unidad de negocio exceda su presupuesto del periodo configurado.
+        if (request.requiresBudgetOverrunApproval) {
+            const budgetName = escapeHtml_(request.budgetApproverName || 'el responsable de presupuesto configurado');
+            alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>💰 PRESUPUESTO DE UNIDAD EXCEDIDO:</strong> Esta solicitud causa que la unidad de negocio <strong>${escapeHtml_(request.businessUnit || '')}</strong> exceda su presupuesto del periodo. Requiere aprobación adicional de <strong>${budgetName}</strong>.</div>`;
+        }
+
         // POLICY VIOLATION BANNER
         if (request.policyViolation && request.departureDate) {
             const parseHelper = (dStr) => {
@@ -5081,6 +5159,65 @@ function updateRequestStatus(id, status, payload) {
    if (status === 'PENDIENTE_APROBACION') {
       _recordEvent_(id, 'costConfirmed'); // métricas: analista confirmó costos
       // This is now triggered AFTER Admin inputs costs
+
+      // CHECK DE PRESUPUESTO EXCEDIDO (2026-05-21):
+      // Antes de mapear la solicitud completa, calculamos si el nuevo costo
+      // causa que la unidad exceda su presupuesto del periodo configurado.
+      // Si sí, persistimos "SI" en la columna "REQUIERE APROB PPTO" para
+      // que mapRowToRequest la lea y exponga el flag al frontend + emails.
+      //
+      // Si el feature está deshabilitado (config.budgetOverrunCheckEnabled=false),
+      // _calcularEjecutadoPeriodo_ retorna exceedsBudget=false → no escribe nada.
+      // Si la unidad no tiene presupuesto en PPTOS UNIDADES → idem, flujo normal.
+      try {
+         var reqApPptoIdx = H('REQUIERE APROB PPTO');
+         if (reqApPptoIdx > -1) {
+            // Leer una versión preliminar de la fila para extraer empresa/unidad/totalCost.
+            // Es barato — solo necesitamos los headers ya escritos por el flujo actual.
+            var unitIdx = H('UNIDAD DE NEGOCIO');
+            var compIdx = H('EMPRESA');
+            var costIdx = H('COSTO COTIZADO PARA VIAJE');
+            // BUGFIX (auditoría pre-commit): leer también el parentId para
+            // excluir al padre cuando se confirman costos de una modificación.
+            // El padre sigue activo (RESERVADO) hasta que la hija sea APROBADA,
+            // por lo que sin esto sumaríamos el costo del padre + el de la hija
+            // y dispararíamos la regla en falsos positivos.
+            var parentIdx = H('ID SOLICITUD PADRE');
+            var _unidad = unitIdx > -1 ? String(sheet.getRange(rowNumber, unitIdx + 1).getValue() || '') : '';
+            var _empresa = compIdx > -1 ? String(sheet.getRange(rowNumber, compIdx + 1).getValue() || '') : '';
+            var _costo = costIdx > -1 ? Number(sheet.getRange(rowNumber, costIdx + 1).getValue() || 0) : 0;
+            var _parentId = parentIdx > -1 ? String(sheet.getRange(rowNumber, parentIdx + 1).getValue() || '').trim() : '';
+            var _excludeIds = _parentId ? [id, _parentId] : [id];
+            var _chk = _calcularEjecutadoPeriodo_(_empresa, _unidad, _costo, _excludeIds);
+            if (_chk && _chk.exceedsBudget) {
+               sheet.getRange(rowNumber, reqApPptoIdx + 1).setValue('SI');
+               // Nota informativa en OBSERVACIONES para trazabilidad humana
+               try {
+                  var _obsIdxPpto = H('OBSERVACIONES');
+                  if (_obsIdxPpto > -1) {
+                     var _currObsPpto = sheet.getRange(rowNumber, _obsIdxPpto + 1).getValue();
+                     var _notePpto = '[PRESUPUESTO]: Solicitud excede presupuesto del periodo ' + _chk.periodLabel +
+                                     ' para la unidad. Requiere aprobación adicional. Ppto: $' +
+                                     Number(_chk.budgetPeriod).toLocaleString('es-CO') + ', ejecutado previo: $' +
+                                     Number(_chk.executedPeriod).toLocaleString('es-CO') + ', total proyectado: $' +
+                                     Number(_chk.newTotalProjected).toLocaleString('es-CO') + '.';
+                     sheet.getRange(rowNumber, _obsIdxPpto + 1).setValue((_currObsPpto ? _currObsPpto + '\n' : '') + _notePpto);
+                  }
+               } catch (eObs) { console.error('Error logging budget note: ' + eObs); }
+            } else if (_chk && _chk.featureEnabled) {
+               // Solo limpiar el flag si el feature ESTÁ ACTIVO. Con feature
+               // deshabilitado NO tocamos la celda — evita writes innecesarios
+               // y respeta cualquier marca manual que un superadmin haya puesto.
+               var _existing = String(sheet.getRange(rowNumber, reqApPptoIdx + 1).getValue() || '').trim();
+               if (_existing) sheet.getRange(rowNumber, reqApPptoIdx + 1).setValue('');
+            }
+         }
+      } catch (eBudget) {
+         // Defensivo: si la verificación falla, NO bloqueamos el flujo de aprobación.
+         // El correo se envía normalmente sin el rol BUDGET_OVERRUN.
+         console.error('Error en verificación de presupuesto excedido: ' + eBudget);
+      }
+
       const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
       // Si el modal de "Confirmar costos" marcó el checkbox de saltar
       // aprobación (skipApprovalStage se invoca inmediatamente después), NO
@@ -5315,14 +5452,29 @@ function sendApprovalRequestEmail(req) {
         sendEmailRich(email, subject, html, null);
     };
 
+    // Helper: envía también al aprobador de presupuesto SI la solicitud
+    // excedió ppto Y el actor del CASE no es el propio aprobador (evita
+    // duplicar correo cuando CEO/CDS = budget approver, caso improbable
+    // pero posible si se configura así).
+    const sendBudgetIfApplicable = function(actorEmailLower) {
+        if (!req.requiresBudgetOverrunApproval) return;
+        var budgetLower = String(req.budgetApproverEmail || '').toLowerCase().trim();
+        if (!budgetLower || budgetLower === actorEmailLower) return;
+        sendOne(req.budgetApproverEmail, 'BUDGET_OVERRUN');
+    };
+
     // CASE 1: requester IS the CEO → only CEO needs to approve. Skip everyone else.
+    // EXCEPCIÓN: si la solicitud excedió presupuesto, también va al aprobador de ppto.
     if (requesterIsCeo) {
         sendOne(CEO_EMAIL, 'CEO');
+        sendBudgetIfApplicable(ceoLower);
         return;
     }
     // CASE 2: requester IS the CDS → only CDS needs to approve. Skip everyone else.
+    // Misma excepción que CASE 1.
     if (requesterIsCds) {
         sendOne(DIRECTOR_EMAIL, 'CDS');
+        sendBudgetIfApplicable(cdsLower);
         return;
     }
 
@@ -5333,10 +5485,23 @@ function sendApprovalRequestEmail(req) {
     // role. The completion check (processApprovalFromEmail) recognizes that the executive
     // approval implicitly satisfies the area requirement when the area approver IS that
     // executive (effectiveAreaApproved logic).
+    //
+    // BUDGET_OVERRUN (2026-05-21): si la solicitud excedió el presupuesto
+    // del periodo, agregamos también al aprobador de presupuesto. Mismo
+    // patrón de dedup: si el aprobador de presupuesto coincide con CEO/CDS/área,
+    // recibe UN solo correo con el rol prioritario (ejecutivo > BUDGET_OVERRUN > NORMAL).
     const planned = new Map();
 
     if (requiresCeoApproval) planned.set(ceoLower, { email: CEO_EMAIL, role: 'CEO' });
     if (requiresCdsApproval) planned.set(cdsLower, { email: DIRECTOR_EMAIL, role: 'CDS' });
+
+    // BUDGET_OVERRUN: solo si la fila tiene el flag y la config define un email válido.
+    if (req.requiresBudgetOverrunApproval && req.budgetApproverEmail) {
+        var budgetLower = String(req.budgetApproverEmail).toLowerCase().trim();
+        if (budgetLower && !planned.has(budgetLower)) {
+            planned.set(budgetLower, { email: req.budgetApproverEmail, role: 'BUDGET_OVERRUN' });
+        }
+    }
 
     const approverEmails = String(req.approverEmail || '').split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
     approverEmails.forEach(function(email) {
@@ -5442,7 +5607,7 @@ function setAnalystWhitelist(emails) {
  * Returns one of: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA' for each role,
  * plus a human-readable reason when the role is NA, so the UI can explain WHY.
  */
-function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isInternational, totalCost, areaVal, ceoVal, cdsVal) {
+function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isInternational, totalCost, areaVal, ceoVal, cdsVal, requiresBudgetOverrun, budgetOverrunVal, budgetApproverEmail) {
   const startsWithSi = function(v) { return String(v || '').startsWith('Sí'); };
   const startsWithNo = function(v) { return String(v || '').startsWith('No'); };
 
@@ -5452,10 +5617,13 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
   const ceoDenied = startsWithNo(ceoVal);
   const cdsApproved = startsWithSi(cdsVal);
   const cdsDenied = startsWithNo(cdsVal);
+  const budgetApproved = startsWithSi(budgetOverrunVal);
+  const budgetDenied = startsWithNo(budgetOverrunVal);
 
   const requesterLower = String(requesterEmail || '').toLowerCase().trim();
   const ceoLower = String(CEO_EMAIL).toLowerCase().trim();
   const cdsLower = String(DIRECTOR_EMAIL).toLowerCase().trim();
+  const budgetApproverLower = String(budgetApproverEmail || '').toLowerCase().trim();
   const requesterIsCeo = requesterLower === ceoLower;
   const requesterIsCds = requesterLower === cdsLower;
 
@@ -5463,6 +5631,7 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
       .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
   const ceoIsAreaApprover = assignedAreaApprovers.indexOf(ceoLower) !== -1;
   const cdsIsAreaApprover = assignedAreaApprovers.indexOf(cdsLower) !== -1;
+  const budgetApproverIsAreaApprover = budgetApproverLower && assignedAreaApprovers.indexOf(budgetApproverLower) !== -1;
 
   // R10: CEO se excluye del flujo de alto costo nacional. Solo interviene
   // en internacionales. CDS interviene en internacional Y en alto costo.
@@ -5473,6 +5642,7 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
   var area = 'PENDING', areaReason = '';
   var ceo = 'PENDING', ceoReason = '';
   var cds = 'PENDING', cdsReason = '';
+  var budgetOverrun = 'PENDING', budgetOverrunReason = '';
 
   if (requesterIsCeo) {
     // CEO is the requester → only CEO needs to approve. Everything else is N/A.
@@ -5530,17 +5700,44 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
     }
   }
 
+  // BUDGET OVERRUN: solo aplica si la solicitud está marcada como
+  // "requiere aprobación de presupuesto" (flag persistido al confirmar
+  // costos). Múltiples vías de satisfacción simétricas:
+  //   - Voto directo en columna APROBADO PRESUPUESTO
+  //   - Budget approver = área aprobador y aprobó como área
+  //   - Budget approver = CEO y aprobó como CEO (Map dedup envió solo correo CEO)
+  //   - Budget approver = CDS y aprobó como CDS (idem con rol CDS)
+  var budgetIsCeo = budgetApproverLower && budgetApproverLower === ceoLower;
+  var budgetIsCds = budgetApproverLower && budgetApproverLower === cdsLower;
+  if (requiresBudgetOverrun) {
+    if (budgetApproved) budgetOverrun = 'APPROVED';
+    else if (budgetApproverIsAreaApprover && areaApproved) budgetOverrun = 'APPROVED';
+    else if (budgetIsCeo && ceoApproved) budgetOverrun = 'APPROVED';
+    else if (budgetIsCds && cdsApproved) budgetOverrun = 'APPROVED';
+    else if (budgetDenied) budgetOverrun = 'DENIED';
+    else if (budgetApproverIsAreaApprover && areaDenied) budgetOverrun = 'DENIED';
+    else if (budgetIsCeo && ceoDenied) budgetOverrun = 'DENIED';
+    else if (budgetIsCds && cdsDenied) budgetOverrun = 'DENIED';
+    else budgetOverrun = 'PENDING';
+  } else {
+    budgetOverrun = 'NA';
+    budgetOverrunReason = 'La solicitud no excede el presupuesto del periodo de su unidad de negocio.';
+  }
+
   return {
     area: area, areaReason: areaReason,
     ceo: ceo, ceoReason: ceoReason,
     cds: cds, cdsReason: cdsReason,
+    budgetOverrun: budgetOverrun, budgetOverrunReason: budgetOverrunReason,
     requesterIsCeo: requesterIsCeo,
     requesterIsCds: requesterIsCds,
     ceoIsAreaApprover: ceoIsAreaApprover,
     cdsIsAreaApprover: cdsIsAreaApprover,
+    budgetApproverIsAreaApprover: budgetApproverIsAreaApprover,
     requiresExecutive: requiresExecutive,
     requiresCeoApproval: requiresCeoApproval,
-    requiresCdsApproval: requiresCdsApproval
+    requiresCdsApproval: requiresCdsApproval,
+    requiresBudgetOverrun: !!requiresBudgetOverrun
   };
 }
 
@@ -5718,6 +5915,20 @@ function mapRowToRequest(row, lite) {
   // approval flow leaves some columns blank.
   const requesterEmailRaw = String(get("CORREO ENCUESTADO"));
   const approverEmailRaw = String(get("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)"));
+  // Lectura de columnas nuevas de presupuesto excedido. Si las columnas no
+  // existen aún en el sheet (no se hicieron las migraciones), `get()` retorna ''.
+  const requiereApPpto = String(get("REQUIERE APROB PPTO")).toUpperCase().trim() === 'SI';
+  const aprobadoPptoVal = String(get("APROBADO PRESUPUESTO"));
+  // El email del aprobador de presupuesto vive en la config del dashboard.
+  // Lo leemos aquí para que la simetría área↔budget funcione (si el aprobador
+  // de presupuesto coincide con el aprobador de área, su click cubre ambos).
+  // Lectura barata por cache de Drive en _csLoadConfig_.
+  var _cfgBudget = null;
+  try { _cfgBudget = _csLoadConfig_(); } catch (e) { _cfgBudget = null; }
+  const budgetApproverEmailCfg = _cfgBudget ? String(_cfgBudget.budgetApproverEmail || '') : '';
+  result.budgetApproverEmail = budgetApproverEmailCfg;
+  result.budgetApproverName = _cfgBudget ? String(_cfgBudget.budgetApproverName || '') : '';
+
   const eff = computeEffectiveApprovalStatus_(
       requesterEmailRaw,
       approverEmailRaw,
@@ -5725,7 +5936,10 @@ function mapRowToRequest(row, lite) {
       result.totalCost,
       get("APROBADO POR ÁREA? (AUTOMÁTICO)"),
       get("APROBADO CEO"),
-      get("APROBADO CDS")
+      get("APROBADO CDS"),
+      requiereApPpto,
+      aprobadoPptoVal,
+      budgetApproverEmailCfg
   );
   result.effectiveApprovalArea = eff.area;
   result.effectiveApprovalAreaReason = eff.areaReason;
@@ -5733,13 +5947,18 @@ function mapRowToRequest(row, lite) {
   result.effectiveApprovalCeoReason = eff.ceoReason;
   result.effectiveApprovalCds = eff.cds;
   result.effectiveApprovalCdsReason = eff.cdsReason;
+  result.effectiveApprovalBudgetOverrun = eff.budgetOverrun;
+  result.effectiveApprovalBudgetOverrunReason = eff.budgetOverrunReason;
+  result.approvalStatusBudgetOverrun = aprobadoPptoVal;
   result.requesterIsCeo = eff.requesterIsCeo;
   result.requesterIsCds = eff.requesterIsCds;
   result.ceoIsAreaApprover = eff.ceoIsAreaApprover;
   result.cdsIsAreaApprover = eff.cdsIsAreaApprover;
+  result.budgetApproverIsAreaApprover = eff.budgetApproverIsAreaApprover;
   result.requiresExecutiveApproval = eff.requiresExecutive;
   result.requiresCeoApproval = eff.requiresCeoApproval;
   result.requiresCdsApproval = eff.requiresCdsApproval;
+  result.requiresBudgetOverrunApproval = eff.requiresBudgetOverrun;
 
   // PROXY DETECTION: marca la solicitud como "a nombre de otro" cuando el
   // solicitante NO es ninguno de los pasajeros. Método primario por CÉDULA
@@ -5834,10 +6053,13 @@ function reevaluarAprobacionPendiente(requestId) {
   var areaApproved = req.effectiveApprovalArea === 'APPROVED';
   var ceoApproved = req.effectiveApprovalCeo === 'APPROVED';
   var cdsApproved = req.effectiveApprovalCds === 'APPROVED';
+  // BUDGET_OVERRUN: solo aplica si la solicitud tiene el flag persistido.
+  var requiresBudgetOverrun = !!req.requiresBudgetOverrunApproval;
+  var budgetSatisfied = !requiresBudgetOverrun || req.effectiveApprovalBudgetOverrun === 'APPROVED';
 
-  Logger.log('Flags efectivos: area=' + req.effectiveApprovalArea + ', ceo=' + req.effectiveApprovalCeo + ', cds=' + req.effectiveApprovalCds);
-  Logger.log('Requiere: ceo=' + requiresCeoApproval + ', cds=' + requiresCdsApproval);
-  Logger.log('Aprobador área es CEO: ' + req.ceoIsAreaApprover + ', CDS: ' + req.cdsIsAreaApprover);
+  Logger.log('Flags efectivos: area=' + req.effectiveApprovalArea + ', ceo=' + req.effectiveApprovalCeo + ', cds=' + req.effectiveApprovalCds + ', budget=' + (req.effectiveApprovalBudgetOverrun || 'N/A'));
+  Logger.log('Requiere: ceo=' + requiresCeoApproval + ', cds=' + requiresCdsApproval + ', budget=' + requiresBudgetOverrun);
+  Logger.log('Aprobador área es CEO: ' + req.ceoIsAreaApprover + ', CDS: ' + req.cdsIsAreaApprover + ', budget approver: ' + req.budgetApproverIsAreaApprover);
 
   var isFullyApproved = false;
   if (req.requesterIsCeo) {
@@ -5851,6 +6073,12 @@ function reevaluarAprobacionPendiente(requestId) {
     if (areaApproved && executiveSatisfied) isFullyApproved = true;
   } else {
     if (areaApproved) isFullyApproved = true;
+  }
+
+  // BUDGET_OVERRUN: condición adicional aplicada a todas las ramas.
+  if (isFullyApproved && !budgetSatisfied) {
+    isFullyApproved = false;
+    Logger.log('  → CRITERIOS BASE OK pero budget no aprobado todavía.');
   }
 
   Logger.log('¿Cumple criterio de aprobación completa? ' + isFullyApproved);
@@ -6101,12 +6329,45 @@ function sendPendingApprovalReminders() {
       const effectiveCdsApproved = isCdsApproved || (cdsIsAreaApproverRem && isAreaApproved);
       const effectiveCeoApproved = isCeoApproved || (ceoIsAreaApproverRem && isAreaApproved);
 
+      // BUDGET_OVERRUN: si la solicitud requiere aprobación de presupuesto
+      // y el voto del aprobador aún no llegó, agregar al recordatorio.
+      // Misma simetría: si el budget approver es también área aprobador y
+      // ya aprobó como área, no se le envía recordatorio adicional.
+      const budgetColIdxRem = H('APROBADO PRESUPUESTO');
+      const reqApPptoIdxRem = H('REQUIERE APROB PPTO');
+      const requiresBudgetOverrunRem = (reqApPptoIdxRem >= 0)
+          ? String(row[reqApPptoIdxRem] || '').toUpperCase().trim() === 'SI'
+          : false;
+      const isBudgetApproved = (requiresBudgetOverrunRem && budgetColIdxRem >= 0)
+          ? String(row[budgetColIdxRem]).startsWith("Sí")
+          : false;
+      var budgetApproverEmailRem = '';
+      try {
+          var _cfgRem = _csLoadConfig_();
+          budgetApproverEmailRem = String(_cfgRem.budgetApproverEmail || '').trim();
+      } catch (e) { budgetApproverEmailRem = ''; }
+      const budgetLowerRem = budgetApproverEmailRem.toLowerCase();
+      const budgetIsAreaApproverRem = budgetLowerRem &&
+          approverEmailsRaw.map(function(e) { return e.toLowerCase(); }).indexOf(budgetLowerRem) !== -1;
+      // Simetría completa: si el budget approver es CEO/CDS, su voto ejecutivo cubre BUDGET.
+      const budgetIsCeoRem = budgetLowerRem && budgetLowerRem === ceoLowerRem;
+      const budgetIsCdsRem = budgetLowerRem && budgetLowerRem === cdsLowerRem;
+      const effectiveBudgetApproved = isBudgetApproved
+          || (budgetIsAreaApproverRem && isAreaApproved)
+          || (budgetIsCeoRem && isCeoApproved)
+          || (budgetIsCdsRem && isCdsApproved);
+
       const plannedRem = new Map();
       if (requiresCeoApproval && !effectiveCeoApproved) {
           plannedRem.set(ceoLowerRem, { email: CEO_EMAIL, role: 'CEO' });
       }
       if (requiresCdsApproval && !effectiveCdsApproved) {
           plannedRem.set(cdsLowerRem, { email: DIRECTOR_EMAIL, role: 'CDS' });
+      }
+      if (requiresBudgetOverrunRem && !effectiveBudgetApproved && budgetApproverEmailRem) {
+          if (!plannedRem.has(budgetLowerRem)) {
+              plannedRem.set(budgetLowerRem, { email: budgetApproverEmailRem, role: 'BUDGET_OVERRUN' });
+          }
       }
       if (!isAreaApproved) {
           approverEmailsRaw.forEach(function(email) {
@@ -7292,6 +7553,7 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   var areaIdx = H('APROBADO POR ÁREA? (AUTOMÁTICO)');
   var cdsIdx = H('APROBADO CDS');
   var ceoIdx = H('APROBADO CEO');
+  var budgetIdxSkip = H('APROBADO PRESUPUESTO');
   var approvalDateIdx = H('FECHA/HORA (AUTOMÁTICO)');
 
   var rowNumber = _getRowByRequestId_(requestId);
@@ -7306,15 +7568,18 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   var timestampStr = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd HH:mm');
   var actorEmail = String(currentUserEmail || 'desconocido').toLowerCase().trim();
 
-  // 1. Marcar las 3 columnas de aprobación con un valor que deje clara la
+  // 1. Marcar las columnas de aprobación con un valor que deje clara la
   // circunstancia. mapRowToRequest lee estas columnas; un valor no-vacío
   // que no coincida con APROBADO será tratado como OTHER. Para que
   // computeEffectiveApprovalStatus_ no complique el estado, usamos "Sí" como
   // valor aceptado (igual que un aprobador real firma "Sí").
+  // BUDGET_OVERRUN (2026-05-21): también se marca para que la solicitud no
+  // quede esperando aprobación del aprobador de presupuesto.
   var approvalNote = 'Sí (ETAPA SALTADA por ' + actorEmail + ')';
   if (areaIdx > -1) sheet.getRange(rowNumber, areaIdx + 1).setValue(approvalNote);
   if (cdsIdx > -1) sheet.getRange(rowNumber, cdsIdx + 1).setValue(approvalNote);
   if (ceoIdx > -1) sheet.getRange(rowNumber, ceoIdx + 1).setValue(approvalNote);
+  if (budgetIdxSkip > -1) sheet.getRange(rowNumber, budgetIdxSkip + 1).setValue(approvalNote);
   if (approvalDateIdx > -1) sheet.getRange(rowNumber, approvalDateIdx + 1).setValue(timestampStr);
 
   // 2. OBSERVACIONES con trazabilidad
@@ -10397,7 +10662,21 @@ function _csDefaultConfig_() {
     requesterHeader: 'CORREO ENCUESTADO',
     requestIdHeader: 'ID RESPUESTA',
     countableStatuses: ['RESERVADO', 'PROCESADO'],
-    estimatedStatuses: ['RESERVADO']  // status donde aplica el proxy estimado si no hay facturas
+    estimatedStatuses: ['RESERVADO'],  // status donde aplica el proxy estimado si no hay facturas
+    // === REGLA DE PRESUPUESTO EXCEDIDO ===
+    // Cuando una solicitud nueva CAUSARÍA que el presupuesto del periodo
+    // de la unidad de negocio se exceda, requiere aprobación adicional de
+    // un aprobador configurable (default: Alejandro Gómez de Greiff).
+    // Por defecto DESHABILITADO — el feature solo se activa cuando el
+    // superadmin pone `budgetOverrunCheckEnabled: true` desde la configuración
+    // del dashboard.
+    budgetOverrunCheckEnabled: false,
+    budgetApproverEmail: 'agdg@equitel.com.co',
+    budgetApproverName: 'Alejandro Gómez de Greiff',
+    // Cuántos meses agrupar para evaluar presupuesto. Convención alineada al
+    // calendario: si periodMonths=2, los periodos son ene-feb, mar-abr, etc.
+    // Bucket del mes M: floor((M-1) / periodMonths). Solo valores que dividen 12.
+    budgetPeriodMonths: 2
   };
 }
 
@@ -10417,6 +10696,20 @@ function _csIsConfigValid_(cfg) {
   if (!cfg.purchaseDateHeader || !cfg.unitHeader || !cfg.statusHeader) return false;
   if (!cfg.estimateFallback || !cfg.estimateFallback.ticketsHeader || !cfg.estimateFallback.hotelHeader) return false;
   if (!Array.isArray(cfg.countableStatuses) || cfg.countableStatuses.length === 0) return false;
+
+  // Validaciones de campos de presupuesto excedido (todos opcionales —
+  // si faltan, _csLoadConfig_ usa el default. Aquí solo bloqueamos shapes
+  // claramente inválidos para no corromper el comportamiento esperado).
+  if (cfg.budgetOverrunCheckEnabled !== undefined && typeof cfg.budgetOverrunCheckEnabled !== 'boolean') return false;
+  if (cfg.budgetApproverEmail !== undefined) {
+    if (typeof cfg.budgetApproverEmail !== 'string') return false;
+    if (cfg.budgetApproverEmail && cfg.budgetApproverEmail.indexOf('@') < 0) return false;
+  }
+  if (cfg.budgetApproverName !== undefined && typeof cfg.budgetApproverName !== 'string') return false;
+  if (cfg.budgetPeriodMonths !== undefined) {
+    var validPeriods = [1, 2, 3, 4, 6, 12]; // solo valores que dividen 12 exactamente
+    if (validPeriods.indexOf(Number(cfg.budgetPeriodMonths)) < 0) return false;
+  }
   return true;
 }
 
@@ -11057,6 +11350,160 @@ function _csEmptyResult_(year, fromMonth, toMonth, config) {
     rows: [],
     totals: { executedReal: 0, executedEstimated: 0, executedTotal: 0, budget: 0, delta: 0, percentUsed: null, byMonth: months },
     meta: { year: year, fromMonth: fromMonth, toMonth: toMonth, companies: [], units: [], requestsCounted: 0, computedAt: new Date().toISOString() }
+  };
+}
+
+/**
+ * Determina si una solicitud específica CAUSARÍA que el presupuesto del
+ * periodo de su unidad de negocio se exceda.
+ *
+ * Decisiones (acordadas con David, 2026-05-21):
+ *   - Mes de referencia: mes ACTUAL (Bogotá) al confirmar costos.
+ *   - Periodo: alineado al calendario via floor((mes-1)/periodMonths). Si
+ *     periodMonths=2 y estamos en mayo, el periodo es may-jun.
+ *   - Ejecutado del periodo: suma real+estimado de solicitudes
+ *     RESERVADO/PROCESADO del periodo (excluye la solicitud actual para
+ *     evitar doble-conteo en modificaciones).
+ *   - Si la unidad no tiene PPTOS para el año → no aplicar regla.
+ *   - Si el feature está deshabilitado en config → no aplicar regla.
+ *
+ * Retorna `{ exceedsBudget, hasBudget, budgetPeriod, executedPeriod,
+ *           newRequestCost, periodLabel, reason }`. El caller decide qué
+ * hacer con el resultado (típicamente: persistir flag en columna del sheet).
+ *
+ * Performance: 1 lectura completa del sheet (~150 ms a 200 filas, ~600 ms
+ * a 1000 filas). Solo se invoca UNA vez por solicitud al confirmar costos.
+ *
+ * @param {string} empresa
+ * @param {string} unidad
+ * @param {number} totalCost
+ * @param {string|string[]} excludeIds  IDs a excluir del ejecutado. Acepta
+ *     string único (self) o array (self + parent en modificaciones). El
+ *     caller pasa también el parent para no contar doble cuando se está
+ *     modificando una solicitud que aún sigue activa.
+ */
+function _calcularEjecutadoPeriodo_(empresa, unidad, totalCost, excludeIds) {
+  var config = _csLoadConfig_();
+  if (!config.budgetOverrunCheckEnabled) {
+    return { exceedsBudget: false, hasBudget: false, featureEnabled: false, reason: 'feature deshabilitado' };
+  }
+  if (!unidad) {
+    return { exceedsBudget: false, hasBudget: false, featureEnabled: true, reason: 'sin unidad de negocio' };
+  }
+  // Normalizar excludeIds → set para lookup O(1)
+  var excludeSet = {};
+  if (typeof excludeIds === 'string') {
+    if (excludeIds) excludeSet[excludeIds] = true;
+  } else if (Array.isArray(excludeIds)) {
+    for (var ei = 0; ei < excludeIds.length; ei++) {
+      var _v = String(excludeIds[ei] || '').trim();
+      if (_v) excludeSet[_v] = true;
+    }
+  }
+
+  var now = new Date();
+  var currentMonth = parseInt(Utilities.formatDate(now, 'America/Bogota', 'M'), 10);
+  var year = parseInt(Utilities.formatDate(now, 'America/Bogota', 'yyyy'), 10);
+  var periodMonths = Number(config.budgetPeriodMonths) || 2;
+  if ([1, 2, 3, 4, 6, 12].indexOf(periodMonths) < 0) periodMonths = 2;
+
+  // Bucket del periodo. Ej: periodMonths=2, mes=5 → bucket=2 → fromMonth=5, toMonth=6
+  var bucket = Math.floor((currentMonth - 1) / periodMonths);
+  var fromMonth = bucket * periodMonths + 1;
+  var toMonth = Math.min(fromMonth + periodMonths - 1, 12);
+
+  // Presupuesto del periodo = suma de meses [fromMonth..toMonth] en PPTOS UNIDADES
+  var pptos = _csLoadPptos_(year);
+  var empresaNorm = _csNormalize_(empresa || '');
+  var unidadNorm = _csNormalize_(unidad);
+  var pptoEntry = null;
+  if (empresaNorm) {
+    pptoEntry = pptos.byEmpresaUnit[empresaNorm + '|' + unidadNorm + '|' + year] || null;
+  }
+  if (!pptoEntry) {
+    pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
+  }
+  if (!pptoEntry) {
+    return {
+      exceedsBudget: false,
+      hasBudget: false,
+      featureEnabled: true,
+      reason: 'sin presupuesto definido para esta unidad en el año ' + year,
+      periodLabel: fromMonth + '-' + toMonth + '/' + year
+    };
+  }
+
+  var budgetPeriod = 0;
+  for (var m = fromMonth - 1; m <= toMonth - 1; m++) {
+    budgetPeriod += pptoEntry.monthly[m] || 0;
+  }
+
+  // Lectura del sheet — filtra por unidad+empresa+periodo, suma real+estimado.
+  // Excluye explícitamente la solicitud actual (requestId) para evitar
+  // contar el costo dos veces si esta es una modificación de una hija
+  // que ya está en sheet.
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) {
+    return { exceedsBudget: false, hasBudget: true, featureEnabled: true, reason: 'hoja no encontrada', budgetPeriod: budgetPeriod };
+  }
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2) {
+    var executedAlone = Number(totalCost || 0);
+    return {
+      exceedsBudget: executedAlone > budgetPeriod,
+      hasBudget: true,
+      featureEnabled: true,
+      budgetPeriod: budgetPeriod,
+      executedPeriod: 0,
+      newRequestCost: executedAlone,
+      periodLabel: fromMonth + '-' + toMonth + '/' + year
+    };
+  }
+  var headersRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headerMap = {};
+  for (var hi = 0; hi < headersRow.length; hi++) {
+    var hn = String(headersRow[hi] || '').trim();
+    if (hn) headerMap[hn] = hi;
+  }
+  var allRows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+
+  var countableStatuses = (config.countableStatuses || ['RESERVADO', 'PROCESADO'])
+    .map(function(s) { return String(s).toUpperCase().trim(); });
+
+  var executedPeriod = 0;
+  for (var r = 0; r < allRows.length; r++) {
+    var row = allRows[r];
+    if (!row[0]) continue;
+    var rId = String(_csReadCell_(row, headerMap, config.requestIdHeader) || '').trim();
+    if (!rId || excludeSet[rId]) continue; // excluir self + parent (en modificaciones)
+    var st = String(_csReadCell_(row, headerMap, config.statusHeader) || '').toUpperCase().trim();
+    if (countableStatuses.indexOf(st) < 0) continue;
+    var rUnid = _csNormalize_(_csReadCell_(row, headerMap, config.unitHeader));
+    if (rUnid !== unidadNorm) continue;
+    if (empresaNorm) {
+      var rEmp = _csNormalize_(_csReadCell_(row, headerMap, config.companyHeader));
+      if (rEmp && rEmp !== empresaNorm) continue;
+    }
+    var my = _csResolveMonthYear_(_csReadCell_(row, headerMap, config.purchaseDateHeader));
+    if (!my || my.year !== year) continue;
+    if (my.month < fromMonth || my.month > toMonth) continue;
+    var exec = _csComputeRowExecuted_(row, headerMap, config);
+    executedPeriod += (exec.real || 0) + (exec.estimated || 0);
+  }
+
+  var newTotal = executedPeriod + Number(totalCost || 0);
+  return {
+    exceedsBudget: newTotal > budgetPeriod,
+    hasBudget: true,
+    featureEnabled: true,
+    budgetPeriod: budgetPeriod,
+    executedPeriod: executedPeriod,
+    newRequestCost: Number(totalCost || 0),
+    newTotalProjected: newTotal,
+    periodLabel: fromMonth + '-' + toMonth + '/' + year,
+    periodMonths: periodMonths
   };
 }
 

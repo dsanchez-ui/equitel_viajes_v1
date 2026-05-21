@@ -465,6 +465,13 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                     </div>
                                 )}
 
+                                {/* Banner PRESUPUESTO DE UNIDAD EXCEDIDO (2026-05-21) */}
+                                {request.requiresBudgetOverrunApproval && (
+                                    <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md text-sm">
+                                        <strong>💰 PRESUPUESTO DE UNIDAD EXCEDIDO:</strong> Esta solicitud causa que la unidad de negocio <strong>{request.businessUnit}</strong> exceda su presupuesto del periodo. Requiere aprobación adicional de <strong>{request.budgetApproverName || 'el responsable de presupuesto'}</strong>.
+                                    </div>
+                                )}
+
                                 {/* --- SECTION 1: DETAILED INFO GRID --- */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
@@ -940,6 +947,15 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                             rawStatusString={request.approvalStatusCDS}
                                             naReason={request.effectiveApprovalCdsReason}
                                         />
+                                        {/* Solo aparece si la solicitud tiene flag de presupuesto excedido */}
+                                        {request.requiresBudgetOverrunApproval && (
+                                            <ApprovalStatusRow
+                                                label={`Presupuesto de Unidad${request.budgetApproverName ? ` (${request.budgetApproverName})` : ''}`}
+                                                effectiveStatus={request.effectiveApprovalBudgetOverrun}
+                                                rawStatusString={request.approvalStatusBudgetOverrun}
+                                                naReason={request.effectiveApprovalBudgetOverrunReason}
+                                            />
+                                        )}
                                     </div>
                                 </section>
 
