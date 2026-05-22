@@ -11678,7 +11678,10 @@ function getMonthlyBudgetUsage(empresa, unidad) {
       }
     }
 
-    // % con reserva del 10% sumada al ejecutado
+    // % con reserva del 10% sumada al ejecutado. La reserva NO se expone al
+    // cliente: el endpoint solo retorna el porcentaje final calculado. Esto
+    // evita que un REQUESTER pueda inferir montos exactos de la unidad
+    // (presupuesto, ejecutado o reserva) inspeccionando la respuesta de red.
     var reserveBase = budgetMonth * 0.10;
     var executedWithReserve = executedMonth + reserveBase;
     var percent = (executedWithReserve / budgetMonth) * 100;
@@ -11689,9 +11692,6 @@ function getMonthlyBudgetUsage(empresa, unidad) {
       monthLabel: monthNames[month - 1] + ' ' + year,
       unit: String(unidad),
       company: String(empresa || ''),
-      budgetMonth: budgetMonth,
-      executedMonth: executedMonth,
-      reserveBase: reserveBase,
       percent: percent,             // real (puede ser >100)
       percentClamped: percentClamped, // para la barra (0..100)
       isOverBudget: percent >= 100

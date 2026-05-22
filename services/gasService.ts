@@ -414,9 +414,8 @@ class GasService {
     monthLabel?: string;
     unit?: string;
     company?: string;
-    budgetMonth?: number;
-    executedMonth?: number;
-    reserveBase?: number;
+    // Backend deliberadamente NO retorna montos absolutos (presupuesto,
+    // ejecutado, reserva). Un REQUESTER solo ve el % de su unidad.
     percent?: number;
     percentClamped?: number;
     isOverBudget?: boolean;

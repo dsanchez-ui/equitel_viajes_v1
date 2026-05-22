@@ -11,9 +11,9 @@ interface UsageData {
   monthLabel?: string;
   unit?: string;
   company?: string;
-  budgetMonth?: number;
-  executedMonth?: number;
-  reserveBase?: number;
+  // Backend deliberadamente NO retorna `budgetMonth` ni `executedMonth` para
+  // no exponer montos sensibles a usuarios REQUESTER. La barra muestra solo
+  // el porcentaje calculado en backend.
   percent?: number;
   percentClamped?: number;
   isOverBudget?: boolean;
@@ -41,11 +41,6 @@ const cacheKey = (empresa: string, unidad: string) =>
  */
 export function invalidateBudgetCache() {
   sessionCache.clear();
-}
-
-function fmtMoney(n?: number): string {
-  if (n === null || n === undefined || isNaN(n)) return '—';
-  return '$' + Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 });
 }
 
 function colorTier(percent: number): { bar: string; text: string; bg: string; border: string } {
@@ -166,15 +161,8 @@ export const BudgetUsageBar: React.FC<Props> = ({ empresa, unidad }) => {
           style={{ width: `${pctBar}%` }}
         />
       </div>
-      <div className="flex justify-between text-[10px] text-gray-600 mt-1">
-        <span>Ejecutado: {fmtMoney(data.executedMonth)}</span>
-        <span>Presupuesto: {fmtMoney(data.budgetMonth)}</span>
-      </div>
       <p className={`text-xs mt-2 ${tier.text} leading-snug`}>
         {message}
-      </p>
-      <p className="text-[10px] text-gray-500 mt-1 italic">
-        Nota: el % incluye una reserva del 10% sobre el presupuesto del mes.
       </p>
     </div>
   );
