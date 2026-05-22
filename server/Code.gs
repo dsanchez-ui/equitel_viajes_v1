@@ -728,6 +728,7 @@ function dispatch(action, payload) {
       case 'getCostsDashboardConfig': result = getCostsDashboardConfig(currentUserEmail); break;
       case 'setCostsDashboardConfig': result = setCostsDashboardConfig(payload.config, currentUserEmail); break;
       case 'resetCostsDashboardConfig': result = resetCostsDashboardConfig(currentUserEmail); break;
+      case 'getMonthlyBudgetUsage': result = getMonthlyBudgetUsage(payload.empresa, payload.unidad); break;
       
       // PIN FEATURES
       case 'verifyAdminPin': result = verifyAdminPin(payload.pin, payload.email); break;
@@ -10661,6 +10662,10 @@ function _csDefaultConfig_() {
     statusHeader: 'STATUS',
     requesterHeader: 'CORREO ENCUESTADO',
     requestIdHeader: 'ID RESPUESTA',
+    // # ORDEN TRABAJO. Si la fila tiene una OT válida (empieza por "OT" y
+    // contiene al menos un dígito), NO carga al presupuesto operativo —
+    // se cobra directamente a la OT. Acuerdo con Yurani (2026-05-21).
+    workOrderHeader: '# ORDEN TRABAJO',
     countableStatuses: ['RESERVADO', 'PROCESADO'],
     estimatedStatuses: ['RESERVADO'],  // status donde aplica el proxy estimado si no hay facturas
     // === REGLA DE PRESUPUESTO EXCEDIDO ===
@@ -10743,7 +10748,33 @@ function _csLoadConfig_() {
 // manual: el cache se mantiene fresco solo. Crecimiento: ~500 B por solicitud.
 
 var COSTS_DASHBOARD_CACHE_FILENAME = 'costos_dashboard_cache.json';
-var COSTS_DASHBOARD_CACHE_VERSION = 1;
+// v2 (2026-05-21): se agregó la regla de exclusión por OT. Bump invalida
+// caches previos para que las solicitudes con OT válida dejen de sumar al
+// ejecutado en una sola pasada.
+var COSTS_DASHBOARD_CACHE_VERSION = 2;
+
+/**
+ * Determina si un valor de "# ORDEN TRABAJO" cuenta como OT válida (y por
+ * tanto la solicitud NO debe cargar al presupuesto operativo de la unidad).
+ *
+ * Regla acordada con Yurani (reunión 2026-05-21):
+ *   - Tras trim, debe empezar por "OT" (case-insensitive).
+ *   - Debe contener al menos un dígito en algún lugar.
+ *
+ * Esto descarta:
+ *   - vacíos, espacios, null/undefined
+ *   - basura tipo "N/A", "pendiente", "sin OT", "OT" sola sin número
+ *   - escritura tipo "ot 1234", "OT-1234", "OT_1234", "OT1234" → todas válidas
+ *
+ * Yurani: "Todos los que tengan ahí un número de OT, eso no va al costo".
+ */
+function _esOTValida_(workOrder) {
+  if (workOrder === null || workOrder === undefined) return false;
+  var v = String(workOrder).trim();
+  if (!v) return false;
+  // Debe empezar por OT y contener al menos un dígito
+  return /^OT/i.test(v) && /\d/.test(v);
+}
 
 function _csGetCacheFile_() {
   var folder = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
@@ -10772,13 +10803,28 @@ function _csLoadCache_() {
 }
 
 function _csSaveCache_(cache) {
+  // LockService alrededor del write: protege contra last-writer-wins cuando
+  // dos analistas abren el dashboard a la vez en la ventana del cache miss
+  // (típico después del bump de versión o de un cambio de config). tryLock 5s
+  // — si no lo obtenemos, no escribimos: la próxima ejecución recomputa.
+  var lock = LockService.getScriptLock();
+  var hasLock = false;
   try {
+    hasLock = lock.tryLock(5000);
+    if (!hasLock) {
+      console.warn('CostsDashboard cache: skipping save — could not acquire lock.');
+      return;
+    }
     cache.lastBuild = new Date().toISOString();
     var file = _csGetCacheFile_();
     file.setContent(JSON.stringify(cache));
   } catch (e) {
     // Persistencia es non-critical — si falla, la próxima ejecución recomputa.
     console.error('CostsDashboard cache: failed to save: ' + e);
+  } finally {
+    if (hasLock) {
+      try { lock.releaseLock(); } catch (_) { /* noop */ }
+    }
   }
 }
 
@@ -10809,6 +10855,10 @@ function _csComputeRowHash_(row, headerMap, config, configHashPrefix) {
   parts.push(String(_csReadCell_(row, headerMap, config.companyHeader) || ''));
   parts.push(String(_csReadCell_(row, headerMap, config.requesterHeader) || ''));
   parts.push(String(_csReadCell_(row, headerMap, config.requestIdHeader) || ''));
+  // # ORDEN TRABAJO: si cambia, la fila puede entrar o salir del cómputo
+  if (config.workOrderHeader) {
+    parts.push(String(_csReadCell_(row, headerMap, config.workOrderHeader) || ''));
+  }
   // Campos de facturas (totales + fallbacks)
   for (var i = 0; i < config.facturas.length; i++) {
     var f = config.facturas[i];
@@ -11141,7 +11191,7 @@ function _csBuildData_(filters) {
   var observedUnits = {};
 
   var requestsCounted = 0;
-  var requestsExcluded = { byStatus: 0, byMonthYear: 0, byUnitFilter: 0, byCompanyFilter: 0, noPurchaseDate: 0 };
+  var requestsExcluded = { byStatus: 0, byMonthYear: 0, byUnitFilter: 0, byCompanyFilter: 0, noPurchaseDate: 0, byOT: 0 };
 
   for (var r = 0; r < allRows.length; r++) {
     var row = allRows[r];
@@ -11174,6 +11224,9 @@ function _csBuildData_(filters) {
         unidadRaw: String(_csReadCell_(row, headerMap, config.unitHeader) || ''),
         empresaRaw: String(_csReadCell_(row, headerMap, config.companyHeader) || ''),
         requesterEmail: String(_csReadCell_(row, headerMap, config.requesterHeader) || ''),
+        workOrder: config.workOrderHeader
+          ? String(_csReadCell_(row, headerMap, config.workOrderHeader) || '')
+          : '',
         purchaseDate: purchaseDateOut,
         month: my ? my.month : null,
         year: my ? my.year : null,
@@ -11198,6 +11251,9 @@ function _csBuildData_(filters) {
     if (!perRow.month || !perRow.year) { requestsExcluded.noPurchaseDate++; continue; }
     if (perRow.year !== year) { requestsExcluded.byMonthYear++; continue; }
     if (perRow.month < fromMonth || perRow.month > toMonth) { requestsExcluded.byMonthYear++; continue; }
+    // OTs no cargan al presupuesto operativo (acuerdo Yurani 2026-05-21).
+    // Si la fila tiene una OT válida, se considera cargada a la OT y no a la unidad.
+    if (_esOTValida_(perRow.workOrder)) { requestsExcluded.byOT = (requestsExcluded.byOT || 0) + 1; continue; }
 
     var unidadNorm = _csNormalize_(perRow.unidadRaw);
     var empresaNorm = _csNormalize_(perRow.empresaRaw);
@@ -11489,6 +11545,11 @@ function _calcularEjecutadoPeriodo_(empresa, unidad, totalCost, excludeIds) {
     var my = _csResolveMonthYear_(_csReadCell_(row, headerMap, config.purchaseDateHeader));
     if (!my || my.year !== year) continue;
     if (my.month < fromMonth || my.month > toMonth) continue;
+    // OTs no cargan al presupuesto operativo (acuerdo Yurani 2026-05-21).
+    if (config.workOrderHeader) {
+      var rOT = _csReadCell_(row, headerMap, config.workOrderHeader);
+      if (_esOTValida_(rOT)) continue;
+    }
     var exec = _csComputeRowExecuted_(row, headerMap, config);
     executedPeriod += (exec.real || 0) + (exec.estimated || 0);
   }
@@ -11505,6 +11566,140 @@ function _calcularEjecutadoPeriodo_(empresa, unidad, totalCost, excludeIds) {
     periodLabel: fromMonth + '-' + toMonth + '/' + year,
     periodMonths: periodMonths
   };
+}
+
+/**
+ * Resumen del consumo presupuestal MENSUAL de una unidad para la barra
+ * de % en el formulario de creación/modificación de solicitudes.
+ *
+ * Mensual (no trimestral) intencionalmente: para generar sensación de
+ * urgencia en los solicitantes y desincentivar solicitudes innecesarias.
+ *
+ * El % mostrado incluye una "reserva" del 10% del presupuesto mensual
+ * sumada al ejecutado real → aunque la unidad no haya hecho solicitudes
+ * en el mes, ya verá 10% consumido. Acuerdo con David.
+ *
+ * Excluye filas con OT válida (acuerdo Yurani 2026-05-21).
+ *
+ * Esta función NO depende de `budgetOverrunCheckEnabled` — es informativa.
+ * Si la unidad no tiene presupuesto en PPTOS, retorna `hasBudget=false`
+ * para que la UI muestre un mensaje neutro.
+ */
+function getMonthlyBudgetUsage(empresa, unidad) {
+  try {
+    // Sanitización ligera. El endpoint está autenticado (la sesión válida
+    // ya pasó), pero rechazamos shapes inválidos para no malgastar CPU en
+    // strings de varios KB o tipos inesperados.
+    if (empresa !== undefined && empresa !== null && typeof empresa !== 'string') {
+      return { hasBudget: false, reason: 'empresa inválida' };
+    }
+    if (typeof unidad !== 'string') {
+      return { hasBudget: false, reason: 'unidad inválida' };
+    }
+    if ((empresa && empresa.length > 200) || unidad.length > 200) {
+      return { hasBudget: false, reason: 'parámetros demasiado largos' };
+    }
+    if (!unidad) return { hasBudget: false, reason: 'sin unidad' };
+    var config = _csLoadConfig_();
+    var now = new Date();
+    var month = parseInt(Utilities.formatDate(now, 'America/Bogota', 'M'), 10);
+    var year = parseInt(Utilities.formatDate(now, 'America/Bogota', 'yyyy'), 10);
+    var monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                      'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+    var pptos = _csLoadPptos_(year);
+    var empresaNorm = _csNormalize_(empresa || '');
+    var unidadNorm = _csNormalize_(unidad);
+
+    var pptoEntry = null;
+    if (empresaNorm) {
+      pptoEntry = pptos.byEmpresaUnit[empresaNorm + '|' + unidadNorm + '|' + year] || null;
+    }
+    if (!pptoEntry) {
+      pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
+    }
+    if (!pptoEntry) {
+      return {
+        hasBudget: false,
+        monthLabel: monthNames[month - 1] + ' ' + year,
+        unit: String(unidad),
+        company: String(empresa || '')
+      };
+    }
+
+    var budgetMonth = pptoEntry.monthly[month - 1] || 0;
+    if (!budgetMonth) {
+      return {
+        hasBudget: false,
+        monthLabel: monthNames[month - 1] + ' ' + year,
+        unit: String(unidad),
+        company: String(empresa || ''),
+        reason: 'presupuesto del mes en 0'
+      };
+    }
+
+    // Sumar ejecutado del mes: misma lógica que dashboard / overrun helper
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    var executedMonth = 0;
+    if (sheet) {
+      var lastRow = sheet.getLastRow();
+      var lastCol = sheet.getLastColumn();
+      if (lastRow >= 2) {
+        var headersRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+        var headerMap = {};
+        for (var hi = 0; hi < headersRow.length; hi++) {
+          var hn = String(headersRow[hi] || '').trim();
+          if (hn) headerMap[hn] = hi;
+        }
+        var allRows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+        var countableStatuses = (config.countableStatuses || ['RESERVADO', 'PROCESADO'])
+          .map(function(s) { return String(s).toUpperCase().trim(); });
+        for (var r = 0; r < allRows.length; r++) {
+          var row = allRows[r];
+          if (!row[0]) continue;
+          var st = String(_csReadCell_(row, headerMap, config.statusHeader) || '').toUpperCase().trim();
+          if (countableStatuses.indexOf(st) < 0) continue;
+          var rUnid = _csNormalize_(_csReadCell_(row, headerMap, config.unitHeader));
+          if (rUnid !== unidadNorm) continue;
+          if (empresaNorm) {
+            var rEmp = _csNormalize_(_csReadCell_(row, headerMap, config.companyHeader));
+            if (rEmp && rEmp !== empresaNorm) continue;
+          }
+          var my = _csResolveMonthYear_(_csReadCell_(row, headerMap, config.purchaseDateHeader));
+          if (!my || my.year !== year || my.month !== month) continue;
+          if (config.workOrderHeader) {
+            var rOT = _csReadCell_(row, headerMap, config.workOrderHeader);
+            if (_esOTValida_(rOT)) continue;
+          }
+          var exec = _csComputeRowExecuted_(row, headerMap, config);
+          executedMonth += (exec.real || 0) + (exec.estimated || 0);
+        }
+      }
+    }
+
+    // % con reserva del 10% sumada al ejecutado
+    var reserveBase = budgetMonth * 0.10;
+    var executedWithReserve = executedMonth + reserveBase;
+    var percent = (executedWithReserve / budgetMonth) * 100;
+    var percentClamped = Math.min(100, Math.max(0, percent));
+
+    return {
+      hasBudget: true,
+      monthLabel: monthNames[month - 1] + ' ' + year,
+      unit: String(unidad),
+      company: String(empresa || ''),
+      budgetMonth: budgetMonth,
+      executedMonth: executedMonth,
+      reserveBase: reserveBase,
+      percent: percent,             // real (puede ser >100)
+      percentClamped: percentClamped, // para la barra (0..100)
+      isOverBudget: percent >= 100
+    };
+  } catch (e) {
+    console.error('getMonthlyBudgetUsage error: ' + e);
+    return { hasBudget: false, error: String(e) };
+  }
 }
 
 /**
@@ -11591,6 +11786,17 @@ function getCostsDashboard(filters, currentUserEmail) {
   if (!access.canView) throw new Error('Acceso no autorizado al dashboard de costos.');
   var data = _csBuildData_(filters);
   data.meta.access = { canView: access.canView, canConfig: access.canConfig };
+  // Exponer budgetPeriodMonths al cliente para que la sección "Periodo
+  // Actual" del dashboard sepa cómo agrupar meses (1=mensual, 2=bimestral,
+  // 3=trimestral, 6=semestral, 12=anual). El frontend lo usa solo para
+  // visualización — el feature de overrun sigue gobernado por
+  // budgetOverrunCheckEnabled en backend.
+  try {
+    var _cfg = _csLoadConfig_();
+    data.meta.budgetPeriodMonths = Number(_cfg.budgetPeriodMonths) || 2;
+  } catch (_e) {
+    data.meta.budgetPeriodMonths = 2;
+  }
   return data;
 }
 

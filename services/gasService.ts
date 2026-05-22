@@ -404,6 +404,34 @@ class GasService {
     return response.data;
   }
 
+  /**
+   * Resumen mensual de consumo de presupuesto para la unidad seleccionada
+   * en el formulario de solicitud. Informativo (no bloquea el flujo).
+   * Devuelve hasBudget=false si la unidad no tiene presupuesto configurado.
+   */
+  async getMonthlyBudgetUsage(empresa: string, unidad: string): Promise<{
+    hasBudget: boolean;
+    monthLabel?: string;
+    unit?: string;
+    company?: string;
+    budgetMonth?: number;
+    executedMonth?: number;
+    reserveBase?: number;
+    percent?: number;
+    percentClamped?: number;
+    isOverBudget?: boolean;
+    reason?: string;
+    error?: string;
+  }> {
+    const response = await this.runGas('getMonthlyBudgetUsage', { empresa, unidad });
+    if (!response.success) {
+      // Informativo: si falla, retornamos hasBudget:false en lugar de lanzar.
+      // La barra simplemente no se muestra. No bloqueamos al usuario.
+      return { hasBudget: false, error: response.error };
+    }
+    return response.data || { hasBudget: false };
+  }
+
   async closeRequest(requestId: string): Promise<void> {
     const response = await this.runGas('closeRequest', { requestId });
     if (!response.success) throw new Error(response.error);

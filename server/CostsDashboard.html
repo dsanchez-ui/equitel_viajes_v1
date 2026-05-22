@@ -605,6 +605,57 @@
     </div>
 
     <!-- ============================================================== -->
+    <!-- VISTA PERIODO ACTUAL (configurable: Q, bimestre, etc.)         -->
+    <!-- ============================================================== -->
+    <div class="view-section" id="periodSection">
+      <div class="view-title">
+        🎯 Periodo Actual — <span id="periodLabel" style="color: var(--brand);"></span>
+        <span class="view-subtitle" id="periodSubtitle"></span>
+      </div>
+
+      <!-- KPIs del periodo -->
+      <div id="periodKpis" class="kpi-grid"></div>
+
+      <!-- Donut + caption del periodo -->
+      <div class="charts-row" style="grid-template-columns: 1fr;">
+        <div class="card" style="max-width: 380px; margin: 0 auto; width: 100%;">
+          <h2>% del presupuesto del periodo usado</h2>
+          <div class="chart-wrap-square">
+            <canvas id="periodDonut"></canvas>
+            <div id="periodDonutCenter" class="donut-center">
+              <div class="pct" id="periodDonutPctValue">—</div>
+              <div class="label">usado</div>
+            </div>
+          </div>
+          <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px;" id="periodDonutCaption"></p>
+        </div>
+      </div>
+
+      <!-- Tabla del periodo -->
+      <div class="card">
+        <h2>Detalle por unidad — periodo <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="periodUnitCount"></span></h2>
+        <div class="table-wrap">
+          <table class="units">
+            <thead>
+              <tr>
+                <th>Unidad</th>
+                <th>Empresa</th>
+                <th class="num">Presupuesto periodo</th>
+                <th class="num">Ejecutado real</th>
+                <th class="num">Ejecutado estimado</th>
+                <th class="num">Δ vs ppto</th>
+                <th class="num">% usado</th>
+                <th class="num">Solicitudes</th>
+              </tr>
+            </thead>
+            <tbody id="periodUnitsBody"></tbody>
+          </table>
+        </div>
+        <div id="periodEmptyState" class="empty-state" style="display: none;">No hay movimientos en este periodo con los filtros seleccionados.</div>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
     <!-- VISTA MENSUAL                                                   -->
     <!-- ============================================================== -->
     <div class="view-section">
@@ -842,7 +893,8 @@ var charts = {
   monthlyBars: null,
   annualDonutPct: null,
   annualDonutDist: null,
-  monthlyDonut: null
+  monthlyDonut: null,
+  periodDonut: null
 };
 
 // Mes activo para vista mensual. Default: mes actual.
@@ -935,6 +987,7 @@ function refreshView() {
   document.getElementById('yearLabel').textContent = fullYearData.meta.year;
   filteredData = applyClientFilters(fullYearData);
   renderAnnualView(filteredData);
+  renderPeriodView(filteredData);
   renderMonthlyView(filteredData, selectedMonth);
   renderMeta();
   renderFilterSummary();
@@ -1476,7 +1529,217 @@ function renderMonthlyDonut(monthData) {
 }
 
 // =====================================================================
-// TABLA UNIDADES (compartida por anual y mensual)
+// RENDER VISTA PERIODO ACTUAL
+// =====================================================================
+// El periodo se determina por `budgetPeriodMonths` del config backend
+// (default 2 = bimestre; Yurani propuso 3 = trimestre). El bucket actual
+// se calcula sobre el mes Bogotá: floor((mes-1) / periodMonths).
+// Esto debe SIEMPRE coincidir con `_calcularEjecutadoPeriodo_` en Code.gs.
+// =====================================================================
+function getCurrentPeriodBounds(periodMonths) {
+  // Robustez: si el backend reporta un valor inválido, caemos a bimestre.
+  var valid = [1, 2, 3, 4, 6, 12];
+  var pm = Number(periodMonths) || 2;
+  if (valid.indexOf(pm) < 0) pm = 2;
+  var nowMonth = new Date().getMonth() + 1;
+  var bucket = Math.floor((nowMonth - 1) / pm);
+  var from = bucket * pm + 1;
+  var to = Math.min(from + pm - 1, 12);
+  // Label legible. Q1..Q4 cuando es trimestral; rango de meses en otros casos.
+  var label;
+  if (pm === 3) {
+    label = 'Q' + (bucket + 1);
+  } else if (pm === 1) {
+    label = MONTHS_FULL[from - 1];
+  } else if (pm === 12) {
+    label = 'Año completo';
+  } else {
+    label = MONTHS_FULL[from - 1] + ' – ' + MONTHS_FULL[to - 1];
+  }
+  return { fromMonth: from, toMonth: to, label: label, periodMonths: pm };
+}
+
+function computePeriodData(filtered, bounds) {
+  var rows = [];
+  var grand = { real: 0, estimated: 0, budget: 0 };
+  var grandBudgeted = { real: 0, estimated: 0 };
+  var unbudgetedUnitCount = 0;
+
+  (filtered.rows || []).forEach(function(b) {
+    var realP = 0, estP = 0, budgetP = 0;
+    for (var m = bounds.fromMonth; m <= bounds.toMonth; m++) {
+      var idx = m - 1;
+      realP += b.monthlyExecutedReal[idx] || 0;
+      estP += b.monthlyExecutedEstimated[idx] || 0;
+      if (b.hasBudget) budgetP += b.monthlyBudget[idx] || 0;
+    }
+    var execTotal = realP + estP;
+    if (execTotal === 0 && budgetP === 0) return;
+
+    var pct = budgetP > 0 ? Math.round((execTotal / budgetP) * 1000) / 10 : null;
+    var requestsP = (b.requests || []).filter(function(r) {
+      return r.month >= bounds.fromMonth && r.month <= bounds.toMonth;
+    });
+
+    rows.push({
+      unit: b.unit,
+      company: b.company,
+      hasBudget: b.hasBudget,
+      budgetInRange: budgetP,
+      totalExecutedReal: realP,
+      totalExecutedEstimated: estP,
+      deltaInRange: b.hasBudget ? (budgetP - execTotal) : null,
+      percentUsed: pct,
+      requestCount: requestsP.length,
+      requests: requestsP
+    });
+    grand.real += realP;
+    grand.estimated += estP;
+    grand.budget += budgetP;
+    if (b.hasBudget) {
+      grandBudgeted.real += realP;
+      grandBudgeted.estimated += estP;
+    } else if (execTotal > 0) {
+      unbudgetedUnitCount++;
+    }
+  });
+
+  rows.sort(function(a, b) {
+    if (a.hasBudget !== b.hasBudget) return a.hasBudget ? -1 : 1;
+    if (a.hasBudget && b.hasBudget) {
+      var pa = a.percentUsed === null ? -1 : a.percentUsed;
+      var pb = b.percentUsed === null ? -1 : b.percentUsed;
+      return pb - pa;
+    }
+    return (b.totalExecutedReal + b.totalExecutedEstimated) - (a.totalExecutedReal + a.totalExecutedEstimated);
+  });
+
+  var execBudgetedTotal = grandBudgeted.real + grandBudgeted.estimated;
+  return {
+    rows: rows,
+    totals: {
+      executedReal: grand.real,
+      executedEstimated: grand.estimated,
+      executedTotal: grand.real + grand.estimated,
+      budget: grand.budget,
+      delta: grand.budget - execBudgetedTotal,
+      percentUsed: grand.budget > 0 ? Math.round((execBudgetedTotal / grand.budget) * 1000) / 10 : null
+    },
+    totalsBudgeted: {
+      executedReal: grandBudgeted.real,
+      executedEstimated: grandBudgeted.estimated,
+      executedTotal: execBudgetedTotal,
+      budget: grand.budget,
+      delta: grand.budget - execBudgetedTotal,
+      percentUsed: grand.budget > 0 ? Math.round((execBudgetedTotal / grand.budget) * 1000) / 10 : null
+    },
+    unbudgeted: {
+      executedReal: grand.real - grandBudgeted.real,
+      executedEstimated: grand.estimated - grandBudgeted.estimated,
+      executedTotal: (grand.real - grandBudgeted.real) + (grand.estimated - grandBudgeted.estimated),
+      unitCount: unbudgetedUnitCount
+    },
+    bounds: bounds
+  };
+}
+
+function renderPeriodView(data) {
+  if (!fullYearData) return;
+  var pm = (fullYearData.meta && fullYearData.meta.budgetPeriodMonths) || 2;
+  var section = document.getElementById('periodSection');
+  // Si el periodo es anual (12), esta sección duplicaría la vista anual.
+  // Ocultar para evitar redundancia visual. Destruir chart previo si existe
+  // para evitar leak cuando alguien cambia el config a 12 en runtime.
+  if (pm === 12) {
+    if (section) section.style.display = 'none';
+    if (charts.periodDonut) { charts.periodDonut.destroy(); charts.periodDonut = null; }
+    return;
+  } else {
+    if (section) section.style.display = '';
+  }
+  var bounds = getCurrentPeriodBounds(pm);
+  var year = fullYearData.meta.year;
+  document.getElementById('periodLabel').textContent = bounds.label + ' ' + year;
+  var subtitleText;
+  if (bounds.periodMonths === 1) {
+    subtitleText = 'mes actual';
+  } else if (bounds.periodMonths === 12) {
+    subtitleText = 'todo el año';
+  } else {
+    subtitleText = 'meses ' + bounds.fromMonth + ' a ' + bounds.toMonth + ' (' +
+      bounds.periodMonths + ' meses)';
+  }
+  document.getElementById('periodSubtitle').textContent = '(' + subtitleText + ')';
+
+  var pData = computePeriodData(data, bounds);
+  renderKpis('periodKpis', pData, bounds.label + ' ' + year);
+  renderPeriodDonut(pData);
+  renderUnitsTable('periodUnitsBody', 'periodUnitCount', 'periodEmptyState', pData.rows, 'period');
+}
+
+function renderPeriodDonut(pData) {
+  var canvas = document.getElementById('periodDonut');
+  if (!canvas || typeof Chart === 'undefined') return;
+  var t = pData.totalsBudgeted || pData.totals;
+  var real = t.executedReal || 0;
+  var est = t.executedEstimated || 0;
+  var budget = t.budget || 0;
+  var disponible = Math.max(0, budget - real - est);
+  var overBudget = (budget > 0 && (real + est) > budget);
+  var noBudgetWithSpend = (budget === 0 && (real + est) > 0);
+
+  var centerEl = document.getElementById('periodDonutCenter');
+  var pctEl = document.getElementById('periodDonutPctValue');
+  var capEl = document.getElementById('periodDonutCaption');
+
+  if (budget === 0) {
+    pctEl.textContent = '—';
+    centerEl.classList.remove('over');
+    capEl.textContent = noBudgetWithSpend
+      ? 'Hay ejecución en este periodo pero NINGUNA unidad filtrada tiene presupuesto asignado. Configurarlo en PPTOS UNIDADES para habilitar el % de uso.'
+      : 'Sin presupuesto definido en este periodo para las unidades filtradas.';
+  } else {
+    pctEl.textContent = fmtPct(t.percentUsed);
+    centerEl.classList.toggle('over', overBudget);
+    capEl.textContent = overBudget
+      ? 'Sobre-ejecutado: ' + fmtMoney((real + est) - budget) + ' por encima'
+      : 'Disponible: ' + fmtMoney(disponible) + ' de ' + fmtMoney(budget);
+  }
+
+  var labels = ['Ejecutado real', 'Ejecutado estimado'];
+  var values = [real, est];
+  var colors = ['#D71920', '#d97706'];
+  if (!overBudget && budget > 0) {
+    labels.push('Disponible');
+    values.push(disponible);
+    colors.push('#e5e7eb');
+  }
+
+  if (charts.periodDonut) charts.periodDonut.destroy();
+  charts.periodDonut = new Chart(canvas, {
+    type: 'doughnut',
+    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#ffffff' }] },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      cutout: '65%',
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              return ctx.label + ': $' + Number(ctx.parsed || 0).toLocaleString('es-CO');
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// =====================================================================
+// TABLA UNIDADES (compartida por anual, periodo y mensual)
 // =====================================================================
 function renderUnitsTable(bodyId, countId, emptyId, rows, viewKey) {
   var body = document.getElementById(bodyId);
@@ -1605,7 +1868,8 @@ function renderMeta() {
   var lines = [];
   lines.push('Solicitudes contadas: ' + rec);
   lines.push('Excluidas — sin fecha de compra: ' + (exc.noPurchaseDate || 0) +
-             ', status no contable: ' + (exc.byStatus || 0));
+             ', status no contable: ' + (exc.byStatus || 0) +
+             ', cargadas a OT: ' + (exc.byOT || 0));
   if (meta.cache) {
     lines.push('Cache: ' + meta.cache.hits + ' hits, ' + meta.cache.misses + ' misses' + (meta.cache.savedToDrive ? ' (actualizado)' : ''));
   }

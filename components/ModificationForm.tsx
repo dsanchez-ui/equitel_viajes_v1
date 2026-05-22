@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { TravelRequest, Passenger, CostCenterMaster, Integrant } from '../types';
 import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
+import { BudgetUsageBar, invalidateBudgetCache } from './BudgetUsageBar';
 
 interface ModificationFormProps {
   originalRequest: TravelRequest;
@@ -277,6 +278,9 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
 
      try {
          await gasService.requestModification(originalRequest.requestId, finalPayload, changeReason);
+         // El ejecutado de la unidad cambió → invalidar cache para que la
+         // próxima vez muestre el % real, no el stale.
+         invalidateBudgetCache();
          onSuccess();
      } catch (e) {
          alert("Error enviando modificación: " + e);
@@ -344,9 +348,9 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Unidad de Negocio</label>
-                                <select 
-                                    name="businessUnit" 
-                                    value={formData.businessUnit} 
+                                <select
+                                    name="businessUnit"
+                                    value={formData.businessUnit}
                                     onChange={handleInputChange}
                                     className="block w-full bg-white text-gray-900 border-gray-300 rounded-md shadow-sm focus:ring-brand-red focus:border-brand-red sm:text-sm p-2"
                                 >
@@ -356,15 +360,19 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-gray-500 mb-1">Orden de Trabajo</label>
-                                <input 
-                                    type="text" 
-                                    name="workOrder" 
-                                    value={formData.workOrder || ''} 
+                                <input
+                                    type="text"
+                                    name="workOrder"
+                                    value={formData.workOrder || ''}
                                     onChange={handleInputChange}
                                     className="block w-full bg-white text-gray-900 border-gray-300 rounded-md shadow-sm focus:ring-brand-red focus:border-brand-red sm:text-sm p-2"
                                 />
+                                <p className="text-[10px] text-gray-500 mt-1 italic">Con OT válida (ej. OT-1234) el costo se carga a la orden y no al presupuesto de la unidad.</p>
                             </div>
                         </div>
+
+                        {/* Barra de consumo del presupuesto MENSUAL — informativa */}
+                        <BudgetUsageBar empresa={formData.company} unidad={formData.businessUnit} />
 
                         {/* 1.2 Cost Center */}
                         <div>

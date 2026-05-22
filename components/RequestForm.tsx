@@ -5,6 +5,7 @@ import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 import { formatToYYYYMMDD, formatToDDMMYYYY, parseDate } from '../utils/dateUtils';
 import { CityCombobox } from './CityCombobox';
+import { BudgetUsageBar, invalidateBudgetCache } from './BudgetUsageBar';
 
 interface RequestFormProps {
   userEmail: string;
@@ -618,6 +619,11 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         await gasService.createRequest(payload, emailHtml);
       }
 
+      // Invalidar cache de consumo presupuestal: el ejecutado de la unidad
+      // acaba de cambiar y queremos que la próxima apertura del formulario
+      // muestre el % actualizado, no el stale del cache de sesión.
+      invalidateBudgetCache();
+
       onSuccess();
     } catch (error) {
       alert('Error: ' + error);
@@ -684,10 +690,12 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                   <option value="">{availableBusinessUnits.length === 0 ? 'Cargando...' : 'Seleccione...'}</option>
                   {availableBusinessUnits.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
+                <BudgetUsageBar empresa={formData.company} unidad={formData.businessUnit} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Orden de Trabajo (Opcional)</label>
                 <input type="text" name="workOrder" className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.workOrder} onChange={handleInputChange} />
+                <p className="text-[10px] text-gray-500 mt-1 italic">Si registra una OT válida (ej. <span className="font-mono">OT-1234</span>), el costo se carga directamente a la orden y no afecta el presupuesto de la unidad.</p>
               </div>
             </div>
 
