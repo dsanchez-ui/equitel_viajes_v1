@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Cambios en gestión de presupuesto de viajes</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f3f4f6; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+
+<!-- CONTENEDOR -->
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color:#f3f4f6; padding:24px 0;">
+  <tr><td align="center">
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+
+      <!-- HEADER -->
+      <tr>
+        <td style="background-color:#D71920; padding:28px 32px; color:#ffffff;">
+          <div style="font-size:11px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; opacity:0.85;">Equitel · Aplicación de Viajes</div>
+          <div style="font-size:24px; font-weight:700; margin-top:6px; line-height:1.2;">Cambios en gestión de presupuesto</div>
+          <div style="font-size:13px; margin-top:6px; opacity:0.9;">Nuevas herramientas para visibilizar y controlar el gasto por unidad de negocio</div>
+        </td>
+      </tr>
+
+      <!-- INTRO -->
+      <tr>
+        <td style="padding:24px 32px 8px 32px; color:#374151; font-size:14px; line-height:1.55;">
+          <p style="margin:0 0 12px 0;">Como aprobador, ahora cuentas con tres mejoras para supervisar el consumo presupuestal de tu unidad antes de aprobar nuevas solicitudes:</p>
+        </td>
+      </tr>
+
+      <!-- CAMBIO 1: OT NO CARGA AL PPTO -->
+      <tr>
+        <td style="padding:8px 32px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid #2563eb; background:#eff6ff; border-radius:4px;">
+            <tr>
+              <td style="padding:16px 18px;">
+                <div style="font-size:11px; font-weight:700; color:#1e40af; letter-spacing:1px; text-transform:uppercase;">Cambio 1 · Backend</div>
+                <div style="font-size:16px; font-weight:700; color:#111827; margin-top:4px;">📋 Solicitudes con OT ya no cargan al presupuesto operativo</div>
+                <div style="font-size:13px; color:#374151; margin-top:8px; line-height:1.5;">
+                  Las solicitudes que registren una <strong>Orden de Trabajo válida</strong> (debe empezar por "OT" y contener al menos un número, ej. <code style="background:#dbeafe; padding:1px 5px; border-radius:3px; font-family:monospace; font-size:12px;">OT-1234</code>) se cargan directamente a la orden y no afectan el presupuesto de la unidad.
+                </div>
+                <div style="font-size:12px; color:#6b7280; margin-top:10px; font-style:italic; line-height:1.5;">
+                  ⚠️ Notarás que los totales ejecutados del dashboard bajaron respecto a semanas anteriores. Es esperado y deseado: refleja el ajuste contable correcto.
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- CAMBIO 2: VISTA PERIODO -->
+      <tr>
+        <td style="padding:8px 32px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid #d97706; background:#fffbeb; border-radius:4px;">
+            <tr>
+              <td style="padding:16px 18px;">
+                <div style="font-size:11px; font-weight:700; color:#92400e; letter-spacing:1px; text-transform:uppercase;">Cambio 2 · Dashboard</div>
+                <div style="font-size:16px; font-weight:700; color:#111827; margin-top:4px;">🎯 Nueva sección "Periodo Actual" en el dashboard de costos</div>
+                <div style="font-size:13px; color:#374151; margin-top:8px; line-height:1.5;">
+                  Además de las vistas anual y mensual, ahora ves el <strong>presupuesto y ejecutado del periodo configurado</strong> (bimestre, trimestre, etc.). La etiqueta cambia automáticamente: <em>"Q2 2026"</em>, <em>"mayo–junio 2026"</em>, según corresponda.
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- CAMBIO 3: BARRA EN FORMULARIO -->
+      <tr>
+        <td style="padding:8px 32px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-left:4px solid #059669; background:#ecfdf5; border-radius:4px;">
+            <tr>
+              <td style="padding:16px 18px;">
+                <div style="font-size:11px; font-weight:700; color:#065f46; letter-spacing:1px; text-transform:uppercase;">Cambio 3 · Formulario</div>
+                <div style="font-size:16px; font-weight:700; color:#111827; margin-top:4px;">📊 Barra de % consumido al crear una solicitud</div>
+                <div style="font-size:13px; color:#374151; margin-top:8px; line-height:1.5;">
+                  Cuando un solicitante elige su unidad de negocio, ahora ve una barra con el <strong>% consumido del presupuesto del mes</strong>, con un mensaje persuasivo para que evalúe si la solicitud es realmente necesaria. Genera autocontrol antes de que la solicitud te llegue para aprobación.
+                </div>
+                <!-- Mini ejemplo visual de la barra -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:12px; background:#ffffff; border-radius:4px; border:1px solid #d1fae5;">
+                  <tr>
+                    <td style="padding:10px 12px;">
+                      <div style="display:flex; justify-content:space-between; font-size:10px; font-weight:700; color:#065f46; margin-bottom:5px;">
+                        <span style="text-transform:uppercase; letter-spacing:0.5px;">Presupuesto mayo 2026</span>
+                        <span>68.0%</span>
+                      </div>
+                      <div style="width:100%; height:10px; background:#ffffff; border:1px solid #d1d5db; border-radius:3px; overflow:hidden;">
+                        <div style="width:68%; height:100%; background:#eab308;"></div>
+                      </div>
+                      <div style="font-size:11px; color:#374151; margin-top:8px; line-height:1.4;">
+                        Esta unidad ha consumido 68.0% de su presupuesto de mayo 2026. Por favor, considere si esta solicitud es estrictamente necesaria.
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- DIVISOR -->
+      <tr><td style="padding:8px 32px;"><div style="border-top:1px solid #e5e7eb; margin:16px 0;"></div></td></tr>
+
+      <!-- CÓMO CONSULTAR -->
+      <tr>
+        <td style="padding:0 32px 8px 32px;">
+          <div style="font-size:18px; font-weight:700; color:#111827; margin-bottom:6px;">🔐 Cómo consultar tu presupuesto</div>
+          <div style="font-size:13px; color:#6b7280; margin-bottom:14px;">El dashboard está restringido a aprobadores, analistas y administradores.</div>
+        </td>
+      </tr>
+
+      <!-- PASOS -->
+      <tr>
+        <td style="padding:0 32px;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+            <tr>
+              <td valign="top" style="width:32px; padding:4px 12px 4px 0;">
+                <div style="width:28px; height:28px; background:#D71920; color:#ffffff; border-radius:50%; text-align:center; line-height:28px; font-weight:700; font-size:13px;">1</div>
+              </td>
+              <td valign="top" style="padding:4px 0 12px 0; font-size:13px; color:#374151; line-height:1.5;">
+                <strong style="color:#111827;">Ingresa al dashboard</strong> desde el panel de administración de la app de viajes, botón <em>"Costos por Unidad"</em>. URL directa: <a href="https://script.google.com/a/macros/equitel.com.co/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec?view=costs-dashboard" style="color:#D71920; text-decoration:underline;">enlace al dashboard</a>.
+              </td>
+            </tr>
+            <tr>
+              <td valign="top" style="padding:4px 12px 4px 0;">
+                <div style="width:28px; height:28px; background:#D71920; color:#ffffff; border-radius:50%; text-align:center; line-height:28px; font-weight:700; font-size:13px;">2</div>
+              </td>
+              <td valign="top" style="padding:4px 0 12px 0; font-size:13px; color:#374151; line-height:1.5;">
+                <strong style="color:#111827;">Autentícate</strong> con tu correo corporativo y tu PIN de 8 dígitos (el mismo que usas para entrar a la app).
+              </td>
+            </tr>
+            <tr>
+              <td valign="top" style="padding:4px 12px 4px 0;">
+                <div style="width:28px; height:28px; background:#D71920; color:#ffffff; border-radius:50%; text-align:center; line-height:28px; font-weight:700; font-size:13px;">3</div>
+              </td>
+              <td valign="top" style="padding:4px 0 12px 0; font-size:13px; color:#374151; line-height:1.5;">
+                <strong style="color:#111827;">Filtra por tu empresa y unidad</strong>. El dashboard te muestra tres vistas: Anual (acumulado del año), Periodo Actual (Q/bimestre), y Mensual.
+              </td>
+            </tr>
+            <tr>
+              <td valign="top" style="padding:4px 12px 4px 0;">
+                <div style="width:28px; height:28px; background:#D71920; color:#ffffff; border-radius:50%; text-align:center; line-height:28px; font-weight:700; font-size:13px;">4</div>
+              </td>
+              <td valign="top" style="padding:4px 0 12px 0; font-size:13px; color:#374151; line-height:1.5;">
+                <strong style="color:#111827;">Revisa el semáforo</strong> en la tabla de unidades para identificar de un vistazo qué unidades están cerca del límite.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- LEYENDA SEMÁFORO -->
+      <tr>
+        <td style="padding:8px 32px 16px 32px;">
+          <div style="font-size:13px; color:#6b7280; margin-bottom:8px;">El color del semáforo indica el % usado:</div>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f9fafb; border-radius:6px;">
+            <tr>
+              <td style="padding:10px 14px; font-size:12px;">
+                <span style="display:inline-block; width:10px; height:10px; background:#22c55e; border-radius:50%; margin-right:6px;"></span><strong>Verde:</strong> menos del 70%
+                &nbsp;·&nbsp;
+                <span style="display:inline-block; width:10px; height:10px; background:#eab308; border-radius:50%; margin-right:6px;"></span><strong>Amarillo:</strong> 70–100%
+                &nbsp;·&nbsp;
+                <span style="display:inline-block; width:10px; height:10px; background:#dc2626; border-radius:50%; margin-right:6px;"></span><strong>Rojo:</strong> excedido
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+
+      <!-- FOOTER -->
+      <tr>
+        <td style="background:#f9fafb; padding:20px 32px; border-top:1px solid #e5e7eb;">
+          <div style="font-size:12px; color:#6b7280; line-height:1.5;">
+            <strong style="color:#374151;">¿Dudas o reportar problemas?</strong> Escribe al área de viajes.<br>
+            Esta actualización aplica desde hoy. El dashboard se sincroniza automáticamente con la base de solicitudes.
+          </div>
+        </td>
+      </tr>
+
+    </table>
+
+  </td></tr>
+</table>
+
+</body>
+</html>

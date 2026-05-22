@@ -17,9 +17,22 @@ interface UsageData {
   percent?: number;
   percentClamped?: number;
   isOverBudget?: boolean;
+  // Solo presentes cuando isOverBudget=true (el backend solo los incluye
+  // entonces). Si el feature flag está OFF, budgetOverrunCheckEnabled=false
+  // y NO mostramos el mensaje de aprobador adicional.
+  budgetOverrunCheckEnabled?: boolean;
+  budgetApproverName?: string;
   reason?: string;
   error?: string;
 }
+
+// URL del GIF de "sobrecosto" servida desde Drive vía el endpoint público de
+// imágenes de Google (lh3.googleusercontent.com). Este patrón preserva la
+// animación del GIF cuando el archivo está compartido públicamente, a
+// diferencia de drive.google.com/thumbnail que reencoda a JPEG. Si en el
+// futuro Drive bloquea este patrón, onError oculta la imagen silenciosamente
+// y el resto de la barra sigue funcionando.
+const OVERRUN_GIF_URL = 'https://lh3.googleusercontent.com/d/1KHRFkrxAvcKdNMLskPsKM53kU5u6Dfo3';
 
 // Cache por sesión con TTL: evita reconsultar la misma unidad mientras el
 // usuario edita, pero expira en 5 min para que no muestre cifras stale si el
@@ -70,9 +83,13 @@ function colorTier(percent: number): { bar: string; text: string; bg: string; bo
 export const BudgetUsageBar: React.FC<Props> = ({ empresa, unidad }) => {
   const [data, setData] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [gifFailed, setGifFailed] = useState(false);
   const abortKeyRef = useRef<string>('');
 
   useEffect(() => {
+    // Reset del flag de falla del GIF: si la unidad cambia, intentamos cargarlo
+    // de nuevo (un fallo previo pudo ser transient — red lenta, etc.).
+    setGifFailed(false);
     // Esperamos a tener AMBOS (empresa + unidad). Unidades con el mismo nombre
     // en distintas empresas (poco común pero posible) producirían lecturas
     // mezcladas si solo tenemos la unidad. Si la empresa no está, ocultamos.
@@ -110,10 +127,20 @@ export const BudgetUsageBar: React.FC<Props> = ({ empresa, unidad }) => {
   if (!unidad || !empresa) return null;
 
   if (loading) {
+    // Skeleton que reproduce la forma final de la barra: cabecera + track con
+    // shimmer + línea de mensaje. Le da peso visual al estado de carga para
+    // que el usuario perciba "algo está pasando" en lugar de "campo vacío".
     return (
-      <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded text-sm text-gray-500 flex items-center gap-2">
-        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-brand-red"></div>
-        Consultando presupuesto de la unidad...
+      <div className="mt-2 p-3 bg-gray-50 border border-gray-200 rounded animate-pulse">
+        <div className="flex justify-between items-center mb-1.5">
+          <div className="h-3 w-44 bg-gray-300 rounded" />
+          <div className="h-3 w-12 bg-gray-300 rounded" />
+        </div>
+        <div className="w-full h-3 bg-white rounded overflow-hidden border border-gray-300">
+          <div className="h-full w-1/3 bg-gray-300" />
+        </div>
+        <div className="h-3 w-5/6 bg-gray-200 rounded mt-2" />
+        <div className="h-3 w-2/3 bg-gray-200 rounded mt-1" />
       </div>
     );
   }
@@ -145,6 +172,11 @@ export const BudgetUsageBar: React.FC<Props> = ({ empresa, unidad }) => {
     message = `Esta unidad ha consumido ${pct.toFixed(1)}% de su presupuesto de ${data.monthLabel}. Use el presupuesto con responsabilidad — cada gasto innecesario lo agota más rápido.`;
   }
 
+  // Mensaje de aprobador adicional: solo cuando excede Y el feature flag está
+  // activo Y hay un nombre configurado. Si falta cualquiera de los tres, no
+  // se muestra (la regla aún no aplica o no está completamente configurada).
+  const showApproverMsg = isOver && !!data.budgetOverrunCheckEnabled && !!data.budgetApproverName;
+
   return (
     <div className={`mt-2 p-3 border rounded ${tier.bg} ${tier.border}`}>
       <div className="flex justify-between items-center mb-1.5">
@@ -164,6 +196,23 @@ export const BudgetUsageBar: React.FC<Props> = ({ empresa, unidad }) => {
       <p className={`text-xs mt-2 ${tier.text} leading-snug`}>
         {message}
       </p>
+      {showApproverMsg && (
+        <p className={`text-xs mt-2 ${tier.text} leading-snug font-semibold border-t border-red-300 pt-2`}>
+          ⚠️ Esta solicitud requerirá la aprobación adicional de <strong>{data.budgetApproverName}</strong> por exceder el presupuesto de la unidad.
+        </p>
+      )}
+      {isOver && !gifFailed && (
+        <div className="mt-2 flex justify-center">
+          <img
+            src={OVERRUN_GIF_URL}
+            alt="Sobrecosto"
+            loading="lazy"
+            decoding="async"
+            onError={() => setGifFailed(true)}
+            className="max-w-[220px] w-full h-auto rounded border border-red-300"
+          />
+        </div>
+      )}
     </div>
   );
 };

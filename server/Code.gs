@@ -4734,7 +4734,11 @@ function createNewRequest(data, emailHtml) {
   } else {
       sendNewRequestNotification(data, id);
   }
-  
+
+  // Invalidar cache de consumo presupuestal para esta unidad — la siguiente
+  // consulta de la barra refleja inmediatamente esta solicitud.
+  invalidateBudgetUsageCache_(data.businessUnit);
+
   return id;
 }
 
@@ -11738,15 +11742,30 @@ function getMonthlyBudgetUsage(empresa, unidad) {
       return { hasBudget: false, reason: 'parámetros demasiado largos' };
     }
     if (!unidad) return { hasBudget: false, reason: 'sin unidad' };
-    var config = _csLoadConfig_();
     var now = new Date();
     var month = parseInt(Utilities.formatDate(now, 'America/Bogota', 'M'), 10);
     var year = parseInt(Utilities.formatDate(now, 'America/Bogota', 'yyyy'), 10);
+
+    // CACHE HIT: misma unidad+mes consultada en los últimos 5 min → respuesta
+    // instantánea. La barra es informativa, no de decisión, así que 5 min de
+    // staleness aceptable. Se invalida explícitamente al crear/modificar una
+    // solicitud (ver invalidateBudgetUsageCache_).
+    var unidadNorm = _csNormalize_(unidad);
+    var cacheKey = 'bu:' + unidadNorm + '|' + year + '-' + month;
+    var cache = null;
+    try {
+      cache = CacheService.getScriptCache();
+      var cached = cache.get(cacheKey);
+      if (cached) {
+        try { return JSON.parse(cached); } catch (_) { /* corrupto, recomputar */ }
+      }
+    } catch (_) { /* sin cache, computar normal */ }
+
+    var config = _csLoadConfig_();
     var monthNames = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
                       'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
     var pptos = _csLoadPptos_(year);
-    var unidadNorm = _csNormalize_(unidad);
 
     // BUGFIX (2026-05-22): NO filtrar por empresa. La unidad de negocio es
     // la fuente única de verdad para el presupuesto — la empresa puede no
@@ -11756,23 +11775,27 @@ function getMonthlyBudgetUsage(empresa, unidad) {
     // unidad. Ver mensaje del usuario al respecto.
     var pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
     if (!pptoEntry) {
-      return {
+      var noBudgetResult = {
         hasBudget: false,
         monthLabel: monthNames[month - 1] + ' ' + year,
         unit: String(unidad),
         company: String(empresa || '')
       };
+      if (cache) { try { cache.put(cacheKey, JSON.stringify(noBudgetResult), 300); } catch (_) {} }
+      return noBudgetResult;
     }
 
     var budgetMonth = pptoEntry.monthly[month - 1] || 0;
     if (!budgetMonth) {
-      return {
+      var zeroBudgetResult = {
         hasBudget: false,
         monthLabel: monthNames[month - 1] + ' ' + year,
         unit: String(unidad),
         company: String(empresa || ''),
         reason: 'presupuesto del mes en 0'
       };
+      if (cache) { try { cache.put(cacheKey, JSON.stringify(zeroBudgetResult), 300); } catch (_) {} }
+      return zeroBudgetResult;
     }
 
     // Sumar ejecutado del mes: SOLO por unidad, ignorando empresa.
@@ -11821,18 +11844,52 @@ function getMonthlyBudgetUsage(empresa, unidad) {
     var percent = (executedWithReserve / budgetMonth) * 100;
     var percentClamped = Math.min(100, Math.max(0, percent));
 
-    return {
+    // Exponer el flag de feature y el nombre del aprobador SOLO si se va a
+    // exceder el presupuesto. Si no se excede, no tiene sentido revelar la
+    // identidad del aprobador (información de menor valor pero no esencial
+    // para el usuario solicitante).
+    var isOver = percent >= 100;
+    var result = {
       hasBudget: true,
       monthLabel: monthNames[month - 1] + ' ' + year,
       unit: String(unidad),
       company: String(empresa || ''),
       percent: percent,             // real (puede ser >100)
       percentClamped: percentClamped, // para la barra (0..100)
-      isOverBudget: percent >= 100
+      isOverBudget: isOver,
+      budgetOverrunCheckEnabled: !!config.budgetOverrunCheckEnabled,
+      budgetApproverName: isOver ? String(config.budgetApproverName || '') : ''
     };
+    if (cache) { try { cache.put(cacheKey, JSON.stringify(result), 300); } catch (_) {} }
+    return result;
   } catch (e) {
     console.error('getMonthlyBudgetUsage error: ' + e);
     return { hasBudget: false, error: String(e) };
+  }
+}
+
+/**
+ * Invalida el cache de consumo presupuestal para una unidad+mes actual.
+ * Se llama después de crear o modificar una solicitud para que la próxima
+ * lectura refleje la nueva ejecución sin esperar al TTL de 5 min.
+ *
+ * Se invalida de manera amplia (toda la unidad para el año/mes actual) por
+ * simplicidad — la fecha de compra puede caer en cualquier mes, pero en la
+ * práctica casi siempre es el mes actual; vaciar solo el del mes actual es
+ * suficiente y barato. Si una solicitud se confirma para un mes distinto,
+ * la barra de ese mes se actualizará al expirar el TTL.
+ */
+function invalidateBudgetUsageCache_(unidad) {
+  try {
+    if (!unidad) return;
+    var unidadNorm = _csNormalize_(unidad);
+    var now = new Date();
+    var month = parseInt(Utilities.formatDate(now, 'America/Bogota', 'M'), 10);
+    var year = parseInt(Utilities.formatDate(now, 'America/Bogota', 'yyyy'), 10);
+    var cache = CacheService.getScriptCache();
+    cache.remove('bu:' + unidadNorm + '|' + year + '-' + month);
+  } catch (e) {
+    console.warn('invalidateBudgetUsageCache_: ' + e);
   }
 }
 
