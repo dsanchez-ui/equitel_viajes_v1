@@ -11585,6 +11585,150 @@ function _calcularEjecutadoPeriodo_(empresa, unidad, totalCost, excludeIds) {
  * Si la unidad no tiene presupuesto en PPTOS, retorna `hasBudget=false`
  * para que la UI muestre un mensaje neutro.
  */
+/**
+ * Diagnóstico: ejecutar desde el editor con valores reales para entender
+ * por qué `getMonthlyBudgetUsage` retorna un % distinto al esperado.
+ *
+ * Uso:
+ *   1. Editor Apps Script → dropdown de funciones → diagnosticarBudgetUsage
+ *   2. Antes de ejecutar, crea una función temporal:
+ *        function _diag() { diagnosticarBudgetUsage('Equitel', 'POTENCIA (GDM - P&M)'); }
+ *   3. ▶ Ejecutar → Ver → Registros
+ *
+ * Loguea: budgetMonth, executedMonth, cuántas filas se evaluaron y por qué
+ * se excluyeron cada una. Ayuda a detectar mismatch de empresa/unidad,
+ * filtros de mes, OTs ocultas, etc.
+ */
+function diagnosticarBudgetUsage(empresa, unidad) {
+  var config = _csLoadConfig_();
+  var now = new Date();
+  var month = parseInt(Utilities.formatDate(now, 'America/Bogota', 'M'), 10);
+  var year = parseInt(Utilities.formatDate(now, 'America/Bogota', 'yyyy'), 10);
+  var empresaNorm = _csNormalize_(empresa || '');
+  var unidadNorm = _csNormalize_(unidad);
+
+  Logger.log('=== DIAGNÓSTICO getMonthlyBudgetUsage ===');
+  Logger.log('Empresa input:    "' + empresa + '" → norm: "' + empresaNorm + '"');
+  Logger.log('Unidad input:     "' + unidad + '" → norm: "' + unidadNorm + '"');
+  Logger.log('Mes/año Bogotá:   ' + month + '/' + year);
+  Logger.log('countableStatuses: ' + JSON.stringify(config.countableStatuses));
+  Logger.log('workOrderHeader:  "' + config.workOrderHeader + '"');
+  Logger.log('');
+
+  // PPTOS lookup
+  var pptos = _csLoadPptos_(year);
+  var pptoEntry = empresaNorm ? (pptos.byEmpresaUnit[empresaNorm + '|' + unidadNorm + '|' + year] || null) : null;
+  if (!pptoEntry) pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
+  if (!pptoEntry) {
+    Logger.log('❌ PPTOS: no se encontró entry para esta empresa/unidad/año.');
+    Logger.log('   Claves disponibles en byUnit con esta unidad:');
+    Object.keys(pptos.byUnit).filter(function(k){return k.indexOf(unidadNorm)===0;}).forEach(function(k){Logger.log('     - "' + k + '"');});
+    return { hasBudget: false };
+  }
+  Logger.log('✅ PPTOS entry: empresa="' + pptoEntry.empresa + '", unidad="' + pptoEntry.unidad + '", year=' + pptoEntry.year);
+  var budgetMonth = pptoEntry.monthly[month - 1] || 0;
+  Logger.log('Budget mes (' + month + '): $' + Number(budgetMonth).toLocaleString('es-CO'));
+  Logger.log('');
+
+  // Iterar sheet con detalle
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  var headersRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headerMap = {};
+  for (var hi = 0; hi < headersRow.length; hi++) {
+    var hn = String(headersRow[hi] || '').trim();
+    if (hn) headerMap[hn] = hi;
+  }
+  var allRows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var countableStatuses = (config.countableStatuses || ['RESERVADO', 'PROCESADO'])
+    .map(function(s) { return String(s).toUpperCase().trim(); });
+
+  var executedMonth = 0;
+  var matched = 0;
+  var excluded = { noId: 0, byStatus: 0, byUnit: 0, byCompany: 0, byMonthYear: 0, byOT: 0, byZeroExec: 0 };
+  var unidadesMatchingButOtherFilters = {};
+
+  for (var r = 0; r < allRows.length; r++) {
+    var row = allRows[r];
+    if (!row[0]) { excluded.noId++; continue; }
+    var rId = String(_csReadCell_(row, headerMap, config.requestIdHeader) || '');
+    var st = String(_csReadCell_(row, headerMap, config.statusHeader) || '').toUpperCase().trim();
+    var rUnidRaw = _csReadCell_(row, headerMap, config.unitHeader);
+    var rUnid = _csNormalize_(rUnidRaw);
+
+    if (rUnid !== unidadNorm) {
+      // Si la unidad NO matchea pero es parecida, listarlo
+      if (rUnid && rUnid.indexOf(unidadNorm.substring(0, 5)) >= 0) {
+        unidadesMatchingButOtherFilters[rUnid] = (unidadesMatchingButOtherFilters[rUnid] || 0) + 1;
+      }
+      excluded.byUnit++;
+      continue;
+    }
+
+    // Unidad matchea — log detalle
+    if (countableStatuses.indexOf(st) < 0) { excluded.byStatus++; Logger.log('  EXCLUIDA ' + rId + ' por status="' + st + '"'); continue; }
+
+    if (empresaNorm) {
+      var rEmpRaw = _csReadCell_(row, headerMap, config.companyHeader);
+      var rEmp = _csNormalize_(rEmpRaw);
+      if (rEmp && rEmp !== empresaNorm) { excluded.byCompany++; Logger.log('  EXCLUIDA ' + rId + ' por empresa raw="' + rEmpRaw + '" norm="' + rEmp + '" (esperaba "' + empresaNorm + '")'); continue; }
+    }
+
+    var fechaCompraRaw = _csReadCell_(row, headerMap, config.purchaseDateHeader);
+    var my = _csResolveMonthYear_(fechaCompraRaw);
+    if (!my || my.year !== year || my.month !== month) {
+      excluded.byMonthYear++;
+      Logger.log('  EXCLUIDA ' + rId + ' status=' + st + ' por fecha. FECHA COMPRA raw="' + fechaCompraRaw + '" → my=' + JSON.stringify(my));
+      continue;
+    }
+
+    if (config.workOrderHeader) {
+      var rOT = _csReadCell_(row, headerMap, config.workOrderHeader);
+      if (_esOTValida_(rOT)) { excluded.byOT++; Logger.log('  EXCLUIDA ' + rId + ' por OT="' + rOT + '"'); continue; }
+    }
+
+    var exec = _csComputeRowExecuted_(row, headerMap, config);
+    var contribution = (exec.real || 0) + (exec.estimated || 0);
+    if (contribution === 0) {
+      excluded.byZeroExec++;
+      Logger.log('  EXCLUIDA ' + rId + ' por ejecutado=0. Breakdown: ' + JSON.stringify(exec.breakdown));
+      continue;
+    }
+    executedMonth += contribution;
+    matched++;
+    Logger.log('  ✅ MATCH ' + rId + ': real=$' + (exec.real||0).toLocaleString('es-CO') + ' est=$' + (exec.estimated||0).toLocaleString('es-CO') + ' (status=' + st + ')');
+  }
+
+  Logger.log('');
+  Logger.log('=== RESULTADO ===');
+  Logger.log('Filas matched (aportan al executedMonth): ' + matched);
+  Logger.log('executedMonth = $' + executedMonth.toLocaleString('es-CO'));
+  Logger.log('budgetMonth   = $' + budgetMonth.toLocaleString('es-CO'));
+  if (budgetMonth > 0) {
+    var percent = ((executedMonth + budgetMonth * 0.10) / budgetMonth) * 100;
+    Logger.log('percent (con reserva 10%) = ' + percent.toFixed(2) + '%');
+  }
+  Logger.log('');
+  Logger.log('Excluidas por:');
+  Object.keys(excluded).forEach(function(k) { if (excluded[k] > 0) Logger.log('  ' + k + ': ' + excluded[k]); });
+
+  if (Object.keys(unidadesMatchingButOtherFilters).length > 0) {
+    Logger.log('');
+    Logger.log('⚠️ Otras unidades parecidas que NO matchean exactamente:');
+    Object.keys(unidadesMatchingButOtherFilters).forEach(function(k){Logger.log('  "' + k + '" → ' + unidadesMatchingButOtherFilters[k] + ' filas');});
+  }
+
+  return {
+    budgetMonth: budgetMonth,
+    executedMonth: executedMonth,
+    percent: budgetMonth > 0 ? ((executedMonth + budgetMonth * 0.10) / budgetMonth) * 100 : null,
+    matched: matched,
+    excluded: excluded
+  };
+}
+
 function getMonthlyBudgetUsage(empresa, unidad) {
   try {
     // Sanitización ligera. El endpoint está autenticado (la sesión válida
