@@ -11468,17 +11468,13 @@ function _calcularEjecutadoPeriodo_(empresa, unidad, totalCost, excludeIds) {
   var fromMonth = bucket * periodMonths + 1;
   var toMonth = Math.min(fromMonth + periodMonths - 1, 12);
 
-  // Presupuesto del periodo = suma de meses [fromMonth..toMonth] en PPTOS UNIDADES
+  // Presupuesto del periodo = suma de meses [fromMonth..toMonth] en PPTOS UNIDADES.
+  // BUGFIX (2026-05-22): SOLO matchear por unidad. La empresa en PPTOS puede no
+  // coincidir con la empresa registrada en las solicitudes (caso típico:
+  // unidad pertenece a CUMMINS pero solicitudes creadas con empresa Equitel).
   var pptos = _csLoadPptos_(year);
-  var empresaNorm = _csNormalize_(empresa || '');
   var unidadNorm = _csNormalize_(unidad);
-  var pptoEntry = null;
-  if (empresaNorm) {
-    pptoEntry = pptos.byEmpresaUnit[empresaNorm + '|' + unidadNorm + '|' + year] || null;
-  }
-  if (!pptoEntry) {
-    pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
-  }
+  var pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
   if (!pptoEntry) {
     return {
       exceedsBudget: false,
@@ -11538,10 +11534,8 @@ function _calcularEjecutadoPeriodo_(empresa, unidad, totalCost, excludeIds) {
     if (countableStatuses.indexOf(st) < 0) continue;
     var rUnid = _csNormalize_(_csReadCell_(row, headerMap, config.unitHeader));
     if (rUnid !== unidadNorm) continue;
-    if (empresaNorm) {
-      var rEmp = _csNormalize_(_csReadCell_(row, headerMap, config.companyHeader));
-      if (rEmp && rEmp !== empresaNorm) continue;
-    }
+    // BUGFIX (2026-05-22): NO filtrar por empresa. La unidad es la fuente
+    // única de verdad — la empresa puede no coincidir entre PPTOS y solicitudes.
     var my = _csResolveMonthYear_(_csReadCell_(row, headerMap, config.purchaseDateHeader));
     if (!my || my.year !== year) continue;
     if (my.month < fromMonth || my.month > toMonth) continue;
@@ -11752,16 +11746,15 @@ function getMonthlyBudgetUsage(empresa, unidad) {
                       'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 
     var pptos = _csLoadPptos_(year);
-    var empresaNorm = _csNormalize_(empresa || '');
     var unidadNorm = _csNormalize_(unidad);
 
-    var pptoEntry = null;
-    if (empresaNorm) {
-      pptoEntry = pptos.byEmpresaUnit[empresaNorm + '|' + unidadNorm + '|' + year] || null;
-    }
-    if (!pptoEntry) {
-      pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
-    }
+    // BUGFIX (2026-05-22): NO filtrar por empresa. La unidad de negocio es
+    // la fuente única de verdad para el presupuesto — la empresa puede no
+    // coincidir entre PPTOS UNIDADES y las solicitudes (caso típico:
+    // unidad "POTENCIA" registrada en PPTOS con empresa CUMMINS pero
+    // solicitudes creadas con empresa "Equitel"). Solo matcheamos por
+    // unidad. Ver mensaje del usuario al respecto.
+    var pptoEntry = pptos.byUnit[unidadNorm + '|' + year] || null;
     if (!pptoEntry) {
       return {
         hasBudget: false,
@@ -11782,7 +11775,7 @@ function getMonthlyBudgetUsage(empresa, unidad) {
       };
     }
 
-    // Sumar ejecutado del mes: misma lógica que dashboard / overrun helper
+    // Sumar ejecutado del mes: SOLO por unidad, ignorando empresa.
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
     var executedMonth = 0;
@@ -11806,10 +11799,7 @@ function getMonthlyBudgetUsage(empresa, unidad) {
           if (countableStatuses.indexOf(st) < 0) continue;
           var rUnid = _csNormalize_(_csReadCell_(row, headerMap, config.unitHeader));
           if (rUnid !== unidadNorm) continue;
-          if (empresaNorm) {
-            var rEmp = _csNormalize_(_csReadCell_(row, headerMap, config.companyHeader));
-            if (rEmp && rEmp !== empresaNorm) continue;
-          }
+          // BUGFIX: NO filtrar por empresa (ver explicación arriba).
           var my = _csResolveMonthYear_(_csReadCell_(row, headerMap, config.purchaseDateHeader));
           if (!my || my.year !== year || my.month !== month) continue;
           if (config.workOrderHeader) {
