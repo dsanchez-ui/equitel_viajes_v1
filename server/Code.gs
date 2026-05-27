@@ -5194,27 +5194,38 @@ function updateRequestStatus(id, status, payload) {
             var _parentId = parentIdx > -1 ? String(sheet.getRange(rowNumber, parentIdx + 1).getValue() || '').trim() : '';
             var _excludeIds = _parentId ? [id, _parentId] : [id];
             var _chk = _calcularEjecutadoPeriodo_(_empresa, _unidad, _costo, _excludeIds);
+            // IDEMPOTENCIA (2026-05-26): leer el valor actual de la columna
+            // ANTES de decidir si escribir la nota. Si `updateRequestStatus`
+            // se invoca dos veces con PENDIENTE_APROBACION (doble click del
+            // analista en "Confirmar costos", reintentos de red, etc.), la
+            // segunda pasada NO debe duplicar la nota en OBSERVACIONES.
+            // La nota es informativa; lo que importa funcionalmente es el
+            // valor de la columna REQUIERE APROB PPTO (que sí re-escribimos
+            // sin riesgo porque es idempotente por sí mismo).
+            var _prevFlag = String(sheet.getRange(rowNumber, reqApPptoIdx + 1).getValue() || '').trim().toUpperCase();
             if (_chk && _chk.exceedsBudget) {
                sheet.getRange(rowNumber, reqApPptoIdx + 1).setValue('SI');
-               // Nota informativa en OBSERVACIONES para trazabilidad humana
-               try {
-                  var _obsIdxPpto = H('OBSERVACIONES');
-                  if (_obsIdxPpto > -1) {
-                     var _currObsPpto = sheet.getRange(rowNumber, _obsIdxPpto + 1).getValue();
-                     var _notePpto = '[PRESUPUESTO]: Solicitud excede presupuesto del periodo ' + _chk.periodLabel +
-                                     ' para la unidad. Requiere aprobación adicional. Ppto: $' +
-                                     Number(_chk.budgetPeriod).toLocaleString('es-CO') + ', ejecutado previo: $' +
-                                     Number(_chk.executedPeriod).toLocaleString('es-CO') + ', total proyectado: $' +
-                                     Number(_chk.newTotalProjected).toLocaleString('es-CO') + '.';
-                     sheet.getRange(rowNumber, _obsIdxPpto + 1).setValue((_currObsPpto ? _currObsPpto + '\n' : '') + _notePpto);
-                  }
-               } catch (eObs) { console.error('Error logging budget note: ' + eObs); }
+               // Solo escribir nota la PRIMERA vez que se marca como excedido.
+               // Si ya estaba 'SI', la nota original ya está en OBSERVACIONES.
+               if (_prevFlag !== 'SI') {
+                  try {
+                     var _obsIdxPpto = H('OBSERVACIONES');
+                     if (_obsIdxPpto > -1) {
+                        var _currObsPpto = sheet.getRange(rowNumber, _obsIdxPpto + 1).getValue();
+                        var _notePpto = '[PRESUPUESTO]: Solicitud excede presupuesto del periodo ' + _chk.periodLabel +
+                                        ' para la unidad. Requiere aprobación adicional. Ppto: $' +
+                                        Number(_chk.budgetPeriod).toLocaleString('es-CO') + ', ejecutado previo: $' +
+                                        Number(_chk.executedPeriod).toLocaleString('es-CO') + ', total proyectado: $' +
+                                        Number(_chk.newTotalProjected).toLocaleString('es-CO') + '.';
+                        sheet.getRange(rowNumber, _obsIdxPpto + 1).setValue((_currObsPpto ? _currObsPpto + '\n' : '') + _notePpto);
+                     }
+                  } catch (eObs) { console.error('Error logging budget note: ' + eObs); }
+               }
             } else if (_chk && _chk.featureEnabled) {
                // Solo limpiar el flag si el feature ESTÁ ACTIVO. Con feature
                // deshabilitado NO tocamos la celda — evita writes innecesarios
                // y respeta cualquier marca manual que un superadmin haya puesto.
-               var _existing = String(sheet.getRange(rowNumber, reqApPptoIdx + 1).getValue() || '').trim();
-               if (_existing) sheet.getRange(rowNumber, reqApPptoIdx + 1).setValue('');
+               if (_prevFlag === 'SI') sheet.getRange(rowNumber, reqApPptoIdx + 1).setValue('');
             }
          }
       } catch (eBudget) {
