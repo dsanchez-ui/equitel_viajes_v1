@@ -565,6 +565,98 @@
       margin-bottom: 14px;
       line-height: 1.55;
     }
+    /* Filtro de mes (segundo nivel, específico de variación) */
+    .variance-filters {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      background: #f9fafb;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 14px;
+    }
+    .variance-filters label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      font-weight: 600;
+    }
+    .variance-filters select {
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 13px;
+      background: #fff;
+      cursor: pointer;
+      color: var(--text);
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 400;
+    }
+    .variance-filters .var-month-summary {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: none;
+      letter-spacing: 0;
+      font-weight: 400;
+      font-style: italic;
+    }
+    /* Highlight cards: peor sobrecosto / mejor ahorro */
+    .variance-highlights {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .var-highlight {
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-left-width: 5px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .var-highlight.over { border-left-color: var(--red); background: linear-gradient(180deg, #fef2f2 0%, #fff 70%); }
+    .var-highlight.under { border-left-color: var(--green); background: linear-gradient(180deg, #ecfdf5 0%, #fff 70%); }
+    .var-highlight .label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .var-highlight .reqid {
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .var-highlight .pct {
+      font-size: 20px;
+      font-weight: 800;
+    }
+    .var-highlight.over .pct { color: var(--red); }
+    .var-highlight.under .pct { color: var(--green); }
+    .var-highlight .amounts {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .var-highlight .amounts strong { color: var(--text); }
+    .var-highlight .empty {
+      font-style: italic;
+      color: var(--muted);
+      font-size: 12px;
+    }
   </style>
 </head>
 <body>
@@ -823,6 +915,29 @@
         Solo se incluyen solicitudes con ambos valores &gt; 0 (status RESERVADO o PROCESADO, sin OT cargada). Las solicitudes con OT válida no aplican porque se cargan directo a la OT.
       </div>
 
+      <!-- Filtro de mes (cliente-side, sin re-fetch) -->
+      <div class="variance-filters">
+        <label>
+          <span>📅 Mes</span>
+          <select id="varMonth">
+            <option value="">Todos los meses</option>
+            <option value="1">Enero</option>
+            <option value="2">Febrero</option>
+            <option value="3">Marzo</option>
+            <option value="4">Abril</option>
+            <option value="5">Mayo</option>
+            <option value="6">Junio</option>
+            <option value="7">Julio</option>
+            <option value="8">Agosto</option>
+            <option value="9">Septiembre</option>
+            <option value="10">Octubre</option>
+            <option value="11">Noviembre</option>
+            <option value="12">Diciembre</option>
+          </select>
+        </label>
+        <span class="var-month-summary" id="varMonthSummary">aplica los filtros generales de Año/Empresa/Unidad del bloque superior</span>
+      </div>
+
       <!-- KPIs -->
       <div class="kpi-grid">
         <div class="kpi"><div class="label">Total Cotizado</div><div id="varTotalQuoted" class="value">—</div><div class="extra" id="varCount">— solicitudes</div></div>
@@ -836,6 +951,18 @@
         <div class="variance-counter over">📈 Sobrecosto: <strong id="varCountOver">—</strong></div>
         <div class="variance-counter under">📉 Ahorro: <strong id="varCountUnder">—</strong></div>
         <div class="variance-counter equal">= Igual: <strong id="varCountEqual">—</strong></div>
+      </div>
+
+      <!-- Highlight: peor sobrecosto + mejor ahorro -->
+      <div class="variance-highlights">
+        <div class="var-highlight over" id="varMaxOver">
+          <div class="label">🔥 Mayor sobrecosto</div>
+          <div class="empty">— sin datos —</div>
+        </div>
+        <div class="var-highlight under" id="varMaxUnder">
+          <div class="label">💚 Mayor ahorro</div>
+          <div class="empty">— sin datos —</div>
+        </div>
       </div>
 
       <!-- Chart -->
@@ -2091,12 +2218,52 @@ function _getVarianceFilteredRows() {
   if (!varianceData || !varianceData.rows) return [];
   var companyFilter = (document.getElementById('f_company').value || '').toLowerCase().trim();
   var unitFilter = (document.getElementById('f_unit').value || '').toLowerCase().trim();
+  var monthRaw = document.getElementById('varMonth') ? document.getElementById('varMonth').value : '';
+  var monthFilter = monthRaw ? parseInt(monthRaw, 10) : null;
   var rows = varianceData.rows.filter(function(r) {
     if (companyFilter && String(r.company || '').toLowerCase() !== companyFilter) return false;
     if (unitFilter && String(r.unit || '').toLowerCase() !== unitFilter) return false;
+    if (monthFilter && Number(r.month) !== monthFilter) return false;
     return true;
   });
   return rows;
+}
+
+function _renderVarianceHighlights(rows) {
+  var maxOverEl = document.getElementById('varMaxOver');
+  var maxUnderEl = document.getElementById('varMaxUnder');
+  if (!maxOverEl || !maxUnderEl) return;
+
+  var maxOver = null, maxUnder = null;
+  rows.forEach(function(r) {
+    if (r.variance > 0) {
+      if (!maxOver || r.variancePct > maxOver.variancePct) maxOver = r;
+    } else if (r.variance < 0) {
+      if (!maxUnder || r.variancePct < maxUnder.variancePct) maxUnder = r;
+    }
+  });
+
+  function buildCard(r, kind) {
+    if (!r) return '<div class="empty">— sin datos —</div>';
+    var routeLine = (r.origin || '—') + ' → ' + (r.destination || '—');
+    var sign = kind === 'over' ? '+' : '';
+    return ''
+      + '<div class="reqid">' + escHtml(r.requestId) + '</div>'
+      + '<div class="pct">' + sign + r.variancePct.toFixed(1) + '%</div>'
+      + '<div class="amounts">'
+      +   'Cotizado <strong>' + fmtMoney(r.quoted) + '</strong> · '
+      +   'Facturado <strong>' + fmtMoney(r.real) + '</strong>'
+      + '</div>'
+      + '<div class="amounts">'
+      +   escHtml(r.unit || r.company || '—') + ' · ' + escHtml(routeLine)
+      + '</div>';
+  }
+
+  // Limpiar contenido previo manteniendo el label
+  var overLabel = '<div class="label">🔥 Mayor sobrecosto</div>';
+  var underLabel = '<div class="label">💚 Mayor ahorro</div>';
+  maxOverEl.innerHTML = overLabel + buildCard(maxOver, 'over');
+  maxUnderEl.innerHTML = underLabel + buildCard(maxUnder, 'under');
 }
 
 function _recomputeVarianceTotals(rows) {
@@ -2130,9 +2297,9 @@ function renderVarianceView() {
   var totals = _recomputeVarianceTotals(rows);
 
   // KPIs
-  document.getElementById('varTotalQuoted').textContent = fmtCOP(totals.totalQuoted);
-  document.getElementById('varTotalReal').textContent = fmtCOP(totals.totalReal);
-  document.getElementById('varTotalVariance').textContent = fmtCOP(totals.totalVariance);
+  document.getElementById('varTotalQuoted').textContent = fmtMoney(totals.totalQuoted);
+  document.getElementById('varTotalReal').textContent = fmtMoney(totals.totalReal);
+  document.getElementById('varTotalVariance').textContent = (totals.totalVariance > 0 ? '+' : '') + fmtMoney(totals.totalVariance);
   document.getElementById('varAvgPct').textContent = fmtPct(totals.avgVariancePct);
   document.getElementById('varMedianPct').textContent = fmtPct(totals.medianVariancePct);
   document.getElementById('varCount').textContent = totals.countTotal + ' solicitud' + (totals.countTotal === 1 ? '' : 'es');
@@ -2150,6 +2317,9 @@ function renderVarianceView() {
   document.getElementById('varCountUnder').textContent = totals.countUnder;
   document.getElementById('varCountEqual').textContent = totals.countEqual;
 
+  // Highlight cards (max overage / max underage entre rows filtrados)
+  _renderVarianceHighlights(rows);
+
   // Chart + Tabla
   renderVarianceChart(rows);
   renderVarianceTable(rows);
@@ -2163,6 +2333,19 @@ function renderVarianceView() {
   }
 
   document.getElementById('varRequestCount').textContent = '(' + rows.length + ')';
+
+  // Texto auxiliar bajo el filtro de mes (cuenta filtrada + mes activo)
+  var monthSel = document.getElementById('varMonth');
+  var summary = document.getElementById('varMonthSummary');
+  if (monthSel && summary) {
+    var monthLabel = monthSel.options[monthSel.selectedIndex].text;
+    var year = varianceData.meta && varianceData.meta.year ? varianceData.meta.year : '';
+    var pieces = [];
+    if (monthSel.value) pieces.push(monthLabel + (year ? ' ' + year : ''));
+    else pieces.push('todo ' + (year || 'el año'));
+    pieces.push(rows.length + ' solicitud' + (rows.length === 1 ? '' : 'es'));
+    summary.textContent = pieces.join(' · ');
+  }
 }
 
 function renderVarianceChart(rows) {
@@ -2206,9 +2389,9 @@ function renderVarianceChart(rows) {
               var row = top[ctx.dataIndex];
               return [
                 'Variación: ' + ctx.parsed.y.toFixed(1) + '%',
-                'Cotizado: ' + fmtCOP(row.quoted),
-                'Facturado: ' + fmtCOP(row.real),
-                'Diferencia: ' + fmtCOP(row.variance)
+                'Cotizado: ' + fmtMoney(row.quoted),
+                'Facturado: ' + fmtMoney(row.real),
+                'Diferencia: ' + fmtMoney(row.variance)
               ];
             }
           }
@@ -2276,9 +2459,9 @@ function renderVarianceTable(rows) {
       '<td>' + escHtml(r.company || '—') + '</td>' +
       '<td>' + escHtml(r.unit || '—') + '</td>' +
       '<td>' + escHtml(r.status) + '</td>' +
-      '<td class="num">' + fmtCOP(r.quoted) + '</td>' +
-      '<td class="num">' + fmtCOP(r.real) + '</td>' +
-      '<td class="num var-cell">' + fmtCOP(r.variance) + '</td>' +
+      '<td class="num">' + fmtMoney(r.quoted) + '</td>' +
+      '<td class="num">' + fmtMoney(r.real) + '</td>' +
+      '<td class="num var-cell">' + (r.variance > 0 ? '+' : '') + fmtMoney(r.variance) + '</td>' +
       '<td class="num var-cell">' + (r.variancePct > 0 ? '+' : '') + r.variancePct.toFixed(1) + '%</td>' +
       '</tr>';
   }).join('');
@@ -2631,6 +2814,13 @@ document.addEventListener('DOMContentLoaded', function() {
     if (filteredData) renderMonthlyView(filteredData, selectedMonth);
   });
 
+  // VARIANCE: filtro de mes → re-render completo (KPIs, highlights, chart, tabla)
+  var varMonthSel = document.getElementById('varMonth');
+  if (varMonthSel) {
+    varMonthSel.addEventListener('change', function() {
+      if (varianceData) renderVarianceView();
+    });
+  }
   // VARIANCE: search input → re-render tabla (filtrado + sort, sin re-fetch)
   var varSearch = document.getElementById('varSearchInput');
   if (varSearch) {
