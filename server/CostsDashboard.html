@@ -2052,7 +2052,11 @@ function buildDetailContent(bucket) {
 // =====================================================================
 
 function loadVarianceReport() {
-  document.getElementById('varianceSection').style.display = '';
+  // BUGFIX (2026-06-02): usar 'block' explícito, no ''. La regla CSS
+  // `#varianceSection { display: none }` deja la sección oculta si JS
+  // pone style.display='' (porque eso remueve el override inline y cae
+  // al CSS, que sigue siendo display:none). 'block' fuerza override.
+  document.getElementById('varianceSection').style.display = 'block';
   google.script.run
     .withSuccessHandler(function(response) {
       if (!response || !response.success) {
