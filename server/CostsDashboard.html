@@ -465,6 +465,106 @@
       canvas.hide-on-print { display: none !important; }
       .print-replacement { display: block !important; }
     }
+
+    /* ===== VARIANCE REPORT (solo admin/superadmin) ===== */
+    #varianceSection { display: none; }
+    .badge-admin {
+      display: inline-block;
+      font-size: 10px;
+      padding: 3px 8px;
+      background: #7c3aed;
+      color: white;
+      border-radius: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-left: 6px;
+    }
+    .kpi.over { border-left: 4px solid var(--red); }
+    .kpi.over .value { color: var(--red); }
+    .kpi.under { border-left: 4px solid var(--green); }
+    .kpi.under .value { color: var(--green); }
+    .variance-counters {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+    .variance-counter {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .variance-counter.over { background: #fee2e2; color: #991b1b; }
+    .variance-counter.under { background: #d1fae5; color: #065f46; }
+    .variance-counter.equal { background: #f3f4f6; color: #374151; }
+    .variance-counter strong { font-size: 18px; }
+    .variance-table-controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .variance-table-controls input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .variance-table-controls .count {
+      font-size: 11px;
+      color: var(--muted);
+    }
+    table.variance {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    table.variance th, table.variance td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid #e5e7eb;
+      white-space: nowrap;
+    }
+    table.variance th {
+      background: #f9fafb;
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      cursor: pointer;
+      user-select: none;
+    }
+    table.variance th:hover { background: #f3f4f6; }
+    table.variance th.sort-asc::after { content: ' ▲'; color: var(--brand); }
+    table.variance th.sort-desc::after { content: ' ▼'; color: var(--brand); }
+    table.variance td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    table.variance tr.over td.var-cell { color: var(--red); font-weight: 700; }
+    table.variance tr.under td.var-cell { color: var(--green); font-weight: 700; }
+    table.variance tr.equal td.var-cell { color: var(--muted); }
+    .variance-table-wrap {
+      max-height: 480px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .variance-explanation {
+      font-size: 12px;
+      color: var(--muted);
+      background: #fef3c7;
+      border-left: 3px solid var(--amber);
+      padding: 10px 14px;
+      border-radius: 4px;
+      margin-bottom: 14px;
+      line-height: 1.55;
+    }
   </style>
 </head>
 <body>
@@ -707,6 +807,78 @@
       </div>
     </div>
 
+    <!-- ============================================================== -->
+    <!-- VARIANCE REPORT (cotizado vs facturado) — solo ANALYST/SUPERADMIN -->
+    <!-- ============================================================== -->
+    <div id="varianceSection" class="view-section">
+      <div class="view-title">
+        📊 Variación Cotizado vs Facturado
+        <span class="badge-admin">Solo admin</span>
+        <span class="view-subtitle">diferencia entre el costo cotizado al confirmar y la facturación real</span>
+      </div>
+
+      <div class="variance-explanation">
+        <strong>Cotizado</strong> = lo que el área de viajes ingresa al confirmar costos (campo COSTO COTIZADO PARA VIAJE).
+        <strong>Facturado</strong> = suma de TOTAL FACTURA + TOTAL FACTURA 2 + TOTAL FACTURA 3 (con fallbacks definidos en la configuración del dashboard).
+        Solo se incluyen solicitudes con ambos valores &gt; 0 (status RESERVADO o PROCESADO, sin OT cargada). Las solicitudes con OT válida no aplican porque se cargan directo a la OT.
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">Total Cotizado</div><div id="varTotalQuoted" class="value">—</div><div class="extra" id="varCount">— solicitudes</div></div>
+        <div class="kpi"><div class="label">Total Facturado</div><div id="varTotalReal" class="value">—</div></div>
+        <div class="kpi delta" id="varVarianceKpi"><div class="label">Variación Total</div><div id="varTotalVariance" class="value">—</div><div class="extra" id="varTotalVarianceLabel">vs. cotizado</div></div>
+        <div class="kpi delta" id="varAvgPctKpi"><div class="label">% Variación promedio</div><div id="varAvgPct" class="value">—</div><div class="extra">mediana: <span id="varMedianPct">—</span></div></div>
+      </div>
+
+      <!-- Counters -->
+      <div class="variance-counters">
+        <div class="variance-counter over">📈 Sobrecosto: <strong id="varCountOver">—</strong></div>
+        <div class="variance-counter under">📉 Ahorro: <strong id="varCountUnder">—</strong></div>
+        <div class="variance-counter equal">= Igual: <strong id="varCountEqual">—</strong></div>
+      </div>
+
+      <!-- Chart -->
+      <div class="card">
+        <h2>Distribución de variación % (top 20 por magnitud)</h2>
+        <div class="chart-wrap"><canvas id="varianceChart"></canvas></div>
+        <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 6px;">
+          Rojo = sobrecosto (facturado > cotizado) · Verde = ahorro (facturado &lt; cotizado).
+        </p>
+      </div>
+
+      <!-- Tabla -->
+      <div class="card">
+        <h2>Detalle por solicitud <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="varRequestCount"></span></h2>
+        <div class="variance-table-controls">
+          <input type="text" id="varSearchInput" placeholder="🔎 Buscar por ID, solicitante, ruta, unidad, empresa…" />
+          <button id="btnExportVarianceCsv" class="btn-secondary">📥 Exportar CSV</button>
+          <span class="count" id="varFilteredCount"></span>
+        </div>
+        <div class="variance-table-wrap">
+          <table class="variance" id="varianceTable">
+            <thead>
+              <tr>
+                <th data-sort="requestId">ID</th>
+                <th data-sort="purchaseDate">Fecha Compra</th>
+                <th data-sort="requesterEmail">Solicitante</th>
+                <th data-sort="route">Ruta</th>
+                <th data-sort="company">Empresa</th>
+                <th data-sort="unit">Unidad</th>
+                <th data-sort="status">Estado</th>
+                <th class="num" data-sort="quoted">Cotizado</th>
+                <th class="num" data-sort="real">Facturado</th>
+                <th class="num" data-sort="variance">Diferencia</th>
+                <th class="num" data-sort="variancePct">Var %</th>
+              </tr>
+            </thead>
+            <tbody id="varianceTableBody"></tbody>
+          </table>
+        </div>
+        <div id="varEmptyState" class="empty-state" style="display: none;">No hay solicitudes con cotizado y facturas para los filtros seleccionados.</div>
+      </div>
+    </div>
+
     <!-- META INFO -->
     <div class="card" style="font-size: 11px; color: var(--muted);">
       <div id="metaInfo"></div>
@@ -894,8 +1066,14 @@ var charts = {
   annualDonutPct: null,
   annualDonutDist: null,
   monthlyDonut: null,
-  periodDonut: null
+  periodDonut: null,
+  varianceChart: null
 };
+
+// Reporte de variación (solo admin) — datos crudos del backend.
+var varianceData = null;
+// Estado de ordenamiento de la tabla de variación.
+var varianceSort = { col: 'variancePct', dir: 'desc' };
 
 // Mes activo para vista mensual. Default: mes actual.
 var selectedMonth = new Date().getMonth() + 1;
@@ -955,6 +1133,13 @@ function loadDashboard() {
       document.getElementById('btnConfig').style.display = canEditConfig ? '' : 'none';
       populateCompanyUnitDropdowns();
       refreshView();
+      // Variance report: solo se carga para ANALYST/SUPERADMIN. El backend
+      // re-valida acceso por defense-in-depth; aquí gateamos por UX.
+      if (session && (session.role === 'ANALYST' || session.role === 'SUPERADMIN')) {
+        loadVarianceReport();
+      } else {
+        document.getElementById('varianceSection').style.display = 'none';
+      }
     })
     .withFailureHandler(function(err) {
       var msg = (err && err.message) || 'Error de conexión.';
@@ -991,6 +1176,8 @@ function refreshView() {
   renderMonthlyView(filteredData, selectedMonth);
   renderMeta();
   renderFilterSummary();
+  // Variance: si ya hay datos cargados, refrescar con los nuevos filtros client-side.
+  if (varianceData) renderVarianceView();
 }
 
 /**
@@ -1860,6 +2047,291 @@ function buildDetailContent(bucket) {
   return div;
 }
 
+// =====================================================================
+// VARIANCE REPORT (cotizado vs facturado) — solo ANALYST/SUPERADMIN
+// =====================================================================
+
+function loadVarianceReport() {
+  document.getElementById('varianceSection').style.display = '';
+  google.script.run
+    .withSuccessHandler(function(response) {
+      if (!response || !response.success) {
+        var errMsg = (response && response.error) || 'No se pudo cargar el reporte de variación.';
+        // Si es restricción de acceso, ocultar sin alarmar.
+        if (errMsg.indexOf('restring') !== -1 || errMsg.indexOf('admin') !== -1) {
+          document.getElementById('varianceSection').style.display = 'none';
+          return;
+        }
+        console.warn('Variance report error:', errMsg);
+        return;
+      }
+      varianceData = response.data;
+      renderVarianceView();
+    })
+    .withFailureHandler(function(err) {
+      var msg = (err && err.message) || 'Error de conexión.';
+      console.warn('Variance report failure:', msg);
+      // Sin afectar el resto del dashboard.
+    })
+    .costsDashboard_getVarianceReport({
+      filters: {
+        year: parseInt(document.getElementById('f_year').value, 10)
+        // companies/units se filtran client-side a partir de varianceData.rows
+      },
+      userEmail: session.email,
+      sessionToken: session.token
+    });
+}
+
+function _getVarianceFilteredRows() {
+  if (!varianceData || !varianceData.rows) return [];
+  var companyFilter = (document.getElementById('f_company').value || '').toLowerCase().trim();
+  var unitFilter = (document.getElementById('f_unit').value || '').toLowerCase().trim();
+  var rows = varianceData.rows.filter(function(r) {
+    if (companyFilter && String(r.company || '').toLowerCase() !== companyFilter) return false;
+    if (unitFilter && String(r.unit || '').toLowerCase() !== unitFilter) return false;
+    return true;
+  });
+  return rows;
+}
+
+function _recomputeVarianceTotals(rows) {
+  var tq = 0, tr = 0, co = 0, cu = 0, ce = 0;
+  rows.forEach(function(r) {
+    tq += r.quoted || 0;
+    tr += r.real || 0;
+    if (r.variance > 0) co++;
+    else if (r.variance < 0) cu++;
+    else ce++;
+  });
+  var tv = tr - tq;
+  var avgPct = tq > 0 ? (tv / tq) * 100 : null;
+  var medianPct = null;
+  if (rows.length > 0) {
+    var sorted = rows.map(function(r) { return r.variancePct; }).sort(function(a, b) { return a - b; });
+    var mid = Math.floor(sorted.length / 2);
+    medianPct = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return {
+    totalQuoted: tq, totalReal: tr, totalVariance: tv,
+    avgVariancePct: avgPct, medianVariancePct: medianPct,
+    countOver: co, countUnder: cu, countEqual: ce,
+    countTotal: rows.length
+  };
+}
+
+function renderVarianceView() {
+  if (!varianceData) return;
+  var rows = _getVarianceFilteredRows();
+  var totals = _recomputeVarianceTotals(rows);
+
+  // KPIs
+  document.getElementById('varTotalQuoted').textContent = fmtCOP(totals.totalQuoted);
+  document.getElementById('varTotalReal').textContent = fmtCOP(totals.totalReal);
+  document.getElementById('varTotalVariance').textContent = fmtCOP(totals.totalVariance);
+  document.getElementById('varAvgPct').textContent = fmtPct(totals.avgVariancePct);
+  document.getElementById('varMedianPct').textContent = fmtPct(totals.medianVariancePct);
+  document.getElementById('varCount').textContent = totals.countTotal + ' solicitud' + (totals.countTotal === 1 ? '' : 'es');
+
+  // Color del KPI Variación Total + % promedio (over/under)
+  var varKpi = document.getElementById('varVarianceKpi');
+  var avgKpi = document.getElementById('varAvgPctKpi');
+  varKpi.classList.remove('over', 'under');
+  avgKpi.classList.remove('over', 'under');
+  if (totals.totalVariance > 0) { varKpi.classList.add('over'); avgKpi.classList.add('over'); }
+  else if (totals.totalVariance < 0) { varKpi.classList.add('under'); avgKpi.classList.add('under'); }
+
+  // Counters
+  document.getElementById('varCountOver').textContent = totals.countOver;
+  document.getElementById('varCountUnder').textContent = totals.countUnder;
+  document.getElementById('varCountEqual').textContent = totals.countEqual;
+
+  // Chart + Tabla
+  renderVarianceChart(rows);
+  renderVarianceTable(rows);
+
+  // Empty state
+  var emptyState = document.getElementById('varEmptyState');
+  if (rows.length === 0) {
+    emptyState.style.display = '';
+  } else {
+    emptyState.style.display = 'none';
+  }
+
+  document.getElementById('varRequestCount').textContent = '(' + rows.length + ')';
+}
+
+function renderVarianceChart(rows) {
+  var canvas = document.getElementById('varianceChart');
+  if (!canvas) return;
+  if (charts.varianceChart) { charts.varianceChart.destroy(); charts.varianceChart = null; }
+  if (!rows.length) return;
+
+  // Top 20 por magnitud absoluta de variancePct (las desviaciones más
+  // grandes en valor absoluto, sea sobrecosto o ahorro)
+  var top = rows.slice().sort(function(a, b) {
+    return Math.abs(b.variancePct) - Math.abs(a.variancePct);
+  }).slice(0, 20);
+
+  var labels = top.map(function(r) { return r.requestId; });
+  var pcts = top.map(function(r) { return Math.round(r.variancePct * 10) / 10; });
+  var colors = top.map(function(r) {
+    return r.variance > 0 ? '#dc2626' : (r.variance < 0 ? '#059669' : '#9ca3af');
+  });
+
+  charts.varianceChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Variación %',
+        data: pcts,
+        backgroundColor: colors,
+        borderColor: colors,
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(ctx) {
+              var row = top[ctx.dataIndex];
+              return [
+                'Variación: ' + ctx.parsed.y.toFixed(1) + '%',
+                'Cotizado: ' + fmtCOP(row.quoted),
+                'Facturado: ' + fmtCOP(row.real),
+                'Diferencia: ' + fmtCOP(row.variance)
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxRotation: 60, minRotation: 45 } },
+        y: { ticks: { callback: function(v) { return v + '%'; } } }
+      }
+    }
+  });
+}
+
+function _sortVarianceRows(rows) {
+  var col = varianceSort.col;
+  var dir = varianceSort.dir === 'desc' ? -1 : 1;
+  return rows.slice().sort(function(a, b) {
+    var va, vb;
+    if (col === 'route') {
+      va = (a.origin || '') + ' → ' + (a.destination || '');
+      vb = (b.origin || '') + ' → ' + (b.destination || '');
+    } else {
+      va = a[col]; vb = b[col];
+    }
+    if (typeof va === 'string' && typeof vb === 'string') {
+      return va.localeCompare(vb, 'es') * dir;
+    }
+    if (va === null || va === undefined) return 1;
+    if (vb === null || vb === undefined) return -1;
+    return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
+  });
+}
+
+function renderVarianceTable(rows) {
+  var search = (document.getElementById('varSearchInput').value || '').toLowerCase().trim();
+  var filtered = rows.filter(function(r) {
+    if (!search) return true;
+    var route = (r.origin + ' → ' + r.destination).toLowerCase();
+    return [r.requestId, r.requesterEmail, r.company, r.unit, r.status, route]
+      .some(function(s) { return String(s || '').toLowerCase().indexOf(search) !== -1; });
+  });
+  var sorted = _sortVarianceRows(filtered);
+
+  // Indicador de ordenamiento en headers
+  Array.prototype.forEach.call(document.querySelectorAll('#varianceTable thead th'), function(th) {
+    th.classList.remove('sort-asc', 'sort-desc');
+    if (th.dataset.sort === varianceSort.col) {
+      th.classList.add(varianceSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+    }
+  });
+
+  var tbody = document.getElementById('varianceTableBody');
+  // Cap defensive: muy raro que pasen de 2000, pero si pasa, renderizar todos
+  // hace al DOM pesado. Mostramos primer N y nota.
+  var CAP = 1000;
+  var toRender = sorted.slice(0, CAP);
+  var html = toRender.map(function(r) {
+    var dir = r.variance > 0 ? 'over' : r.variance < 0 ? 'under' : 'equal';
+    var route = (r.origin || '—') + ' → ' + (r.destination || '—');
+    return '<tr class="' + dir + '">' +
+      '<td>' + escHtml(r.requestId) + '</td>' +
+      '<td>' + escHtml(r.purchaseDate || '—') + '</td>' +
+      '<td>' + escHtml(r.requesterEmail) + '</td>' +
+      '<td>' + escHtml(route) + '</td>' +
+      '<td>' + escHtml(r.company || '—') + '</td>' +
+      '<td>' + escHtml(r.unit || '—') + '</td>' +
+      '<td>' + escHtml(r.status) + '</td>' +
+      '<td class="num">' + fmtCOP(r.quoted) + '</td>' +
+      '<td class="num">' + fmtCOP(r.real) + '</td>' +
+      '<td class="num var-cell">' + fmtCOP(r.variance) + '</td>' +
+      '<td class="num var-cell">' + (r.variancePct > 0 ? '+' : '') + r.variancePct.toFixed(1) + '%</td>' +
+      '</tr>';
+  }).join('');
+  if (sorted.length > CAP) {
+    html += '<tr><td colspan="11" style="text-align:center; color:var(--muted); font-style:italic; padding:14px;">Mostrando primeras ' + CAP + ' de ' + sorted.length + '. Usa la búsqueda para acotar.</td></tr>';
+  }
+  tbody.innerHTML = html;
+
+  document.getElementById('varFilteredCount').textContent =
+    (search ? sorted.length + ' / ' + rows.length + ' (filtrados)' : sorted.length + ' resultados');
+}
+
+function escHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function exportVarianceCsv() {
+  if (!varianceData) return;
+  var rows = _sortVarianceRows(_getVarianceFilteredRows());
+  if (!rows.length) {
+    alert('No hay datos para exportar.');
+    return;
+  }
+  var BOM = '﻿'; // UTF-8 BOM explícito (escape, no literal) para que ningún editor lo strippee.
+  var headers = ['ID','Fecha Compra','Solicitante','Origen','Destino','Empresa','Unidad','Estado','Cotizado','Facturado','Diferencia','Variacion %'];
+  function csvEsc(v) {
+    var s = String(v === null || v === undefined ? '' : v);
+    if (s.indexOf(';') !== -1 || s.indexOf('"') !== -1 || s.indexOf('\n') !== -1) {
+      s = '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+  var lines = [headers.map(csvEsc).join(';')];
+  rows.forEach(function(r) {
+    lines.push([
+      r.requestId, r.purchaseDate || '', r.requesterEmail,
+      r.origin || '', r.destination || '',
+      r.company || '', r.unit || '', r.status,
+      Math.round(r.quoted), Math.round(r.real), Math.round(r.variance),
+      r.variancePct.toFixed(2)
+    ].map(csvEsc).join(';'));
+  });
+  var csv = BOM + lines.join('\r\n');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'variacion_cotizado_facturado_' + (varianceData.meta.year || 'all') + '_' + Date.now() + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 500);
+}
+
 function renderMeta() {
   if (!fullYearData) return;
   var meta = fullYearData.meta;
@@ -2154,6 +2626,31 @@ document.addEventListener('DOMContentLoaded', function() {
     selectedMonth = parseInt(e.target.value, 10) || 1;
     if (filteredData) renderMonthlyView(filteredData, selectedMonth);
   });
+
+  // VARIANCE: search input → re-render tabla (filtrado + sort, sin re-fetch)
+  var varSearch = document.getElementById('varSearchInput');
+  if (varSearch) {
+    varSearch.addEventListener('input', function() {
+      if (varianceData) renderVarianceTable(_getVarianceFilteredRows());
+    });
+  }
+  // VARIANCE: click en headers → cambiar columna/dirección de orden
+  Array.prototype.forEach.call(document.querySelectorAll('#varianceTable thead th'), function(th) {
+    th.addEventListener('click', function() {
+      var col = th.dataset.sort;
+      if (!col) return;
+      if (varianceSort.col === col) {
+        varianceSort.dir = varianceSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        varianceSort.col = col;
+        varianceSort.dir = (col === 'requestId' || col === 'requesterEmail' || col === 'company' || col === 'unit' || col === 'route' || col === 'status' || col === 'purchaseDate') ? 'asc' : 'desc';
+      }
+      if (varianceData) renderVarianceTable(_getVarianceFilteredRows());
+    });
+  });
+  // VARIANCE: botón Exportar CSV
+  var varCsvBtn = document.getElementById('btnExportVarianceCsv');
+  if (varCsvBtn) varCsvBtn.addEventListener('click', exportVarianceCsv);
 
   // Bootstrap: si hay sesión guardada, entrar directo
   session = loadSession();

@@ -586,7 +586,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -728,6 +728,7 @@ function dispatch(action, payload) {
       case 'getCostsDashboardConfig': result = getCostsDashboardConfig(currentUserEmail); break;
       case 'setCostsDashboardConfig': result = setCostsDashboardConfig(payload.config, currentUserEmail); break;
       case 'resetCostsDashboardConfig': result = resetCostsDashboardConfig(currentUserEmail); break;
+      case 'getCostsVarianceReport': result = getCostsVarianceReport(payload.filters, currentUserEmail); break;
       case 'getMonthlyBudgetUsage': result = getMonthlyBudgetUsage(payload.empresa, payload.unidad); break;
       
       // PIN FEATURES
@@ -12044,6 +12045,232 @@ function resetCostsDashboardConfig(currentUserEmail) {
   return { success: true, restoredAt: new Date().toISOString() };
 }
 
+/**
+ * Reporte de VARIACIÓN entre el costo cotizado (que ingresa el área de
+ * viajes al confirmar costos en el modal) y el costo facturado real
+ * (suma de TOTAL FACTURA, TOTAL FACTURA 2 y 3 vía `_csComputeRowExecuted_`).
+ *
+ * Solo accesible a roles ANALYST y SUPERADMIN (ya gateado en el dispatch
+ * por `adminOnlyActions`, que valida con `isUserAnalyst` — incluye
+ * superadmin por herencia. Aprobadores NO entran). Re-validamos aquí por
+ * defense-in-depth: si alguien llamara directo a la función desde el editor
+ * GAS, también se rechaza si no es admin.
+ *
+ * Filtros aceptados (mismos que el dashboard principal):
+ *   year, fromMonth, toMonth, businessUnits, companies.
+ *
+ * Solo incluye solicitudes con AMBOS valores > 0 — sin cotizado o sin
+ * facturas reales no se puede calcular variación. Solicitudes con OT válida
+ * se excluyen (mismo criterio que el dashboard de costos: cargan a la OT,
+ * no al presupuesto operativo).
+ *
+ * Retorna { rows[], totals, meta } ordenado por |variancePct| descendente
+ * (las desviaciones más extremas primero).
+ */
+function getCostsVarianceReport(filters, currentUserEmail) {
+  filters = filters || {};
+
+  // Defense-in-depth: dispatch ya valida adminOnlyActions, pero re-chequeamos
+  // por si alguien llama desde el editor GAS o si se modifica el dispatch.
+  var access = _csResolveAccess_(currentUserEmail);
+  if (!access || (access.role !== 'ANALYST' && access.role !== 'SUPERADMIN')) {
+    throw new Error('Reporte restringido a administradores y superadministradores.');
+  }
+
+  var config = _csLoadConfig_();
+  var now = new Date();
+  var currentYear = parseInt(Utilities.formatDate(now, 'America/Bogota', 'yyyy'), 10);
+  var year = parseInt(filters.year || currentYear, 10);
+  var fromMonth = Math.max(1, Math.min(12, parseInt(filters.fromMonth || 1, 10)));
+  var toMonth = Math.max(fromMonth, Math.min(12, parseInt(filters.toMonth || 12, 10)));
+  var businessUnitsFilter = Array.isArray(filters.businessUnits)
+    ? filters.businessUnits.map(_csNormalize_).filter(Boolean)
+    : [];
+  var companiesFilter = Array.isArray(filters.companies)
+    ? filters.companies.map(_csNormalize_).filter(Boolean)
+    : [];
+
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error('Hoja "' + SHEET_NAME_REQUESTS + '" no encontrada.');
+
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 2) return _csEmptyVariance_(year, fromMonth, toMonth, access);
+
+  var headersRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headerMap = {};
+  for (var hi = 0; hi < headersRow.length; hi++) {
+    var hn = String(headersRow[hi] || '').trim();
+    if (hn) headerMap[hn] = hi;
+  }
+
+  var allRows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+  var countableStatuses = (config.countableStatuses || ['RESERVADO', 'PROCESADO'])
+    .map(function(s) { return String(s).toUpperCase().trim(); });
+
+  var rows = [];
+  var totalQuoted = 0;
+  var totalReal = 0;
+  var countOver = 0, countUnder = 0, countEqual = 0;
+  var maxOverage = null;
+  var maxUnderage = null;
+  var observedCompanies = {};
+  var observedUnits = {};
+  var excluded = { byStatus: 0, byMonthYear: 0, byUnitFilter: 0, byCompanyFilter: 0, byOT: 0, noQuoted: 0, noReal: 0 };
+
+  for (var r = 0; r < allRows.length; r++) {
+    var row = allRows[r];
+    if (!row[0]) continue;
+    var requestId = String(_csReadCell_(row, headerMap, config.requestIdHeader) || '').trim();
+    if (!requestId) continue;
+
+    var status = String(_csReadCell_(row, headerMap, config.statusHeader) || '').toUpperCase().trim();
+    if (countableStatuses.indexOf(status) === -1) { excluded.byStatus++; continue; }
+
+    var fechaCompraRaw = _csReadCell_(row, headerMap, config.purchaseDateHeader);
+    var my = _csResolveMonthYear_(fechaCompraRaw);
+    if (!my || my.year !== year || my.month < fromMonth || my.month > toMonth) {
+      excluded.byMonthYear++; continue;
+    }
+
+    var unidadRaw = String(_csReadCell_(row, headerMap, config.unitHeader) || '');
+    var unidadNorm = _csNormalize_(unidadRaw);
+    var empresaRaw = String(_csReadCell_(row, headerMap, config.companyHeader) || '');
+    var empresaNorm = _csNormalize_(empresaRaw);
+
+    if (businessUnitsFilter.length && businessUnitsFilter.indexOf(unidadNorm) === -1) {
+      excluded.byUnitFilter++; continue;
+    }
+    if (companiesFilter.length && companiesFilter.indexOf(empresaNorm) === -1) {
+      excluded.byCompanyFilter++; continue;
+    }
+
+    // OT: igual que en _csBuildData_, las OTs no cargan al ppto operativo
+    // → no aplican al reporte de variación operativa.
+    if (config.workOrderHeader) {
+      var rOT = _csReadCell_(row, headerMap, config.workOrderHeader);
+      if (_esOTValida_(rOT)) { excluded.byOT++; continue; }
+    }
+
+    // Cotizado: lo que Wendy ingresó al confirmar costos.
+    var quoted = _csToNumber_(_csReadCell_(row, headerMap, 'COSTO COTIZADO PARA VIAJE'));
+    if (quoted <= 0) { excluded.noQuoted++; continue; }
+
+    // Facturado real: SOLO facturas reales (no estimado fallback). Para
+    // variación queremos comparar contra lo que efectivamente se facturó.
+    var executed = _csComputeRowExecuted_(row, headerMap, config);
+    var real = executed.real || 0;
+    if (real <= 0) { excluded.noReal++; continue; }
+
+    var variance = real - quoted;
+    var variancePct = (variance / quoted) * 100;
+
+    if (variance > 0) {
+      countOver++;
+      if (maxOverage === null || variancePct > maxOverage.variancePct) {
+        maxOverage = { requestId: requestId, variancePct: variancePct, variance: variance };
+      }
+    } else if (variance < 0) {
+      countUnder++;
+      if (maxUnderage === null || variancePct < maxUnderage.variancePct) {
+        maxUnderage = { requestId: requestId, variancePct: variancePct, variance: variance };
+      }
+    } else {
+      countEqual++;
+    }
+
+    totalQuoted += quoted;
+    totalReal += real;
+
+    if (empresaRaw) observedCompanies[empresaNorm] = String(empresaRaw).trim();
+    if (unidadRaw) observedUnits[unidadNorm] = String(unidadRaw).trim();
+
+    var purchaseDateOut = '';
+    if (fechaCompraRaw instanceof Date) purchaseDateOut = fechaCompraRaw.toISOString().split('T')[0];
+    else if (fechaCompraRaw) purchaseDateOut = String(fechaCompraRaw);
+
+    rows.push({
+      requestId: requestId,
+      purchaseDate: purchaseDateOut,
+      month: my.month,
+      requesterEmail: String(_csReadCell_(row, headerMap, config.requesterHeader) || ''),
+      company: String(empresaRaw).trim(),
+      unit: String(unidadRaw).trim(),
+      origin: String(_csReadCell_(row, headerMap, 'CIUDAD ORIGEN') || ''),
+      destination: String(_csReadCell_(row, headerMap, 'CIUDAD DESTINO') || ''),
+      status: status,
+      quoted: quoted,
+      real: real,
+      variance: variance,
+      variancePct: variancePct,
+      breakdown: executed.breakdown || {}
+    });
+  }
+
+  // Orden: las desviaciones más extremas primero (positivas o negativas).
+  rows.sort(function(a, b) { return Math.abs(b.variancePct) - Math.abs(a.variancePct); });
+
+  var totalVariance = totalReal - totalQuoted;
+  var avgVariancePct = totalQuoted > 0 ? (totalVariance / totalQuoted) * 100 : null;
+
+  // Mediana de variancePct
+  var medianVariancePct = null;
+  if (rows.length > 0) {
+    var sortedPct = rows.map(function(rr) { return rr.variancePct; }).sort(function(a, b) { return a - b; });
+    var mid = Math.floor(sortedPct.length / 2);
+    medianVariancePct = sortedPct.length % 2
+      ? sortedPct[mid]
+      : (sortedPct[mid - 1] + sortedPct[mid]) / 2;
+  }
+
+  return {
+    rows: rows,
+    totals: {
+      totalQuoted: totalQuoted,
+      totalReal: totalReal,
+      totalVariance: totalVariance,
+      avgVariancePct: avgVariancePct,
+      medianVariancePct: medianVariancePct,
+      countOver: countOver,
+      countUnder: countUnder,
+      countEqual: countEqual,
+      countTotal: rows.length,
+      maxOverage: maxOverage,
+      maxUnderage: maxUnderage
+    },
+    meta: {
+      year: year,
+      fromMonth: fromMonth,
+      toMonth: toMonth,
+      companies: Object.keys(observedCompanies).map(function(k) { return { norm: k, label: observedCompanies[k] }; }),
+      units: Object.keys(observedUnits).map(function(k) { return { norm: k, label: observedUnits[k] }; }),
+      excluded: excluded,
+      computedAt: now.toISOString(),
+      access: { role: access.role }
+    }
+  };
+}
+
+function _csEmptyVariance_(year, fromMonth, toMonth, access) {
+  return {
+    rows: [],
+    totals: {
+      totalQuoted: 0, totalReal: 0, totalVariance: 0,
+      avgVariancePct: null, medianVariancePct: null,
+      countOver: 0, countUnder: 0, countEqual: 0, countTotal: 0,
+      maxOverage: null, maxUnderage: null
+    },
+    meta: {
+      year: year, fromMonth: fromMonth, toMonth: toMonth,
+      companies: [], units: [],
+      excluded: { byStatus: 0, byMonthYear: 0, byUnitFilter: 0, byCompanyFilter: 0, byOT: 0, noQuoted: 0, noReal: 0 },
+      computedAt: new Date().toISOString(),
+      access: access ? { role: access.role } : null
+    }
+  };
+}
+
 // ---------- HELPER DE DIAGNÓSTICO (ejecutable desde editor GAS) ----------
 
 /**
@@ -12118,6 +12345,9 @@ function costsDashboard_saveConfig(payload) {
 }
 function costsDashboard_resetConfig(payload) {
   return dispatch('resetCostsDashboardConfig', payload || {});
+}
+function costsDashboard_getVarianceReport(payload) {
+  return dispatch('getCostsVarianceReport', payload || {});
 }
 
 // =====================================================================
