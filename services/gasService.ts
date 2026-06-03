@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PassportStatus } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -383,6 +383,23 @@ class GasService {
     const response = await this.runGas('uploadSupportFile', { requestId, fileData, fileName, mimeType });
     if (!response.success) throw new Error(response.error);
     return response.data;
+  }
+
+  // --- PASSPORT VALIDATION (solicitudes internacionales) ---
+  // Si `requestId` se proporciona, el backend filtra el `fileUrl` a las cédulas
+  // pertenecientes a esa solicitud (y solo si el actor tiene acceso a ella).
+  // Sin `requestId`, el usuario común solo recibe `fileUrl` para sus propias
+  // cédulas (las que figuran como dueño en USUARIOS). Admin siempre ve todo.
+  async getPassportStatus(cedulas: string[], requestId?: string): Promise<PassportStatus[]> {
+    const response = await this.runGas('getPassportStatus', { cedulas, requestId });
+    if (!response.success) throw new Error(response.error);
+    return response.data as PassportStatus[];
+  }
+
+  async uploadPassport(payload: { cedula: string; nombre: string; fileData: string; fileName: string; mimeType: string; requestContext?: string }): Promise<PassportStatus> {
+    const response = await this.runGas('uploadPassport', payload);
+    if (!response.success) throw new Error(response.error);
+    return response.data as PassportStatus;
   }
 
   // --- OPTION IMAGES UPLOAD ---

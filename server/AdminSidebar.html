@@ -656,6 +656,15 @@
           <div class="help-text">Borrar el PIN obliga al usuario a solicitar uno nuevo en el próximo login.</div>
         </div>
 
+        <div class="field" id="passportField" style="display: none;">
+          <label>Pasaporte</label>
+          <div id="passportRow" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="pin-info" id="passportInfo">—</div>
+            <button id="btnClearPassport" type="button" class="danger" style="display: none; padding: 3px 8px; font-size: 11px;">Limpiar pasaporte</button>
+          </div>
+          <div class="help-text">Limpiar fuerza al usuario a volver a cargar el pasaporte en su próxima solicitud internacional. El archivo NO se borra del Drive — queda como respaldo.</div>
+        </div>
+
         <div class="form-actions">
           <button id="btnCancel">Cancelar</button>
           <button id="btnDelete" class="danger" style="display: none;">Eliminar</button>
@@ -845,6 +854,7 @@
       document.getElementById('btnSave').addEventListener('click', saveForm);
       document.getElementById('btnDelete').addEventListener('click', deleteUser);
       document.getElementById('btnClearPin').addEventListener('click', clearPin);
+      document.getElementById('btnClearPassport').addEventListener('click', clearPassport);
       document.getElementById('approverSearch').addEventListener('input', searchApprovers);
       document.getElementById('approverSearch').addEventListener('focus', searchApprovers);
 
@@ -1050,8 +1060,14 @@
 
       var html = '<div class="list">';
       filtered.slice(0, 200).forEach(function(u) {
+        var passBadge = '';
+        if (u.hasPassport) {
+          passBadge = ' <span style="display:inline-block;font-size:9px;background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-weight:600;" title="Pasaporte cargado">📘 ' + formatPassportDate(u.passportDate) + '</span>';
+        } else {
+          passBadge = ' <span style="display:inline-block;font-size:9px;background:#f3f4f6;color:#6b7280;padding:1px 5px;border-radius:3px;" title="Sin pasaporte cargado">📘 —</span>';
+        }
         html += '<div class="list-item" data-cedula="' + escapeAttr(u.cedula) + '">'
-          + '<div class="name">' + escapeHtml(u.nombre) + '</div>'
+          + '<div class="name">' + escapeHtml(u.nombre) + passBadge + '</div>'
           + '<div class="meta">' + escapeHtml(u.cedula) + ' · ' + escapeHtml(u.correo) + '</div>'
           + '</div>';
       });
@@ -1075,6 +1091,7 @@
       document.getElementById('formTitle').textContent = 'Nuevo usuario';
       document.getElementById('btnDelete').style.display = 'none';
       document.getElementById('pinField').style.display = 'none';
+      document.getElementById('passportField').style.display = 'none';
       document.getElementById('f_selfApprover').checked = false;
       onSelfApproverToggle();
       clearForm();
@@ -1103,6 +1120,24 @@
         pinInfo.style.fontWeight = 'normal';
         pinInfo.style.fontStyle = 'italic';
         btnClearPin.style.display = 'none';
+      }
+
+      // Pasaporte
+      document.getElementById('passportField').style.display = 'block';
+      var passInfo = document.getElementById('passportInfo');
+      var btnClearPassport = document.getElementById('btnClearPassport');
+      if (u.hasPassport) {
+        passInfo.textContent = '📘 Cargado · ' + formatPassportDate(u.passportDate);
+        passInfo.style.color = '#1e3a8a';
+        passInfo.style.fontWeight = '500';
+        passInfo.style.fontStyle = 'normal';
+        btnClearPassport.style.display = 'inline-block';
+      } else {
+        passInfo.textContent = 'No cargado';
+        passInfo.style.color = '#9ca3af';
+        passInfo.style.fontWeight = 'normal';
+        passInfo.style.fontStyle = 'italic';
+        btnClearPassport.style.display = 'none';
       }
 
       document.getElementById('f_cedula').value = u.cedula;
@@ -1309,6 +1344,45 @@
           showStatus('Error: ' + err.message, 'error');
         })
         .usuarios_clearPin(currentEditing);
+    }
+
+    function clearPassport() {
+      if (!currentEditing) return;
+      if (!confirm('¿Limpiar el estado del pasaporte de este usuario?\n\nEn su próxima solicitud internacional tendrá que volver a cargar el pasaporte. El archivo NO se borra del Drive — queda como respaldo.')) return;
+      var btn = document.getElementById('btnClearPassport');
+      btn.disabled = true;
+      google.script.run
+        .withSuccessHandler(function() {
+          showStatus('Pasaporte limpiado.', 'success');
+          var u = allUsers.find(function(x) { return x.cedula === currentEditing; });
+          if (u) { u.hasPassport = false; u.passportDate = ''; }
+          var passInfo = document.getElementById('passportInfo');
+          passInfo.textContent = 'No cargado';
+          passInfo.style.color = '#9ca3af';
+          passInfo.style.fontStyle = 'italic';
+          passInfo.style.fontWeight = 'normal';
+          btn.style.display = 'none';
+          btn.disabled = false;
+          renderList();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          showStatus('Error: ' + err.message, 'error');
+        })
+        .usuarios_clearPassport(currentEditing);
+    }
+
+    // Formato corto DD/MM/YYYY para fecha de pasaporte (acepta ISO o vacío)
+    function formatPassportDate(d) {
+      if (!d) return '—';
+      try {
+        var dt = new Date(d);
+        if (isNaN(dt.getTime())) return String(d).substring(0, 10);
+        var dd = String(dt.getDate()).padStart(2, '0');
+        var mm = String(dt.getMonth() + 1).padStart(2, '0');
+        var yyyy = dt.getFullYear();
+        return dd + '/' + mm + '/' + yyyy;
+      } catch (e) { return String(d).substring(0, 10); }
     }
 
     // ============ SELF-APPROVER CHECKBOX ============

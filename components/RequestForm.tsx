@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster } from '../types';
+import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster, PassportStatus } from '../types';
 import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 import { formatToYYYYMMDD, formatToDDMMYYYY, parseDate } from '../utils/dateUtils';
 import { CityCombobox } from './CityCombobox';
 import { BudgetUsageBar, invalidateBudgetCache } from './BudgetUsageBar';
+import { PassportUploadModal } from './PassportUploadModal';
 
 interface RequestFormProps {
   userEmail: string;
@@ -315,6 +316,83 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     }
   }, [formData.departureDate, isInternational]);
 
+  // PASSPORT VALIDATION (solo internacionales). Cuando es internacional y los
+  // pasajeros tienen cédula completa, consulta al backend el estado del
+  // pasaporte de cada uno y guarda el resultado indexado por cédula. Con
+  // debounce 300ms para no bombardear el backend mientras el usuario tipea.
+  const [passportStatuses, setPassportStatuses] = useState<Record<string, PassportStatus>>({});
+  const [passportLoading, setPassportLoading] = useState<boolean>(false);
+  const [passportError, setPassportError] = useState<string | null>(null);
+  const [passportModal, setPassportModal] = useState<{ cedula: string; nombre: string; isReplace: boolean } | null>(null);
+
+  // Cédulas únicas SANITIZADAS (solo dígitos) — debe coincidir con
+  // `_sanitizeCedula_` del backend para que las keys del mapa
+  // `passportStatuses` matcheen. Si esto no se sanitizara, una cédula
+  // "1.234.567" enviada con puntos resultaría en lookup contra "1234567"
+  // y el panel mostraría siempre "falta pasaporte".
+  const sanitizeCedulaClient = (raw: string): string => String(raw || '').replace(/\D+/g, '').substring(0, 30);
+  const passengerCedulas = useMemo(() => {
+    const set: Record<string, boolean> = {};
+    const out: string[] = [];
+    passengers.forEach(p => {
+      const c = sanitizeCedulaClient(p.idNumber);
+      if (c && !set[c]) { set[c] = true; out.push(c); }
+    });
+    return out;
+  }, [passengers]);
+
+  useEffect(() => {
+    if (!isInternational) {
+      setPassportStatuses({});
+      setPassportError(null);
+      return;
+    }
+    if (passengerCedulas.length === 0) {
+      setPassportStatuses({});
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setPassportLoading(true);
+      setPassportError(null);
+      try {
+        const statuses = await gasService.getPassportStatus(passengerCedulas);
+        if (cancelled) return;
+        const map: Record<string, PassportStatus> = {};
+        statuses.forEach(s => { map[s.cedula] = s; });
+        setPassportStatuses(map);
+      } catch (e: any) {
+        if (cancelled) return;
+        setPassportError(e?.message || 'No se pudo verificar el estado de pasaportes.');
+      } finally {
+        if (!cancelled) setPassportLoading(false);
+      }
+    }, 300);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [isInternational, passengerCedulas]);
+
+  // Pasajeros (en orden) que tienen cédula pero les falta pasaporte.
+  // La cédula se sanitiza para hacer lookup contra `passportStatuses` (que
+  // tiene keys sanitizadas a solo dígitos por consistencia con el backend).
+  // En el mensaje al usuario mostramos la cédula tal cual la digitó.
+  const missingPassportPassengers = useMemo(() => {
+    if (!isInternational) return [] as { idx: number; cedula: string; cedulaDisplay: string; nombre: string }[];
+    return passengers
+      .map((p, idx) => ({
+        idx,
+        cedula: sanitizeCedulaClient(p.idNumber),
+        cedulaDisplay: (p.idNumber || '').trim(),
+        nombre: (p.name || '').trim()
+      }))
+      .filter(x => x.cedula.length > 0)
+      .filter(x => !passportStatuses[x.cedula]?.hasPassport);
+  }, [isInternational, passengers, passportStatuses]);
+
+  const handlePassportUploadSuccess = (status: PassportStatus) => {
+    setPassportStatuses(prev => ({ ...prev, [status.cedula]: status }));
+    setPassportModal(null);
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     let finalValue = value;
@@ -502,6 +580,25 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         'aplicativo para que la registre antes de continuar.'
       );
       return;
+    }
+    // GUARD: solicitudes internacionales requieren pasaporte de TODOS los pasajeros
+    // con cédula. Es una validación de UX — el backend la repite por defense-in-depth.
+    if (isInternational) {
+      if (passportLoading) {
+        alert('Estamos verificando el estado de los pasaportes. Espere un momento.');
+        return;
+      }
+      if (passportError) {
+        alert('No se pudo verificar el estado de los pasaportes: ' + passportError + '\n\nRecargue la página e intente de nuevo.');
+        return;
+      }
+      if (missingPassportPassengers.length > 0) {
+        const lista = missingPassportPassengers
+          .map(x => `${x.nombre || '(sin nombre)'} — CC ${x.cedulaDisplay || x.cedula}`)
+          .join('\n');
+        alert('Faltan pasaportes por cargar antes de enviar la solicitud:\n\n' + lista);
+        return;
+      }
     }
     // Fecha de retorno obligatoria para round-trip y hotel-only (check-out)
     if ((isHotelOnly || tripType === 'ROUND_TRIP') && !formData.returnDate) {
@@ -832,6 +929,102 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           </div>
         </div>
 
+        {/* PASAPORTES — solo internacional. Aparece tras la sección de pasajeros y
+            antes del itinerario. Bloquea el submit si alguna cédula está sin pasaporte. */}
+        {isInternational && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="text-md font-bold text-blue-900 uppercase tracking-wide">📘 Pasaportes (Internacional)</h3>
+              {passportLoading && (
+                <span className="text-[11px] text-blue-700 animate-pulse">Verificando…</span>
+              )}
+            </div>
+            <p className="text-xs text-blue-800 leading-relaxed">
+              Las solicitudes internacionales exigen pasaporte de TODOS los pasajeros.
+              Si la persona ya cargó su pasaporte en una solicitud anterior, lo detectamos automáticamente y no hace falta volver a cargarlo.
+            </p>
+            {passportError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 rounded">
+                {passportError}
+              </div>
+            )}
+            <div className="space-y-2">
+              {passengers.map((p, idx) => {
+                const cedulaDisplay = (p.idNumber || '').trim();
+                const cedulaKey = sanitizeCedulaClient(p.idNumber);
+                const nombre = (p.name || '').trim();
+                if (!cedulaKey) {
+                  return (
+                    <div key={`pass-${idx}`} className="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs text-gray-500">
+                      Pasajero {idx + 1}: complete la cédula primero para verificar el pasaporte.
+                    </div>
+                  );
+                }
+                const status = passportStatuses[cedulaKey];
+                const isReady = !!status?.hasPassport;
+                const isWaiting = passportLoading && !status;
+                if (isWaiting) {
+                  return (
+                    <div key={`pass-${idx}`} className="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs text-gray-600 animate-pulse">
+                      Verificando pasaporte de <strong>{nombre || `pasajero ${idx + 1}`}</strong>…
+                    </div>
+                  );
+                }
+                if (isReady) {
+                  const fechaTxt = status?.uploadedAt
+                    ? formatToDDMMYYYY(status.uploadedAt.split('T')[0])
+                    : '—';
+                  return (
+                    <div key={`pass-${idx}`} className="bg-green-50 border border-green-200 rounded px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="text-xs text-green-800">
+                        <span className="font-bold">✓ {nombre || `pasajero ${idx + 1}`}</span>
+                        <span className="text-green-700"> — CC {cedulaDisplay} — pasaporte cargado el {fechaTxt}</span>
+                        {status?.source === 'DRIVE' && (
+                          <span className="ml-2 text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded">Encontrado en cargas previas</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        {status?.fileUrl && (
+                          <a
+                            href={status.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-green-700 text-white text-[11px] uppercase font-bold px-3 py-1 rounded hover:bg-green-800"
+                          >
+                            Ver
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setPassportModal({ cedula: cedulaKey, nombre, isReplace: true })}
+                          className="text-[11px] uppercase font-bold text-blue-700 underline hover:text-blue-900"
+                        >
+                          Reemplazar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={`pass-${idx}`} className="bg-red-50 border border-red-300 rounded px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                    <div className="text-xs text-red-800">
+                      <span className="font-bold">✗ {nombre || `pasajero ${idx + 1}`}</span>
+                      <span className="text-red-700"> — CC {cedulaDisplay} — falta cargar pasaporte</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPassportModal({ cedula: cedulaKey, nombre, isReplace: false })}
+                      className="bg-brand-red text-white text-[11px] uppercase font-bold px-3 py-1 rounded hover:bg-red-700"
+                    >
+                      Cargar pasaporte
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <hr />
 
         {/* Section 3: Mode + Itinerary */}
@@ -1066,8 +1259,16 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             <button
               type="submit"
               className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-brand-red hover:bg-red-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={loading || !firstPassengerValid}
-              title={!firstPassengerValid ? 'El primer pasajero debe estar registrado en el directorio antes de enviar.' : undefined}
+              disabled={loading || !firstPassengerValid || (isInternational && (passportLoading || missingPassportPassengers.length > 0))}
+              title={
+                !firstPassengerValid
+                  ? 'El primer pasajero debe estar registrado en el directorio antes de enviar.'
+                  : (isInternational && missingPassportPassengers.length > 0)
+                    ? 'Faltan pasaportes por cargar para los pasajeros internacionales.'
+                    : (isInternational && passportLoading)
+                      ? 'Verificando pasaportes…'
+                      : undefined
+              }
             >
               {loading ? 'Procesando...' : (isModification ? 'Confirmar Cambio' : 'Crear Solicitud')}
             </button>
@@ -1075,6 +1276,16 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         </div>
 
       </form>
+
+      {passportModal && (
+        <PassportUploadModal
+          cedula={passportModal.cedula}
+          nombre={passportModal.nombre}
+          isReplace={passportModal.isReplace}
+          onClose={() => setPassportModal(null)}
+          onSuccess={handlePassportUploadSuccess}
+        />
+      )}
     </div>
   );
 };

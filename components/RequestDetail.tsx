@@ -1,9 +1,10 @@
 
-import React, { useState, useRef } from 'react';
-import { TravelRequest, RequestStatus, Integrant, SupportFile } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { TravelRequest, RequestStatus, Integrant, SupportFile, PassportStatus } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { getDaysDiff, formatToDDMMYYYY, formatLongDateTime } from '../utils/dateUtils';
+import { PassportUploadModal } from './PassportUploadModal';
 
 interface RequestDetailProps {
     request: TravelRequest;
@@ -87,6 +88,157 @@ const ApprovalStatusRow = ({
                 )}
             </div>
             <div className="text-right flex-shrink-0">{renderBadge()}</div>
+        </div>
+    );
+};
+
+// ============================================================
+// PASSPORT PANEL — solo para internacionales. Consulta canónico.
+// ============================================================
+interface PassportsPanelProps {
+    passengers: { name: string; idNumber: string; email?: string }[];
+    requestId: string;
+}
+
+const sanitizeCedula = (raw: string) => String(raw || '').replace(/\D+/g, '').substring(0, 30);
+
+const PassportsPanel: React.FC<PassportsPanelProps> = ({ passengers, requestId }) => {
+    const [statuses, setStatuses] = useState<Record<string, PassportStatus>>({});
+    const [loading, setLoading] = useState<boolean>(false);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [modal, setModal] = useState<{ cedula: string; nombre: string; isReplace: boolean } | null>(null);
+
+    const cedulasKey = passengers
+        .map(p => sanitizeCedula(p.idNumber))
+        .filter(c => c.length > 0)
+        .join(',');
+
+    useEffect(() => {
+        const list = cedulasKey ? cedulasKey.split(',') : [];
+        if (list.length === 0) {
+            setStatuses({});
+            return;
+        }
+        let cancelled = false;
+        setLoading(true);
+        setErrorMsg(null);
+        // Pasamos requestId para que el backend desbloquee el fileUrl solo si
+        // el actor tiene acceso a esta solicitud (es requester/pasajero/admin).
+        gasService.getPassportStatus(list, requestId)
+            .then(rows => {
+                if (cancelled) return;
+                const map: Record<string, PassportStatus> = {};
+                rows.forEach(r => { map[r.cedula] = r; });
+                setStatuses(map);
+            })
+            .catch(e => {
+                if (cancelled) return;
+                setErrorMsg(e?.message || 'No se pudo cargar el estado de pasaportes.');
+            })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [cedulasKey, requestId]);
+
+    const onUploadSuccess = (s: PassportStatus) => {
+        setStatuses(prev => ({ ...prev, [s.cedula]: s }));
+        setModal(null);
+    };
+
+    return (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3 border-b border-indigo-200 pb-2">
+                <h4 className="text-xs font-bold text-indigo-800 uppercase tracking-wider">
+                    📘 Pasaportes de pasajeros (Internacional)
+                </h4>
+                {loading && <span className="text-[11px] text-indigo-700 animate-pulse">Verificando…</span>}
+            </div>
+            <p className="text-[11px] text-indigo-700 italic mb-3 leading-relaxed">
+                Cada pasaporte vive en su propia carpeta del Drive (en "Pasaportes Integrantes"),
+                no en la carpeta de esta solicitud. Si está vencido o equivocado, cualquier
+                persona vinculada a la solicitud puede subir uno nuevo desde aquí — el anterior
+                queda archivado con sufijo <code>_OLD</code> en Drive (no se pierde).
+            </p>
+            {errorMsg && (
+                <div className="bg-red-50 border border-red-200 text-red-700 text-xs px-3 py-2 mb-3 rounded">
+                    {errorMsg}
+                </div>
+            )}
+            <div className="space-y-2">
+                {passengers.map((p, idx) => {
+                    const cedKey = sanitizeCedula(p.idNumber);
+                    if (!cedKey) {
+                        return (
+                            <div key={`pp-${idx}`} className="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs text-gray-500">
+                                {p.name || `Pasajero ${idx + 1}`} — sin cédula
+                            </div>
+                        );
+                    }
+                    const status = statuses[cedKey];
+                    const isReady = !!status?.hasPassport;
+                    if (loading && !status) {
+                        return (
+                            <div key={`pp-${idx}`} className="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs text-gray-600 animate-pulse">
+                                Verificando pasaporte de {p.name || `pasajero ${idx + 1}`}…
+                            </div>
+                        );
+                    }
+                    if (isReady) {
+                        const fechaTxt = status?.uploadedAt ? formatToDDMMYYYY(status.uploadedAt.split('T')[0]) : '—';
+                        return (
+                            <div key={`pp-${idx}`} className="bg-white border border-indigo-100 rounded px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                                <div className="text-xs text-gray-800">
+                                    <span className="font-bold">{p.name}</span>
+                                    <span className="text-gray-500 font-mono"> — CC {p.idNumber}</span>
+                                    <span className="text-green-700"> · cargado el {fechaTxt}</span>
+                                </div>
+                                <div className="flex gap-2">
+                                    {status?.fileUrl && (
+                                        <a
+                                            href={status.fileUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="bg-indigo-700 text-white text-[11px] uppercase font-bold px-3 py-1 rounded hover:bg-indigo-800"
+                                        >
+                                            Descargar
+                                        </a>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setModal({ cedula: cedKey, nombre: p.name, isReplace: true })}
+                                        className="text-[11px] uppercase font-bold text-indigo-700 underline hover:text-indigo-900"
+                                    >
+                                        Reemplazar
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    }
+                    return (
+                        <div key={`pp-${idx}`} className="bg-red-50 border border-red-300 rounded px-3 py-2 flex items-center justify-between gap-2 flex-wrap">
+                            <div className="text-xs text-red-800">
+                                <span className="font-bold">{p.name}</span>
+                                <span className="text-red-700 font-mono"> — CC {p.idNumber} — sin pasaporte cargado</span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setModal({ cedula: cedKey, nombre: p.name, isReplace: false })}
+                                className="bg-brand-red text-white text-[11px] uppercase font-bold px-3 py-1 rounded hover:bg-red-700"
+                            >
+                                Cargar pasaporte
+                            </button>
+                        </div>
+                    );
+                })}
+            </div>
+            {modal && (
+                <PassportUploadModal
+                    cedula={modal.cedula}
+                    nombre={modal.nombre}
+                    isReplace={modal.isReplace}
+                    onClose={() => setModal(null)}
+                    onSuccess={onUploadSuccess}
+                />
+            )}
         </div>
     );
 };
@@ -595,6 +747,15 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                         </div>
                                     )}
                                 </div>
+
+                                {/* --- PASSPORTS (solo internacional) ---
+                                    Lee del storage canónico via getPassportStatus.
+                                    El backend valida ownership por requestId y solo
+                                    expone fileUrl si el actor es requester/pasajero/admin
+                                    de ESTA solicitud — privacidad respetada. */}
+                                {request.isInternational && (
+                                  <PassportsPanel passengers={request.passengers} requestId={request.requestId} />
+                                )}
 
                                 {/* --- OBSERVATIONS --- */}
                                 {request.comments && (

@@ -59,12 +59,33 @@ export interface SupportFile {
   date: string;
   isReservation?: boolean;
   isCorrection?: boolean;
+  // DEPRECATED — solo presente en datos legacy (versión donde el pasaporte se
+  // copiaba a la carpeta de la solicitud). El diseño actual mantiene el
+  // pasaporte SOLO en su carpeta canónica `Pasaportes Integrantes/{cedula}/`.
+  // Los campos quedan como opcionales para compatibilidad con SOPORTES JSON
+  // que pudiera tener entradas previas.
+  isPassport?: boolean;
+  cedula?: string;
+  nombre?: string;
 }
 
 export interface SupportData {
   folderId: string;
   folderUrl: string;
   files: SupportFile[];
+}
+
+// Estado del pasaporte de una persona consultado por cédula.
+// source: 'USUARIOS' → el pasaporte está registrado en la fila de USUARIOS
+//         'DRIVE'    → existe en Pasaportes Integrantes pero no está reflejado en USUARIOS (ej. externo)
+//         'NONE'     → no se encontró pasaporte cargado
+export interface PassportStatus {
+  cedula: string;
+  hasPassport: boolean;
+  uploadedAt: string | null;
+  fileUrl: string | null;
+  fileId: string | null;
+  source: 'USUARIOS' | 'DRIVE' | 'NONE';
 }
 
 export interface TravelRequest {

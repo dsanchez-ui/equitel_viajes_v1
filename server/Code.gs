@@ -54,6 +54,12 @@ const ADMIN_EMAIL = getConfig_('ADMIN_EMAIL', 'apcompras@equitel.com.co');
 const CEO_EMAIL = getConfig_('CEO_EMAIL', 'misaza@equitel.com.co');
 const DIRECTOR_EMAIL = getConfig_('DIRECTOR_EMAIL', 'yprieto@equitel.com.co');
 
+// PASAPORTES — subcarpeta canónica donde vive el "current" de cada
+// integrante. Para detalles de diseño ver el plan de pasaportes.
+const PASSPORTS_FOLDER_NAME = 'Pasaportes Integrantes';
+const PASSPORT_FOLDER_ID_KEY = 'PASSPORT_FOLDER_ID';
+const PASSPORT_ALLOWED_MIMES = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/heic'];
+
 // --- SECURITY: sanitiza un valor antes de escribirlo a Google Sheets para
 // prevenir formula injection. Si el string empieza por `= + - @`, Sheets
 // lo interpreta como fórmula (=HYPERLINK, etc.) — un usuario malicioso
@@ -359,6 +365,7 @@ function _resetPerExecutionCaches_() {
   _REQUESTER_CEDULA_CACHE = null;
   _CACHED_GMAIL_ALIASES = null;
   _CS_APPROVERS_CACHE = null;
+  _PASSPORT_FOLDER_CACHE = null;
 }
 
 /**
@@ -555,7 +562,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -730,7 +737,13 @@ function dispatch(action, payload) {
       case 'resetCostsDashboardConfig': result = resetCostsDashboardConfig(currentUserEmail); break;
       case 'getCostsVarianceReport': result = getCostsVarianceReport(payload.filters, currentUserEmail); break;
       case 'getMonthlyBudgetUsage': result = getMonthlyBudgetUsage(payload.empresa, payload.unidad); break;
-      
+
+      // PASSPORT VALIDATION (internacional). Cualquier sesión válida puede
+      // consultar/subir. El acceso al fileUrl está gateado dentro de
+      // getPassportStatus por requestId (ownership) o por ser dueño/admin.
+      case 'getPassportStatus': result = getPassportStatus(payload.cedulas || [], currentUserEmail, payload.requestId); break;
+      case 'uploadPassport': result = uploadPassport(payload, currentUserEmail); break;
+
       // PIN FEATURES
       case 'verifyAdminPin': result = verifyAdminPin(payload.pin, payload.email); break;
       case 'updateAdminPin': result = updateAdminPin(payload.newPin); break;
@@ -1192,6 +1205,42 @@ function _isRegenRateLimited_(email) {
 var CREATE_REQUEST_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
 var CREATE_REQUEST_MAX_PER_DAY = 10;
 
+// Rate limit para uploads de pasaporte. 20/día/usuario es suficiente para uso
+// real (una solicitud con 5 pasajeros + reemplazos puntuales) y corta abuso.
+var PASSPORT_UPLOAD_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
+var PASSPORT_UPLOAD_MAX_PER_DAY = 20;
+
+function _isPassportUploadRateLimited_(email) {
+  if (!email) return false;
+  var props = PropertiesService.getScriptProperties();
+  var key = 'PASS_UP_' + hashEmail_(email);
+  var raw = props.getProperty(key);
+  if (!raw) return false;
+  try {
+    var parsed = JSON.parse(raw);
+    var now = new Date().getTime();
+    if (now > Number(parsed.resetAt || 0)) return false;
+    return Number(parsed.count || 0) >= PASSPORT_UPLOAD_MAX_PER_DAY;
+  } catch (e) { return false; }
+}
+
+function _recordPassportUpload_(email) {
+  if (!email) return;
+  var props = PropertiesService.getScriptProperties();
+  var key = 'PASS_UP_' + hashEmail_(email);
+  var now = new Date().getTime();
+  var raw = props.getProperty(key);
+  var parsed = { count: 0, resetAt: now + PASSPORT_UPLOAD_WINDOW_MS };
+  if (raw) {
+    try {
+      var existing = JSON.parse(raw);
+      if (now <= Number(existing.resetAt || 0)) parsed = existing;
+    } catch (e) {}
+  }
+  parsed.count = Number(parsed.count || 0) + 1;
+  props.setProperty(key, JSON.stringify(parsed));
+}
+
 function _isCreateRequestRateLimited_(email) {
   if (!email) return false;
   var props = PropertiesService.getScriptProperties();
@@ -1422,11 +1471,22 @@ function cleanupExpiredPropsWeekly() {
         }
         return;
       }
+
+      // 5. Ventanas de upload de pasaporte vencidas
+      if (key.indexOf('PASS_UP_') === 0) {
+        var parsedP = JSON.parse(all[key]);
+        if (now > Number(parsedP.resetAt || 0)) {
+          props.deleteProperty(key);
+          createReqRemoved++; // contamos en el mismo bucket — son del mismo tipo
+        }
+        return;
+      }
     } catch (e) {
       // JSON corrupto en una property que debería ser JSON → borrar
       if (key.indexOf('SESSION_') === 0 ||
           key.indexOf('PIN_REGEN_') === 0 ||
-          key.indexOf('CREATE_REQ_') === 0) {
+          key.indexOf('CREATE_REQ_') === 0 ||
+          key.indexOf('PASS_UP_') === 0) {
         try { props.deleteProperty(key); corruptRemoved++; } catch (err) {}
       }
     }
@@ -1705,6 +1765,10 @@ function enhanceTextWithGemini(currentRequest, userDraft) {
 
 function requestModification(originalRequestId, modifiedRequestData, changeReason, emailHtml, currentUserEmail) {
    validateRequestInput_(modifiedRequestData);
+   // Guard internacional: misma validación que en createNewRequest. Si la
+   // hija de modificación es internacional, todos los pasajeros deben tener
+   // pasaporte cargado antes de aceptar el cambio.
+   _assertPassportsForInternational_(modifiedRequestData);
    const ss = SpreadsheetApp.getActiveSpreadsheet();
    const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
    if (!sheet) throw new Error("Base de datos no encontrada");
@@ -4529,10 +4593,18 @@ function createNewRequest(data, emailHtml) {
 
   // Rate-limit de creación (máx 10/día por solicitante). Protege contra abuso
   // o cuentas comprometidas que inundarían el sistema con solicitudes.
+  // (Va ANTES del guard de pasaportes para no gastar llamadas a Drive cuando
+  // la solicitud ya va a ser rechazada.)
   const _requesterKey = String(data.requesterEmail || '').toLowerCase().trim();
   if (_isCreateRequestRateLimited_(_requesterKey)) {
     throw new Error('Has creado demasiadas solicitudes hoy. Contacta al área de viajes si necesitas crear más.');
   }
+
+  // Guard internacional: si la solicitud es internacional, TODOS los pasajeros
+  // deben tener pasaporte cargado (canónico o Drive fallback). Defense in
+  // depth — el frontend valida primero y bloquea el submit, este check
+  // protege contra clientes que bypaseen la UI.
+  _assertPassportsForInternational_(data);
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -4955,6 +5027,643 @@ function _resolveFolderMonthDate_(purchaseDateRaw, departureDateRaw) {
     var preferred = parseFlexible(purchaseDateRaw);
     if (preferred) return preferred;
     return parseFlexible(departureDateRaw);
+}
+
+// =====================================================================
+// PASSPORT — helpers para almacenamiento canónico + copia en solicitud
+// =====================================================================
+// Diseño documentado en docs/proud-humming-stallman plan. Resumen:
+//   - Storage canónico en `ROOT/Pasaportes Integrantes/{cedula} - {SLUG}/`.
+//     El archivo "current" se llama Pasaporte_{cedula}_{slug}.{ext} (sin
+//     sufijo). Los reemplazos archivan el viejo con sufijo `_OLD_<ts>`.
+//   - El fileId del current se guarda en USUARIOS K/L para lookup O(1).
+//   - Al crear/modificar solicitud INTERNACIONAL, el backend copia el
+//     pasaporte canónico de cada pasajero a `SOL-XXX/Pasaportes/` (Wendy
+//     gestiona todo desde una sola carpeta).
+//   - Cualquier sesión autenticada puede CARGAR. Sólo el dueño o admin
+//     puede REEMPLAZAR (cuando la cédula está en USUARIOS).
+
+// Cache per-execution del Folder canónico de pasaportes.
+var _PASSPORT_FOLDER_CACHE = null;
+
+/**
+ * Obtiene (o crea) la subcarpeta canónica "Pasaportes Integrantes" bajo
+ * ROOT_DRIVE_FOLDER_ID. Cachea el ID en Script Property `PASSPORT_FOLDER_ID`.
+ * Self-healing: si la property apunta a carpeta borrada/inaccesible,
+ * busca por nombre y recrea si hace falta.
+ */
+function _passportSubfolderId_() {
+  if (_PASSPORT_FOLDER_CACHE) return _PASSPORT_FOLDER_CACHE;
+  var props = PropertiesService.getScriptProperties();
+  var cachedId = props.getProperty(PASSPORT_FOLDER_ID_KEY);
+  if (cachedId) {
+    try {
+      var f = _driveRetry_(function() { return DriveApp.getFolderById(cachedId); }, 'getPassportFolder');
+      if (f && !f.isTrashed()) {
+        _PASSPORT_FOLDER_CACHE = f;
+        return f;
+      }
+    } catch (e) { /* cae al search/create */ }
+  }
+  var root = _driveRetry_(function() { return DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID); }, 'getRoot-passport');
+  // Buscar dentro del root por nombre exacto (no via searchFolders global,
+  // que mezcla resultados de Drive personales del usuario que desplegó).
+  var existing = null;
+  try {
+    var children = _driveRetry_(function() { return root.getFoldersByName(PASSPORTS_FOLDER_NAME); }, 'searchPassportFolder');
+    if (children.hasNext()) existing = children.next();
+  } catch (e) { /* ignore */ }
+  if (existing && !existing.isTrashed()) {
+    props.setProperty(PASSPORT_FOLDER_ID_KEY, existing.getId());
+    _PASSPORT_FOLDER_CACHE = existing;
+    return existing;
+  }
+  // Crear
+  var created = _driveRetry_(function() { return root.createFolder(PASSPORTS_FOLDER_NAME); }, 'createPassportFolder');
+  try {
+    _driveRetry_(function() {
+      created.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }, 'sharePassportFolder');
+  } catch (e) { /* sharing es best-effort */ }
+  props.setProperty(PASSPORT_FOLDER_ID_KEY, created.getId());
+  _PASSPORT_FOLDER_CACHE = created;
+  return created;
+}
+
+/**
+ * Normaliza un texto a SLUG en mayúsculas ASCII-safe. Usado para nombres
+ * de carpeta/archivo de pasaporte. Máx 50 chars.
+ */
+function _slugify_(text) {
+  if (!text) return '';
+  var s = String(text).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  s = s.replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return s.substring(0, 50);
+}
+
+/**
+ * Sanitiza una cédula a solo dígitos. Acepta "1.234.567" y devuelve "1234567".
+ * Si tras limpiar queda vacío o no es ASCII numérico → retorna ''.
+ */
+function _sanitizeCedula_(raw) {
+  if (raw === null || raw === undefined) return '';
+  var s = String(raw).replace(/\D+/g, '');
+  return s.substring(0, 30); // cap defensivo
+}
+
+/**
+ * Detecta extensión final para nombrar el archivo de pasaporte. Prefiere la
+ * extensión del nombre original si es válida; si no, deriva del MIME. Default
+ * 'pdf' si nada matchea (PDF es el formato más común).
+ */
+function _passportFileExtension_(mimeType, fileName) {
+  var allowedExt = { 'pdf': 1, 'png': 1, 'jpg': 1, 'jpeg': 1, 'webp': 1, 'heic': 1 };
+  var fnLower = String(fileName || '').toLowerCase();
+  var m = fnLower.match(/\.([a-z0-9]{2,5})$/);
+  if (m && allowedExt[m[1]]) return m[1] === 'jpeg' ? 'jpg' : m[1];
+  var mime = String(mimeType || '').toLowerCase();
+  if (mime === 'application/pdf') return 'pdf';
+  if (mime === 'image/png') return 'png';
+  if (mime === 'image/jpeg') return 'jpg';
+  if (mime === 'image/webp') return 'webp';
+  if (mime === 'image/heic') return 'heic';
+  return 'pdf';
+}
+
+/**
+ * Busca la carpeta canónica de un usuario bajo "Pasaportes Integrantes" usando
+ * la query nativa de Drive (`in parents` + `title contains`). Es O(1) en
+ * tiempo respecto al total de carpetas — no itera. Soporta miles de usuarios.
+ *
+ * El query Drive matchea por substring, por eso filtramos en código que el
+ * nombre EMPIECE por la cédula seguida de ' -' o sea exactamente la cédula.
+ * Eso evita falsos positivos si la cédula del usuario aparece como substring
+ * en el nombre de otra carpeta.
+ *
+ * Retorna Folder o `null` si no existe.
+ */
+function _findUserPassportFolderByCedula_(cedula) {
+  var ced = _sanitizeCedula_(cedula);
+  if (!ced) return null;
+  var parent;
+  try { parent = _passportSubfolderId_(); } catch (e) { return null; }
+  var parentId = parent.getId();
+  try {
+    var query = '"' + parentId + '" in parents'
+              + ' and title contains "' + ced + '"'
+              + ' and trashed = false'
+              + ' and mimeType = "application/vnd.google-apps.folder"';
+    var iter = _driveRetry_(function() { return DriveApp.searchFolders(query); }, 'searchUserPassportFolder');
+    while (iter.hasNext()) {
+      var f = iter.next();
+      var nm = f.getName();
+      // Validar que el nombre EMPIECE con la cédula (evita "1234" matcheando "112345")
+      if (nm.indexOf(ced + ' -') === 0 || nm === ced) {
+        return f;
+      }
+    }
+  } catch (e) {
+    try { Logger.log('WARN _findUserPassportFolderByCedula_: ' + e); } catch (_) {}
+  }
+  return null;
+}
+
+/**
+ * Obtiene o crea la carpeta canónica del usuario bajo "Pasaportes Integrantes".
+ * Búsqueda escalable via Drive query, no por iteración.
+ */
+function _getOrCreateUserPassportFolder_(cedula, nombre) {
+  var ced = _sanitizeCedula_(cedula);
+  if (!ced) throw new Error('Cédula inválida.');
+  var existing = _findUserPassportFolderByCedula_(ced);
+  if (existing) return existing;
+
+  var parent = _passportSubfolderId_();
+  var slug = _slugify_(nombre);
+  var targetName = ced + ' - ' + (slug || 'SIN_NOMBRE');
+  var created = _driveRetry_(function() { return parent.createFolder(targetName); }, 'createUserPassportFolder');
+  try {
+    _driveRetry_(function() {
+      created.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }, 'shareUserPassportFolder');
+  } catch (e) { /* best-effort */ }
+  return created;
+}
+
+/**
+ * Encuentra el pasaporte vigente de una cédula. Usado para externos sin fila
+ * USUARIOS, o como fallback cuando K/L están vacíos. Retorna
+ * `{ folderId, fileId, fileName, fileUrl, uploadedAt }` o `null`.
+ *
+ * Búsqueda escalable: usa `_findUserPassportFolderByCedula_` (query Drive O(1))
+ * para encontrar la carpeta del usuario, luego itera SOLO los archivos DE ESA
+ * carpeta (usualmente ≤5 archivos por usuario), filtrando los `_OLD`.
+ */
+function _findPassportByCedula_(cedula) {
+  var userFolder = _findUserPassportFolderByCedula_(cedula);
+  if (!userFolder) return null;
+  // Listar archivos no archivados (sin sufijo _OLD)
+  var currents = [];
+  try {
+    var files = _driveRetry_(function() { return userFolder.getFiles(); }, 'listUserPassportFiles');
+    while (files.hasNext()) {
+      var fl = files.next();
+      var nameLower = fl.getName().toLowerCase();
+      // El sufijo `_OLD` puede estar al final (antes de la extensión) o como
+      // `_OLD_<timestamp>` (formato legacy). Cualquiera de los dos descarta.
+      if (nameLower.indexOf('_old') !== -1) continue;
+      // Aceptar solo archivos que parezcan pasaportes (prefix `pasaporte_`)
+      // para evitar matchear otros docs sueltos.
+      if (nameLower.indexOf('pasaporte_') !== 0) continue;
+      currents.push(fl);
+    }
+  } catch (e) { return null; }
+  if (currents.length === 0) return null;
+
+  // Si hay varios, el más recientemente actualizado gana
+  currents.sort(function(a, b) { return b.getLastUpdated().getTime() - a.getLastUpdated().getTime(); });
+  var winner = currents[0];
+  return {
+    folderId: userFolder.getId(),
+    fileId: winner.getId(),
+    fileName: winner.getName(),
+    fileUrl: 'https://drive.google.com/file/d/' + winner.getId() + '/view?usp=sharing',
+    uploadedAt: winner.getLastUpdated().toISOString()
+  };
+}
+
+/**
+ * Renombra el archivo current actual agregando sufijo `_OLD`. Como el nombre
+ * del current YA incluye la fecha YYYYMMDD de cuándo se cargó, no hace falta
+ * agregar otro timestamp al archivar — el nombre original ya dice "fui
+ * cargado el día tal".
+ *
+ * @param {Folder} userFolder Carpeta del usuario (`{cedula} - {slug}`).
+ * @param {string} cedula (no usado actualmente, dejado por compat)
+ */
+function _archiveCurrentPassport_(userFolder, cedula) {
+  if (!userFolder) return;
+  try {
+    var files = _driveRetry_(function() { return userFolder.getFiles(); }, 'listFilesArchive');
+    while (files.hasNext()) {
+      var fl = files.next();
+      var nm = fl.getName();
+      var nmLower = nm.toLowerCase();
+      if (nmLower.indexOf('_old') !== -1) continue;
+      if (nmLower.indexOf('pasaporte_') !== 0) continue;
+      // Insertar `_OLD` antes de la extensión.
+      // ej. "Pasaporte_1234_JUAN_20260603.pdf" → "Pasaporte_1234_JUAN_20260603_OLD.pdf"
+      var newName;
+      var dot = nm.lastIndexOf('.');
+      if (dot > 0) {
+        newName = nm.substring(0, dot) + '_OLD' + nm.substring(dot);
+      } else {
+        newName = nm + '_OLD';
+      }
+      try {
+        _driveRetry_(function() { fl.setName(newName); }, 'renameArchive');
+      } catch (e) { /* skip ese archivo, continúa con los demás */ }
+    }
+  } catch (e) { /* swallow: archivado es best-effort */ }
+}
+
+/**
+ * Obtiene info de pasaporte de un usuario REGISTRADO leyendo cols K/L.
+ * Retorna `{exists, row, uploadedAt, fileId}`. Si la fila no existe →
+ * `{exists:false}`.
+ *
+ * Las cols K/L se identifican por NOMBRE de header (no por índice fijo)
+ * para tolerar reorganizaciones futuras.
+ */
+function _getUsuarioPassportInfo_(cedula) {
+  var ced = _sanitizeCedula_(cedula);
+  if (!ced) return { exists: false };
+  var sheet = _getActiveUserSheet_();
+  if (!sheet) return { exists: false };
+  var row = _findUsuarioRowByCedula_(sheet, ced);
+  if (row < 0) return { exists: false };
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var idxFecha = headers.indexOf('Pasaporte Fecha');
+  var idxFile = headers.indexOf('Pasaporte File ID');
+  if (idxFecha < 0 || idxFile < 0) {
+    // Columnas no migradas aún
+    return { exists: true, row: row, uploadedAt: '', fileId: '' };
+  }
+  // Leer ambas cols en una sola llamada cuando son adyacentes; si no, dos reads
+  var uploadedAt = '';
+  var fileId = '';
+  if (Math.abs(idxFecha - idxFile) === 1) {
+    var startCol = Math.min(idxFecha, idxFile) + 1;
+    var vals = sheet.getRange(row, startCol, 1, 2).getValues()[0];
+    if (idxFecha < idxFile) { uploadedAt = String(vals[0] || '').trim(); fileId = String(vals[1] || '').trim(); }
+    else { fileId = String(vals[0] || '').trim(); uploadedAt = String(vals[1] || '').trim(); }
+  } else {
+    uploadedAt = String(sheet.getRange(row, idxFecha + 1).getValue() || '').trim();
+    fileId = String(sheet.getRange(row, idxFile + 1).getValue() || '').trim();
+  }
+  return { exists: true, row: row, uploadedAt: uploadedAt, fileId: fileId };
+}
+
+/**
+ * Escribe Pasaporte Fecha + Pasaporte File ID en una fila USUARIOS.
+ *
+ * NOTA SOBRE CONCURRENCIA: NO toma lock interno propio. Razones:
+ *   - Cuando se llama desde `uploadPassport` (vía dispatch), el lock global
+ *     ya está adquirido por `isWriteAction`. El LockService de GAS no es
+ *     reentrante con claridad, así que un tryLock interno desperdiciaría
+ *     tiempo o fallaría.
+ *   - Cuando se llama desde el backfill lazy de `getPassportStatus`
+ *     (action de lectura, sin lock global), un race entre dos backfills
+ *     simultáneos para la misma cédula es benigno porque ambos escribirían
+ *     el mismo fileId/fecha (el canónico es único en Drive).
+ *   - Las celdas K/L son simples values, last-writer-wins es correcto.
+ */
+function _writeUsuarioPassportCols_(row, fileId, isoDate) {
+  if (!row || row < 2) return;
+  var sheet = _getActiveUserSheet_();
+  if (!sheet) return;
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var idxFecha = headers.indexOf('Pasaporte Fecha');
+  var idxFile = headers.indexOf('Pasaporte File ID');
+  if (idxFecha < 0 || idxFile < 0) return;
+  sheet.getRange(row, idxFecha + 1).setValue(isoDate);
+  sheet.getRange(row, idxFile + 1).setValue(fileId);
+  SpreadsheetApp.flush();
+}
+
+// =====================================================================
+// PASSPORT — endpoints públicos getPassportStatus + uploadPassport
+// =====================================================================
+
+/**
+ * Devuelve el estado de pasaporte para cada cédula consultada.
+ *
+ * Para cédulas registradas en USUARIOS: lee cols K/L (rápido). Si están
+ * vacías, fallback a Drive (`_findPassportByCedula_`) y backfill lazy de
+ * K/L. Para cédulas no registradas: solo Drive.
+ *
+ * Sanitiza el input. Tope 5 cédulas (el form permite máximo 5 pasajeros).
+ *
+ * RESTRICCIÓN DE ACCESO AL fileUrl (privacidad):
+ *   - Admin/superadmin: ven `fileUrl` y `fileId` de TODAS las cédulas.
+ *   - Usuario común con `requestId`: si tiene acceso a la solicitud
+ *     (es requester o pasajero) Y las cédulas consultadas pertenecen
+ *     a pasajeros de esa solicitud, ve `fileUrl/fileId`.
+ *   - Usuario común sin `requestId` (caso form de creación): solo ve
+ *     `fileUrl/fileId` de cédulas que le pertenecen a él mismo
+ *     (USUARIOS.correo === actor.email).
+ *   - En cualquier caso restringido, `hasPassport` y `uploadedAt` SÍ se
+ *     devuelven (necesarios para mostrar el badge verde/rojo en el form),
+ *     pero `fileUrl` y `fileId` se ponen en `null` para evitar leak.
+ *
+ * Returns: array paralelo con shape:
+ *   { cedula, hasPassport, uploadedAt|null, fileUrl|null, fileId|null,
+ *     source: 'USUARIOS' | 'DRIVE' | 'NONE' }
+ *
+ * @param {string[]} cedulas
+ * @param {string} currentUserEmail (inyectado por dispatch)
+ * @param {string} [requestId] opcional — si presente, valida ownership
+ *                              y filtra a las cédulas de esa solicitud.
+ */
+function getPassportStatus(cedulas, currentUserEmail, requestId) {
+  if (!Array.isArray(cedulas)) throw new Error('cedulas debe ser un array.');
+  if (cedulas.length === 0) return [];
+  if (cedulas.length > 5) throw new Error('Máximo 5 cédulas por consulta.');
+
+  var actorLower = String(currentUserEmail || '').toLowerCase().trim();
+  var isAdmin = false;
+  try { isAdmin = isUserAnalyst(actorLower); } catch (e) { isAdmin = false; }
+
+  // Set de cédulas (sanitizadas) que el actor puede ver con fileUrl. Las
+  // que NO estén aquí mostrarán hasPassport/uploadedAt pero sin URL.
+  var authorizedCedulas = {};
+
+  if (isAdmin) {
+    // Admin/superadmin: autoriza todas las cédulas consultadas.
+    for (var ai = 0; ai < cedulas.length; ai++) {
+      var ai_ced = _sanitizeCedula_(cedulas[ai]);
+      if (ai_ced) authorizedCedulas[ai_ced] = true;
+    }
+  } else if (requestId) {
+    // Modo con requestId: validar acceso a la solicitud + filtrar a sus cédulas.
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+      if (sheet) {
+        var rowNumber = _getRowByRequestId_(requestId);
+        if (rowNumber > 0) {
+          var rowRange = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+          var requesterEmail = String(rowRange[H('CORREO ENCUESTADO')] || '').toLowerCase().trim();
+          var hasRequestAccess = (requesterEmail && requesterEmail === actorLower);
+
+          // Si no es el requester, verificar si es pasajero (por correo).
+          if (!hasRequestAccess) {
+            var pEmailsRaw = '';
+            try {
+              var pEmailIdx = H('CORREOS PASAJEROS (JSON)');
+              if (pEmailIdx >= 0) pEmailsRaw = String(rowRange[pEmailIdx] || '');
+            } catch (e) { pEmailsRaw = ''; }
+            var pEmails = [];
+            try { pEmails = JSON.parse(pEmailsRaw || '[]'); } catch (e) { pEmails = []; }
+            for (var pi = 0; pi < pEmails.length; pi++) {
+              if (String(pEmails[pi] || '').toLowerCase().trim() === actorLower) {
+                hasRequestAccess = true;
+                break;
+              }
+            }
+          }
+
+          // Defense in depth: también validar por cédula (cuando el pasajero
+          // está registrado pero su correo en la solicitud difiere por alias).
+          if (!hasRequestAccess) {
+            var actorCedula = _getRequesterCedulaMap_()[actorLower];
+            if (actorCedula) {
+              for (var ci = 1; ci <= 5; ci++) {
+                var rowPCed = _sanitizeCedula_(rowRange[H('CÉDULA PERSONA ' + ci)]);
+                if (rowPCed && rowPCed === actorCedula) { hasRequestAccess = true; break; }
+              }
+            }
+          }
+
+          if (hasRequestAccess) {
+            // Construir el set de cédulas presentes en esta solicitud.
+            var requestCedulas = {};
+            for (var pIdx = 1; pIdx <= 5; pIdx++) {
+              var rc = _sanitizeCedula_(rowRange[H('CÉDULA PERSONA ' + pIdx)]);
+              if (rc) requestCedulas[rc] = true;
+            }
+            // Autorizar solo las cédulas consultadas que estén en la solicitud.
+            for (var bi = 0; bi < cedulas.length; bi++) {
+              var bi_ced = _sanitizeCedula_(cedulas[bi]);
+              if (bi_ced && requestCedulas[bi_ced]) authorizedCedulas[bi_ced] = true;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('getPassportStatus: error validando ownership por requestId: ' + e);
+    }
+  } else {
+    // Modo SIN requestId (caso típico: form de creación de solicitud nueva).
+    // Solo autoriza URL para cédulas donde el actor sea el DUEÑO registrado
+    // en USUARIOS (USUARIOS.correo === actor.email).
+    var sheetUs = _getActiveUserSheet_();
+    if (sheetUs) {
+      for (var ci2 = 0; ci2 < cedulas.length; ci2++) {
+        var ci_ced = _sanitizeCedula_(cedulas[ci2]);
+        if (!ci_ced) continue;
+        var info_check = _getUsuarioPassportInfo_(ci_ced);
+        if (info_check && info_check.exists && info_check.row > 0) {
+          var ownerEmail = '';
+          try {
+            ownerEmail = String(sheetUs.getRange(info_check.row, 3).getValue() || '').toLowerCase().trim();
+          } catch (e) { ownerEmail = ''; }
+          if (ownerEmail && ownerEmail === actorLower) {
+            authorizedCedulas[ci_ced] = true;
+          }
+        }
+      }
+    }
+  }
+
+  var out = [];
+  for (var i = 0; i < cedulas.length; i++) {
+    var raw = cedulas[i];
+    var ced = _sanitizeCedula_(raw);
+    if (!ced) {
+      out.push({ cedula: String(raw || ''), hasPassport: false, uploadedAt: null, fileUrl: null, fileId: null, source: 'NONE' });
+      continue;
+    }
+    var authorized = !!authorizedCedulas[ced];
+    var info = _getUsuarioPassportInfo_(ced);
+    if (info.exists && info.fileId) {
+      // Registrado con cols K/L llenos
+      out.push({
+        cedula: ced,
+        hasPassport: true,
+        uploadedAt: info.uploadedAt || null,
+        fileUrl: authorized ? ('https://drive.google.com/file/d/' + info.fileId + '/view?usp=sharing') : null,
+        fileId: authorized ? info.fileId : null,
+        source: 'USUARIOS'
+      });
+      continue;
+    }
+    // Fallback Drive (puede ser registrado sin K/L poblado, o externo)
+    var found = _findPassportByCedula_(ced);
+    if (found && found.fileId) {
+      // Backfill K/L si el usuario está registrado
+      if (info.exists && info.row > 0) {
+        try { _writeUsuarioPassportCols_(info.row, found.fileId, found.uploadedAt); }
+        catch (e) { /* best effort */ }
+      }
+      out.push({
+        cedula: ced,
+        hasPassport: true,
+        uploadedAt: found.uploadedAt || null,
+        fileUrl: authorized ? found.fileUrl : null,
+        fileId: authorized ? found.fileId : null,
+        source: 'DRIVE'
+      });
+      continue;
+    }
+    out.push({ cedula: ced, hasPassport: false, uploadedAt: null, fileUrl: null, fileId: null, source: 'NONE' });
+  }
+  return out;
+}
+
+/**
+ * Sube/reemplaza el pasaporte canónico para una cédula. Reutiliza
+ * `validateFileUpload_` (size + MIME genérico) y agrega whitelist estricta
+ * para pasaporte (no Excel). Storage: `Pasaportes Integrantes/{cedula} -
+ * {SLUG}/Pasaporte_{cedula}_{slug}.{ext}`. Si ya hay archivo current, se
+ * renombra con sufijo `_OLD_<ts>` antes de subir el reemplazo.
+ *
+ * Si la cédula está en USUARIOS, actualiza cols K/L. Si no, solo guarda
+ * en Drive (externos comparten misma carpeta para versionado).
+ *
+ * Autorización fina (reemplazo):
+ *   - Si la cédula está en USUARIOS Y ya hay pasaporte cargado → solo el
+ *     dueño (USUARIOS.correo === actor) o un analyst puede reemplazar.
+ *   - Si la cédula NO está en USUARIOS (externo) → cualquier autenticado
+ *     puede reemplazar.
+ *   - Primera carga (sin pasaporte previo) → cualquier autenticado.
+ *
+ * @param {object} payload {cedula, nombre, fileData, fileName, mimeType, requestContext?}
+ * @param {string} currentUserEmail
+ * @returns {PassportStatus}
+ */
+function uploadPassport(payload, currentUserEmail) {
+  if (!payload || typeof payload !== 'object') throw new Error('Payload inválido.');
+
+  // Rate limit: protege contra abuso (subir cientos de pasaportes basura para
+  // llenar Drive). 50/día/usuario es generoso para uso real.
+  var _actorKey = String(currentUserEmail || '').toLowerCase().trim();
+  if (_isPassportUploadRateLimited_(_actorKey)) {
+    throw new Error('Has subido demasiados pasaportes hoy. Intenta de nuevo más tarde o contacta al área de viajes.');
+  }
+
+  var ced = _sanitizeCedula_(payload.cedula);
+  if (!ced) throw new Error('Cédula inválida.');
+  var nombre = String(payload.nombre || '').trim();
+  if (!nombre) throw new Error('Nombre requerido.');
+  if (nombre.length > 200) throw new Error('Nombre demasiado largo.');
+  var mimeType = String(payload.mimeType || '').toLowerCase().trim();
+
+  // Validación genérica (size + MIME baseline) — reutiliza el helper existente.
+  validateFileUpload_(payload.fileData, payload.fileName, mimeType);
+
+  // Whitelist estricta de MIME para pasaporte (no Excel).
+  if (PASSPORT_ALLOWED_MIMES.indexOf(mimeType) === -1) {
+    throw new Error('Tipo de archivo no permitido para pasaporte. Use PDF o imagen (PNG/JPG/WEBP/HEIC).');
+  }
+
+  // Cualquier usuario autenticado puede subir/reemplazar pasaportes. El flujo
+  // típico es el dueño cargando el suyo desde su solicitud, o un solicitante
+  // que crea solicitud para un pasajero externo. El reemplazo NUNCA destruye
+  // — archiva con sufijo `_OLD` (auditoría).
+  var info = _getUsuarioPassportInfo_(ced);
+  var hadCurrent = !!(info && info.fileId);
+
+  // Carpeta del usuario + archivado del current
+  var userFolder = _getOrCreateUserPassportFolder_(ced, nombre);
+  if (hadCurrent) {
+    _archiveCurrentPassport_(userFolder, ced);
+  } else {
+    // Defensa: aunque K/L no tenían fileId, podría haber un current en Drive
+    // (caso externo sin fila USUARIOS, o backfill pendiente). Lo archivamos
+    // igual para no dejar dos "current" en la misma carpeta tras la subida.
+    _archiveCurrentPassport_(userFolder, ced);
+  }
+
+  // Subir nuevo archivo. El nombre incluye la fecha de carga (YYYYMMDD) para
+  // que sea legible desde Drive sin abrir el archivo. Ej:
+  //   Pasaporte_1234567_JUAN_PEREZ_20260603.pdf
+  // Cuando se reemplaza, este se renombra a *_OLD (sin timestamp extra).
+  var ext = _passportFileExtension_(mimeType, payload.fileName);
+  var slug = _slugify_(nombre);
+  var todayStr = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyyMMdd');
+  var newName = 'Pasaporte_' + ced + (slug ? '_' + slug : '') + '_' + todayStr + '.' + ext;
+  var blob = Utilities.newBlob(Utilities.base64Decode(payload.fileData), mimeType, newName);
+  blob.setName(newName);
+  var driveFile = _driveRetry_(function() { return userFolder.createFile(blob); }, 'createPassportFile');
+  try {
+    _driveRetry_(function() {
+      driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }, 'sharePassportFile');
+  } catch (e) { /* best effort */ }
+
+  var nowIso = new Date().toISOString();
+  var newFileId = driveFile.getId();
+
+  // Actualizar USUARIOS K/L si está registrado
+  if (info.exists && info.row > 0) {
+    try { _writeUsuarioPassportCols_(info.row, newFileId, nowIso); }
+    catch (e) { console.warn('uploadPassport: no se pudo actualizar USUARIOS K/L: ' + e); }
+  }
+
+  // Rate-limit counter (solo tras éxito).
+  try { _recordPassportUpload_(_actorKey); } catch (e) { /* best effort */ }
+
+  return {
+    cedula: ced,
+    hasPassport: true,
+    uploadedAt: nowIso,
+    fileUrl: 'https://drive.google.com/file/d/' + newFileId + '/view?usp=sharing',
+    fileId: newFileId,
+    source: info.exists ? 'USUARIOS' : 'DRIVE'
+  };
+}
+
+/**
+ * Guard defense-in-depth: si una solicitud va a ser internacional, verifica
+ * que TODOS los pasajeros tengan pasaporte cargado. Si falta alguno, lanza
+ * con un mensaje legible que el frontend muestra al usuario.
+ *
+ * Llamado por createNewRequest y requestModification antes de insertar la
+ * fila — protege contra clientes que bypaseen la UI.
+ *
+ * @param {object} data Payload de creación de solicitud
+ */
+function _assertPassportsForInternational_(data) {
+  if (!data || data.isInternational !== true) return;
+  var passengers = data.passengers || [];
+  if (passengers.length === 0) return;
+  var missing = [];
+  for (var i = 0; i < passengers.length; i++) {
+    var p = passengers[i] || {};
+    var ced = _sanitizeCedula_(p.idNumber);
+    if (!ced) {
+      // No hay cédula → no podemos validar, dejamos que validateRequestInput_ se encargue
+      continue;
+    }
+    var info = _getUsuarioPassportInfo_(ced);
+    if (info.exists && info.fileId) continue; // OK en USUARIOS
+    // Fallback Drive
+    var found = _findPassportByCedula_(ced);
+    if (found && found.fileId) continue;
+    var label = ced + (p.name ? ' (' + p.name + ')' : '');
+    missing.push(label);
+  }
+  if (missing.length > 0) {
+    throw new Error('Falta cargar el pasaporte de: ' + missing.join('; ') +
+      '. La solicitud no se puede crear hasta que todos los pasajeros tengan pasaporte cargado.');
+  }
+}
+
+/**
+ * DEPRECATED (2026-06-03): se removió. El pasaporte vive SOLO en su carpeta
+ * canónica `Pasaportes Integrantes/{cedula} - {SLUG}/`. La carpeta de cada
+ * solicitud no contiene copias. Wendy descarga el pasaporte desde el
+ * RequestDetail (portal), que apunta al fileUrl canónico. Esto evita que
+ * mover una solicitud a una subcarpeta organizativa (ej. "Mayo 2026")
+ * desincronice la búsqueda automática del pasaporte.
+ *
+ * El bloque siguiente queda inactivo solo como referencia histórica del
+ * diseño previo; no se llama desde ningún sitio.
+ */
+function _copyPassportsToRequestFolder_DEPRECATED_(requestId, passengers) {
+  // Implementación retirada — ver comentario en el docstring de arriba.
+  return;
 }
 
 // NEW FUNCTION: Upload Option Image (v2.7)
@@ -7655,7 +8364,8 @@ const SHEET_NAME_USUARIOS = 'USUARIOS';
 const HEADERS_USUARIOS = [
   'Cedula', 'Nombre', 'Correo', 'Empresa', 'Sede', 'Centro de Costo',
   'Cedulas Aprobadores', 'Correos Aprobadores (auto)', 'Nombres Aprobadores (auto)',
-  'PIN'
+  'PIN',
+  'Pasaporte Fecha', 'Pasaporte File ID'
 ];
 
 // Maestro RH (Recursos Humanos) — Sheet externo con la lista completa de
@@ -7706,7 +8416,59 @@ function onOpen() {
     .addItem('2. Migrar desde INTEGRANTES', 'migrarIntegrantesAUsuarios')
     .addItem('3. Sincronizar con Maestro RH', 'sincronizarConMaestroRH')
     .addItem('4. Recargar resoluciones (cols H, I)', 'recargarResolucionesUsuarios')
+    .addItem('5. Agregar columnas Pasaporte (K, L)', 'agregarColumnasPasaporte')
     .addToUi();
+}
+
+/**
+ * MIGRACIÓN IDEMPOTENTE: agrega columnas K (Pasaporte Fecha) y L (Pasaporte
+ * File ID) a la hoja USUARIOS si aún no existen. Detecta variantes de header
+ * via `_normalizeHeader_` para tolerar acentos o caracteres invisibles.
+ *
+ * Seguro de ejecutar múltiples veces. NO toca datos existentes.
+ */
+function agregarColumnasPasaporte() {
+  var ui = SpreadsheetApp.getUi();
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) {
+    ui.alert('La hoja USUARIOS no existe. Ejecuta primero "1. Crear hoja USUARIOS".');
+    return;
+  }
+  var lastCol = sheet.getLastColumn();
+  var headersRaw = sheet.getRange(1, 1, 1, Math.max(1, lastCol)).getValues()[0];
+  var headers = headersRaw.map(_normalizeHeader_);
+  var hasFecha = headers.indexOf('Pasaporte Fecha') !== -1;
+  var hasFileId = headers.indexOf('Pasaporte File ID') !== -1;
+
+  if (hasFecha && hasFileId) {
+    ui.alert('Las columnas Pasaporte Fecha y Pasaporte File ID ya existen. No se hizo ningún cambio.');
+    return;
+  }
+
+  // Determinar posición destino: las nuevas cols van inmediatamente después
+  // de la última columna actual (no se inserta en el medio para no romper
+  // referencias por índice de otras funciones).
+  var nextCol = lastCol + 1;
+  var added = [];
+  if (!hasFecha) {
+    sheet.getRange(1, nextCol).setValue('Pasaporte Fecha')
+      .setFontWeight('bold').setBackground('#1f2937').setFontColor('white');
+    sheet.setColumnWidth(nextCol, 130);
+    sheet.getRange(1, nextCol).setNote('Fecha ISO en que se cargó el pasaporte vigente. Se actualiza automáticamente. NO editar manualmente.');
+    added.push('Pasaporte Fecha (col ' + nextCol + ')');
+    nextCol++;
+  }
+  if (!hasFileId) {
+    sheet.getRange(1, nextCol).setValue('Pasaporte File ID')
+      .setFontWeight('bold').setBackground('#1f2937').setFontColor('white');
+    sheet.setColumnWidth(nextCol, 260);
+    sheet.getRange(1, nextCol).setNote('ID del archivo de pasaporte en Drive. Se actualiza automáticamente. NO editar manualmente.');
+    added.push('Pasaporte File ID (col ' + nextCol + ')');
+  }
+
+  SpreadsheetApp.flush();
+  ui.alert('Columnas de pasaporte agregadas:\n\n' + added.join('\n') + '\n\nLos datos existentes no se tocaron.');
 }
 
 /**
@@ -7971,11 +8733,15 @@ function crearHojaUsuarios() {
   sheet.setColumnWidth(8, 280);  // Correos Aprobadores (auto)
   sheet.setColumnWidth(9, 280);  // Nombres Aprobadores (auto)
   sheet.setColumnWidth(10, 100); // PIN
+  sheet.setColumnWidth(11, 130); // Pasaporte Fecha
+  sheet.setColumnWidth(12, 260); // Pasaporte File ID
 
   sheet.getRange(1, 7).setNote('Cédulas separadas por coma. Cada una debe existir en la columna A.');
   sheet.getRange(1, 8).setNote('Resuelto al guardar/migrar desde la columna G. Si editas G manualmente, usa "3. Recargar resoluciones" del menú.');
   sheet.getRange(1, 9).setNote('Resuelto al guardar/migrar desde la columna G. Si editas G manualmente, usa "3. Recargar resoluciones" del menú.');
   sheet.getRange(1, 10).setNote('Hash SHA-256 del PIN del usuario. NO editar manualmente.');
+  sheet.getRange(1, 11).setNote('Fecha ISO en que se cargó el pasaporte vigente. Se actualiza automáticamente. NO editar manualmente.');
+  sheet.getRange(1, 12).setNote('ID del archivo de pasaporte en Drive. Se actualiza automáticamente. NO editar manualmente.');
 
   ui.alert(
     'Hoja USUARIOS creada.\n\n' +
@@ -8380,9 +9146,16 @@ function usuarios_listAll() {
   const sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
   if (!sheet || sheet.getLastRow() < 2) return [];
   const lastRow = sheet.getLastRow();
-  // Lee 10 columnas (incluye PIN en col 10) para detectar si hay hash
-  const data = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+  // Resolver índices por NOMBRE para tolerar reorganizaciones futuras y que la
+  // función no se rompa si las cols K/L aún no se migraron en una hoja vieja.
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const idxPasaporteFecha = headers.indexOf('Pasaporte Fecha');
+  const idxPasaporteFile = headers.indexOf('Pasaporte File ID');
+  const maxCol = Math.max(10, idxPasaporteFecha + 1, idxPasaporteFile + 1, 1);
+  const data = sheet.getRange(2, 1, lastRow - 1, maxCol).getValues();
   return data.filter(function(r) { return r[0]; }).map(function(r) {
+    var passportDate = idxPasaporteFecha >= 0 ? String(r[idxPasaporteFecha] || '').trim() : '';
+    var hasPassport = idxPasaporteFile >= 0 ? !!String(r[idxPasaporteFile] || '').trim() : false;
     return {
       cedula: String(r[0]).trim(),
       nombre: String(r[1]).trim(),
@@ -8394,9 +9167,43 @@ function usuarios_listAll() {
       correosAprobadores: String(r[7]).trim(),
       nombresAprobadores: String(r[8]).trim(),
       // Solo expone si hay PIN (boolean) — NUNCA el hash al frontend
-      hasPin: !!String(r[9] || '').trim()
+      hasPin: !!String(r[9] || '').trim(),
+      // Pasaporte: expone solo si tiene + fecha. NO expone fileId al sidebar
+      // (no se usa allí, reduce attack surface).
+      hasPassport: hasPassport,
+      passportDate: passportDate
     };
   });
+}
+
+/**
+ * Limpia el estado de pasaporte de un usuario (cols K y L) — NO toca Drive.
+ * Útil cuando el admin detecta que se cargó un archivo equivocado o que el
+ * pasaporte cargado se venció; en la próxima solicitud internacional el
+ * usuario será obligado a cargar uno nuevo, pero el archivo previo queda
+ * en Drive como respaldo de auditoría.
+ */
+function usuarios_clearPassport(cedula) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) {
+    throw new Error('Sistema ocupado. Intente de nuevo en unos segundos.');
+  }
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+    if (!sheet) throw new Error('Hoja USUARIOS no encontrada.');
+    var row = _findUsuarioRowByCedula_(sheet, cedula);
+    if (row < 0) throw new Error('Usuario no encontrado.');
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var idxFecha = headers.indexOf('Pasaporte Fecha');
+    var idxFile = headers.indexOf('Pasaporte File ID');
+    if (idxFecha >= 0) sheet.getRange(row, idxFecha + 1).clearContent();
+    if (idxFile >= 0) sheet.getRange(row, idxFile + 1).clearContent();
+    SpreadsheetApp.flush();
+    return { success: true };
+  } finally {
+    try { lock.releaseLock(); } catch (_) {}
+  }
 }
 
 /**
