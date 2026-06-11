@@ -16,7 +16,60 @@ const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const CHROME_PATH = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+
+// Motor de PDF: se resuelve dinámicamente (no se exige Chrome).
+// Orden de preferencia: navegador Chromium-family (si existe) → WeasyPrint → wkhtmltopdf.
+// WeasyPrint es la opción ligera recomendada en Mac/Linux sin Chrome: `brew install weasyprint`.
+function findChromium() {
+  const byPlatform = {
+    darwin: [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    ],
+    win32: [
+      'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+      'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    ],
+    linux: ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'],
+  };
+  return (byPlatform[process.platform] || []).find((p) => fs.existsSync(p)) || null;
+}
+
+function hasCli(cmd) {
+  const finder = process.platform === 'win32' ? 'where' : 'which';
+  return spawnSync(finder, [cmd], { stdio: 'pipe' }).status === 0;
+}
+
+function fileUrl(p) {
+  return process.platform === 'win32' ? 'file:///' + p.replace(/\\/g, '/') : 'file://' + p;
+}
+
+// Devuelve { ok, engine } tras intentar los motores disponibles en orden.
+function htmlToPdf(htmlPath, pdfPath) {
+  const chrome = findChromium();
+  if (chrome) {
+    const r = spawnSync(chrome, [
+      '--headless=new', '--disable-gpu', '--no-sandbox', '--no-pdf-header-footer',
+      '--virtual-time-budget=5000', `--print-to-pdf=${pdfPath}`, fileUrl(htmlPath),
+    ], { stdio: 'pipe' });
+    if (r.status === 0) return { ok: true, engine: 'chromium (' + path.basename(chrome) + ')' };
+    console.error('  Chromium falló:', r.stderr.toString().trim());
+  }
+  if (hasCli('weasyprint')) {
+    const r = spawnSync('weasyprint', [htmlPath, pdfPath], { stdio: 'pipe' });
+    if (r.status === 0) return { ok: true, engine: 'weasyprint' };
+    console.error('  WeasyPrint falló:', r.stderr.toString().trim());
+  }
+  if (hasCli('wkhtmltopdf')) {
+    const r = spawnSync('wkhtmltopdf', ['--enable-local-file-access', htmlPath, pdfPath], { stdio: 'pipe' });
+    if (r.status === 0) return { ok: true, engine: 'wkhtmltopdf' };
+    console.error('  wkhtmltopdf falló:', r.stderr.toString().trim());
+  }
+  return { ok: false };
+}
 
 // Guías registradas: { slug → { md, html, pdf, title } }
 const GUIAS = {
@@ -164,28 +217,15 @@ function buildGuia(slug, guia) {
     console.log('✓ Usando HTML existente:', path.relative(ROOT, guia.html));
   }
 
-  if (!fs.existsSync(CHROME_PATH)) {
-    console.error('✗ Chrome no encontrado en:', CHROME_PATH);
-    console.error('  Abre el HTML en tu navegador y Ctrl+P → Guardar como PDF.');
-    return false;
-  }
-
-  const result = spawnSync(CHROME_PATH, [
-    '--headless=new',
-    '--disable-gpu',
-    '--no-sandbox',
-    '--no-pdf-header-footer',
-    '--virtual-time-budget=5000',
-    `--print-to-pdf=${guia.pdf}`,
-    `file:///${guia.html.replace(/\\/g, '/')}`,
-  ], { stdio: 'pipe' });
-
-  if (result.status === 0) {
+  const res = htmlToPdf(guia.html, guia.pdf);
+  if (res.ok) {
     const stats = fs.statSync(guia.pdf);
-    console.log('✓ PDF generado:', path.relative(ROOT, guia.pdf), '(' + Math.round(stats.size / 1024) + ' KB)');
+    console.log('✓ PDF generado:', path.relative(ROOT, guia.pdf), '(' + Math.round(stats.size / 1024) + ' KB) · motor:', res.engine);
     return true;
   }
-  console.error('✗ Chrome falló:', result.stderr.toString());
+  console.error('✗ No se pudo generar el PDF: no hay motor disponible.');
+  console.error('  Instala uno ligero (sin Chrome):  brew install weasyprint');
+  console.error('  …o abre el HTML en tu navegador y usa Imprimir → Guardar como PDF.');
   return false;
 }
 
