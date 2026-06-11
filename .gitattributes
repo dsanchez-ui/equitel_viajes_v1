@@ -1,0 +1,13 @@
+# Normaliza los fines de línea: en el repo siempre LF, sin importar el SO.
+# Evita los "diffs fantasma" CRLF<->LF al alternar entre Windows y Mac/Linux.
+* text=auto eol=lf
+
+# Archivos binarios: que git no toque sus bytes.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.pdf   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
