@@ -453,3 +453,52 @@ Si vuelve a aparecer el síntoma "No se pudo abrir el archivo" en otro dispositi
 - Funciones que generan links con `WEB_APP_URL`: `sendApprovalRequestEmail`, `sendReminderEmail`, `sendUserConsultEmail_`, `sendRequestEmailWithHtml`, `renderConfirmationPage`, `renderDenialReasonPage`.
 
 ---
+
+# 🛠️ FIX EN PRODUCCIÓN — 2026-06-23 (commit `ef9958f`)
+
+## **#A54 — Solicitudes con OT válida pedían aprobación de sobrecosto (Alejandro Gómez)**
+
+### Síntoma reportado
+Yurani (Dirección de Cadena de Suministro) reporta que solicitudes del área de Energía con una **Orden de Trabajo (OT) válida** vinculada estaban pidiendo la aprobación adicional de **Alejandro Gómez de Greiff** (rol `BUDGET_OVERRUN`) y mostrando el banner "💰 PRESUPUESTO DE UNIDAD EXCEDIDO" al usuario. Caso concreto: **SOL-000246** (Cumandes · ENERGIA PROYECTOS · OT `OT-CUBTA-110256` · internacional BOG→UIO).
+
+### Causa raíz
+Una solicitud con OT válida carga su costo a la orden de trabajo, **no al presupuesto de la unidad** — y el cálculo de ejecutado ([`_calcularEjecutadoPeriodo_`](server/Code.gs)) ya **excluía** las OTs válidas vía `_esOTValida_`. Pero al confirmar costos, `updateRequestStatus` marcaba `REQUIERE APROB PPTO = "SI"` con base en `_chk.exceedsBudget`, que es `executedPeriod + costoDeEstaSolicitud > presupuesto`. Si el área ya estaba excedida **por otras solicitudes**, la solicitud con OT igual quedaba marcada — aunque su costo no afecte el presupuesto.
+
+### Fix aplicado
+Helper canónico **`_requiresBudgetOverrun_(flag, workOrder)`** (junto a `_esOTValida_`): solo `true` si el flag es `SI` **y** la OT no es válida.
+- **Lectura (compute-on-read, corrige también lo ya marcado sin reescribir el sheet):** `mapRowToRequest`, `processApprovalFromEmail` (verificación de completitud) y `sendPendingApprovalReminders` (planificación de recordatorios).
+- **Escritura:** `updateRequestStatus` no marca `SI` para OT y **limpia** un `SI` previo (normaliza el sheet).
+- **Frontend:** sin cambios — el banner y la fila de estado dependen de `requiresBudgetOverrunApproval`, ya corregido en la lectura.
+
+**Efecto:** OT válida → nunca requiere ni muestra aprobación de presupuesto. Sin OT → comportamiento idéntico. El mecanismo de envío de correos no se tocó; solo se excluye al aprobador de presupuesto para OTs.
+
+**Mitigación del caso existente:** al desplegar, la solicitud OT deja de requerir presupuesto automáticamente (compute-on-read). Para SOL-000246 (internacional, sin aprobaciones aún) avanza sola cuando CEO/CDS/Área aprueben, sin Alejandro.
+
+## **#A55 — Aprobador "congelado": no se reevaluaba al cambiar en USUARIOS**
+
+### Síntoma
+El aprobador se resuelve una sola vez al crear la solicitud (primer pasajero → hoja USUARIOS) y se congela en las columnas `(AUTOMÁTICO)`. Si luego cambia el aprobador del usuario en USUARIOS (cambio organizacional), las solicitudes ya creadas y aún no aprobadas seguían apuntando al aprobador viejo, sin forma de actualizarlas salvo gestión manual.
+
+### Fix aplicado
+- **`_resolveApproverForFirstPassenger_`**: fuente única de "quién aprueba" (área + co-aprobadores internacionales), extraída de `createNewRequest` y reutilizada por ambos flujos.
+- **`reevaluarAprobadoresPendientes()`** (manual, Sheet-side): recorre solicitudes en `PENDIENTE_OPCIONES / SELECCION / CONFIRMACION_COSTO / APROBACION`; reasigna el aprobador de área si cambió en USUARIOS; anota en `OBSERVACIONES`; para las `PENDIENTE_APROBACION` reenvía el correo **solo al nuevo aprobador**. No toca solicitudes aprobadas/terminales ni las que ya tienen voto de área (trazabilidad). Bajo `LockService`.
+- **Exposición:** ítem en el menú "Equitel Viajes" del Sheet + botón "Reevaluar solicitudes pendientes" en el tab "Reemplazar" del sidebar. **No** se expone al endpoint web público (cero superficie de ataque nueva).
+
+## **#A56 — Hardening: links de aprobación huérfanos tras reasignación**
+
+### Causa
+En `processApprovalFromEmail` (rama NORMAL/área), si el `actor` del link no coincidía con el aprobador esperado, el voto se **atribuía** al aprobador esperado en vez de rechazarse. Tras una reasignación (#A55), el aprobador **viejo** podía aprobar con su link viejo y quedar registrado como el **nuevo**.
+
+### Fix aplicado (puramente aditivo)
+Antes de la lógica original (intacta), se **rechaza** el link cuando el `actor` no está entre los aprobadores vigentes de la columna (maneja co-aprobadores; links legacy sin `actor` no se rechazan). Devuelve la página "Enlace ya no válido". Las aprobaciones legítimas quedan byte-idénticas; el rechazo está inerte hasta que exista una reasignación.
+
+### Verificado
+- `npx tsc --noEmit` limpio · sintaxis de `Code.gs` válida (`node --check`).
+- Archivos: [`server/Code.gs`](server/Code.gs), [`server/AdminSidebar.html`](server/AdminSidebar.html). Sin cambios de frontend.
+- Despliegue: subir Code.gs + AdminSidebar.html al editor de Apps Script (menú/sidebar activos al guardar) y **crear nueva versión** del web app (mismo deployment, conserva `WEB_APP_URL`) para que el fix de OT y la lógica de aprobación apliquen a los correos.
+- Rollback: Gestionar implementaciones → versión anterior (~30 s, sin pérdida de datos).
+
+### Nota de tooling (no relacionado con el fix)
+`npm run build` fallaba en macOS por el binario nativo `@rollup/rollup-darwin-arm64` ausente en `node_modules` (el último `npm install` se hizo en Windows; `node_modules` no se versiona). El `package-lock.json` ya lista la dependencia opcional — basta `npm install` en el equipo Mac para instalar el binario. No requiere cambios versionados.
+
+---
