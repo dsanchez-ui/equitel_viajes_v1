@@ -2357,6 +2357,25 @@ function processApprovalFromEmail(e) {
               // Etapa 2.5: leemos del array currentRow en lugar de un getRange extra.
               // Use expected approver from sheet; only use actor if it matches to prevent impersonation
               const expectedApprover = String(currentRow[expectedApproverIdx] || '').toLowerCase().trim();
+              // HARDENING (reasignación de aprobador): la columna puede tener uno o
+              // varios aprobadores (co-aprobadores internacionales) y pudo cambiar por
+              // una reevaluación. Si el link trae un actor que YA NO está entre los
+              // aprobadores vigentes (p. ej. un aprobador reemplazado usando un link
+              // viejo), se rechaza para no registrar la aprobación a nombre del
+              // aprobador actual. Actor vacío (links legacy sin actor) NO se rechaza.
+              const assignedApprovers = expectedApprover.split(',')
+                  .map(function(eApp) { return eApp.trim(); })
+                  .filter(function(eApp) { return eApp; });
+              const actorLower = String(actor || '').toLowerCase().trim();
+              if (actorLower && assignedApprovers.length && assignedApprovers.indexOf(actorLower) === -1) {
+                  return renderMessagePage(
+                      'Enlace ya no válido',
+                      'Esta solicitud fue reasignada a otro aprobador, por lo que este enlace ya no es válido.<br/>El aprobador actual recibió un correo nuevo para gestionarla.',
+                      '#374151'
+                  );
+              }
+              // Lógica ORIGINAL preservada sin cambios: las aprobaciones legítimas
+              // (actor que coincide, o links legacy sin actor) siguen idénticas.
               if (actor && String(actor).toLowerCase().trim() === expectedApprover) {
                 approverEmail = actor;
               } else {
@@ -2493,8 +2512,12 @@ function processApprovalFromEmail(e) {
           // BUDGET_OVERRUN: leer flag + voto. Tolerante a columna faltante.
           const budgetVal = (budgetColIdx >= 0) ? rowValues[budgetColIdx] : '';
           const budgetApproved = String(budgetVal).startsWith("Sí");
+          // OT-aware: si la solicitud tiene OT válida NO requiere aprobación de
+          // presupuesto (no debe bloquear la aprobación completa).
+          const _workOrderApprIdx = H("# ORDEN TRABAJO");
+          const _workOrderApprVal = (_workOrderApprIdx >= 0) ? rowValues[_workOrderApprIdx] : '';
           const requiresBudgetOverrun = (requiereApPptoIdx >= 0)
-              ? String(rowValues[requiereApPptoIdx] || '').toUpperCase().trim() === 'SI'
+              ? _requiresBudgetOverrun_(rowValues[requiereApPptoIdx], _workOrderApprVal)
               : false;
 
           // Detect special cases: requester is CEO/CDS, or the assigned area approver
@@ -4426,6 +4449,45 @@ function getCoApproverRules_() {
 }
 
 /**
+ * Resuelve el aprobador (área + co-aprobadores internacionales) a partir de la
+ * cédula del PRIMER pasajero, leyendo la hoja USUARIOS actual. Es la fuente de
+ * verdad única para "quién aprueba" — la usan tanto la creación de solicitudes
+ * como la reevaluación masiva de aprobadores (evita que ambas lógicas se
+ * desincronicen).
+ *
+ * @param {string} firstPassengerCedula  Cédula del primer pasajero.
+ * @param {boolean} isInternational      Si el viaje es internacional (co-aprobador).
+ * @param {Array=} integrantesCache      (opcional) resultado de getIntegrantesData()
+ *                                        para no releer la hoja dentro de bucles.
+ * @return {{email:string, name:string}|null} aprobador resuelto, o null si la
+ *         cédula no está en USUARIOS o no tiene aprobador asignado.
+ */
+function _resolveApproverForFirstPassenger_(firstPassengerCedula, isInternational, integrantesCache) {
+  var ced = String(firstPassengerCedula || '').trim();
+  if (!ced) return null;
+  var integrantes = integrantesCache || getIntegrantesData();
+  var integrant = integrantes.find(function(i) { return i.idNumber === ced; });
+  if (!integrant || !integrant.approverEmail) return null;
+
+  var approverEmail = integrant.approverEmail;
+  var approverName = integrant.approverName;
+
+  // CO-APPROVER RULES (e.g. international flights): solo aplican sobre un
+  // aprobador real (integrant.approverEmail existe → nunca es el fallback ADMIN).
+  if (isInternational && approverEmail) {
+    var coRules = getCoApproverRules_();
+    var matches = coRules.filter(function(r) {
+      return r.principalEmail === String(approverEmail).toLowerCase() && r.condition === 'INTERNACIONAL';
+    });
+    matches.forEach(function(rule) {
+      approverEmail += ',' + rule.coApproverEmail;
+      approverName += ', ' + rule.coApproverName;
+    });
+  }
+  return { email: approverEmail, name: approverName };
+}
+
+/**
  * Returns the executive emails (CEO and Director CDS) so the frontend can
  * detect when the requester or area approver matches one of them and adjust
  * the approval-chain preview / detail view accordingly. These addresses are
@@ -4627,27 +4689,19 @@ function createNewRequest(data, emailHtml) {
       costCenterName = ccObj ? ccObj.name : '';
   }
 
-  // --- RESOLVE APPROVER ---
+  // --- RESOLVE APPROVER (área + co-aprobadores internacionales) ---
+  // Fuente única: _resolveApproverForFirstPassenger_ (misma lógica que usa la
+  // reevaluación masiva de aprobadores). Si no se resuelve, fallback a ADMIN.
   let approverEmail = ADMIN_EMAIL;
   let approverName = 'Por Definir';
 
   if (data.passengers && data.passengers.length > 0) {
-     const integrantes = getIntegrantesData();
-     const integrant = integrantes.find(i => i.idNumber === data.passengers[0].idNumber);
-     if (integrant && integrant.approverEmail) {
-         approverEmail = integrant.approverEmail;
-         approverName = integrant.approverName;
+     const resolvedApprover = _resolveApproverForFirstPassenger_(
+        data.passengers[0].idNumber, data.isInternational);
+     if (resolvedApprover) {
+        approverEmail = resolvedApprover.email;
+        approverName = resolvedApprover.name;
      }
-  }
-
-  // --- CO-APPROVER RULES (e.g. international flights) ---
-  if (data.isInternational && approverEmail && approverEmail !== ADMIN_EMAIL) {
-      const coRules = getCoApproverRules_();
-      const matches = coRules.filter(r => r.principalEmail === approverEmail.toLowerCase() && r.condition === 'INTERNACIONAL');
-      matches.forEach(rule => {
-          approverEmail += ',' + rule.coApproverEmail;
-          approverName += ', ' + rule.coApproverName;
-      });
   }
 
   let nights = data.nights || 0;
@@ -5912,8 +5966,15 @@ function updateRequestStatus(id, status, payload) {
             // La nota es informativa; lo que importa funcionalmente es el
             // valor de la columna REQUIERE APROB PPTO (que sí re-escribimos
             // sin riesgo porque es idempotente por sí mismo).
+            // OT-aware: si la solicitud tiene OT válida, su costo va a la orden de
+            // trabajo y NUNCA debe pedir aprobación de presupuesto: no marcamos
+            // "SI" y limpiamos cualquier "SI" previo (normaliza el sheet, p. ej. el
+            // caso ya existente que quedó marcado antes de este fix).
+            var _otBudgetIdx = H('# ORDEN TRABAJO');
+            var _otBudgetVal = _otBudgetIdx > -1 ? String(sheet.getRange(rowNumber, _otBudgetIdx + 1).getValue() || '') : '';
+            var _otExempt = _esOTValida_(_otBudgetVal);
             var _prevFlag = String(sheet.getRange(rowNumber, reqApPptoIdx + 1).getValue() || '').trim().toUpperCase();
-            if (_chk && _chk.exceedsBudget) {
+            if (_chk && _chk.exceedsBudget && !_otExempt) {
                sheet.getRange(rowNumber, reqApPptoIdx + 1).setValue('SI');
                // Solo escribir nota la PRIMERA vez que se marca como excedido.
                // Si ya estaba 'SI', la nota original ya está en OBSERVACIONES.
@@ -5931,10 +5992,11 @@ function updateRequestStatus(id, status, payload) {
                      }
                   } catch (eObs) { console.error('Error logging budget note: ' + eObs); }
                }
-            } else if (_chk && _chk.featureEnabled) {
-               // Solo limpiar el flag si el feature ESTÁ ACTIVO. Con feature
-               // deshabilitado NO tocamos la celda — evita writes innecesarios
-               // y respeta cualquier marca manual que un superadmin haya puesto.
+            } else if (_otExempt || (_chk && _chk.featureEnabled)) {
+               // Limpiar el "SI" previo cuando: (a) la solicitud tiene OT válida
+               // (siempre exenta), o (b) el feature está activo y ya no excede.
+               // Con feature deshabilitado y SIN OT no tocamos la celda — evita
+               // writes innecesarios y respeta marcas manuales de un superadmin.
                if (_prevFlag === 'SI') sheet.getRange(rowNumber, reqApPptoIdx + 1).setValue('');
             }
          }
@@ -6643,7 +6705,9 @@ function mapRowToRequest(row, lite) {
   const approverEmailRaw = String(get("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)"));
   // Lectura de columnas nuevas de presupuesto excedido. Si las columnas no
   // existen aún en el sheet (no se hicieron las migraciones), `get()` retorna ''.
-  const requiereApPpto = String(get("REQUIERE APROB PPTO")).toUpperCase().trim() === 'SI';
+  // OT-aware: una solicitud con OT válida NO requiere aprobación de presupuesto
+  // aunque el flag "SI" esté persistido (su costo va a la OT, no al presupuesto).
+  const requiereApPpto = _requiresBudgetOverrun_(get("REQUIERE APROB PPTO"), get("# ORDEN TRABAJO"));
   const aprobadoPptoVal = String(get("APROBADO PRESUPUESTO"));
   // El email del aprobador de presupuesto vive en la config del dashboard.
   // Lo leemos aquí para que la simetría área↔budget funcione (si el aprobador
@@ -7061,8 +7125,11 @@ function sendPendingApprovalReminders() {
       // ya aprobó como área, no se le envía recordatorio adicional.
       const budgetColIdxRem = H('APROBADO PRESUPUESTO');
       const reqApPptoIdxRem = H('REQUIERE APROB PPTO');
+      // OT-aware: solicitudes con OT válida no piden aprobación de presupuesto,
+      // así que tampoco se le recuerda al responsable de presupuesto.
+      const _woIdxRem = H('# ORDEN TRABAJO');
       const requiresBudgetOverrunRem = (reqApPptoIdxRem >= 0)
-          ? String(row[reqApPptoIdxRem] || '').toUpperCase().trim() === 'SI'
+          ? _requiresBudgetOverrun_(row[reqApPptoIdxRem], _woIdxRem >= 0 ? row[_woIdxRem] : '')
           : false;
       const isBudgetApproved = (requiresBudgetOverrunRem && budgetColIdxRem >= 0)
           ? String(row[budgetColIdxRem]).startsWith("Sí")
@@ -8394,6 +8461,196 @@ const HR_MAESTRO_SHEET = getConfig_('HR_MAESTRO_SHEET', 'Hoja 1');
  * Rollback: cambiar la propiedad a 'false' (o borrarla) + recargar sheet.
  * El único modo de cambiar el switch es manualmente desde el editor GAS.
  */
+/**
+ * REEVALUACIÓN MASIVA DE APROBADORES (manual, admin Sheet-side).
+ *
+ * Problema que resuelve: el aprobador se resuelve UNA sola vez al crear la
+ * solicitud (primer pasajero → hoja USUARIOS) y se congela en las columnas
+ * "(AUTOMÁTICO)". Si después cambia el aprobador del usuario en USUARIOS, las
+ * solicitudes ya creadas (aún no aprobadas) siguen apuntando al aprobador viejo.
+ *
+ * Esta función recorre las solicitudes en etapas PREVIAS o PENDIENTES de
+ * aprobación y reasigna el aprobador cuando cambió. Para las que ya están en
+ * PENDIENTE_APROBACION (y aún sin voto de área) reenvía el correo SOLO al nuevo
+ * aprobador. El aprobador viejo queda invalidado automáticamente: su link
+ * firmado deja de coincidir con la columna de aprobadores, y los recordatorios
+ * pasan a leer el nuevo valor.
+ *
+ * Reglas:
+ *  - Solo estados no-aprobados/no-terminales: PENDIENTE_OPCIONES,
+ *    PENDIENTE_SELECCION, PENDIENTE_CONFIRMACION_COSTO, PENDIENTE_APROBACION.
+ *    Las aprobadas/terminales NO se tocan (trazabilidad).
+ *  - Si está en PENDIENTE_APROBACION y el área YA votó, no reasigna.
+ *  - Si la cédula del primer pasajero no resuelve aprobador en USUARIOS, no toca.
+ *  - Idempotente: si el aprobador no cambió, no escribe ni reenvía.
+ *
+ * @return {{scanned:number, changed:Array, skipped:Array, emailsSent:number, errors:Array}}
+ */
+function reevaluarAprobadoresPendientes() {
+  var summary = { scanned: 0, changed: [], skipped: [], emailsSent: 0, errors: [] };
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) {
+    throw new Error('Otra operación está en curso (no se obtuvo el lock). Intente de nuevo en unos segundos.');
+  }
+  try {
+    _resetPerExecutionCaches_(); // headers/row-map frescos
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    if (!sheet) throw new Error('No se encontró la hoja "' + SHEET_NAME_REQUESTS + '".');
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) return summary;
+
+    var statusIdx = H('STATUS');
+    var idIdx = H('ID RESPUESTA');
+    var ced1Idx = H('CÉDULA PERSONA 1');
+    var intlIdx = H('ES INTERNACIONAL');
+    var approverNameIdx = H('QUIÉN APRUEBA? (AUTOMÁTICO)');
+    var approverEmailIdx = H('CORREO DE QUIEN APRUEBA (AUTOMÁTICO)');
+    var areaVoteIdx = H('APROBADO POR ÁREA? (AUTOMÁTICO)');
+    var obsIdx = H('OBSERVACIONES');
+    if (statusIdx < 0 || idIdx < 0 || ced1Idx < 0 || approverEmailIdx < 0) {
+      throw new Error('Faltan columnas requeridas en la hoja de solicitudes (STATUS / ID / CÉDULA PERSONA 1 / CORREO DE QUIEN APRUEBA).');
+    }
+
+    var REEVAL_STATUSES = {
+      'PENDIENTE_OPCIONES': true,
+      'PENDIENTE_SELECCION': true,
+      'PENDIENTE_CONFIRMACION_COSTO': true,
+      'PENDIENTE_APROBACION': true
+    };
+
+    // Snapshot de USUARIOS una sola vez para todo el barrido (evita releer la hoja por fila).
+    var integrantesCache = getIntegrantesData();
+
+    var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    var now = new Date();
+    var nowStr = Utilities.formatDate(now, 'America/Bogota', 'd/M/yyyy H:mm');
+
+    for (var r = 0; r < data.length; r++) {
+      var row = data[r];
+      var st = String(row[statusIdx] || '').trim();
+      if (!REEVAL_STATUSES[st]) continue;
+      summary.scanned++;
+
+      var rowNumber = r + 2;
+      var id = String(row[idIdx] || '').trim();
+      var ced1 = String(row[ced1Idx] || '').trim();
+      var isIntl = intlIdx > -1 ? String(row[intlIdx] || '').trim().toUpperCase() === 'SI' : false;
+
+      if (!ced1) { summary.skipped.push({ id: id, reason: 'sin cédula de primer pasajero' }); continue; }
+
+      var resolved;
+      try {
+        resolved = _resolveApproverForFirstPassenger_(ced1, isIntl, integrantesCache);
+      } catch (eRes) {
+        summary.errors.push({ id: id, error: String(eRes) });
+        continue;
+      }
+      if (!resolved || !resolved.email) {
+        summary.skipped.push({ id: id, reason: 'cédula no está en USUARIOS o sin aprobador asignado' });
+        continue;
+      }
+
+      var oldEmail = String(row[approverEmailIdx] || '').trim();
+      var newEmail = String(resolved.email || '').trim();
+      var newName = String(resolved.name || '').trim();
+
+      if (oldEmail.toLowerCase() === newEmail.toLowerCase()) {
+        summary.skipped.push({ id: id, reason: 'sin cambio' });
+        continue;
+      }
+
+      // Guard de trazabilidad: si ya está en aprobación y el área YA votó,
+      // no reasignar — el voto pertenece al aprobador registrado.
+      if (st === 'PENDIENTE_APROBACION' && areaVoteIdx > -1 && String(row[areaVoteIdx] || '').trim()) {
+        summary.skipped.push({ id: id, reason: 'área ya votó; no se reasigna (trazabilidad)' });
+        continue;
+      }
+
+      // --- Reasignar aprobador en la fila ---
+      sheet.getRange(rowNumber, approverEmailIdx + 1).setValue(newEmail);
+      if (approverNameIdx > -1) sheet.getRange(rowNumber, approverNameIdx + 1).setValue(newName);
+
+      // Nota de auditoría en OBSERVACIONES (se acumula, registro completo).
+      if (obsIdx > -1) {
+        var curObs = String(row[obsIdx] || '');
+        var note = '[REASIGNACIÓN APROBADOR]: ' + (oldEmail || '(vacío)') + ' → ' + newEmail +
+                   ' (cambio en directorio USUARIOS) ' + nowStr;
+        sheet.getRange(rowNumber, obsIdx + 1).setValue((curObs ? curObs + '\n' : '') + note);
+      }
+
+      // Marcador de evento (timestamp de la primera reasignación; no-crítico).
+      try { _recordEvent_(id, 'approverReassigned', { from: oldEmail, to: newEmail }); } catch (eEv) {}
+
+      var entry = { id: id, status: st, from: oldEmail, to: newEmail, emailed: false };
+
+      // Si está pendiente de aprobación, reenviar SOLO al nuevo aprobador (incluye
+      // co-aprobadores internacionales). NO usamos sendApprovalRequestEmail para
+      // no re-notificar a CEO/CDS/presupuesto que ya recibieron su correo.
+      if (st === 'PENDIENTE_APROBACION') {
+        try {
+          SpreadsheetApp.flush(); // garantizar que la columna nueva ya está escrita
+          var freshRow = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+          var reqObj = mapRowToRequest(freshRow);
+          newEmail.split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; })
+            .forEach(function(toEmail) {
+              sendReminderEmail(reqObj, toEmail, 'NORMAL');
+              summary.emailsSent++;
+            });
+          entry.emailed = true;
+        } catch (eMail) {
+          summary.errors.push({ id: id, error: 'reasignado pero falló el reenvío de correo: ' + String(eMail) });
+        }
+      }
+
+      summary.changed.push(entry);
+    }
+
+    SpreadsheetApp.flush();
+    return summary;
+  } finally {
+    try { lock.releaseLock(); } catch (eRel) {}
+  }
+}
+
+/**
+ * Wrapper de menú: confirma, ejecuta reevaluarAprobadoresPendientes() y muestra
+ * un resumen legible. Invocado desde el menú "Equitel Viajes" del Sheet.
+ */
+function menuReevaluarAprobadores() {
+  var ui = SpreadsheetApp.getUi();
+  var resp = ui.alert(
+    'Reevaluar aprobadores',
+    'Se revisarán las solicitudes en etapas previas o pendientes de aprobación y se ' +
+    'actualizará el aprobador cuando haya cambiado en la hoja USUARIOS. Las pendientes ' +
+    'de aprobación recibirán un nuevo correo al aprobador actualizado.\n\n' +
+    'Las solicitudes ya aprobadas, terminales o ya votadas NO se modifican.\n\n¿Continuar?',
+    ui.ButtonSet.YES_NO);
+  if (resp !== ui.Button.YES) return;
+
+  try {
+    var s = reevaluarAprobadoresPendientes();
+    var lines = [];
+    lines.push('Solicitudes revisadas: ' + s.scanned);
+    lines.push('Aprobadores actualizados: ' + s.changed.length);
+    lines.push('Correos reenviados: ' + s.emailsSent);
+    lines.push('Omitidas (sin cambio / no aplica): ' + s.skipped.length);
+    if (s.errors.length) lines.push('Errores: ' + s.errors.length);
+    if (s.changed.length) {
+      lines.push('');
+      lines.push('Cambios:');
+      s.changed.slice(0, 30).forEach(function(c) {
+        lines.push('• ' + c.id + ': ' + (c.from || '(vacío)') + ' → ' + c.to + (c.emailed ? ' [correo enviado]' : ''));
+      });
+      if (s.changed.length > 30) lines.push('… y ' + (s.changed.length - 30) + ' más.');
+    }
+    ui.alert('Reevaluación completada', lines.join('\n'), ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', 'No se pudo completar la reevaluación:\n' + String(e), ui.ButtonSet.OK);
+  }
+}
+
 function onOpen() {
   // El menú siempre se muestra. Cada función individual valida permisos
   // cuando se ejecuta (donde Session.getActiveUser() funciona de forma
@@ -8408,6 +8665,7 @@ function onOpen() {
     .addItem('Gestionar Usuarios (Sidebar)', 'abrirSidebarUsuarios')
     .addItem('Reorganizar Base Principal (Sidebar)', 'abrirSidebarReorg')
     .addSeparator()
+    .addItem('Reevaluar aprobadores (solicitudes pendientes)', 'menuReevaluarAprobadores')
     .addItem('Validar columnas actuales', 'validarColumnasActivas')
     .addSeparator()
     .addItem(modoLabel, 'mostrarModoActivo')
@@ -11597,6 +11855,31 @@ function _esOTValida_(workOrder) {
   if (!v) return false;
   // Debe empezar por OT y contener al menos un dígito
   return /^OT/i.test(v) && /\d/.test(v);
+}
+
+/**
+ * Decide si una solicitud REALMENTE requiere aprobación de sobrecosto.
+ *
+ * Regla de negocio (Yurani, CdS): una solicitud con OT válida carga su costo
+ * directamente a la orden de trabajo, NO al presupuesto de la unidad. Por lo
+ * tanto, aunque la unidad esté en sobrecosto y la columna "REQUIERE APROB PPTO"
+ * tenga "SI" (marca persistida en confirmación de costos), si la solicitud tiene
+ * OT válida NO debe pedir la aprobación adicional del responsable de presupuesto
+ * (Alejandro Gómez) ni mostrar la advertencia al usuario.
+ *
+ * Helper canónico: usar en TODOS los puntos que leen el flag para decidir si la
+ * aprobación de presupuesto aplica (mapRowToRequest, processApprovalFromEmail,
+ * recordatorios). Así una solicitud con OT queda exenta aun si el "SI" ya estaba
+ * persistido (compute-on-read), sin reescribir el sheet.
+ *
+ * @param {*} flagRaw       Valor crudo de la columna "REQUIERE APROB PPTO".
+ * @param {*} workOrderRaw  Valor crudo de la columna "# ORDEN TRABAJO".
+ * @return {boolean} true solo si flag === "SI" y la OT NO es válida.
+ */
+function _requiresBudgetOverrun_(flagRaw, workOrderRaw) {
+  if (String(flagRaw || '').toUpperCase().trim() !== 'SI') return false;
+  if (_esOTValida_(workOrderRaw)) return false;
+  return true;
 }
 
 function _csGetCacheFile_() {

@@ -720,6 +720,20 @@
 
       <div id="replPreview" style="display:none;"></div>
       <div id="replStatus" class="status"></div>
+
+      <hr style="margin:16px 0; border:0; border-top:1px solid #e5e7eb;">
+      <h3 style="margin-top:0;">Reevaluar aprobadores de solicitudes</h3>
+      <div class="help-text" style="margin-bottom:10px;">
+        Tras cambiar aprobadores (en la pestaña Usuarios o arriba), ejecuta esto para que las
+        solicitudes <strong>pendientes o en etapas previas a la aprobación</strong> tomen el
+        aprobador actualizado. Las pendientes de aprobación reenvían el correo al nuevo aprobador.
+        Las solicitudes ya aprobadas, terminales o ya votadas no se modifican (trazabilidad).
+      </div>
+      <div class="form-actions">
+        <button id="btnReevalRequests" class="primary">Reevaluar solicitudes pendientes</button>
+      </div>
+      <div id="reevalStatus" class="status"></div>
+      <div id="reevalResult" style="display:none; margin-top:8px;"></div>
     </div>
   </div>
 
@@ -888,6 +902,7 @@
       document.getElementById('replNewSearch').addEventListener('focus', function() { searchUserPicker('replNew'); });
       document.getElementById('btnReplPreview').addEventListener('click', previewReplace);
       document.getElementById('btnReplConfirm').addEventListener('click', confirmReplace);
+      document.getElementById('btnReevalRequests').addEventListener('click', reevalRequests);
 
       // Bulk edit tab
       Array.prototype.forEach.call(document.querySelectorAll('.bulk-filter-btn'), function(btn) {
@@ -1948,6 +1963,60 @@
           showReplStatus('Error: ' + err.message, 'error');
         })
         .usuarios_replaceApprover(replOld.cedula, replNew.cedula);
+    }
+
+    function reevalRequests() {
+      if (!confirm('Se reevaluarán los aprobadores de las solicitudes pendientes o en etapas previas a la aprobación.\n\nLas pendientes de aprobación reenviarán el correo al nuevo aprobador. Las ya aprobadas, terminales o ya votadas no se modifican.\n\n¿Continuar?')) return;
+
+      var btn = document.getElementById('btnReevalRequests');
+      var statusEl = document.getElementById('reevalStatus');
+      var resultEl = document.getElementById('reevalResult');
+      btn.disabled = true;
+      btn.textContent = 'Reevaluando...';
+      statusEl.className = 'status';
+      statusEl.textContent = '';
+      resultEl.style.display = 'none';
+
+      google.script.run
+        .withSuccessHandler(function(s) {
+          btn.disabled = false;
+          btn.textContent = 'Reevaluar solicitudes pendientes';
+          s = s || {};
+          var changed = s.changed || [];
+          var skipped = s.skipped || [];
+          var errors = s.errors || [];
+          statusEl.textContent = 'Listo: ' + changed.length + ' actualizada(s), ' + (s.emailsSent || 0) + ' correo(s), ' + skipped.length + ' omitida(s)' + (errors.length ? ', ' + errors.length + ' error(es)' : '') + '.';
+          statusEl.className = 'status ' + (errors.length ? 'error' : 'success');
+
+          var html = '<div class="preview-box">Solicitudes revisadas: <strong>' + (s.scanned || 0) + '</strong>';
+          if (changed.length) {
+            html += '<div class="preview-list">';
+            changed.slice(0, 100).forEach(function(c) {
+              html += '<div class="row">' + escapeHtml(c.id) + ': ' + escapeHtml(c.from || '(vacío)') + ' → ' + escapeHtml(c.to) + (c.emailed ? ' <span style="color:#059669;">[correo enviado]</span>' : '') + '</div>';
+            });
+            if (changed.length > 100) html += '<div class="row" style="color:#9ca3af;">... y ' + (changed.length - 100) + ' más</div>';
+            html += '</div>';
+          } else {
+            html += '<div style="margin-top:6px;color:#6b7280;">Ningún aprobador cambió.</div>';
+          }
+          if (errors.length) {
+            html += '<div class="preview-list" style="margin-top:6px;">';
+            errors.slice(0, 50).forEach(function(e) {
+              html += '<div class="row" style="color:#b91c1c;">' + escapeHtml(e.id || '') + ': ' + escapeHtml(e.error || '') + '</div>';
+            });
+            html += '</div>';
+          }
+          html += '</div>';
+          resultEl.innerHTML = html;
+          resultEl.style.display = 'block';
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Reevaluar solicitudes pendientes';
+          statusEl.textContent = 'Error: ' + err.message;
+          statusEl.className = 'status error';
+        })
+        .reevaluarAprobadoresPendientes();
     }
 
     function showReplStatus(msg, type) {
