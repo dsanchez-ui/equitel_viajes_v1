@@ -607,13 +607,20 @@ class GasService {
 
   async requestUserPin(email: string, forceRegenerate: boolean = false): Promise<{ sent: boolean, hasExistingPin: boolean, isFirstTime: boolean, maskedEmail: string }> {
     const response = await this.runGas('requestUserPin', { email, forceRegenerate, userEmail: email });
-    if (!response.success) throw new Error(response.error);
+    if (!response.success) throw new Error(response.error || 'No se pudo enviar el PIN. Reintenta en unos segundos.');
+    // HARDENING: si el servidor responde success sin data (lentitud / respuesta
+    // malformada), lanzamos un error legible en vez de devolver undefined —
+    // así el caller muestra un alert claro y no revienta con
+    // "undefined is not an object (evaluating 'result.hasExistingPin')".
+    if (!response.data) throw new Error('El servidor no devolvió una respuesta válida (posible lentitud). Espera unos segundos y reintenta.');
     return response.data;
   }
 
   async verifyUserPin(email: string, pin: string): Promise<{ success: boolean, token?: string, expiresAt?: number, role?: string }> {
     const response = await this.runGas('verifyUserPin', { email, pin, userEmail: email });
-    if (!response.success) throw new Error(response.error);
+    if (!response.success) throw new Error(response.error || 'No se pudo verificar el PIN. Reintenta en unos segundos.');
+    // HARDENING: mismo blindaje que requestUserPin contra respuestas vacías.
+    if (!response.data) throw new Error('El servidor no devolvió una respuesta válida (posible lentitud). Espera unos segundos y reintenta.');
     return response.data;
   }
 

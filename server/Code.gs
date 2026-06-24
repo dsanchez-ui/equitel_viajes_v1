@@ -5842,21 +5842,11 @@ function updateRequestStatus(id, status, payload) {
        const legs = hasReturn ? 2 : 1;
        sheet.getRange(rowNumber, H("Q TKT") + 1).setValue(paxCount * legs);
 
-       // CANCEL PARENT: When a modification is approved, the original request is cancelled
-       const parentIdIdx = H("ID SOLICITUD PADRE");
-       const parentId = sheet.getRange(rowNumber, parentIdIdx + 1).getValue();
-
-       if (parentId && String(parentId).trim() !== '') {
-           const parentRowNum = _getRowByRequestId_(parentId);
-           if (parentRowNum !== -1) {
-               sheet.getRange(parentRowNum, statusIdx + 1).setValue('ANULADO');
-
-               const obsIdx = H("OBSERVACIONES");
-               const pObs = sheet.getRange(parentRowNum, obsIdx + 1).getValue();
-               const cancelNote = `[SISTEMA]: Anulada automáticamente por aprobación del cambio ${id}.`;
-               sheet.getRange(parentRowNum, obsIdx + 1).setValue((pObs ? pObs + "\n" : "") + cancelNote);
-           }
-       }
+       // CANCEL PARENT: si esta solicitud es una modificación aprobada, anula
+       // automáticamente el padre (queda reemplazado por el cambio). Lógica
+       // extraída a helper para reutilizarla también en skipApprovalStage
+       // (que antes se saltaba este paso al escribir el STATUS directo).
+       _cancelParentIfModificationApproved_(id, sheet);
 
    } else if (status === 'DENEGADO') {
        // sheet.getRange(rowNumber, H("APROBADO POR ÁREA?") + 1).setValue("NO"); // REMOVED TO PRESERVE DETAILED LOGS
@@ -7981,15 +7971,69 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
 }
 
 /**
- * #A43 helper: retorna true si la solicitud dada tiene al menos una hija
- * (solicitud de cambio) en estado NO terminal. Se usa para bloquear la
- * anulación del padre mientras haya una hija pendiente de decisión —
- * anularla dejaría la hija huérfana apuntando a un padre inválido.
+ * Cuando una hija (modificación) se APRUEBA, anula automáticamente la
+ * solicitud padre — queda legítimamente reemplazada por el cambio. Se llama
+ * tanto desde updateRequestStatus(APROBADO) como desde skipApprovalStage
+ * (que escribe el STATUS directo en el sheet y antes se SALTABA esta lógica
+ * — ese era el bug que dejó a SOL-000196 huérfana en PENDIENTE_CONFIRMACION_COSTO).
  *
- * NOTA: el flujo de updateRequestStatus cuando una hija pasa a APROBADO
- * (que escribe ANULADO directamente al padre en sheet) no pasa por aquí
- * — eso es intencional, porque en ese momento la hija dejó de estar
- * pendiente y reemplaza legítimamente al padre.
+ * NO usa anularSolicitud (que tiene su propio guard de hija activa y enviaría
+ * un correo "anulada" al usuario): el padre se anula en silencio con nota de
+ * sistema, porque el usuario ya fue notificado por el flujo del cambio.
+ *
+ * Idempotente y defensivo: si la solicitud no tiene padre, el padre no existe,
+ * o el padre ya está en estado terminal (ANULADO/PROCESADO/DENEGADO), no hace
+ * nada. Nunca lanza — un fallo aquí no debe romper la aprobación de la hija.
+ *
+ * @param {string} childId  ID de la solicitud hija recién aprobada.
+ * @param {Sheet} sheet     Hoja de solicitudes (para no re-resolverla).
+ */
+function _cancelParentIfModificationApproved_(childId, sheet) {
+  try {
+    var statusIdx = H('STATUS');
+    var parentIdIdx = H('ID SOLICITUD PADRE');
+    var obsIdx = H('OBSERVACIONES');
+    if (statusIdx < 0 || parentIdIdx < 0) return;
+
+    var childRow = _getRowByRequestId_(childId);
+    if (childRow === -1) return;
+    var parentId = String(sheet.getRange(childRow, parentIdIdx + 1).getValue() || '').trim();
+    if (!parentId) return; // no es una modificación
+    // Blindaje: dato corrupto donde el padre apunta a sí misma → no anular
+    // la solicitud recién aprobada.
+    if (parentId === String(childId).trim()) return;
+
+    var parentRow = _getRowByRequestId_(parentId);
+    if (parentRow === -1) return;
+
+    var parentStatus = String(sheet.getRange(parentRow, statusIdx + 1).getValue() || '').trim().toUpperCase();
+    if (parentStatus === 'ANULADO' || parentStatus === 'PROCESADO' || parentStatus === 'DENEGADO') {
+      return; // ya terminal — no sobrescribir (idempotente)
+    }
+
+    sheet.getRange(parentRow, statusIdx + 1).setValue('ANULADO');
+    if (obsIdx > -1) {
+      var pObs = sheet.getRange(parentRow, obsIdx + 1).getValue();
+      var note = '[SISTEMA]: Anulada automáticamente por aprobación del cambio ' + childId + '.';
+      sheet.getRange(parentRow, obsIdx + 1).setValue((pObs ? pObs + '\n' : '') + note);
+    }
+  } catch (e) {
+    console.error('_cancelParentIfModificationApproved_ error: ' + e);
+  }
+}
+
+/**
+ * #A43 helper: retorna true si la solicitud dada tiene una hija (solicitud de
+ * cambio) AÚN PENDIENTE DE DECISIÓN (estado PENDIENTE_ANALISIS_CAMBIO). Se usa
+ * para bloquear la anulación del padre mientras el cambio no se haya resuelto
+ * — anularlo dejaría el cambio pendiente huérfano apuntando a un padre inválido.
+ *
+ * IMPORTANTE: solo bloquea cuando el cambio sigue en análisis. Si la hija ya
+ * avanzó (PENDIENTE_OPCIONES/SELECCION/CONFIRMACION_COSTO/APROBADO/RESERVADO)
+ * o terminó (DENEGADO/ANULADO/PROCESADO), el padre SÍ puede anularse: el cambio
+ * ya fue decidido y el padre quedó legítimamente reemplazado. (Antes bloqueaba
+ * con cualquier estado no-terminal, lo que impedía anular un padre cuya
+ * modificación ya estaba RESERVADO — caso SOL-000196.)
  */
 function _parentHasActiveChild_(sheet, parentId) {
   var idCol = H('ID RESPUESTA');
@@ -8004,9 +8048,9 @@ function _parentHasActiveChild_(sheet, parentId) {
   for (var i = 0; i < data.length; i++) {
     var childParent = String(data[i][parentIdCol] || '').trim();
     if (childParent !== target) continue;
-    var childStatus = String(data[i][statusCol] || '').trim();
-    if (childStatus !== 'DENEGADO' && childStatus !== 'ANULADO' && childStatus !== 'PROCESADO') {
-      return true; // hay hija no-terminal
+    var childStatus = String(data[i][statusCol] || '').trim().toUpperCase();
+    if (childStatus === 'PENDIENTE_ANALISIS_CAMBIO') {
+      return true; // hay un cambio pendiente de decisión
     }
   }
   return false;
@@ -8402,6 +8446,12 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   // 4. Avanzar status
   sheet.getRange(rowNumber, statusIdx + 1).setValue('APROBADO');
   SpreadsheetApp.flush();
+
+  // 4b. Si esta solicitud es una modificación, anular el padre. Cierra el
+  // hueco: skipApprovalStage no pasa por updateRequestStatus, que es donde
+  // vivía el auto-anular del padre (por eso SOL-000196 quedó huérfana cuando
+  // su hija se aprobó con "Saltar aprobación").
+  _cancelParentIfModificationApproved_(requestId, sheet);
 
   // 5. Política (2026-05-07): NO se envía correo de "Solicitud Aprobada" al
   // solicitante cuando se salta la aprobación. Razones:
