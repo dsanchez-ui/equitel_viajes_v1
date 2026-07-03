@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { TravelRequest, SupportFile } from '../types';
+import { TravelRequest, SupportFile, RequestStatus } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 
@@ -11,8 +11,11 @@ interface ReservationModalProps {
 }
 
 export const ReservationModal = ({ request, onClose, onSuccess }: ReservationModalProps) => {
-    // Detect edit mode: the request already has a reservation number
-    const isEditMode = !!(request.reservationNumber && request.reservationNumber.trim());
+    // Modo AMEND (corrección) SOLO cuando la solicitud ya está RESERVADA. En
+    // APROBADO — con o sin reserva parcial ya guardada — usamos el flujo nuevo:
+    // "Guardar sin enviar" (draft, no notifica, queda APROBADO) + "Confirmar
+    // reserva y enviar" (finalize → RESERVADO + correo del paquete completo).
+    const isEditMode = request.status === RequestStatus.RESERVED;
     const isHotelOnly = request.requestMode === 'HOTEL_ONLY';
 
     const [loading, setLoading] = useState(false);
@@ -34,8 +37,9 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [loading]);
 
-    const [reservationNumber, setReservationNumber] = useState(isEditMode ? request.reservationNumber : '');
-    const [creditCard, setCreditCard] = useState(isEditMode ? (request.creditCard || '') : '');
+    // Prefill con lo que ya se haya guardado (incluye reservas parciales).
+    const [reservationNumber, setReservationNumber] = useState(request.reservationNumber || '');
+    const [creditCard, setCreditCard] = useState(request.creditCard || '');
     const [creditCards, setCreditCards] = useState<{ value: string, label: string }[]>([]);
     const [loadingCards, setLoadingCards] = useState(true);
     const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().split('T')[0]);
@@ -44,10 +48,9 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
     const [newFiles, setNewFiles] = useState<File[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Existing reservation files from Drive (edit mode only)
-    const existingReservationFiles: SupportFile[] = isEditMode
-        ? (request.supportData?.files || []).filter(f => f.isReservation)
-        : [];
+    // Archivos de reserva ya en Drive: en RESERVADO son la reserva; en APROBADO
+    // son los guardados como reserva parcial ("guardar sin enviar").
+    const existingReservationFiles: SupportFile[] = (request.supportData?.files || []).filter(f => f.isReservation);
     const [filesToDelete, setFilesToDelete] = useState<Set<string>>(new Set());
 
     // Correction note (edit mode only)
@@ -276,6 +279,66 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
         }
     };
 
+    // --- RESERVA PARCIAL: "Guardar sin enviar" (solo modo NEW / APROBADO) ---
+    const handleSaveDraft = () => {
+        if (newFiles.length === 0) {
+            setDialog({
+                isOpen: true,
+                title: 'Archivo Requerido',
+                message: 'Seleccione al menos un archivo para guardar.',
+                type: 'ALERT',
+                onConfirm: closeDialog
+            });
+            return;
+        }
+        setDialog({
+            isOpen: true,
+            title: 'Guardar sin enviar',
+            message:
+                `Se guardarán ${newFiles.length} archivo(s) en Drive SIN notificar al usuario. ` +
+                'La solicitud permanecerá en APROBADO.\n\n' +
+                'Cuando tenga el paquete completo (p. ej. tiquete + hotel), use "Confirmar reserva y enviar" para notificar al usuario.\n\n¿Continuar?',
+            type: 'CONFIRM',
+            onConfirm: executeSaveDraft,
+            onCancel: closeDialog
+        });
+    };
+
+    const executeSaveDraft = async () => {
+        closeDialog();
+        setLoading(true);
+        try {
+            const filePayloads = await Promise.all(newFiles.map(async (f) => ({
+                fileData: await readFileAsBase64(f),
+                fileName: f.name
+            })));
+            await gasService.saveReservationDraft(
+                request.requestId,
+                reservationNumber,
+                filePayloads,
+                creditCard,
+                purchaseDate
+            );
+            setDialog({
+                isOpen: true,
+                title: 'Guardado sin enviar',
+                message: `Se guardaron ${filePayloads.length} archivo(s). No se notificó al usuario. Puede agregar más archivos más tarde; cuando tenga todo, use "Confirmar reserva y enviar".`,
+                type: 'SUCCESS',
+                onConfirm: () => { closeDialog(); onSuccess(); }
+            });
+        } catch (err) {
+            setDialog({
+                isOpen: true,
+                title: 'Error',
+                message: 'Error al guardar: ' + err,
+                type: 'ALERT',
+                onConfirm: closeDialog
+            });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <>
             <ConfirmationDialog
@@ -303,6 +366,11 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                         {isEditMode && (
                             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-3">
                                 Está editando una reserva existente. Los cambios se aplicarán y se enviará un correo de corrección al usuario.
+                            </p>
+                        )}
+                        {!isEditMode && (
+                            <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded p-2 mb-3 leading-relaxed">
+                                <strong>Reserva por partes:</strong> use <strong>"Guardar sin enviar"</strong> para cargar el tiquete hoy y el hotel después, sin notificar al usuario (la solicitud sigue en APROBADO). Cuando tenga el paquete completo, use <strong>"Confirmar reserva y enviar"</strong> para notificarle todo junto.
                             </p>
                         )}
 
@@ -358,11 +426,14 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                 )}
                             </div>
 
-                            {/* Existing Reservation Files (edit mode) */}
-                            {isEditMode && existingReservationFiles.length > 0 && (
+                            {/* Existing reservation files: en RESERVADO = la reserva;
+                                en APROBADO = lo guardado como reserva parcial. */}
+                            {existingReservationFiles.length > 0 && (
                                 <div>
                                     <label className="block text-sm font-bold text-gray-700 mb-2">
-                                        Archivos de Reserva Actuales ({existingReservationFiles.length})
+                                        {isEditMode
+                                            ? `Archivos de Reserva Actuales (${existingReservationFiles.length})`
+                                            : `Ya guardado sin enviar (${existingReservationFiles.length})`}
                                     </label>
                                     <div className="space-y-2">
                                         {existingReservationFiles.map((f) => {
@@ -375,14 +446,16 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                                             {f.name}
                                                         </a>
                                                     </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => toggleDeleteExisting(f.id)}
-                                                        disabled={loading}
-                                                        className={`text-xs underline ml-2 flex-shrink-0 ${markedForDelete ? 'text-green-600 hover:text-green-800' : 'text-red-500 hover:text-red-700'}`}
-                                                    >
-                                                        {markedForDelete ? 'Restaurar' : 'Eliminar'}
-                                                    </button>
+                                                    {isEditMode && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => toggleDeleteExisting(f.id)}
+                                                            disabled={loading}
+                                                            className={`text-xs underline ml-2 flex-shrink-0 ${markedForDelete ? 'text-green-600 hover:text-green-800' : 'text-red-500 hover:text-red-700'}`}
+                                                        >
+                                                            {markedForDelete ? 'Restaurar' : 'Eliminar'}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             );
                                         })}
@@ -479,10 +552,21 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                 </div>
                             )}
 
-                            <div className="mt-6 flex justify-end gap-3 border-t pt-4">
+                            <div className="mt-6 flex flex-wrap justify-end gap-3 border-t pt-4">
                                 <button type="button" onClick={handleClose} className="px-4 py-2 border rounded text-gray-700 bg-white hover:bg-gray-50">Cancelar</button>
+                                {!isEditMode && (
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveDraft}
+                                        disabled={loading}
+                                        title="Guarda los archivos en Drive sin notificar al usuario. La solicitud sigue en APROBADO."
+                                        className="px-4 py-2 rounded font-bold border border-gray-400 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                                    >
+                                        {loading ? '...' : 'Guardar sin enviar'}
+                                    </button>
+                                )}
                                 <button type="submit" disabled={loading} className={`px-4 py-2 text-white rounded font-bold disabled:opacity-50 ${isEditMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-brand-red hover:bg-red-700'}`}>
-                                    {loading ? 'Procesando...' : (isEditMode ? 'Guardar Corrección' : (isHotelOnly ? 'Confirmar Reserva Hotel' : 'Confirmar Compra'))}
+                                    {loading ? 'Procesando...' : (isEditMode ? 'Guardar Corrección' : 'Confirmar reserva y enviar')}
                                 </button>
                             </div>
                         </form>

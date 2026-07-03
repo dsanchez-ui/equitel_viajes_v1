@@ -191,16 +191,39 @@ export const SupportUploadModal: React.FC<SupportUploadModalProps> = ({ request,
       title: 'Finalizar Solicitud',
       message: '¿Está seguro de cerrar esta solicitud?\n\nUna vez cerrada, no se podrán agregar más archivos y el proceso se dará por terminado.',
       type: 'CONFIRM',
-      onConfirm: executeFinalize,
+      onConfirm: () => executeFinalize(),
       onCancel: closeDialog
     });
   };
 
-  const executeFinalize = async () => {
+  const executeFinalize = async (ackInvoiceMismatch: boolean = false) => {
     closeDialog();
     setLoading(true);
     try {
-      await gasService.closeRequest(request.requestId);
+      const res = await gasService.closeRequest(
+        request.requestId,
+        ackInvoiceMismatch ? { ackInvoiceMismatch: true } : undefined
+      );
+
+      // Advertencia de facturas faltantes (con override). El backend NO cerró:
+      // declaró más totales de factura que archivos cargados por el sistema.
+      if (res && res.needsInvoiceAck) {
+        setLoading(false);
+        setDialog({
+          isOpen: true,
+          title: '⚠️ Revisar facturas antes de cerrar',
+          message:
+            `Esta solicitud tiene ${res.declared} factura(s) con valor declarado, pero solo hay ${res.uploaded} archivo(s) de soporte cargado(s) por el sistema.\n\n` +
+            'Verifique que estén cargadas todas las facturas. Si varias vienen juntas en un solo archivo, puede continuar.\n\n' +
+            'Recuerde: los archivos subidos a mano a Drive NO cuentan aquí.\n\n' +
+            '¿Cerrar de todos modos?',
+          type: 'CONFIRM',
+          onConfirm: () => { closeDialog(); executeFinalize(true); },
+          onCancel: closeDialog
+        });
+        return;
+      }
+
       setDialog({
         isOpen: true,
         title: 'Solicitud Cerrada',
@@ -298,6 +321,12 @@ export const SupportUploadModal: React.FC<SupportUploadModalProps> = ({ request,
                     Abrir Carpeta en Google Drive
                   </a>
                 </div>
+              )}
+
+              {!isProcessed && (
+                <p className="mt-3 text-[11px] leading-relaxed text-amber-800 bg-amber-50 border border-amber-200 rounded p-2">
+                  ⚠️ Los archivos que suba <strong>manualmente</strong> a la carpeta de Drive <strong>no aparecerán aquí</strong> ni quedarán registrados en el aplicativo. Cargue siempre las facturas y soportes <strong>desde este panel</strong>.
+                </p>
               )}
             </div>
 

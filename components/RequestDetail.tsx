@@ -765,6 +765,33 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                     </div>
                                 )}
 
+                                {/* --- RESERVA PARCIAL (APROBADO con archivos guardados sin enviar) ---
+                                    Solo admin: el usuario NO debe ver la reserva hasta que esté completa. */}
+                                {isAdmin && request.status === RequestStatus.APPROVED && _reservationFiles.length > 0 && (
+                                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 shadow-sm">
+                                        <h4 className="text-sm font-bold text-orange-900 uppercase mb-2 flex items-center gap-2">
+                                            <span>🗂️</span> Reserva parcial — pendiente completar
+                                        </h4>
+                                        <p className="text-xs text-orange-800 mb-3">
+                                            Se guardaron {_reservationFiles.length} archivo(s) de reserva sin notificar al usuario. Falta completar el paquete y confirmar la reserva.
+                                        </p>
+                                        <div className="flex flex-col gap-2">
+                                            {_reservationFiles.map((f, i) => (
+                                                <a
+                                                    key={f.id || i}
+                                                    href={f.url}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    title={f.name || `Archivo ${i + 1}`}
+                                                    className="inline-flex items-center px-3 py-1.5 border border-orange-200 text-xs font-bold rounded-md text-orange-800 bg-white hover:bg-orange-100 max-w-full"
+                                                >
+                                                    <span className="truncate">📄 {f.name || `Archivo ${i + 1}`}</span>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* --- RESERVATION INFO (NEW) --- */}
                                 {(request.status === RequestStatus.RESERVED || request.status === RequestStatus.PROCESSED) && (
                                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm">

@@ -502,3 +502,43 @@ Antes de la lógica original (intacta), se **rechaza** el link cuando el `actor`
 `npm run build` fallaba en macOS por el binario nativo `@rollup/rollup-darwin-arm64` ausente en `node_modules` (el último `npm install` se hizo en Windows; `node_modules` no se versiona). El `package-lock.json` ya lista la dependencia opcional — basta `npm install` en el equipo Mac para instalar el binario. No requiere cambios versionados.
 
 ---
+
+## **#A57 — Feature: reserva parcial "guardar sin enviar" + alerta de facturas al cerrar**
+
+Origen: reunión con Yurani (2026-07-02), verificado contra la transcripción.
+
+### A) Reserva parcial ("guardar sin enviar")
+**Necesidad:** cuando una solicitud pide tiquete + hotel, Wendy compra el tiquete antes de tener la reserva del hotel. Antes, la única acción en APROBADO era "Registrar Reserva", que subía archivos, pasaba a RESERVADO y **enviaba el correo de una vez**. Yurani pidió poder cargar el tiquete, dejarlo en Drive **sin notificar**, y al llegar el hotel enviar **el paquete completo**.
+
+**Decisión de diseño:** NO se creó un estado nuevo. Se reutilizó el patrón que ya existía en RESERVADO→PROCESADO (cargar archivos sin avanzar + finalizar), aplicado a APROBADO→RESERVADO. Una solicitud **APROBADO con archivos de reserva guardados = reserva parcial en curso** (sigue visible en panel/recordatorios porque APROBADO ya está en el bucket "por reservar").
+
+**Backend ([`server/Code.gs`](server/Code.gs)):**
+- **`_uploadReservationFilesToFolder_`** — helper (upload-only, tag `isReservation:true`), compartido por draft y finalize.
+- **`saveReservationDraft(requestId, reservationNumber, files, creditCard, purchaseDate)`** — guard: estado DEBE ser APROBADO; sube archivos como reserva; guarda PNR/tarjeta/fecha si vienen; **no cambia estado, no envía correo**; nota `[RESERVA PARCIAL]` en OBSERVACIONES. Admin-only + `LockService` (en `dispatch`).
+- **`registerReservation`** (finalize): permite `files` vacío si ya hay reservas parciales guardadas; construye el correo desde **todos** los archivos `isReservation` (drafts + nuevos); renombra las entradas "Reserva parcial" al PNR final; guarda contra `uploadedFiles` vacío.
+
+**Frontend:**
+- [`ReservationModal.tsx`](components/ReservationModal.tsx): `isEditMode = status===RESERVED` (antes por `reservationNumber`, que fallaba si un draft guardaba PNR). En APROBADO: **"Guardar sin enviar"** + **"Confirmar reserva y enviar"**; muestra los archivos ya guardados.
+- [`AdminDashboard.tsx`](components/AdminDashboard.tsx): badge "Reserva parcial · falta completar" y botón "Completar Reserva" cuando APROBADO tiene archivos de reserva.
+- [`RequestDetail.tsx`](components/RequestDetail.tsx): bloque de reserva parcial **solo admin** (el solicitante no ve la reserva hasta que esté completa).
+- [`gasService.ts`](services/gasService.ts): `saveReservationDraft`.
+
+### B) Alerta de facturas faltantes (con override) + concientización de carga manual
+**Necesidad (David/Yurani, 00:11:24):** Wendy sube facturas a mano a Drive y **no quedan registradas en el app**; y a veces declara N totales de factura pero sube menos archivos. Se pidió **alertar** al marcar "Procesada" — **con override** (dos facturas pueden venir en un PDF).
+
+**Backend:** **`closeRequestWithChecks(requestId, actorEmail, options)`** (extraído del case inline de `closeRequest`): cuenta facturas con valor declarado (`_csComputeRowExecuted_` breakdown) vs archivos de soporte no-reserva; si declaró > cargó y no viene `ackInvoiceMismatch`, retorna `{needsInvoiceAck}` **sin cerrar**; con el ack cierra y deja nota `[CIERRE]` en OBSERVACIONES. El chequeo es **opt-in** (`options.invoiceCheck===true`) para que un frontend viejo cierre como siempre (compatibilidad de despliegue). Envuelto en try/catch: un error interno nunca bloquea el cierre.
+
+**Frontend:** [`SupportUploadModal.tsx`](components/SupportUploadModal.tsx) y [`AdminDashboard.tsx`](components/AdminDashboard.tsx) manejan `needsInvoiceAck` con diálogo de override; aviso permanente "los archivos subidos a mano a Drive no se registran"; `gasService.closeRequest(options?)` retorna la data.
+
+### Auditoría (revisión adversarial)
+Sin defectos altos ni regresiones a los flujos existentes. Corregido: correo mostraba "Reserva parcial" (ahora renombra al PNR); texto de la alerta más honesto (conteo de facturas vs archivos). Hardening de despliegue: chequeo de facturas **opt-in** → **cualquier orden de despliegue es seguro** (backend nuevo + frontend viejo cierra normalmente; frontend nuevo + backend viejo cierra sin chequeo y el botón de draft simplemente no está disponible hasta desplegar backend). Limitación conocida (intencional): la alerta es un recordatorio con override, no un control duro.
+
+### Verificado
+`node --check` (Code.gs) · `npx tsc --noEmit` · `npm run build` — todo limpio.
+
+### Despliegue
+- **Frontend:** push a `main` → redeploy automático a Cloud Run.
+- **Backend:** subir [`server/Code.gs`](server/Code.gs) al editor de Apps Script y **crear nueva versión** del web app (conserva `WEB_APP_URL`). Sin migración de hoja ni columnas nuevas.
+- Rollback: versión anterior del web app (~30 s) / revert del commit.
+
+---

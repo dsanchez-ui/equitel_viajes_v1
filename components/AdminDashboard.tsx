@@ -249,11 +249,32 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
     });
   };
 
-  const executeFinalize = async (req: TravelRequest) => {
+  const executeFinalize = async (req: TravelRequest, ackInvoiceMismatch: boolean = false) => {
     closeDialog();
     setProcessingId(req.requestId);
     try {
-      await gasService.closeRequest(req.requestId);
+      const res = await gasService.closeRequest(
+        req.requestId,
+        ackInvoiceMismatch ? { ackInvoiceMismatch: true } : undefined
+      );
+
+      // Advertencia de facturas faltantes (con override).
+      if (res && res.needsInvoiceAck) {
+        setProcessingId(null);
+        setDialog({
+          isOpen: true,
+          title: '⚠️ Revisar facturas antes de cerrar',
+          message:
+            `Esta solicitud tiene ${res.declared} factura(s) con valor declarado, pero solo hay ${res.uploaded} archivo(s) de soporte cargado(s) por el sistema.\n\n` +
+            'Verifique que estén cargadas todas las facturas. Si varias vienen juntas en un solo archivo, puede continuar.\n\n' +
+            'Recuerde: los archivos subidos a mano a Drive NO cuentan aquí.\n\n' +
+            '¿Cerrar de todos modos?',
+          type: 'CONFIRM',
+          onConfirm: () => { closeDialog(); executeFinalize(req, true); },
+          onCancel: closeDialog
+        });
+        return;
+      }
 
       setDialog({
         isOpen: true,
@@ -668,15 +689,28 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
                                   </button>
                                 )}
 
-                                {/* REGISTER RESERVATION */}
-                                {req.status === RequestStatus.APPROVED && (
-                                  <button
-                                    onClick={() => setSelectedRequestForReservation(req)}
-                                    className="text-yellow-700 hover:text-yellow-900 bg-yellow-50 px-3 py-1 rounded border border-yellow-200 text-xs font-bold"
-                                  >
-                                    Registrar Reserva
-                                  </button>
-                                )}
+                                {/* REGISTER RESERVATION (incluye reserva parcial "guardar sin enviar") */}
+                                {req.status === RequestStatus.APPROVED && (() => {
+                                  const partialCount = (req.supportData?.files || []).filter(f => f.isReservation).length;
+                                  return (
+                                    <div className="inline-flex items-center gap-2">
+                                      <button
+                                        onClick={() => setSelectedRequestForReservation(req)}
+                                        className="text-yellow-700 hover:text-yellow-900 bg-yellow-50 px-3 py-1 rounded border border-yellow-200 text-xs font-bold"
+                                      >
+                                        {partialCount > 0 ? 'Completar Reserva' : 'Registrar Reserva'}
+                                      </button>
+                                      {partialCount > 0 && (
+                                        <span
+                                          className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 border border-orange-200"
+                                          title={`${partialCount} archivo(s) de reserva guardados sin enviar. Falta completar y confirmar.`}
+                                        >
+                                          Reserva parcial · falta completar
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
 
                                 {/* SUPPORTS LOGIC (Now for RESERVED and PROCESSED) */}
                                 {(req.status === RequestStatus.RESERVED || req.status === RequestStatus.PROCESSED) && (

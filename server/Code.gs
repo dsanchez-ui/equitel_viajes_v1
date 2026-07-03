@@ -562,7 +562,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -593,7 +593,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -697,25 +697,12 @@ function dispatch(action, payload) {
       // NEW: UPLOAD OPTION IMAGE (UPDATED v2.7)
       case 'uploadOptionImage': result = uploadOptionImage(payload.requestId, payload.fileData, payload.fileName, payload.type, payload.optionLetter, payload.direction); break;
 
-      case 'closeRequest': {
-        // SECURITY (#A8): solo se puede cerrar desde estados válidos del ciclo.
-        // Antes permitía cerrar desde cualquier estado (incluso DENEGADO/ANULADO/
-        // PENDIENTE_*), corrompiendo el flujo. Estados válidos para cerrar:
-        // RESERVADO (flujo normal) y APROBADO (edge case: compra manual sin PNR).
-        var _ss = SpreadsheetApp.getActiveSpreadsheet();
-        var _sheet = _ss.getSheetByName(SHEET_NAME_REQUESTS);
-        var _statusIdx = H('STATUS');
-        var _rowNumber = _getRowByRequestId_(payload.requestId);
-        if (_rowNumber === -1) throw new Error('Solicitud no encontrada.');
-        var _currentStatus = String(_sheet.getRange(_rowNumber, _statusIdx + 1).getValue() || '').trim();
-        if (_currentStatus !== 'RESERVADO' && _currentStatus !== 'APROBADO') {
-          throw new Error('Solo se pueden cerrar solicitudes en estado RESERVADO o APROBADO. Estado actual: ' + _currentStatus);
-        }
-        updateRequestStatus(payload.requestId, 'PROCESADO');
-        try { generateSupportReport(payload.requestId); } catch(e) { console.error('Auto-report failed: ' + e); }
-        result = true;
+      case 'closeRequest':
+        // Validación de estado + chequeo de completitud de facturas (con override)
+        // dentro de closeRequestWithChecks. Devuelve { needsInvoiceAck } si faltan
+        // archivos de factura y el admin no confirmó, o { success, closed } al cerrar.
+        result = closeRequestWithChecks(payload.requestId, currentUserEmail, payload.options || {});
         break;
-      }
       case 'enhanceChangeText': result = enhanceTextWithGemini(payload.currentRequest, payload.userDraft); break;
       
       // REFACTORED MODIFICATION LOGIC
@@ -756,6 +743,7 @@ function dispatch(action, payload) {
 
       // NEW: RESERVATION LOGIC
       case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard, payload.purchaseDate, payload.skipNotification); break;
+      case 'saveReservationDraft': result = saveReservationDraft(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard, payload.purchaseDate); break;
       case 'amendReservation': result = amendReservation(payload); break;
 
       // NEW: DRIVE DELETION
@@ -2649,6 +2637,42 @@ function processApprovalFromEmail(e) {
 
 // --- NEW RESERVATION FUNCTION ---
 
+/**
+ * Sube una lista de archivos de reserva al folder dado, etiquetados para
+ * traza (Reserva_<pnr>_<requestId>), y los comparte con ANYONE_WITH_LINK.
+ * NO toca la hoja ni el estado — devuelve el array de archivos subidos para
+ * que el caller los registre en SOPORTES JSON. Compartido por
+ * registerReservation (finalize) y saveReservationDraft (guardar sin enviar).
+ */
+function _uploadReservationFilesToFolder_(folder, files, reservationNumber, requestId) {
+    return files.map(function(f, idx) {
+        var safeName = String(f.fileName).replace(/[\/\\:*?"<>|]/g, '_').substring(0, 200);
+        var lower = safeName.toLowerCase();
+        var mime = lower.endsWith('.pdf') ? MimeType.PDF
+                 : (lower.endsWith('.png') ? MimeType.PNG
+                 : (lower.endsWith('.jpg') || lower.endsWith('.jpeg') ? MimeType.JPEG
+                 : MimeType.PDF));
+        var blob = Utilities.newBlob(Utilities.base64Decode(f.fileData), mime, safeName);
+        // Name files with the PNR + index for traceability. Si aún no hay PNR
+        // (guardado parcial), usar 'PARCIAL' como marcador legible.
+        var pnrLabel = String(reservationNumber || '').trim() || 'PARCIAL';
+        var label = files.length > 1 ? ('Reserva_' + pnrLabel + '_' + (idx + 1) + '_' + requestId)
+                                     : ('Reserva_' + pnrLabel + '_' + requestId);
+        blob.setName(label);
+        var driveFile = _driveRetry_(function() { return folder.createFile(blob); }, 'createFile-reserva');
+        _driveRetry_(function() {
+          driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+        }, 'setSharing-reserva');
+        return {
+            id: driveFile.getId(),
+            name: label,
+            originalName: safeName,
+            url: 'https://drive.google.com/file/d/' + driveFile.getId() + '/view?usp=sharing',
+            mimeType: mime
+        };
+    });
+}
+
 function registerReservation(requestId, reservationNumber, files, creditCard, purchaseDate, skipNotification) {
     // Backward compatibility: if old clients still pass (fileData, fileName, creditCard) positionally,
     // wrap into a single-element files array.
@@ -2665,9 +2689,12 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     // cuando el analista ya entregó el PNR por fuera (caso ejecutivos).
     var shouldSkipNotify = skipNotification === true;
 
-    if (!Array.isArray(files) || files.length === 0) {
-        throw new Error('Debe adjuntar al menos un archivo de confirmación.');
-    }
+    // Permitir finalizar una reserva parcial: `files` puede venir vacío si ya
+    // hay archivos de reserva guardados (drafts) en SOPORTES JSON. El chequeo
+    // "al menos un archivo de reserva en total" se hace más abajo, tras ubicar
+    // la fila y leer SOPORTES. Aquí solo normalizamos y validamos los archivos
+    // NUEVOS (si hay).
+    if (!Array.isArray(files)) files = [];
     if (files.length > 10) {
         throw new Error('Máximo 10 archivos por reserva.');
     }
@@ -2691,6 +2718,26 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     const rowNumber = _getRowByRequestId_(requestId);
     if (rowNumber === -1) throw new Error("Solicitud no encontrada");
 
+    // Contar archivos de reserva ya guardados (drafts / reservas parciales).
+    // Permite finalizar sin subir archivos nuevos, pero exige que exista al
+    // menos uno en total (nuevos + ya guardados).
+    var _existingResvCount = 0;
+    try {
+        var _supIdxEarly = H("SOPORTES (JSON)");
+        if (_supIdxEarly > -1) {
+            var _supRawEarly = sheet.getRange(rowNumber, _supIdxEarly + 1).getValue();
+            if (_supRawEarly) {
+                var _supEarly = JSON.parse(_supRawEarly);
+                if (_supEarly && Array.isArray(_supEarly.files)) {
+                    _existingResvCount = _supEarly.files.filter(function(f) { return f && f.isReservation; }).length;
+                }
+            }
+        }
+    } catch (e) { _existingResvCount = 0; }
+    if (files.length === 0 && _existingResvCount === 0) {
+        throw new Error('Debe adjuntar al menos un archivo de confirmación.');
+    }
+
     // Check if this is a modification (has parent) — solo para etiquetar el nombre,
     // ya NO se anida la carpeta dentro del padre. Toda solicitud (original o
     // modificación) vive al nivel raíz para que el analista navegue Drive plano.
@@ -2702,35 +2749,14 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     // en lugar del scan lineal que rebasaba el rate limit.
     const folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
 
-    // Upload all reservation files into the folder. Cada createFile + setSharing
-    // envuelto en _driveRetry_ para tolerar hipos transient sin romper la operación.
-    const uploadedFiles = files.map(function(f, idx) {
-        var safeName = String(f.fileName).replace(/[\/\\:*?"<>|]/g, '_').substring(0, 200);
-        var lower = safeName.toLowerCase();
-        var mime = lower.endsWith('.pdf') ? MimeType.PDF
-                 : (lower.endsWith('.png') ? MimeType.PNG
-                 : (lower.endsWith('.jpg') || lower.endsWith('.jpeg') ? MimeType.JPEG
-                 : MimeType.PDF));
-        var blob = Utilities.newBlob(Utilities.base64Decode(f.fileData), mime, safeName);
-        // Name files with the PNR + index for traceability
-        var label = files.length > 1 ? `Reserva_${reservationNumber}_${idx + 1}_${requestId}` : `Reserva_${reservationNumber}_${requestId}`;
-        blob.setName(label);
-        var driveFile = _driveRetry_(function() { return folder.createFile(blob); }, 'createFile-reserva');
-        _driveRetry_(function() {
-          driveFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-        }, 'setSharing-reserva');
-        return {
-            id: driveFile.getId(),
-            name: label,
-            originalName: safeName,
-            url: `https://drive.google.com/file/d/${driveFile.getId()}/view?usp=sharing`,
-            mimeType: mime
-        };
-    });
+    // Upload all NEW reservation files into the folder (helper compartido con
+    // saveReservationDraft). Puede ser [] al finalizar una reserva parcial.
+    const uploadedFiles = _uploadReservationFilesToFolder_(folder, files, reservationNumber, requestId);
 
-    // Keep first file as the "primary" reservation reference (for backward-compat with templates)
-    const file = { getId: function() { return uploadedFiles[0].id; } };
-    const fileUrl = uploadedFiles[0].url;
+    // Keep first file as the "primary" reservation reference (for backward-compat with templates).
+    // Puede no haber archivos nuevos (finalize de parcial) → guardas contra undefined.
+    const file = { getId: function() { return uploadedFiles.length > 0 ? uploadedFiles[0].id : null; } };
+    const fileUrl = uploadedFiles.length > 0 ? uploadedFiles[0].url : '';
 
     // 2. Build descriptive folder name
     const MONTH_NAMES_ES = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
@@ -2800,14 +2826,27 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
             isReservation: true
         });
     });
+    // Al finalizar, renombrar las entradas de reserva parcial ("Reserva parcial")
+    // al nombre final con PNR, para que el correo y la app queden consistentes.
+    if (reservationNumber && Array.isArray(supportData.files)) {
+        supportData.files.forEach(function(f) {
+            if (f && f.isReservation && typeof f.name === 'string' && f.name.indexOf('Reserva parcial') === 0) {
+                f.name = 'Reserva ' + reservationNumber;
+            }
+        });
+    }
     sheet.getRange(rowNumber, supportIdx + 1).setValue(JSON.stringify(supportData));
 
     // 5. Send Email — pass ALL reservation file URLs to the template
     const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
     fullReq.reservationNumber = reservationNumber;
-    fullReq.reservationUrl = fileUrl; // primary (first file) for backward-compat
-    fullReq.reservationFiles = uploadedFiles.map(function(uf) {
-        return { name: uf.originalName, url: uf.url };
+    // Incluir en el correo TODOS los archivos de reserva (drafts previos + los
+    // recién subidos), no solo los de esta llamada — así una reserva finalizada
+    // desde parcial envía el paquete completo (tiquete + hotel) al usuario.
+    var _allResvFiles = (supportData.files || []).filter(function(f) { return f && f.isReservation; });
+    fullReq.reservationUrl = fileUrl || (_allResvFiles.length > 0 ? _allResvFiles[0].url : ''); // primary for backward-compat
+    fullReq.reservationFiles = _allResvFiles.map(function(f) {
+        return { name: f.name, url: f.url };
     });
 
     const html = HtmlTemplates.reservationConfirmed(fullReq);
@@ -2838,6 +2877,216 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
     _recordEvent_(requestId, 'reservationRegistered');
 
     return true;
+}
+
+/**
+ * RESERVA PARCIAL — "guardar sin enviar".
+ *
+ * Sube archivos de reserva (tiquete, hotel) a la carpeta de Drive de la
+ * solicitud SIN cambiar el estado (queda en APROBADO) y SIN enviar correo al
+ * usuario. Pensado para cuando el analista compra el tiquete pero aún no tiene
+ * la reserva del hotel: va acumulando los soportes y luego, cuando tenga todo,
+ * usa `registerReservation` (Confirmar reserva y enviar) para pasar a RESERVADO
+ * y enviar el paquete completo.
+ *
+ * PNR / tarjeta / fecha son OPCIONALES en este punto (puede no tener el PNR
+ * final todavía); si vienen, se guardan. Los archivos quedan etiquetados como
+ * `isReservation: true` para que el finalize los incluya en el correo.
+ *
+ * Guard: la solicitud DEBE estar en APROBADO. Admin-only + LockService se
+ * aplican en el dispatch.
+ *
+ * @param {string} requestId
+ * @param {string} [reservationNumber] PNR opcional
+ * @param {Array<{fileData,fileName}>} files 1..10 archivos
+ * @param {string} [creditCard] opcional
+ * @param {string} [purchaseDate] opcional
+ * @returns {{success:boolean, requestId:string, savedFiles:number, totalReservationFiles:number}}
+ */
+function saveReservationDraft(requestId, reservationNumber, files, creditCard, purchaseDate) {
+    if (!Array.isArray(files) || files.length === 0) {
+        throw new Error('Debe adjuntar al menos un archivo para guardar.');
+    }
+    if (files.length > 10) {
+        throw new Error('Máximo 10 archivos por carga.');
+    }
+    files.forEach(function(f) {
+        if (!f || !f.fileData || !f.fileName) throw new Error('Archivo inválido en la lista.');
+        validateFileUpload_(f.fileData, f.fileName, 'application/pdf');
+    });
+    if (reservationNumber && String(reservationNumber).length > 100) throw new Error('Número de reserva demasiado largo.');
+    if (creditCard && String(creditCard).length > 100) throw new Error('Descripción de tarjeta demasiado larga (máx 100 caracteres).');
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+    if (!sheet) throw new Error('Base de datos no encontrada.');
+
+    var statusIdx = H('STATUS');
+    var resNoIdx = H('No RESERVA');
+    var creditCardIdx = H('TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA');
+    var purchaseDateIdx = H('FECHA DE COMPRA DE TIQUETE');
+    var obsIdx = H('OBSERVACIONES');
+    var supportIdx = H('SOPORTES (JSON)');
+
+    var rowNumber = _getRowByRequestId_(requestId);
+    if (rowNumber === -1) throw new Error('Solicitud no encontrada.');
+
+    var currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '').trim();
+    if (currentStatus !== 'APROBADO') {
+        throw new Error('Solo se puede guardar una reserva parcial en estado APROBADO. Estado actual: ' + currentStatus);
+    }
+
+    // Subir archivos (helper compartido con registerReservation).
+    var folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
+    var uploadedFiles = _uploadReservationFilesToFolder_(folder, files, reservationNumber, requestId);
+
+    // Registrar en SOPORTES JSON como archivos de reserva (isReservation:true).
+    var jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
+    var supportData = jsonStr ? JSON.parse(jsonStr) : { folderId: folder.getId(), folderUrl: folder.getUrl(), files: [] };
+    if (!supportData.folderId) { supportData.folderId = folder.getId(); supportData.folderUrl = folder.getUrl(); }
+    if (!Array.isArray(supportData.files)) supportData.files = [];
+    var nowIso = new Date().toISOString();
+    uploadedFiles.forEach(function(uf, idx) {
+        supportData.files.push({
+            id: uf.id,
+            name: files.length > 1 ? ('Reserva parcial (' + (idx + 1) + '/' + files.length + ')') : 'Reserva parcial',
+            url: uf.url,
+            mimeType: uf.mimeType,
+            date: nowIso,
+            isReservation: true
+        });
+    });
+    sheet.getRange(rowNumber, supportIdx + 1).setValue(JSON.stringify(supportData));
+
+    // Guardar PNR / tarjeta / fecha SOLO si vienen (opcionales en draft).
+    if (reservationNumber && String(reservationNumber).trim() && resNoIdx > -1) {
+        sheet.getRange(rowNumber, resNoIdx + 1).setValue(safeSheetValue_(reservationNumber));
+    }
+    if (creditCard && creditCardIdx > -1) {
+        sheet.getRange(rowNumber, creditCardIdx + 1).setValue(safeSheetValue_(creditCard));
+    }
+    if (purchaseDate && purchaseDateIdx > -1) {
+        sheet.getRange(rowNumber, purchaseDateIdx + 1).setValue(purchaseDate);
+    }
+
+    // Nota de trazabilidad. NO cambia estado, NO envía correo.
+    if (obsIdx > -1) {
+        var timestampStr = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyy-MM-dd HH:mm');
+        var currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
+        var note = '[RESERVA PARCIAL]: guardado sin enviar (' + files.length + ' archivo' +
+                   (files.length > 1 ? 's' : '') + ') ' + timestampStr;
+        sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + '\n' : '') + note);
+    }
+
+    var totalReservationFiles = supportData.files.filter(function(f) { return f && f.isReservation; }).length;
+    return { success: true, requestId: requestId, savedFiles: uploadedFiles.length, totalReservationFiles: totalReservationFiles };
+}
+
+/**
+ * Cierra una solicitud a PROCESADO, con un chequeo de completitud de facturas
+ * (advertencia con override, acordado con Yurani/David en la reunión).
+ *
+ * Reglas:
+ *   - Estado válido para cerrar: RESERVADO (flujo normal) o APROBADO (edge:
+ *     compra manual sin PNR). Igual que antes (#A8).
+ *   - Completitud: se cuenta cuántas "facturas" tienen un total declarado > 0
+ *     (vía `_csComputeRowExecuted_`, misma lógica del dashboard de costos) y
+ *     cuántos archivos de factura se cargaron por el sistema (SOPORTES con
+ *     `isReservation !== true`). Si se declararon MÁS facturas que archivos
+ *     cargados y el admin NO confirmó (`options.ackInvoiceMismatch`), se
+ *     retorna `{ needsInvoiceAck }` SIN cerrar — el frontend muestra la
+ *     advertencia y, si el admin insiste, re-llama con el ack.
+ *   - Es advertencia, NO bloqueo: dos facturas pueden venir en un solo PDF.
+ *     Con ack se cierra igual y se deja nota de auditoría en OBSERVACIONES.
+ *
+ * @param {string} requestId
+ * @param {string} actorEmail  correo del admin que cierra (para la nota)
+ * @param {Object} [options]   { ackInvoiceMismatch?: boolean }
+ * @returns {{needsInvoiceAck:true, declared:number, uploaded:number} | {success:true, closed:true}}
+ */
+function closeRequestWithChecks(requestId, actorEmail, options) {
+  options = options || {};
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error('Base de datos no encontrada.');
+
+  var statusIdx = H('STATUS');
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) throw new Error('Solicitud no encontrada.');
+
+  var currentStatus = String(sheet.getRange(rowNumber, statusIdx + 1).getValue() || '').trim();
+  if (currentStatus !== 'RESERVADO' && currentStatus !== 'APROBADO') {
+    throw new Error('Solo se pueden cerrar solicitudes en estado RESERVADO o APROBADO. Estado actual: ' + currentStatus);
+  }
+
+  // --- Chequeo de completitud de facturas ---
+  // OPT-IN (compatibilidad de despliegue): el chequeo SOLO corre si el cliente
+  // envía options.invoiceCheck === true. Un frontend viejo (que no conoce el
+  // protocolo de `needsInvoiceAck`) NO lo envía → el chequeo se omite y el
+  // cierre se comporta EXACTAMENTE como antes. Así, desplegar este backend con
+  // el frontend anterior nunca "deja de cerrar" una solicitud silenciosamente.
+  // Defensivo además: si el cálculo lanza, trata mismatch como 0 (no bloquea).
+  var declaredCount = 0;
+  var uploadedInvoiceCount = 0;
+  if (options.invoiceCheck === true) try {
+    var lastCol = sheet.getLastColumn();
+    var row = sheet.getRange(rowNumber, 1, 1, lastCol).getValues()[0];
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var headerMap = {};
+    for (var hi = 0; hi < headers.length; hi++) {
+      var hn = String(headers[hi] || '').trim();
+      if (hn) headerMap[hn] = hi;
+    }
+    var config = _csLoadConfig_();
+    var executed = _csComputeRowExecuted_(row, headerMap, config);
+    var bd = executed && executed.breakdown ? executed.breakdown : {};
+    Object.keys(bd).forEach(function(k) {
+      if (k === '_estimadoFromCotizado') return; // proxy estimado, no es una factura
+      if (Number(bd[k]) > 0) declaredCount++;
+    });
+
+    var supportIdx = H('SOPORTES (JSON)');
+    if (supportIdx > -1) {
+      var jsonStr = sheet.getRange(rowNumber, supportIdx + 1).getValue();
+      if (jsonStr) {
+        var supportData = JSON.parse(jsonStr);
+        if (supportData && Array.isArray(supportData.files)) {
+          uploadedInvoiceCount = supportData.files.filter(function(f) { return f && f.isReservation !== true; }).length;
+        }
+      }
+    }
+  } catch (e) {
+    console.error('closeRequestWithChecks: fallo en chequeo de facturas (se ignora, no bloquea cierre): ' + e);
+    declaredCount = 0;
+    uploadedInvoiceCount = 0;
+  }
+
+  var hasMismatch = declaredCount > uploadedInvoiceCount;
+  if (hasMismatch && options.ackInvoiceMismatch !== true) {
+    // No cierra: el frontend mostrará la advertencia y podrá reintentar con ack.
+    return { needsInvoiceAck: true, declared: declaredCount, uploaded: uploadedInvoiceCount };
+  }
+
+  // Cerrar.
+  updateRequestStatus(requestId, 'PROCESADO');
+
+  // Nota de auditoría si se cerró a pesar del faltante.
+  if (hasMismatch && options.ackInvoiceMismatch === true) {
+    try {
+      var obsIdx = H('OBSERVACIONES');
+      if (obsIdx > -1) {
+        var currObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
+        var actor = String(actorEmail || 'desconocido').toLowerCase().trim();
+        var note = '[CIERRE]: Cerrada con facturas incompletas — declaró ' + declaredCount +
+                   ', cargó ' + uploadedInvoiceCount + '. Confirmado por ' + actor + '.';
+        sheet.getRange(rowNumber, obsIdx + 1).setValue((currObs ? currObs + '\n' : '') + note);
+      }
+    } catch (e) { console.error('closeRequestWithChecks: error registrando nota de faltante: ' + e); }
+  }
+
+  try { generateSupportReport(requestId); } catch (e) { console.error('Auto-report failed: ' + e); }
+
+  return { success: true, closed: true };
 }
 
 /**

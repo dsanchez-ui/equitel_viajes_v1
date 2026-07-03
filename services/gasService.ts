@@ -448,15 +448,48 @@ class GasService {
     return response.data || { hasBudget: false };
   }
 
-  async closeRequest(requestId: string): Promise<void> {
-    const response = await this.runGas('closeRequest', { requestId });
+  /**
+   * Cierra una solicitud (→ PROCESADO). El backend valida completitud de
+   * facturas: si se declararon más totales de factura que archivos cargados
+   * y `options.ackInvoiceMismatch` no viene, retorna `{ needsInvoiceAck, declared,
+   * uploaded }` SIN cerrar (advertencia con override). Con el ack, cierra igual
+   * y deja nota de auditoría. Retorna la data del backend para que el llamador
+   * decida (mostrar advertencia vs. éxito).
+   */
+  async closeRequest(
+    requestId: string,
+    options?: { ackInvoiceMismatch?: boolean }
+  ): Promise<{ needsInvoiceAck?: boolean; declared?: number; uploaded?: number; closed?: boolean; success?: boolean }> {
+    // invoiceCheck:true activa el chequeo de facturas en el backend. Si el
+    // backend fuera anterior a esta versión, simplemente ignora `options` y
+    // cierra como siempre (compatibilidad hacia atrás).
+    const response = await this.runGas('closeRequest', { requestId, options: { invoiceCheck: true, ...(options || {}) } });
     if (!response.success) throw new Error(response.error);
+    return response.data || {};
   }
 
   // --- RESERVATION ---
   async registerReservation(requestId: string, reservationNumber: string, files: { fileData: string, fileName: string }[], creditCard: string, purchaseDate?: string, skipNotification?: boolean): Promise<void> {
     const response = await this.runGas('registerReservation', { requestId, reservationNumber, files, creditCard, purchaseDate, skipNotification });
     if (!response.success) throw new Error(response.error);
+  }
+
+  /**
+   * Reserva parcial — "guardar sin enviar". Sube archivos de reserva (tiquete,
+   * hotel) SIN cambiar el estado (queda APROBADO) ni notificar al usuario.
+   * PNR/tarjeta/fecha son opcionales en este punto. Al tener todo el paquete,
+   * usar registerReservation para finalizar (RESERVADO + correo completo).
+   */
+  async saveReservationDraft(
+    requestId: string,
+    reservationNumber: string,
+    files: { fileData: string, fileName: string }[],
+    creditCard?: string,
+    purchaseDate?: string
+  ): Promise<{ success?: boolean; savedFiles?: number; totalReservationFiles?: number }> {
+    const response = await this.runGas('saveReservationDraft', { requestId, reservationNumber, files, creditCard, purchaseDate });
+    if (!response.success) throw new Error(response.error);
+    return response.data || {};
   }
 
   /**
