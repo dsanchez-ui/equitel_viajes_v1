@@ -365,6 +365,7 @@ function _resetPerExecutionCaches_() {
   _REQUESTER_CEDULA_CACHE = null;
   _CACHED_GMAIL_ALIASES = null;
   _CS_APPROVERS_CACHE = null;
+  _CS_CONFIG_CACHE = null;
   _PASSPORT_FOLDER_CACHE = null;
 }
 
@@ -12102,19 +12103,29 @@ function _csIsConfigValid_(cfg) {
  * Lee la config desde Script Property. Si está vacía o corrupta, retorna
  * el default. Siempre retorna un objeto válido — el caller puede confiar.
  */
+// Cache per-ejecución de la config. Antes, `_csLoadConfig_` hacía un
+// getProperty()+JSON.parse+validación en CADA llamada, y `mapRowToRequest`
+// la invoca UNA VEZ POR FILA — a ~320 solicitudes son ~320 lecturas de
+// ScriptProperties por cada poll/listado, escalando linealmente con los
+// datos y disparando timeouts intermitentes. Memoizamos por ejecución
+// (la config es constante dentro de un request). Se resetea en
+// `_resetPerExecutionCaches_` (inicio de cada doGet/doPost) y tras
+// escribir/borrar la config. Los callers no mutan el objeto devuelto.
+var _CS_CONFIG_CACHE = null;
 function _csLoadConfig_() {
+  if (_CS_CONFIG_CACHE) return _CS_CONFIG_CACHE;
   try {
     var raw = PropertiesService.getScriptProperties().getProperty(COSTS_DASHBOARD_CONFIG_KEY);
-    if (!raw) return _csDefaultConfig_();
+    if (!raw) return (_CS_CONFIG_CACHE = _csDefaultConfig_());
     var parsed = JSON.parse(raw);
     if (!_csIsConfigValid_(parsed)) {
       console.warn('CostsDashboard: config en Script Property tiene forma inválida, usando default.');
-      return _csDefaultConfig_();
+      return (_CS_CONFIG_CACHE = _csDefaultConfig_());
     }
-    return parsed;
+    return (_CS_CONFIG_CACHE = parsed);
   } catch (e) {
     console.error('CostsDashboard: error parseando config, usando default. ' + e);
-    return _csDefaultConfig_();
+    return (_CS_CONFIG_CACHE = _csDefaultConfig_());
   }
 }
 
@@ -13420,6 +13431,7 @@ function setCostsDashboardConfig(config, currentUserEmail) {
     throw new Error('La configuración no tiene la forma esperada (faltan campos obligatorios o están vacíos).');
   }
   PropertiesService.getScriptProperties().setProperty(COSTS_DASHBOARD_CONFIG_KEY, JSON.stringify(config));
+  _CS_CONFIG_CACHE = null; // invalidar cache per-ejecución tras escribir
   return { success: true, savedAt: new Date().toISOString() };
 }
 
@@ -13431,6 +13443,7 @@ function resetCostsDashboardConfig(currentUserEmail) {
   var access = _csResolveAccess_(currentUserEmail);
   if (!access.canConfig) throw new Error('Solo SUPERADMIN puede restaurar la configuración.');
   PropertiesService.getScriptProperties().deleteProperty(COSTS_DASHBOARD_CONFIG_KEY);
+  _CS_CONFIG_CACHE = null; // invalidar cache per-ejecución tras borrar
   return { success: true, restoredAt: new Date().toISOString() };
 }
 

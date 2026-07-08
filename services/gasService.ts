@@ -65,11 +65,17 @@ class GasService {
   /**
    * Universal Bridge using HTTP FETCH.
    *
-   * Timeout global de 30s vía AbortController. Sin esto, un network stall
+   * Timeout global vía AbortController. Sin esto, un network stall
    * (servidor colgado, conexión limbo, GAS atorado) deja el fetch sin
    * resolver → callers como handleViewRequest con spinner blocking quedan
-   * eternos hasta F5. 30s es generoso (cubre cold start + cómputo) pero
-   * finito; si dispara, el caller recibe un error claro y puede reintentar.
+   * eternos hasta F5.
+   *
+   * 45s (subido desde 30s): las ejecuciones reales de GAS (Ejecuciones del
+   * proyecto) muestran doPost de 4-7s con picos legítimos de 17-28s bajo
+   * cold-start/concurrencia. Con el timeout en 30s, esos picos se abortaban
+   * del lado del cliente aunque el servidor sí completaba — y 3 abortos
+   * seguidos disparaban el banner de "falla de conectividad". 45s da margen
+   * sobre el pico observado sin dejar la UI colgada indefinidamente.
    */
   private async runGas(action: string, payload: any = null): Promise<ApiResponse<any>> {
     if (!API_BASE_URL || API_BASE_URL.includes('REPLACE')) {
@@ -77,7 +83,7 @@ class GasService {
       return { success: false, error: "API URL no configurada." };
     }
 
-    const FETCH_TIMEOUT_MS = 30000;
+    const FETCH_TIMEOUT_MS = 45000;
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
@@ -148,7 +154,7 @@ class GasService {
       }
 
       if (isTimeout) {
-        msg = 'El servidor tardó demasiado en responder (más de 30s). Reintenta o recarga la página.';
+        msg = 'El servidor tardó demasiado en responder (más de 45s). Reintenta o recarga la página.';
       } else if (isNetworkError) {
         msg = 'No se pudo conectar con el servidor. Verifique su conexión o la URL del script.';
       }

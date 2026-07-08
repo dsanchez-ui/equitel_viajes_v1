@@ -271,7 +271,10 @@ const App: React.FC = () => {
     // corresponde a la vista anterior — no lo aplicamos para evitar mostrar
     // lista de otra vista. `mounted` evita setState sobre componente desmontado.
     let mounted = true;
-    const intervalId = setInterval(async () => {
+
+    // Un tick de sincronización, reutilizado por el intervalo y por el
+    // re-enfoque de la pestaña.
+    const runSync = async () => {
       const snapshotAdmin = isEffectiveAdmin;
       setIsSyncing(true);
       try {
@@ -279,10 +282,26 @@ const App: React.FC = () => {
       } finally {
         if (mounted) setIsSyncing(false);
       }
+    };
+
+    const intervalId = setInterval(() => {
+      // No golpear GAS mientras la pestaña está oculta: muchos tabs de admin
+      // abiertos en segundo plano multiplican la concurrencia y los cold-starts
+      // sin que nadie esté mirando (contribuye a las fallas intermitentes). Al
+      // reenfocar se refresca de inmediato (onVisible).
+      if (typeof document !== 'undefined' && document.hidden) return;
+      runSync();
     }, POLL_INTERVAL_MS);
+
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && !document.hidden) runSync();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
     return () => {
       mounted = false;
       clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, [userEmail, role, viewAsRequester]);
 
@@ -621,7 +640,18 @@ const App: React.FC = () => {
       // Los lite ahora LANZAN si hay error (timeout/network) en lugar de
       // retornar [] silencioso → el dashboard ya no muestra "0 solicitudes"
       // por una falla transient.
-      const data = isAdmin ? await gasService.getAllRequestsLite(email) : await gasService.getMyRequestsLite(email);
+      // Reintento-1 ante blip transitorio de GAS (cold start, 500, timeout):
+      // un solo fallo aislado no debe alertar, vaciar la lista, ni contar hacia
+      // el banner de conectividad. Si el 2º intento también falla, propaga al
+      // catch de abajo (comportamiento previo intacto). Solo lecturas.
+      const _fetchLite = () => (isAdmin ? gasService.getAllRequestsLite(email) : gasService.getMyRequestsLite(email));
+      let data;
+      try {
+        data = await _fetchLite();
+      } catch (e1) {
+        await new Promise(r => setTimeout(r, 1500));
+        data = await _fetchLite();
+      }
       // RACE (#A3): si durante el fetch el usuario alternó vista (admin↔user)
       // o el componente se desmontó, descartamos el resultado para no
       // sobreescribir el estado actual con la lista de la vista anterior.
