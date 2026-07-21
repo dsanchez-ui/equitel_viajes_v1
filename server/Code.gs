@@ -10936,6 +10936,116 @@ function nbs_createBackup(folderIdOrUrl) {
 }
 
 // =====================================================================
+// BACKUP AUTOMÁTICO DIARIO (trigger time-driven)
+// =====================================================================
+// Cuántos backups AUTOMÁTICOS conservar (los más recientes). Los que sobran
+// se envían a la papelera. Los backups MANUALES ("Backup_...") NO se tocan.
+var AUTO_BACKUP_RETENTION = 30;
+
+/**
+ * Objetivo del trigger diario: copia TODO el spreadsheet (todas las hojas) a la
+ * carpeta BACKUP_FOLDER_ID. Corre como el DUEÑO del script (vía trigger), por
+ * eso NO usa el gate de sesión/analyst de nbs_createBackup — no hay usuario web
+ * en una ejecución programada. Aplica retención al final.
+ *
+ * Los archivos se nombran "BackupAuto_<fecha>_<nombre>" para distinguirlos de
+ * los backups manuales ("Backup_...") y para que la retención solo purgue los
+ * automáticos. Si falla, re-lanza para que Google notifique por correo (así te
+ * enteras si algún día el backup dejó de correr).
+ *
+ * Instalar/quitar: setupBackupDiarioTrigger() / deleteBackupDiarioTrigger().
+ */
+function backupDiarioAutomatico() {
+  var folderId = BACKUP_FOLDER_ID;
+  if (!folderId) {
+    console.error('backupDiarioAutomatico: BACKUP_FOLDER_ID no configurado; backup OMITIDO.');
+    return;
+  }
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ssFile = _driveRetry_(function() { return DriveApp.getFileById(ss.getId()); }, 'getSsFile-backupAuto');
+    var folder = _driveRetry_(function() { return DriveApp.getFolderById(folderId); }, 'getFolder-backupAuto');
+    var ts = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyyMMdd_HHmm');
+    var name = 'BackupAuto_' + ts + '_' + ssFile.getName();
+    var copy = _driveRetry_(function() { return ssFile.makeCopy(name, folder); }, 'makeCopy-backupAuto');
+    console.log('backupDiarioAutomatico: creado "' + name + '" (' + copy.getId() + ').');
+    // Retención best-effort: nunca debe hacer fallar el backup ya creado.
+    try { _purgeOldAutoBackups_(folder, AUTO_BACKUP_RETENTION); }
+    catch (ePurge) { console.warn('backupDiarioAutomatico: retención falló (no crítico): ' + ePurge); }
+  } catch (e) {
+    console.error('backupDiarioAutomatico FALLÓ: ' + e);
+    throw e; // re-lanzar → Google envía correo de error al dueño (visibilidad)
+  }
+}
+
+/**
+ * Retención: conserva los `keep` backups automáticos más recientes (por fecha
+ * de creación) y manda el resto a la papelera. Solo considera archivos cuyo
+ * nombre empieza por "BackupAuto_"; NUNCA toca backups manuales ni otros
+ * archivos de la carpeta. Best-effort (no lanza).
+ */
+function _purgeOldAutoBackups_(folder, keep) {
+  var it = folder.getFiles();
+  var autos = [];
+  while (it.hasNext()) {
+    var f = it.next();
+    if (String(f.getName()).indexOf('BackupAuto_') === 0) autos.push(f);
+  }
+  if (autos.length <= keep) return;
+  autos.sort(function(a, b) { return b.getDateCreated().getTime() - a.getDateCreated().getTime(); });
+  var purged = 0;
+  for (var i = keep; i < autos.length; i++) {
+    try { autos[i].setTrashed(true); purged++; }
+    catch (e) { console.warn('_purgeOldAutoBackups_: no se pudo enviar a papelera ' + autos[i].getName() + ': ' + e); }
+  }
+  console.log('_purgeOldAutoBackups_: conservados ' + keep + ', a papelera ' + purged + '.');
+}
+
+/**
+ * SETUP (ejecutar UNA VEZ desde el editor): instala el trigger diario de backup
+ * a las 5 AM (Bogotá). Idempotente — elimina cualquier trigger previo de
+ * backupDiarioAutomatico antes de crear el nuevo (seguro de correr varias veces).
+ *
+ * Pasos:
+ *   1. Editor Apps Script → dropdown de funciones → setupBackupDiarioTrigger
+ *   2. ▶ Ejecutar (autoriza scopes si lo pide)
+ *   3. Ver → Registros de ejecución (confirma instalación)
+ *
+ * Rollback: deleteBackupDiarioTrigger() o borrar desde la pantalla de Triggers.
+ */
+function setupBackupDiarioTrigger() {
+  var existing = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === 'backupDiarioAutomatico';
+  });
+  existing.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+
+  ScriptApp.newTrigger('backupDiarioAutomatico')
+    .timeBased()
+    .atHour(5)
+    .everyDays(1)
+    .inTimezone('America/Bogota')
+    .create();
+
+  var msg = 'Trigger de backup diario instalado: backupDiarioAutomatico ~5 AM (Bogotá), retención ' + AUTO_BACKUP_RETENTION + ' copias.';
+  if (existing.length > 0) msg += ' (Se eliminó ' + existing.length + ' trigger(s) previo(s).)';
+  Logger.log(msg);
+  return { installed: true, previouslyRemoved: existing.length };
+}
+
+/**
+ * Desinstala el trigger diario de backup. Ejecutar desde el editor si se quiere
+ * desactivar. (Los backups ya creados NO se borran.)
+ */
+function deleteBackupDiarioTrigger() {
+  var triggers = ScriptApp.getProjectTriggers().filter(function(t) {
+    return t.getHandlerFunction() === 'backupDiarioAutomatico';
+  });
+  triggers.forEach(function(t) { ScriptApp.deleteTrigger(t); });
+  Logger.log('Triggers de backup diario eliminados: ' + triggers.length);
+  return { removed: triggers.length };
+}
+
+// =====================================================================
 // VISIBILIDAD DE COLUMNAS — ocultar/mostrar columnas de la hoja activa
 // =====================================================================
 
