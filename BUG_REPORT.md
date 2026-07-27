@@ -542,3 +542,37 @@ Sin defectos altos ni regresiones a los flujos existentes. Corregido: correo mos
 - Rollback: versión anterior del web app (~30 s) / revert del commit.
 
 ---
+
+## **#A58 — Feature: comentario opcional del aprobador al aprobar (solicitud de Yurani)**
+**Fecha:** 2026-07-27 · **Reportado por:** Yurani (chat sáb 19:32) · **Estado:** Implementado, pendiente de despliegue
+
+**Necesidad:** Yurani aprobó un tiquete pero necesitaba dejar una salvedad ("solo comprar tiquete, el hotel no era necesario — se aloja en el apartamento") y no había dónde. Se pidió un campo de comentario **opcional** (nunca obligatorio) al aprobar, guardado por aprobador, visible para el área de viajes y el solicitante. La instrucción del aprobador **prima** sobre la selección del usuario.
+
+### Diseño
+- **Captura:** al hacer clic en APROBAR desde el correo, la página de confirmación ahora incluye un textarea opcional (`renderApprovalCommentPage`, espejo de la página de motivo de denegación). Mismo flujo de 2 pasos: un solo clic con el campo vacío aprueba idéntico a antes. Los recordatorios reutilizan los mismos links → obtienen la página nueva automáticamente.
+- **Almacenamiento:** nueva columna **`COMENTARIOS APROBADORES (JSON)`** en "Nueva Base Solicitudes": `[{role, email, comment, at}]`, máx. 1 por rol (first-wins, igual que los votos). Se guarda dentro del `LockService` global, tras el guard `alreadyDecided`, en `processApprovalFromEmail` (`_appendApproverComment_`, todo en try/catch — jamás rompe una aprobación).
+- **Visualización:** (1) correo "SOLICITUD APROBADA" — bloque ámbar prominente con rol + correo + comentario (`decisionNotification`); llega al usuario con CC al admin y pasajeros; (2) `ReservationModal` — banner ámbar antes de comprar (la fila lite ya trae el campo); (3) `RequestDetail` — comentario bajo la fila del rol en "Estado de Aprobaciones" (+ fallback para roles sin fila visible, ej. BUDGET_OVERRUN exento por OT); (4) `AdminDashboard` — pill "💬 Comentario aprobador" con tooltip en filas APROBADO.
+- **Comentario tardío:** si un segundo ejecutivo aprueba con comentario cuando la solicitud YA avanzó (ej. ya RESERVADO), se envía aviso `[COMENTARIO TARDÍO DE APROBADOR]` al admin (hallazgo de auditoría — antes quedaba guardado en silencio).
+
+### Hardening incluido (hallazgos de auditoría, corregidos)
+- **`_safeDecode_` en motivo de denegación:** el `decodeURIComponent` legacy doble-decodificaba y un motivo con `%` literal (ej. "excede el 10%") lanzaba URIError **después** de registrar el voto pero **antes** de pasar a DENEGADO → solicitud varada con link muerto. Ahora nunca lanza.
+- **`_jsUrlParam_`:** `encodeURIComponent` no escapa `'` — valores interpolados en strings JS de las páginas HtmlService (aprobación **y** denegación) ahora reemplazan `'`→`%27` (cierra vector de inyección, comportamiento idéntico para valores legítimos).
+- **Migración robusta:** `agregarColumnaComentariosAprobadores()` (idempotente, UI-free + wrapper de menú) auto-repara headers con espacios no-canónicos e inserta columna si el grid está recortado. **NO usar `setupDatabase()`** (recrearía INTEGRANTES, eliminada en producción).
+
+### Seguridad
+El comentario viaja sin firmar (mismo modelo que el `reason` de denegación: el link HMAC es la credencial); `escapeHtml_` en correos y escape nativo de React en la app; el JSON en celda empieza con `[` → sin formula injection; cap 500 chars (página) / 1000 (servidor).
+
+### Deploy-safety (cualquier orden es seguro)
+Guard `H() === -1`: backend nuevo sin columna → aprueba idéntico a hoy (comentario descartado con warning). Backend viejo ignora la columna extra. Frontend con optional chaining → seguro con backend viejo.
+
+### Verificado
+`node --check` (Code.gs) · `npx tsc --noEmit` · `npm run build` — limpio. Auditoría adversarial: 0 críticos/altos; 1 medio + 2 bajos corregidos (arriba).
+
+### Despliegue
+1. Push a `main` → Cloud Run (frontend).
+2. Apps Script: pegar `Code.gs` y **Guardar** (el web app sigue en la versión vieja).
+3. Ejecutar **`agregarColumnaComentariosAprobadores()`** una vez (editor o menú "Equitel Viajes → Agregar columna Comentarios Aprobadores").
+4. Crear **nueva versión** del web app (mismo `WEB_APP_URL`).
+5. No correr "Reorganizar Base Principal" entre los pasos 2-4.
+
+---

@@ -194,7 +194,31 @@ export interface TravelRequest {
   // contra directorio + fallback por correo). Se usa para mostrar el ícono 👥 en
   // dashboards. No afecta el flujo de aprobación.
   isProxyRequest?: boolean;
+
+  // COMENTARIOS DE APROBADORES (2026-07-27): comentario opcional que cada
+  // aprobador puede dejar al aprobar desde el correo (máx. uno por rol).
+  // La instrucción del aprobador prima sobre la selección del usuario.
+  // Presente también en el payload lite (el ReservationModal lo necesita).
+  approverComments?: ApproverComment[];
 }
+
+// Comentario opcional dejado por un aprobador al aprobar (ver Code.gs
+// _appendApproverComment_). role: 'NORMAL' | 'CEO' | 'CDS' | 'BUDGET_OVERRUN'.
+export interface ApproverComment {
+  role: string;
+  email: string;
+  comment: string;
+  at?: string;
+}
+
+// Etiquetas legibles por rol de aprobación — mantener consistentes con
+// _approverRoleLabel_ del backend (correos).
+export const APPROVER_ROLE_LABELS: Record<string, string> = {
+  NORMAL: 'Aprobador de Área',
+  CEO: 'Gerencia General',
+  CDS: 'Dirección Cadena de Suministro',
+  BUDGET_OVERRUN: 'Aprobador de Presupuesto',
+};
 
 export interface CostCenterMaster {
   code: string;

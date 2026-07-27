@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { TravelRequest, SupportFile, RequestStatus } from '../types';
+import { TravelRequest, SupportFile, RequestStatus, APPROVER_ROLE_LABELS } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 
@@ -372,6 +372,20 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                             <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded p-2 mb-3 leading-relaxed">
                                 <strong>Reserva por partes:</strong> use <strong>"Guardar sin enviar"</strong> para cargar el tiquete hoy y el hotel después, sin notificar al usuario (la solicitud sigue en APROBADO). Cuando tenga el paquete completo, use <strong>"Confirmar reserva y enviar"</strong> para notificarle todo junto.
                             </p>
+                        )}
+                        {/* COMENTARIOS DE APROBADORES: la instrucción del aprobador prima
+                            sobre la selección del usuario — revisarla ANTES de comprar. */}
+                        {(request.approverComments?.length ?? 0) > 0 && (
+                            <div className="text-xs text-amber-900 bg-amber-50 border border-amber-300 border-l-4 border-l-amber-500 rounded p-2 mb-3 leading-relaxed">
+                                <strong>⚠️ Comentarios de los aprobadores — tener en cuenta antes de comprar/reservar:</strong>
+                                <ul className="mt-1 space-y-1">
+                                    {request.approverComments!.map((c, i) => (
+                                        <li key={`appr-comment-${i}`} className="whitespace-pre-wrap break-words">
+                                            <strong>{APPROVER_ROLE_LABELS[c.role] || c.role}:</strong> <span className="italic">"{c.comment}"</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
                         )}
 
                         <form onSubmit={handleSubmit} className="space-y-5">

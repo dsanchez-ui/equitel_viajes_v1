@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import { TravelRequest, RequestStatus, Integrant } from '../types';
+import { TravelRequest, RequestStatus, Integrant, APPROVER_ROLE_LABELS } from '../types';
 import { API_BASE_URL } from '../constants';
 import { OptionUploadModal } from './OptionUploadModal';
 import { SupportUploadModal } from './SupportUploadModal';
@@ -692,6 +692,7 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
                                 {/* REGISTER RESERVATION (incluye reserva parcial "guardar sin enviar") */}
                                 {req.status === RequestStatus.APPROVED && (() => {
                                   const partialCount = (req.supportData?.files || []).filter(f => f.isReservation).length;
+                                  const apprComments = req.approverComments || [];
                                   return (
                                     <div className="inline-flex items-center gap-2">
                                       <button
@@ -706,6 +707,14 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
                                           title={`${partialCount} archivo(s) de reserva guardados sin enviar. Falta completar y confirmar.`}
                                         >
                                           Reserva parcial · falta completar
+                                        </span>
+                                      )}
+                                      {apprComments.length > 0 && (
+                                        <span
+                                          className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 cursor-help"
+                                          title={apprComments.map(c => `${APPROVER_ROLE_LABELS[c.role] || c.role}: "${c.comment}"`).join('\n')}
+                                        >
+                                          💬 Comentario aprobador
                                         </span>
                                       )}
                                     </div>

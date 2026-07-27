@@ -92,6 +92,27 @@ function escapeHtml_(unsafe) {
     .replace(/'/g, '&#039;');
 }
 
+// --- HARDENING: decode defensivo de parámetros GET legacy ---
+// GAS ya URL-decodifica e.parameter, así que un decodeURIComponent adicional
+// sobre texto con '%' literal (ej. "excede el 10%") lanza URIError. En el
+// flujo de denegación eso ocurría DESPUÉS de registrar el voto "No_" pero
+// ANTES de actualizar el status → la solicitud quedaba varada en
+// PENDIENTE_APROBACION con el link inutilizable (alreadyDecided). Este helper
+// intenta el decode legacy y ante error retorna el valor tal cual — nunca lanza.
+function _safeDecode_(v) {
+  try { return decodeURIComponent(v); } catch (e) { return String(v); }
+}
+
+// --- HARDENING: encode de valores incrustados en strings JS de páginas HtmlService ---
+// encodeURIComponent NO escapa la comilla simple (') — un valor con ' rompería
+// el string JS single-quoted donde se interpola (vector de inyección en las
+// páginas de aprobación/denegación). La reemplazamos por %27, que es el
+// equivalente URL válido: GAS la decodifica de vuelta a ' en e.parameter.
+// Comportamiento idéntico para valores legítimos (IDs SOL-XXXXXX, roles, emails).
+function _jsUrlParam_(v) {
+  return encodeURIComponent(String(v === null || v === undefined ? '' : v)).replace(/'/g, '%27');
+}
+
 // --- SECURITY: HMAC signing de approval links ---
 // Por qué: sin firma, un atacante con acceso a CUALQUIER link de un correo
 // (p.ej. reenviado por error, screenshot expuesto, email leakeado) puede
@@ -240,7 +261,8 @@ const HEADERS_REQUESTS = [
   "EVENTOS_JSON", // Métricas: timestamps de cada evento del ciclo
   "MODO_SOLICITUD", // 'VIAJE' (default) o 'SOLO_HOSPEDAJE' — determina flujo visual (emails, modales, form)
   "REQUIERE APROB PPTO",  // "SI" o vacío — marca persistente del chequeo de presupuesto excedido (calculado en confirmación de costos)
-  "APROBADO PRESUPUESTO"   // "Sí_email_fecha" / "No_email_fecha" / vacío — voto del aprobador de presupuesto (Alejandro o quien configure)
+  "APROBADO PRESUPUESTO",   // "Sí_email_fecha" / "No_email_fecha" / vacío — voto del aprobador de presupuesto (Alejandro o quien configure)
+  "COMENTARIOS APROBADORES (JSON)" // Array [{role, email, comment, at}] — comentario OPCIONAL que cada aprobador puede dejar al aprobar
 ];
 
 // =====================================================================
@@ -2236,6 +2258,82 @@ function processOptionSelection(e) {
     );
 }
 
+// =====================================================================
+// COMENTARIOS DE APROBADORES (2026-07-27, solicitud de Yurani)
+// =====================================================================
+// Al aprobar desde el correo, el aprobador puede dejar un comentario
+// OPCIONAL (ej: "solo comprar tiquete, el hotel no es necesario"). Se
+// guarda por rol en la columna "COMENTARIOS APROBADORES (JSON)" con shape:
+//   [{ role: 'NORMAL'|'CEO'|'CDS'|'BUDGET_OVERRUN', email, comment, at }]
+// y se muestra en: el correo de "solicitud aprobada" (usuario + CC admin),
+// el modal de registro de reserva y la vista de detalle. La instrucción del
+// aprobador prima sobre la selección del usuario.
+// =====================================================================
+
+/**
+ * Etiqueta legible del rol de aprobación (para correos). Mantener consistente
+ * con los labels de RequestDetail.tsx en el frontend.
+ */
+function _approverRoleLabel_(role) {
+  switch (String(role || '').toUpperCase()) {
+    case 'CEO': return 'Gerencia General';
+    case 'CDS': return 'Dirección Cadena de Suministro';
+    case 'BUDGET_OVERRUN': return 'Aprobador de Presupuesto';
+    case 'NORMAL': return 'Aprobador de Área';
+    default: return 'Aprobador';
+  }
+}
+
+/**
+ * Agrega una entrada a "COMENTARIOS APROBADORES (JSON)". Diseño defensivo:
+ *   - Si la columna no existe (migración pendiente) → warn + return; la
+ *     aprobación continúa idéntica a hoy (deploy-order safe).
+ *   - First-wins hermético: si ya hay comentario para ese rol, no duplica
+ *     (consistente con la protección de sobrescritura de los votos).
+ *   - Atribución: para rol NORMAL con co-aprobadores internacionales,
+ *     approverEmail puede ser una lista con comas — se prefiere el actor
+ *     (quien realmente clickeó) si está entre los asignados.
+ *   - TODO dentro de try/catch: un fallo aquí JAMÁS rompe la aprobación.
+ *   - Concurrencia: el caller (processApprovalFromEmail) ya corre dentro de
+ *     LockService, así que el read-modify-write del JSON es serializado.
+ */
+function _appendApproverComment_(sheet, rowNumber, role, approverEmail, actor, comment) {
+  try {
+    var colIdx = H('COMENTARIOS APROBADORES (JSON)');
+    if (colIdx < 0) {
+      console.warn('_appendApproverComment_: columna "COMENTARIOS APROBADORES (JSON)" no existe; comentario descartado. Ejecuta agregarColumnaComentariosAprobadores() desde el editor o el menú.');
+      return;
+    }
+    var raw = sheet.getRange(rowNumber, colIdx + 1).getValue();
+    var list = [];
+    if (raw) {
+      try { list = JSON.parse(raw); } catch (e) { list = []; }
+    }
+    if (!Array.isArray(list)) list = [];
+    var roleKey = String(role || 'NORMAL');
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].role === roleKey) return; // ya hay comentario de este rol
+    }
+    var author = String(approverEmail || '');
+    var actorLower = String(actor || '').toLowerCase().trim();
+    if (actorLower && author.indexOf(',') !== -1) {
+      var assigned = author.toLowerCase().split(',').map(function(x) { return x.trim(); });
+      if (assigned.indexOf(actorLower) !== -1) author = actorLower;
+    }
+    list.push({
+      role: roleKey,
+      email: author,
+      comment: String(comment).substring(0, 1000),
+      at: new Date().toISOString()
+    });
+    sheet.getRange(rowNumber, colIdx + 1).setValue(JSON.stringify(list));
+    return true; // guardado efectivo (el caller lo usa para avisos tardíos)
+  } catch (e) {
+    console.error('_appendApproverComment_ error (la aprobación NO se afecta): ' + e);
+  }
+  return false;
+}
+
 function processApprovalFromEmail(e) {
   const id = e.parameter.id;
   const decision = e.parameter.decision; // 'approved' or 'denied'
@@ -2244,6 +2342,10 @@ function processApprovalFromEmail(e) {
   const actor = e.parameter.actor; // NEW: Specific email of the person acting
   const sigT = e.parameter.t;
   const sigVal = e.parameter.sig;
+  // Comentario OPCIONAL del aprobador (viene de renderApprovalCommentPage).
+  // GAS ya URL-decodifica e.parameter — NO aplicar decodeURIComponent aquí.
+  // Cap defensivo de 1000 chars (la página limita a 500 vía maxlength).
+  const approvalComment = String(e.parameter.comment || '').trim().substring(0, 1000);
 
   // SEGURIDAD: verificar firma HMAC del link. Si el link es legacy (sin firma)
   // y APPROVAL_LINK_HMAC_CUTOVER_AT aún no pasó, se acepta con warning.
@@ -2256,24 +2358,19 @@ function processApprovalFromEmail(e) {
     console.log('Approval link LEGACY aceptado (pre-cutover): ' + _verify.reason + ' | id=' + id);
   }
 
-  const decisionLabel = decision === 'approved' ? 'APROBAR' : 'DENEGAR';
   const decisionColor = decision === 'approved' ? '#059669' : '#D71920';
 
   if (confirm !== 'true') {
-      // Propagamos t y sig a la URL de confirmación para que la segunda
-      // pasada también pase la validación HMAC.
-      const _sigQuery = (sigT && sigVal) ? `&t=${encodeURIComponent(sigT)}&sig=${encodeURIComponent(sigVal)}` : '';
+      // t y sig se propagan DENTRO de cada página (renderDenialReasonPage /
+      // renderApprovalCommentPage) para que la segunda pasada también pase
+      // la validación HMAC.
       if (decision === 'denied') {
           return renderDenialReasonPage(id, role, actor, decisionColor, sigT, sigVal);
       }
-      const url = `${WEB_APP_URL}?action=approve&id=${id}&decision=${decision}&role=${role}&confirm=true&actor=${encodeURIComponent(actor || '')}${_sigQuery}`;
-      return renderConfirmationPage(
-          `Confirmar Decisión`,
-          `¿Está seguro de <strong>${decisionLabel}</strong> la solicitud <strong>${id}</strong>?`,
-          `SÍ, ${decisionLabel}`,
-          url,
-          decisionColor
-      );
+      // APROBAR: página con comentario OPCIONAL del aprobador (solicitud de
+      // Yurani 2026-07-27). Reemplaza la confirmación genérica — sigue siendo
+      // un solo click para aprobar; el comentario nunca es obligatorio.
+      return renderApprovalCommentPage(id, role, actor, decisionColor, sigT, sigVal);
   }
 
   const lock = LockService.getScriptLock();
@@ -2448,25 +2545,59 @@ function processApprovalFromEmail(e) {
           }
 
           // METRICS: registrar evento de aprobación (solo si es approval, no denial)
+          let commentSaved = false;
           if (isApproved) {
               _recordEvent_(id, 'approval', { role: role, email: approverEmail });
+              // COMENTARIO DEL APROBADOR (opcional): se guarda junto al voto —
+              // después del guard alreadyDecided (clicks duplicados NO guardan)
+              // y antes del flush, de modo que el click que completa la
+              // aprobación ya deja el comentario visible para el correo final
+              // (updateRequestStatus re-lee la fila). Nunca lanza (ver helper).
+              if (approvalComment) {
+                  commentSaved = _appendApproverComment_(sheet, rowNumber, role, approverEmail, actor, approvalComment) === true;
+              }
           }
 
           SpreadsheetApp.flush(); // Ensure log is written before potential denial return
 
           // CHECK IF ALREADY ADVANCED - IF SO, STOP HERE
           if (isAdvancedStatus) {
+              // COMENTARIO TARDÍO: la solicitud ya avanzó (p. ej. ya se reservó)
+              // y este aprobador dejó una instrucción que ya no saldría en el
+              // correo de aprobación (enviado antes). Sin este aviso, quedaría
+              // guardada en silencio — avisar al área de viajes para que
+              // verifique si afecta la gestión ya realizada.
+              if (commentSaved) {
+                  try {
+                      const lateReq = mapRowToRequest(currentRow);
+                      const lateSubject = getStandardSubject(lateReq) + ' [COMENTARIO TARDÍO DE APROBADOR]';
+                      const lateHtml = HtmlTemplates.layout(
+                          id,
+                          `<p style="font-size:14px; color:#111827;">El aprobador <strong>${escapeHtml_(approverEmail)}</strong> (${escapeHtml_(_approverRoleLabel_(role))}) registró su aprobación <strong>después</strong> de que la solicitud ya había avanzado (estado actual: <strong>${escapeHtml_(String(currentStatus))}</strong>) y dejó este comentario:</p>
+                           <div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#374151; font-style:italic;">"${escapeHtml_(approvalComment).replace(/\n/g, '<br/>')}"</div>
+                           <p style="font-size:13px; color:#4b5563;">Por favor verifique si esta instrucción afecta la gestión ya realizada (p. ej. una compra o reserva en curso).</p>`,
+                          '#f59e0b',
+                          'COMENTARIO TARDÍO DE APROBADOR'
+                      );
+                      sendEmailRich(ADMIN_EMAIL, lateSubject, lateHtml, null);
+                  } catch (eLate) {
+                      console.error('Error notificando comentario tardío de aprobador: ' + eLate);
+                  }
+              }
               return renderMessagePage(
-                  'Decisión Registrada', 
-                  `Su decisión ha sido registrada en el sistema.<br/><br/><strong>Nota:</strong> Esta solicitud ya había avanzado previamente y se encuentra en estado: <span style="color:blue">${escapeHtml_(currentStatus)}</span>. El flujo no se ha modificado.`,
+                  'Decisión Registrada',
+                  `Su decisión ha sido registrada en el sistema.${commentSaved ? '<br/>Su comentario también quedó registrado y se avisó al área de viajes.' : ''}<br/><br/><strong>Nota:</strong> Esta solicitud ya había avanzado previamente y se encuentra en estado: <span style="color:blue">${escapeHtml_(currentStatus)}</span>. El flujo no se ha modificado.`,
                   '#374151'
               );
           }
 
           // 2. REJECTION: Any rejection kills the request instantly (ONLY IF NOT ADVANCED)
           if (!isApproved) {
-              // Save denial reason to observations if provided
-              const denialReason = e.parameter.reason ? decodeURIComponent(e.parameter.reason) : '';
+              // Save denial reason to observations if provided.
+              // _safeDecode_: e.parameter ya viene decodificado — el decode extra
+              // legacy lanzaba URIError con '%' literal (ej. "excede el 10%")
+              // dejando la solicitud varada con voto registrado y sin status.
+              const denialReason = e.parameter.reason ? _safeDecode_(e.parameter.reason) : '';
               if (denialReason) {
                   const obsIdx = H("OBSERVACIONES");
                   const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
@@ -4217,12 +4348,38 @@ const HtmlTemplates = {
             </div>`;
         }
 
+        // COMENTARIOS DE LOS APROBADORES (2026-07-27): bloque prominente en el
+        // correo de aprobación. La instrucción del aprobador prima sobre la
+        // selección del usuario (ej: "solo comprar tiquete, sin hotel"), por lo
+        // que tanto el solicitante como el área de viajes (CC) deben verla.
+        let approverCommentsBlock = '';
+        const _apprComments = (isApproved && Array.isArray(request.approverComments))
+            ? request.approverComments.filter(function(c) { return c && c.comment; })
+            : [];
+        if (_apprComments.length > 0) {
+            const _apprItems = _apprComments.map(function(c) {
+                return '<div style="background-color: #ffffff; border: 1px solid #fde68a; border-radius: 6px; padding: 10px 12px; margin-top: 8px;">'
+                    + '<div style="font-size: 11px; font-weight: bold; color: #92400e; margin-bottom: 4px;">'
+                    + escapeHtml_(_approverRoleLabel_(c.role))
+                    + (c.email ? ' <span style="font-weight: normal; color: #b45309;">(' + escapeHtml_(c.email) + ')</span>' : '')
+                    + '</div>'
+                    + '<div style="font-size: 13px; color: #374151; font-style: italic; line-height: 1.5;">"' + escapeHtml_(c.comment).replace(/\n/g, '<br/>') + '"</div>'
+                    + '</div>';
+            }).join('');
+            approverCommentsBlock = `
+            <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 15px; margin: 20px 0; text-align: left;">
+                <div style="font-size: 12px; font-weight: bold; color: #92400e; text-transform: uppercase;">📝 Comentarios de los aprobadores — por favor téngalos en cuenta</div>
+                ${_apprItems}
+            </div>`;
+        }
+
         const content = `
             <div style="text-align: center; margin-bottom: 25px;">
                 <div style="font-size: 40px; margin-bottom: 10px;">${icon}</div>
                 <div style="font-size: 16px; color: #374151;">Su solicitud de ${request.requestMode === 'HOTEL_ONLY' ? 'hospedaje' : 'viaje'} <strong>${request.requestId}</strong> ha sido <strong style="color: ${color};">${status}</strong>.</div>
             </div>
             ${denialReasonBlock}
+            ${approverCommentsBlock}
             ${isApproved ? `<div style="text-align: center; margin-bottom: 30px;"><a href="${PLATFORM_URL}" style="background-color: #111827; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; font-size: 12px;">Ingresar a la Plataforma</a></div>` : ''}
 
             <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;">
@@ -4350,7 +4507,7 @@ function renderConfirmationPage(title, message, actionText, actionUrl, color) {
 function renderDenialReasonPage(id, role, actor, color, sigT, sigVal) {
     const safeId = escapeHtml_(id);
     const safeRole = escapeHtml_(role);
-    const _sigQueryJs = (sigT && sigVal) ? ('&t=' + encodeURIComponent(sigT) + '&sig=' + encodeURIComponent(sigVal)) : '';
+    const _sigQueryJs = (sigT && sigVal) ? ('&t=' + _jsUrlParam_(sigT) + '&sig=' + _jsUrlParam_(sigVal)) : '';
     const html = `
     <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Denegar Solicitud</title>
     <style>
@@ -4371,7 +4528,7 @@ function renderDenialReasonPage(id, role, actor, color, sigT, sigVal) {
       function submitDenial(){
         var reason = document.getElementById('reason').value.trim();
         var encodedReason = encodeURIComponent(reason);
-        var url = '${WEB_APP_URL}?action=approve&id=${encodeURIComponent(id)}&decision=denied&role=${encodeURIComponent(role)}&confirm=true&actor=${encodeURIComponent(actor || '')}${_sigQueryJs}' + (reason ? '&reason=' + encodedReason : '');
+        var url = '${WEB_APP_URL}?action=approve&id=${_jsUrlParam_(id)}&decision=denied&role=${_jsUrlParam_(role)}&confirm=true&actor=${_jsUrlParam_(actor || '')}${_sigQueryJs}' + (reason ? '&reason=' + encodedReason : '');
         document.getElementById('form-card').style.display='none';
         document.getElementById('loading-card').style.display='block';
         window.top.location.href = url;
@@ -4390,6 +4547,58 @@ function renderDenialReasonPage(id, role, actor, color, sigT, sigVal) {
     <div id="loading-card" class="card loading"><h1>Procesando...</h1><p>Por favor espere.</p></div>
     </body></html>`;
     return HtmlService.createHtmlOutput(html).setTitle('Denegar Solicitud').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+/**
+ * Página de confirmación de APROBACIÓN con comentario OPCIONAL (espejo de
+ * renderDenialReasonPage). El aprobador puede escribir una salvedad (ej:
+ * "solo comprar tiquete, no se requiere hotel") que quedará registrada y
+ * visible para el área de viajes y el solicitante. El textarea es opcional:
+ * un click en "SÍ, APROBAR" con el campo vacío aprueba exactamente igual
+ * que antes. El comentario viaja como &comment= SIN firmar (mismo modelo de
+ * confianza que el &reason= de denegación: el link firmado es la credencial).
+ */
+function renderApprovalCommentPage(id, role, actor, color, sigT, sigVal) {
+    const safeId = escapeHtml_(id);
+    const _sigQueryJs = (sigT && sigVal) ? ('&t=' + _jsUrlParam_(sigT) + '&sig=' + _jsUrlParam_(sigVal)) : '';
+    const html = `
+    <!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Aprobar Solicitud</title>
+    <style>
+      body{font-family:sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:16px}
+      .card{background:white;padding:30px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);text-align:center;max-width:440px;width:100%}
+      h1{color:${color};font-size:20px;margin-bottom:8px}
+      .id-badge{font-family:monospace;font-size:14px;background:#d1fae5;color:#065f46;padding:4px 12px;border-radius:4px;display:inline-block;margin-bottom:16px}
+      p{color:#374151;font-size:14px;line-height:1.5}
+      textarea{width:100%;min-height:80px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:sans-serif;font-size:13px;resize:vertical;box-sizing:border-box;margin-top:8px}
+      textarea:focus{outline:none;border-color:${color};box-shadow:0 0 0 2px rgba(5,150,105,0.15)}
+      label{display:block;text-align:left;font-size:12px;font-weight:bold;color:#6b7280;text-transform:uppercase;margin-top:16px}
+      .hint{text-align:left;font-size:11px;color:#9ca3af;margin-top:4px}
+      .btn{background:${color};color:white;padding:12px 24px;border:none;border-radius:4px;cursor:pointer;font-size:15px;font-weight:bold;margin-top:20px;width:100%}
+      .btn:hover{opacity:0.9}
+      .loading{display:none}
+    </style>
+    <script>
+      function submitApproval(){
+        var comment = document.getElementById('comment').value.trim();
+        var url = '${WEB_APP_URL}?action=approve&id=${_jsUrlParam_(id)}&decision=approved&role=${_jsUrlParam_(role)}&confirm=true&actor=${_jsUrlParam_(actor || '')}${_sigQueryJs}' + (comment ? '&comment=' + encodeURIComponent(comment) : '');
+        document.getElementById('form-card').style.display='none';
+        document.getElementById('loading-card').style.display='block';
+        window.top.location.href = url;
+      }
+    </script>
+    </head><body>
+    <div id="form-card" class="card">
+      <h1>Aprobar Solicitud</h1>
+      <div class="id-badge">${safeId}</div>
+      <p>¿Está seguro de <strong>APROBAR</strong> esta solicitud?</p>
+      <label for="comment">Comentario para el área de viajes (opcional)</label>
+      <textarea id="comment" maxlength="500" placeholder="Ej: Solo comprar el tiquete, no se requiere hotel. / Comprar en tarifa económica..."></textarea>
+      <div class="hint">Opcional — si escribe algo, será visible para el área de viajes y el solicitante, y se tendrá en cuenta al hacer la reserva.</div>
+      <button onclick="submitApproval()" class="btn">SÍ, APROBAR</button>
+    </div>
+    <div id="loading-card" class="card loading"><h1>Procesando...</h1><p>Por favor espere.</p></div>
+    </body></html>`;
+    return HtmlService.createHtmlOutput(html).setTitle('Aprobar Solicitud').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
 }
 
 function renderMessagePage(title, message, color) {
@@ -6874,6 +7083,16 @@ function mapRowToRequest(row, lite) {
   try { selectedOption = JSON.parse(get("SELECCION (JSON)") || 'null'); } catch(e){}
   try { supportData = JSON.parse(get("SOPORTES (JSON)") || 'null'); } catch(e){}
 
+  // COMENTARIOS DE APROBADORES: se parsea SIEMPRE (también en lite) porque el
+  // dashboard admin pasa la fila lite directo al ReservationModal, que debe
+  // mostrar los comentarios antes de comprar. El JSON es pequeño (≤4 entradas).
+  let approverComments = [];
+  try {
+    approverComments = JSON.parse(get("COMENTARIOS APROBADORES (JSON)") || '[]');
+  } catch(e){ approverComments = []; }
+  if (!Array.isArray(approverComments)) approverComments = [];
+  approverComments = approverComments.filter(function(c) { return c && typeof c === 'object' && c.comment; });
+
   const areaVal = String(get("APROBADO POR ÁREA? (AUTOMÁTICO)"));
   const areaTimeVal = getTimestampStr(get("FECHA/HORA (AUTOMÁTICO)"));
   const approvalStatusArea = areaVal && areaTimeVal ? `${areaVal}_${areaTimeVal}` : areaVal;
@@ -6902,7 +7121,7 @@ function mapRowToRequest(row, lite) {
     nights: Number(get("# NOCHES (AUTOMÁTICO)")) || 0,
     approverName: String(get("QUIÉN APRUEBA? (AUTOMÁTICO)")),
     approverEmail: String(get("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)")),
-    analystOptions, selectedOption, supportData,
+    analystOptions, selectedOption, supportData, approverComments,
     departureTimePreference: safeTime(get("HORA LLEGADA VUELO IDA")),
     returnTimePreference: safeTime(get("HORA LLEGADA VUELO VUELTA")),
     // Oculta el marcador interno de consulta para que no aparezca en correos/UI.
@@ -8967,6 +9186,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Reevaluar aprobadores (solicitudes pendientes)', 'menuReevaluarAprobadores')
     .addItem('Validar columnas actuales', 'validarColumnasActivas')
+    .addItem('Agregar columna Comentarios Aprobadores', 'menuAgregarColumnaComentarios')
     .addSeparator()
     .addItem(modoLabel, 'mostrarModoActivo')
     .addSeparator()
@@ -9027,6 +9247,83 @@ function agregarColumnasPasaporte() {
 
   SpreadsheetApp.flush();
   ui.alert('Columnas de pasaporte agregadas:\n\n' + added.join('\n') + '\n\nLos datos existentes no se tocaron.');
+}
+
+/**
+ * MIGRACIÓN IDEMPOTENTE (UI-free): agrega la columna
+ * "COMENTARIOS APROBADORES (JSON)" a 'Nueva Base Solicitudes' si aún no
+ * existe. Ejecutable directo desde el editor GAS (sin contexto de UI) o vía
+ * el wrapper de menú `menuAgregarColumnaComentarios`.
+ *
+ * A PROPÓSITO no se usa setupDatabase() para esta migración: esa función
+ * recrearía la hoja INTEGRANTES (eliminada de producción el 2026-04-24).
+ *
+ * Deploy-safety: mientras esta migración no se corra, el backend nuevo
+ * descarta los comentarios con un warning (guard H() === -1) y la aprobación
+ * funciona idéntica a hoy. El backend viejo ignora la columna extra.
+ *
+ * @returns {{added: boolean, col?: number, reason?: string}}
+ */
+function agregarColumnaComentariosAprobadores() {
+  var HEADER = 'COMENTARIOS APROBADORES (JSON)';
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) {
+    Logger.log('agregarColumnaComentariosAprobadores: hoja "' + SHEET_NAME_REQUESTS + '" no encontrada.');
+    return { added: false, reason: 'hoja no encontrada' };
+  }
+  var lastCol = sheet.getLastColumn();
+  var rawHeaders = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var normIdx = rawHeaders.map(_normalizeHeader_).indexOf(HEADER);
+  if (normIdx !== -1) {
+    // Ya existe. Si el texto difiere del canónico (NBSP, espacios dobles…),
+    // H() —que matchea por trim exacto— NO la encontraría y los comentarios
+    // se descartarían en silencio. Auto-reparar: reescribir el header al
+    // string canónico exacto.
+    var exact = String(rawHeaders[normIdx] == null ? '' : rawHeaders[normIdx]).trim();
+    if (exact !== HEADER) {
+      sheet.getRange(1, normIdx + 1).setValue(HEADER);
+      _clearReqHeadersCache_();
+      SpreadsheetApp.flush();
+      Logger.log('agregarColumnaComentariosAprobadores: la columna existía con texto no-canónico ("' + exact + '"); header normalizado en la posición ' + (normIdx + 1) + '.');
+      return { added: false, reason: 'ya existía (header normalizado al canónico)', col: normIdx + 1 };
+    }
+    Logger.log('agregarColumnaComentariosAprobadores: la columna ya existe. No se hizo ningún cambio.');
+    return { added: false, reason: 'ya existe', col: normIdx + 1 };
+  }
+  var nextCol = lastCol + 1;
+  // Grid recortado al ancho exacto de los datos → sin celdas libres a la
+  // derecha; getRange(1, nextCol) lanzaría. Insertar la columna primero.
+  if (lastCol > 0 && sheet.getMaxColumns() < nextCol) {
+    sheet.insertColumnsAfter(lastCol, 1);
+  }
+  sheet.getRange(1, nextCol).setValue(HEADER)
+    .setFontWeight('bold').setBackground('#D71920').setFontColor('white');
+  sheet.setColumnWidth(nextCol, 260);
+  sheet.getRange(1, nextCol).setNote('Array JSON [{role, email, comment, at}] con el comentario opcional que cada aprobador dejó al aprobar. Lo escribe el sistema — NO editar manualmente.');
+  _clearReqHeadersCache_();
+  SpreadsheetApp.flush();
+  Logger.log('agregarColumnaComentariosAprobadores: columna agregada en la posición ' + nextCol + '.');
+  return { added: true, col: nextCol };
+}
+
+/**
+ * Wrapper de menú para agregarColumnaComentariosAprobadores() — muestra el
+ * resultado con ui.alert. El core es UI-free para poder ejecutarse también
+ * desde el editor (donde getUi() no está disponible).
+ */
+function menuAgregarColumnaComentarios() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    var r = agregarColumnaComentariosAprobadores();
+    if (r.added) {
+      ui.alert('Columna agregada', 'Se agregó "COMENTARIOS APROBADORES (JSON)" en la columna ' + r.col + '.\n\nLos datos existentes no se tocaron.', ui.ButtonSet.OK);
+    } else {
+      ui.alert('Sin cambios', 'No se agregó la columna: ' + (r.reason || 'motivo desconocido') + '.', ui.ButtonSet.OK);
+    }
+  } catch (e) {
+    ui.alert('Error', String(e), ui.ButtonSet.OK);
+  }
 }
 
 /**

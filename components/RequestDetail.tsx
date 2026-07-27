@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { TravelRequest, RequestStatus, Integrant, SupportFile, PassportStatus } from '../types';
+import { TravelRequest, RequestStatus, Integrant, SupportFile, PassportStatus, APPROVER_ROLE_LABELS } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { getDaysDiff, formatToDDMMYYYY, formatLongDateTime } from '../utils/dateUtils';
@@ -29,12 +29,14 @@ const ApprovalStatusRow = ({
     label,
     effectiveStatus,
     rawStatusString,
-    naReason
+    naReason,
+    comment
 }: {
     label: string;
     effectiveStatus?: EffectiveStatus;
     rawStatusString?: string;
     naReason?: string;
+    comment?: string;
 }) => {
     // Extract date from the raw status string (format: "Sí_email_dd/m/yyyy hh:mm" or "Sí_email")
     const parts = rawStatusString ? rawStatusString.split('_') : [];
@@ -85,6 +87,11 @@ const ApprovalStatusRow = ({
                 <span className="text-gray-600 font-medium">{label}</span>
                 {effectiveStatus === 'NA' && naReason && (
                     <span className="text-[11px] text-gray-400 italic mt-0.5">{naReason}</span>
+                )}
+                {comment && (
+                    <span className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-1 mt-1 italic whitespace-pre-wrap break-words">
+                        💬 "{comment}"
+                    </span>
                 )}
             </div>
             <div className="text-right flex-shrink-0">{renderBadge()}</div>
@@ -1122,18 +1129,21 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                             effectiveStatus={request.effectiveApprovalArea}
                                             rawStatusString={request.approvalStatusArea}
                                             naReason={request.effectiveApprovalAreaReason}
+                                            comment={request.approverComments?.find(c => c.role === 'NORMAL')?.comment}
                                         />
                                         <ApprovalStatusRow
                                             label="Gerencia General (CEO)"
                                             effectiveStatus={request.effectiveApprovalCeo}
                                             rawStatusString={request.approvalStatusCEO}
                                             naReason={request.effectiveApprovalCeoReason}
+                                            comment={request.approverComments?.find(c => c.role === 'CEO')?.comment}
                                         />
                                         <ApprovalStatusRow
                                             label="Dirección Cadena Suministro"
                                             effectiveStatus={request.effectiveApprovalCds}
                                             rawStatusString={request.approvalStatusCDS}
                                             naReason={request.effectiveApprovalCdsReason}
+                                            comment={request.approverComments?.find(c => c.role === 'CDS')?.comment}
                                         />
                                         {/* Solo aparece si la solicitud tiene flag de presupuesto excedido */}
                                         {request.requiresBudgetOverrunApproval && (
@@ -1142,9 +1152,21 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                 effectiveStatus={request.effectiveApprovalBudgetOverrun}
                                                 rawStatusString={request.approvalStatusBudgetOverrun}
                                                 naReason={request.effectiveApprovalBudgetOverrunReason}
+                                                comment={request.approverComments?.find(c => c.role === 'BUDGET_OVERRUN')?.comment}
                                             />
                                         )}
                                     </div>
+
+                                    {/* Comentarios cuyo rol no tiene fila visible (ej. BUDGET_OVERRUN
+                                        cuando la exención por OT apagó esa fila) — no deben perderse. */}
+                                    {(request.approverComments || [])
+                                        .filter(c => !['NORMAL', 'CEO', 'CDS'].includes(c.role) &&
+                                                     !(c.role === 'BUDGET_OVERRUN' && request.requiresBudgetOverrunApproval))
+                                        .map((c, i) => (
+                                            <div key={`orphan-comment-${i}`} className="mt-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 italic whitespace-pre-wrap break-words">
+                                                💬 <strong>{APPROVER_ROLE_LABELS[c.role] || c.role}:</strong> "{c.comment}"
+                                            </div>
+                                        ))}
                                 </section>
 
                             </div>
