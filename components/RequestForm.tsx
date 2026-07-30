@@ -139,7 +139,12 @@ const TramoFields: React.FC<TramoFieldsProps> = ({
           <input id={`tramoHotel${index}`} type="checkbox" className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded"
             checked={tramo.requiresHotel} disabled={disabled}
             onChange={(e) => onUpdate(index, 'requiresHotel', e.target.checked)} />
-          <label htmlFor={`tramoHotel${index}`} className="text-sm font-medium text-gray-700">¿Requiere Hospedaje en este tramo?</label>
+          <label htmlFor={`tramoHotel${index}`} className="text-sm font-medium text-gray-700">
+            ¿Requiere Hospedaje en el Tramo {legNumber}?
+            {tramo.destination && (
+              <span className="text-blue-700 font-semibold"> (hospedaje en {tramo.destination.split(',')[0].trim()})</span>
+            )}
+          </label>
         </div>
         {tramo.requiresHotel && (
           <div className="bg-blue-50 p-4 rounded-md border border-blue-100 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1569,6 +1574,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </div>
           </div>
 
+          {/* En multidestino, el bloque del Tramo 1 (ciudades + fecha + hospedaje)
+              va en la misma caja morada que los tramos extra. */}
+          <div className={multiDestino ? 'border border-purple-200 rounded-lg p-4 bg-purple-50/40' : ''}>
           {multiDestino && (
             <div className="mb-2 flex items-center gap-2">
               <span className="bg-purple-100 text-purple-800 text-xs font-bold px-2 py-0.5 rounded">Tramo 1 de {extraTramos.length + 1}</span>
@@ -1642,8 +1650,53 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             )}
           </div>
 
-          {/* MULTIDESTINO: tramos extra (el hospedaje del tramo 1 sigue en la
-              sección de hotel de abajo; cada tramo extra trae el suyo). */}
+          {/* MULTIDESTINO: hospedaje del Tramo 1 dentro de su bloque, con la
+              misma estructura que los tramos extra. */}
+          {multiDestino && (
+            <div className="mt-4">
+              <div className="flex items-center gap-3 mb-2">
+                <input id="hotelTramo1" type="checkbox" className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded"
+                  checked={requiresHotel} disabled={loading || isLocked}
+                  onChange={(e) => {
+                    setRequiresHotel(e.target.checked);
+                    if (e.target.checked && (!numberOfNights || numberOfNights <= 0)) {
+                      const s = suggestedNightsForLeg(0);
+                      if (s > 0) setNumberOfNights(s);
+                    }
+                  }} />
+                <label htmlFor="hotelTramo1" className="text-sm font-medium text-gray-700">
+                  ¿Requiere Hospedaje en el Tramo 1?
+                  {formData.destination && (
+                    <span className="text-blue-700 font-semibold"> (hospedaje en {formData.destination.split(',')[0].trim()})</span>
+                  )}
+                </label>
+              </div>
+              {requiresHotel && (
+                <div className="bg-blue-50 p-4 rounded-md border border-blue-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Nombre del Hotel (Preferencia) *</label>
+                    <input type="text" name="hotelName" required
+                      className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 uppercase text-gray-900"
+                      value={formData.hotelName} disabled={loading || isLocked}
+                      onChange={handleInputChange} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Número de Noches *</label>
+                    <input type="number" min={1} required
+                      className="mt-1 block w-32 bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900"
+                      value={numberOfNights || ''} disabled={loading || isLocked}
+                      onChange={(e) => setNumberOfNights(parseInt(e.target.value) || 0)} />
+                    {suggestedNightsForLeg(0) > 0 && (
+                      <p className="text-[11px] text-gray-500 mt-1 italic">Sugerencia: {suggestedNightsForLeg(0)} noche{suggestedNightsForLeg(0) > 1 ? 's' : ''} (hasta el siguiente tramo).</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          </div>
+
+          {/* MULTIDESTINO: tramos extra — cada tramo trae su propio hospedaje. */}
           {multiDestino && extraTramos.map((t, i) => (
             <TramoFields
               key={`tramo-${i}`}
@@ -1669,16 +1722,18 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           )}
         </div>
 
+        {/* Section 4: Hotel — siempre visible y forzado para hotel-only, toggle para vuelos.
+            En multidestino NO se renderiza: el hospedaje del Tramo 1 vive dentro de su bloque. */}
+        {!multiDestino && (<>
         <hr />
 
-        {/* Section 4: Hotel — siempre visible y forzado para hotel-only, toggle para vuelos */}
         <div>
           {!isHotelOnly && (
             <div className="flex items-center gap-3 mb-4">
               <div className="flex items-center h-5">
                 <input id="hotel" type="checkbox" className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded" checked={requiresHotel} onChange={(e) => setRequiresHotel(e.target.checked)} />
               </div>
-              <div className="text-sm"><label htmlFor="hotel" className="font-medium text-gray-700">¿Requiere Hospedaje{multiDestino ? ' en el Tramo 1' : ''}?</label></div>
+              <div className="text-sm"><label htmlFor="hotel" className="font-medium text-gray-700">¿Requiere Hospedaje?</label></div>
             </div>
           )}
           {isHotelOnly && (
@@ -1706,9 +1761,6 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Número de Noches *</label>
                     <input type="number" min="1" required className="mt-1 block w-32 bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={numberOfNights} onChange={(e) => setNumberOfNights(parseInt(e.target.value) || 0)} />
-                    {multiDestino && suggestedNightsForLeg(0) > 0 && (
-                      <p className="text-[11px] text-gray-500 mt-1 italic">Sugerencia: {suggestedNightsForLeg(0)} noche{suggestedNightsForLeg(0) > 1 ? 's' : ''} (hasta el tramo 2).</p>
-                    )}
                   </div>
                 ) : (
                   <div><span className="text-sm text-gray-600">Noches calculadas: </span><span className="font-bold text-gray-900 text-lg">{numberOfNights}</span></div>
@@ -1717,6 +1769,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </div>
           )}
         </div>
+        </>)}
 
         <hr />
 
