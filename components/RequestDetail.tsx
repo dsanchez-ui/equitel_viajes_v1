@@ -768,7 +768,7 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                 {request.comments && (
                                     <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-4">
                                         <h4 className="text-xs font-bold text-yellow-800 uppercase tracking-wider mb-2">Observaciones / Notas</h4>
-                                        <p className="text-sm text-gray-800 italic">{request.comments}</p>
+                                        <p className="text-sm text-gray-800 italic whitespace-pre-line">{request.comments}</p>
                                     </div>
                                 )}
 

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster, PassportStatus } from '../types';
 import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
@@ -20,6 +20,152 @@ interface RequestFormProps {
 
 type TripType = 'ROUND_TRIP' | 'ONE_WAY';
 type RequestMode = 'FLIGHT' | 'HOTEL_ONLY';
+
+// =====================================================================
+// MULTIDESTINO (viaje por tramos) — caso Simón García / Yurani 2026-07-28
+// =====================================================================
+// El toggle "Viaje multidestino" permite agregar tramos extra al itinerario.
+// Cada tramo es SOLO-IDA y al enviar se crea UNA solicitud estándar por
+// tramo (secuencial), enlazadas por una nota [MULTIDESTINO] en observaciones.
+// El backend NO cambia: cada solicitud vive su ciclo normal por separado.
+// =====================================================================
+
+interface ExtraTramo {
+  origin: string;
+  destination: string;
+  departureDate: string; // YYYY-MM-DD (formato del input date)
+  departureTimePreference: string;
+  requiresHotel: boolean;
+  hotelName: string;
+  nights: number;
+}
+
+// 4 tramos extra = 5 solicitudes por envío. Deja margen bajo el rate limit
+// del backend (10 creaciones/día por solicitante).
+const MAX_EXTRA_TRAMOS = 4;
+
+// Matemática de política de anticipación extraída del effect original
+// (comportamiento idéntico): umbral 30 días internacional / 8 nacional.
+// Pura para poder evaluarla POR TRAMO además del estado global.
+const computePolicyViolation = (dateYYYYMMDD: string | undefined, isIntl: boolean): boolean => {
+  if (!dateYYYYMMDD) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const depDate = parseDate(dateYYYYMMDD);
+  depDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((depDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return diffDays < (isIntl ? 30 : 8);
+};
+
+interface TramoFieldsProps {
+  index: number; // índice dentro de extraTramos (número visible = index + 2)
+  tramo: ExtraTramo;
+  totalLegs: number;
+  cities: CityMaster[];
+  isCitiesLoading: boolean;
+  minDate: string;
+  intl: boolean | null;
+  suggestedNights: number;
+  disabled: boolean;
+  onUpdate: (index: number, field: keyof ExtraTramo, value: string | boolean | number) => void;
+  onRemove: (index: number) => void;
+  onOpenPicker: (e: React.MouseEvent<HTMLInputElement>) => void;
+}
+
+// Bloque de campos de un tramo extra — espejo del itinerario del tramo 1
+// (CityCombobox + fecha + hora) más un sub-bloque compacto de hotel.
+const TramoFields: React.FC<TramoFieldsProps> = ({
+  index, tramo, totalLegs, cities, isCitiesLoading, minDate, intl,
+  suggestedNights, disabled, onUpdate, onRemove, onOpenPicker
+}) => {
+  const legNumber = index + 2;
+  return (
+    <div className="mt-4 border border-purple-200 rounded-lg p-4 bg-purple-50/40">
+      <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <span className="bg-purple-100 text-purple-800 text-xs font-bold px-2 py-0.5 rounded">Tramo {legNumber} de {totalLegs}</span>
+          {intl === true && (
+            <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200">Internacional 🌍</span>
+          )}
+        </div>
+        <button type="button" onClick={() => onRemove(index)} disabled={disabled} className="text-red-500 text-xs font-bold hover:text-red-700 disabled:opacity-50">
+          ✕ Quitar tramo
+        </button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Ciudad Origen *</label>
+          <CityCombobox
+            name={`tramoOrigin${index}`}
+            value={tramo.origin}
+            cities={cities}
+            isLoading={isCitiesLoading}
+            onChange={(_n, v) => onUpdate(index, 'origin', v)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Ciudad Destino *</label>
+          <CityCombobox
+            name={`tramoDest${index}`}
+            value={tramo.destination}
+            cities={cities}
+            isLoading={isCitiesLoading}
+            onChange={(_n, v) => onUpdate(index, 'destination', v)}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Fecha Salida *</label>
+          <input type="date" required min={minDate} style={{ colorScheme: 'light' }}
+            className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer"
+            value={tramo.departureDate}
+            onChange={(e) => onUpdate(index, 'departureDate', e.target.value)}
+            onClick={onOpenPicker}
+            disabled={disabled}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Hora Requerida de Vuelo (Pref.)</label>
+          <input type="time" style={{ colorScheme: 'light' }}
+            className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer"
+            value={tramo.departureTimePreference}
+            onChange={(e) => onUpdate(index, 'departureTimePreference', e.target.value)}
+            onClick={onOpenPicker}
+            disabled={disabled}
+          />
+        </div>
+      </div>
+      <div className="mt-4">
+        <div className="flex items-center gap-3 mb-2">
+          <input id={`tramoHotel${index}`} type="checkbox" className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded"
+            checked={tramo.requiresHotel} disabled={disabled}
+            onChange={(e) => onUpdate(index, 'requiresHotel', e.target.checked)} />
+          <label htmlFor={`tramoHotel${index}`} className="text-sm font-medium text-gray-700">¿Requiere Hospedaje en este tramo?</label>
+        </div>
+        {tramo.requiresHotel && (
+          <div className="bg-blue-50 p-4 rounded-md border border-blue-100 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Nombre del Hotel (Preferencia) *</label>
+              <input type="text" required
+                className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 uppercase text-gray-900"
+                value={tramo.hotelName} disabled={disabled}
+                onChange={(e) => onUpdate(index, 'hotelName', e.target.value.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9\s,]/g, ''))} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Número de Noches *</label>
+              <input type="number" min={1} required
+                className="mt-1 block w-32 bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900"
+                value={tramo.nights || ''} disabled={disabled}
+                onChange={(e) => onUpdate(index, 'nights', parseInt(e.target.value) || 0)} />
+              {suggestedNights > 0 && (
+                <p className="text-[11px] text-gray-500 mt-1 italic">Sugerencia: {suggestedNights} noche{suggestedNights > 1 ? 's' : ''} (hasta el siguiente tramo).</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const RequestForm: React.FC<RequestFormProps> = ({
   userEmail,
@@ -56,6 +202,20 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const [isInternational, setIsInternational] = useState<boolean>(initialData ? !!initialData.isInternational : false);
   const [policyViolation, setPolicyViolation] = useState<boolean>(false);
 
+  // ===== MULTIDESTINO state =====
+  const [multiDestino, setMultiDestino] = useState<boolean>(false);
+  const [extraTramos, setExtraTramos] = useState<ExtraTramo[]>([]);
+  // Bookkeeping de creación por tramos (fallo parcial / reintento):
+  //  - createdLegIds: índice de tramo → SOL-xxxxxx ya creado (se salta al reintentar)
+  //  - pendingSubmissionRef: snapshot CONGELADO de {payload, emailHtml} por tramo,
+  //    construido una sola vez en el primer envío — la numeración e itinerario
+  //    de la nota no pueden divergir entre reintentos.
+  const [createdLegIds, setCreatedLegIds] = useState<Record<number, string>>({});
+  const [submitProgress, setSubmitProgress] = useState<{ current: number; total: number } | null>(null);
+  const [submitError, setSubmitError] = useState<{ legIndex: number; message: string; maybeCreated: boolean } | null>(null);
+  const pendingSubmissionRef = useRef<{ payload: Partial<TravelRequest>; emailHtml: string }[] | null>(null);
+  const isLocked = Object.keys(createdLegIds).length > 0;
+
   // Master Data State
   const [masterData, setMasterData] = useState<CostCenterMaster[]>([]);
   const [availableBusinessUnits, setAvailableBusinessUnits] = useState<string[]>([]);
@@ -64,6 +224,17 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   // Cities Data
   const [cities, setCities] = useState<CityMaster[]>([]);
   const [isCitiesLoading, setIsCitiesLoading] = useState(false);
+
+  // MULTIDESTINO: resuelve si un par origen/destino es internacional según la
+  // lista de ciudades (misma regla del effect AUTO-INTERNATIONAL: cualquiera
+  // de las dos ciudades fuera de COLOMBIA). Retorna null si alguna ciudad aún
+  // no está resuelta (usuario tipeando) — el caller la excluye sin flicker.
+  const legIntl = (origin: string, destination: string): boolean | null => {
+    const o = cities.find(c => `${c.city}, ${c.country}` === origin);
+    const d = cities.find(c => `${c.city}, ${c.country}` === destination);
+    if (!o || !d) return null;
+    return o.country !== 'COLOMBIA' || d.country !== 'COLOMBIA';
+  };
 
   // Sites (sedes) loaded dynamically from MISC sheet
   const [sites, setSites] = useState<string[]>([]);
@@ -275,6 +446,19 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   // AUTO-INTERNATIONAL LOGIC
   useEffect(() => {
+    if (multiDestino && !isHotelOnly) {
+      // MULTIDESTINO: internacional si CUALQUIER tramo lo es. Esto activa el
+      // panel de pasaportes, co-aprobadores y el gating del submit para TODO
+      // el itinerario. El payload de cada tramo usa su propio valor (legIntl)
+      // al momento del envío — este estado es solo para la UI compartida.
+      const legs = [
+        { o: formData.origin || '', d: formData.destination || '' },
+        ...extraTramos.map(t => ({ o: t.origin, d: t.destination }))
+      ];
+      const known = legs.map(l => legIntl(l.o, l.d)).filter(v => v !== null) as boolean[];
+      if (known.length > 0) setIsInternational(known.some(Boolean));
+      return;
+    }
     if (isHotelOnly) {
       // Hotel-only: internacional si la ciudad del hospedaje NO es colombiana
       const destCity = cities.find(c => `${c.city}, ${c.country}` === formData.destination);
@@ -290,7 +474,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         setIsInternational(autoIsInternational);
       }
     }
-  }, [formData.origin, formData.destination, cities, isHotelOnly]);
+  }, [formData.origin, formData.destination, cities, isHotelOnly, multiDestino, extraTramos]);
 
   // POLICY VALIDATION LOGIC
   // FIX (#A4): usar parseDate en vez de `new Date(YYYY-MM-DD)`. El string ISO
@@ -298,23 +482,23 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   // día calendario en GMT-5. parseDate interpreta la fecha en zona local,
   // consistente con el resto del código y con lo que ve el usuario.
   useEffect(() => {
-    if (formData.departureDate) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const depDate = parseDate(formData.departureDate);
-      depDate.setHours(0, 0, 0, 0);
-
-      const diffTime = depDate.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-      const threshold = isInternational ? 30 : 8;
-
-      // If diffDays is less than threshold (e.g. 7 days for national), it's a violation
-      setPolicyViolation(diffDays < threshold);
-    } else {
-      setPolicyViolation(false);
-    }
+    // Matemática extraída a computePolicyViolation (comportamiento idéntico)
+    // para poder reutilizarla POR TRAMO en modo multidestino.
+    setPolicyViolation(computePolicyViolation(formData.departureDate, isInternational));
   }, [formData.departureDate, isInternational]);
+
+  // MULTIDESTINO: violación de política evaluada POR TRAMO con la
+  // internacionalidad PROPIA de cada tramo (no la global "any leg" — sin esto,
+  // un tramo 3 internacional violando 30 días no mostraría banner si el tramo 1
+  // es nacional y cumple). Índice 0 = tramo 1 (formData).
+  const legPolicyViolations = useMemo(() => {
+    if (!multiDestino) return [] as boolean[];
+    const legs = [
+      { origin: formData.origin || '', destination: formData.destination || '', date: formData.departureDate },
+      ...extraTramos.map(t => ({ origin: t.origin, destination: t.destination, date: t.departureDate }))
+    ];
+    return legs.map(l => computePolicyViolation(l.date, legIntl(l.origin, l.destination) === true));
+  }, [multiDestino, formData.origin, formData.destination, formData.departureDate, extraTramos, cities]);
 
   // PASSPORT VALIDATION (solo internacionales). Cuando es internacional y los
   // pasajeros tienen cédula completa, consulta al backend el estado del
@@ -544,8 +728,212 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     }
   };
 
+  // =====================================================================
+  // MULTIDESTINO — handlers, resolvers compartidos y loop de creación
+  // =====================================================================
+
+  // Sugerencia de noches para el tramo `legIndex` (0 = tramo 1): días hasta
+  // la fecha de salida del SIGUIENTE tramo (llega 11/08, sigue 13/08 → 2).
+  const suggestedNightsForLeg = (legIndex: number): number => {
+    const dates = [formData.departureDate || '', ...extraTramos.map(t => t.departureDate)];
+    const curr = dates[legIndex];
+    const next = dates[legIndex + 1];
+    if (!curr || !next) return 0;
+    const d1 = parseDate(curr); d1.setHours(0, 0, 0, 0);
+    const d2 = parseDate(next); d2.setHours(0, 0, 0, 0);
+    const diff = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+    return diff > 0 ? diff : 0;
+  };
+
+  const blankTramo = (origin: string): ExtraTramo => ({
+    origin, destination: '', departureDate: '', departureTimePreference: '',
+    requiresHotel: false, hotelName: '', nights: 0
+  });
+
+  const handleMultiDestinoToggle = (on: boolean) => {
+    if (loading || isLocked) return;
+    // Higiene: cualquier snapshot/error de un intento previo fallido (0 tramos
+    // creados) queda obsoleto al cambiar el modo.
+    pendingSubmissionRef.current = null;
+    setSubmitError(null);
+    setMultiDestino(on);
+    if (on) {
+      // Cada tramo es solo-ida; el effect de tripType limpia returnDate y
+      // activa noches manuales para el tramo 1.
+      setTripType('ONE_WAY');
+      setExtraTramos([blankTramo(formData.destination || '')]);
+    } else {
+      setExtraTramos([]);
+    }
+  };
+
+  const addTramo = () => {
+    if (loading || isLocked || extraTramos.length >= MAX_EXTRA_TRAMOS) return;
+    const prevDest = extraTramos.length > 0
+      ? extraTramos[extraTramos.length - 1].destination
+      : (formData.destination || '');
+    setExtraTramos(prev => [...prev, blankTramo(prevDest)]);
+  };
+
+  const removeTramo = (index: number) => {
+    if (loading || isLocked) return;
+    const next = extraTramos.filter((_, i) => i !== index);
+    setExtraTramos(next);
+    if (next.length === 0) setMultiDestino(false);
+  };
+
+  const updateTramo = (index: number, field: keyof ExtraTramo, value: string | boolean | number) => {
+    // Sugerencia de noches calculada FUERA del updater (los updaters deben ser puros).
+    let nightsSuggestion = 0;
+    if (field === 'requiresHotel' && value === true) {
+      nightsSuggestion = suggestedNightsForLeg(index + 1); // extraTramos[index] = tramo global index+1
+    }
+    setExtraTramos(prev => prev.map((t, i) => {
+      if (i !== index) return t;
+      const updated = { ...t, [field]: value } as ExtraTramo;
+      if (field === 'requiresHotel' && value === true && (!t.nights || t.nights <= 0) && nightsSuggestion > 0) {
+        updated.nights = nightsSuggestion;
+      }
+      return updated;
+    }));
+  };
+
+  // Resolvers compartidos del submit — extraídos del cuerpo original de
+  // handleSubmit (comportamiento idéntico) para reutilizarlos en el camino
+  // multidestino sin duplicar lógica.
+  const getVariousCCFormatted = () => {
+    if (formData.costCenter !== 'VARIOS' || variousCCList.length === 0) return undefined;
+    return variousCCList.map(code => {
+      const ccObj = masterData.find(cc => cc.code === code);
+      return ccObj ? `${code} - ${ccObj.name}` : code;
+    }).join(', ');
+  };
+
+  const resolveSharedSubmitFields = () => {
+    let costCenterName = '';
+    if (formData.costCenter === 'VARIOS') {
+      costCenterName = 'Múltiples Centros de Costo';
+    } else {
+      const ccObj = masterData.find(cc => cc.code === formData.costCenter);
+      costCenterName = ccObj ? ccObj.name : '';
+    }
+    let approverName = 'Por Definir';
+    let approverEmail = 'Por Definir';
+    if (passengers.length > 0 && passengers[0].idNumber) {
+      const p1 = integrantes.find(i => i.idNumber === passengers[0].idNumber);
+      if (p1) {
+        approverName = p1.approverName;
+        approverEmail = p1.approverEmail;
+      }
+    }
+    return { costCenterName, approverName, approverEmail };
+  };
+
+  // Vista normalizada de TODOS los tramos (0 = tramo 1 desde formData).
+  const buildMultiLegs = () => ([
+    {
+      origin: formData.origin || '',
+      destination: formData.destination || '',
+      departureDate: formData.departureDate || '',
+      departureTimePreference: formData.departureTimePreference || '',
+      requiresHotel,
+      hotelName: formData.hotelName || '',
+      nights: numberOfNights
+    },
+    ...extraTramos.map(t => ({ ...t }))
+  ]);
+
+  // "MEDELLIN→PANAMA (11/08) | PANAMA→MIAMI (13/08) | ..." — single-line a
+  // propósito: la vista de detalle no preserva saltos de línea.
+  const buildItinerarySummary = (legs: ReturnType<typeof buildMultiLegs>) => {
+    const shortCity = (v: string) => (v || '').split(',')[0].trim();
+    const shortDate = (d: string) => {
+      const p = (d || '').split('-'); // YYYY-MM-DD
+      return p.length === 3 ? `${p[2]}/${p[1]}` : (d || '');
+    };
+    return legs.map(l => `${shortCity(l.origin)}→${shortCity(l.destination)} (${shortDate(l.departureDate)})`).join(' | ');
+  };
+
+  // Loop secuencial de creación desde el snapshot congelado. Salta tramos ya
+  // creados (reintento), reporta progreso y se detiene en el primer fallo
+  // dejando el form abierto/bloqueado para reintentar solo los pendientes.
+  const runMultiDestinoLoop = async () => {
+    const items = pendingSubmissionRef.current;
+    if (!items || items.length === 0) return;
+    setLoading(true);
+    setSubmitError(null);
+    try {
+      const created: Record<number, string> = { ...createdLegIds };
+      for (let i = 0; i < items.length; i++) {
+        if (created[i]) continue;
+        setSubmitProgress({ current: i + 1, total: items.length });
+        try {
+          const id = await gasService.createRequest(items[i].payload, items[i].emailHtml);
+          // Guard: un ID falsy (respuesta vacía del backend) NO puede quedar en
+          // el bookkeeping — el skip del reintento (`if (created[i])`) lo vería
+          // como pendiente y re-crearía un tramo que SÍ existe en el servidor.
+          if (!id) {
+            throw new Error('El servidor no retornó el ID de la solicitud creada.');
+          }
+          created[i] = id;
+          setCreatedLegIds({ ...created });
+        } catch (err: any) {
+          const msg = String(err?.message || err);
+          setSubmitError({
+            legIndex: i,
+            message: msg,
+            // Timeout / error de red / respuesta vacía: la solicitud PUDO
+            // crearse en el servidor aunque el cliente no recibiera respuesta.
+            maybeCreated: /tard[oó] demasiado|conectar|failed to fetch|network|no retornó el id/i.test(msg)
+          });
+          if (Object.keys(created).length > 0) {
+            invalidateBudgetCache();
+          } else {
+            // NADA se creó: descartar el snapshot para que el próximo envío
+            // revalide y reconstruya desde el estado actual del formulario.
+            // Sin esto, el form queda editable (isLocked=false) pero un nuevo
+            // submit replayaría el snapshot viejo saltándose validaciones.
+            pendingSubmissionRef.current = null;
+          }
+          return;
+        }
+      }
+      // Éxito total
+      pendingSubmissionRef.current = null;
+      setCreatedLegIds({});
+      invalidateBudgetCache();
+      onSuccess();
+    } finally {
+      setLoading(false);
+      setSubmitProgress(null);
+    }
+  };
+
+  const handleDiscardPending = () => {
+    const createdCount = Object.keys(createdLegIds).length;
+    const pendingCount = (pendingSubmissionRef.current?.length || 0) - createdCount;
+    if (!window.confirm(
+      `Se crearon ${createdCount} tramo(s) y quedaría(n) ${pendingCount} sin crear.\n\n` +
+      `¿Desea terminar aquí? Los tramos ya creados son solicitudes válidas que seguirán su proceso normal; ` +
+      `los pendientes puede crearlos después como solicitudes individuales.`
+    )) return;
+    pendingSubmissionRef.current = null;
+    setCreatedLegIds({});
+    setSubmitError(null);
+    onSuccess();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return; // anti doble-submit (belt & braces sobre disabled)
+
+    // REINTENTO multidestino: el snapshot ya fue validado y construido en el
+    // primer envío; solo se crean los tramos pendientes. No se revalida (el
+    // form está bloqueado — nada pudo cambiar).
+    if (multiDestino && pendingSubmissionRef.current) {
+      await runMultiDestinoLoop();
+      return;
+    }
 
     // STRICT CITY VALIDATION
     const validCityOptions = cities.map(c => `${c.city}, ${c.country}`);
@@ -565,6 +953,21 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         : `La ciudad de destino "${formData.destination}" no es válida. Debe seleccionarla de la lista.`
       );
       return;
+    }
+    // MULTIDESTINO: ciudades de cada tramo extra también contra la lista
+    if (multiDestino) {
+      for (let i = 0; i < extraTramos.length; i++) {
+        const t = extraTramos[i];
+        const n = i + 2;
+        if (!validCityOptions.includes(t.origin)) {
+          alert(`Tramo ${n}: la ciudad de origen "${t.origin}" no es válida. Debe seleccionarla de la lista.`);
+          return;
+        }
+        if (!validCityOptions.includes(t.destination)) {
+          alert(`Tramo ${n}: la ciudad de destino "${t.destination}" no es válida. Debe seleccionarla de la lista.`);
+          return;
+        }
+      }
     }
 
     if (formData.costCenter === 'VARIOS' && variousCCList.length === 0) {
@@ -611,6 +1014,24 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         return;
       }
     }
+    // MULTIDESTINO: fecha obligatoria por tramo y orden cronológico
+    // (comparación segura de strings YYYY-MM-DD).
+    if (multiDestino) {
+      let prevDate = formData.departureDate || '';
+      for (let i = 0; i < extraTramos.length; i++) {
+        const t = extraTramos[i];
+        const n = i + 2;
+        if (!t.departureDate) {
+          alert(`Tramo ${n}: la fecha de salida es obligatoria.`);
+          return;
+        }
+        if (prevDate && t.departureDate < prevDate) {
+          alert(`Tramo ${n}: la fecha de salida no puede ser anterior a la del tramo ${n - 1}.`);
+          return;
+        }
+        prevDate = t.departureDate;
+      }
+    }
     if (requiresHotel || isHotelOnly) {
       if (numberOfNights <= 0) {
         alert('El número de noches de hospedaje debe ser mayor a 0.');
@@ -632,42 +1053,103 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         }
       }
     }
+    // MULTIDESTINO: hotel por tramo + clamp de observaciones (backend máx 2000)
+    if (multiDestino) {
+      for (let i = 0; i < extraTramos.length; i++) {
+        const t = extraTramos[i];
+        const n = i + 2;
+        if (t.requiresHotel) {
+          if (!t.hotelName.trim()) {
+            alert(`Tramo ${n}: indique el nombre del hotel.`);
+            return;
+          }
+          if (!t.nights || t.nights <= 0) {
+            alert(`Tramo ${n}: el número de noches de hospedaje debe ser mayor a 0.`);
+            return;
+          }
+          if (t.nights > 100) {
+            alert(`Tramo ${n}: el máximo permitido de hospedaje es 100 noches.`);
+            return;
+          }
+        }
+      }
+      // La nota automática viaja en observaciones; el backend rechaza >2000
+      // chars. Validar AQUÍ evita que el tramo 1 se cree y un tramo posterior
+      // falle a mitad del loop por la misma causa.
+      const _legs = buildMultiLegs();
+      const _note = `[MULTIDESTINO] Tramo ${_legs.length}/${_legs.length} · Itinerario: ${buildItinerarySummary(_legs)}`;
+      const _totalLen = _note.length + 1 + (formData.comments || '').length;
+      if (_totalLen > 2000) {
+        alert(
+          `Las observaciones son demasiado largas para el modo multidestino: la nota automática del itinerario ` +
+          `más sus observaciones suman ${_totalLen} caracteres (máximo 2000). ` +
+          `Recorte sus observaciones en al menos ${_totalLen - 2000} caracteres.`
+        );
+        return;
+      }
+    }
     if (isModification && !changeReason.trim()) {
       alert('Por favor describa el motivo del cambio en la sección final.');
+      return;
+    }
+
+    // ===== MULTIDESTINO: construir snapshot congelado y ejecutar el loop =====
+    if (multiDestino) {
+      // ANTI DOBLE-SUBMIT: setLoading SÍNCRONO antes del primer await (el
+      // import dinámico abre una ventana donde un segundo click construiría
+      // un segundo snapshot y lanzaría un loop concurrente → duplicados).
+      // Mismo patrón de garantía que el camino single-leg.
+      setLoading(true);
+      try {
+        const { costCenterName, approverName, approverEmail } = resolveSharedSubmitFields();
+        const { generateTravelRequestEmail } = await import('../utils/EmailGenerator');
+        const legs = buildMultiLegs();
+        const itinerary = buildItinerarySummary(legs);
+        const variousCostCenters = getVariousCCFormatted();
+        pendingSubmissionRef.current = legs.map((leg, i) => {
+          const note = `[MULTIDESTINO] Tramo ${i + 1}/${legs.length} · Itinerario: ${itinerary}`;
+          const legPayload: Partial<TravelRequest> = {
+            ...formData,
+            requestMode: 'FLIGHT' as const,
+            origin: leg.origin,
+            destination: leg.destination,
+            departureDate: formatToDDMMYYYY(leg.departureDate),
+            returnDate: '',
+            departureTimePreference: leg.departureTimePreference,
+            returnTimePreference: '',
+            isInternational: legIntl(leg.origin, leg.destination) === true,
+            policyViolation: legPolicyViolations[i] === true,
+            costCenterName,
+            approverName,
+            approverEmail,
+            requesterEmail: userEmail,
+            passengers,
+            requiresHotel: leg.requiresHotel,
+            hotelName: leg.requiresHotel ? leg.hotelName : '',
+            nights: leg.requiresHotel ? leg.nights : 0,
+            status: RequestStatus.PENDING_OPTIONS,
+            variousCostCenters,
+            comments: note + '\n' + (formData.comments || ''),
+            timestamp: new Date().toISOString()
+          };
+          return { payload: legPayload, emailHtml: generateTravelRequestEmail(legPayload, false) };
+        });
+      } catch (error) {
+        pendingSubmissionRef.current = null;
+        setLoading(false);
+        alert('Error preparando los tramos: ' + error);
+        return;
+      }
+      await runMultiDestinoLoop();
       return;
     }
 
     setLoading(true);
 
     try {
-      // 1. Resolve Cost Center Name
-      let costCenterName = '';
-      if (formData.costCenter === 'VARIOS') {
-        costCenterName = 'Múltiples Centros de Costo';
-      } else {
-        const ccObj = masterData.find(cc => cc.code === formData.costCenter);
-        costCenterName = ccObj ? ccObj.name : '';
-      }
-
-      // 2. Resolve Approver
-      let approverName = 'Por Definir';
-      let approverEmail = 'Por Definir';
-
-      if (passengers.length > 0 && passengers[0].idNumber) {
-        const p1 = integrantes.find(i => i.idNumber === passengers[0].idNumber);
-        if (p1) {
-          approverName = p1.approverName;
-          approverEmail = p1.approverEmail;
-        }
-      }
-
-      const getVariousCCFormatted = () => {
-        if (formData.costCenter !== 'VARIOS' || variousCCList.length === 0) return undefined;
-        return variousCCList.map(code => {
-          const ccObj = masterData.find(cc => cc.code === code);
-          return ccObj ? `${code} - ${ccObj.name}` : code;
-        }).join(', ');
-      };
+      // Resolución compartida (extraída a helpers de componente para reuso con
+      // el camino multidestino — comportamiento idéntico al inline original).
+      const { costCenterName, approverName, approverEmail } = resolveSharedSubmitFields();
 
       const payload: Partial<TravelRequest> = {
         ...formData,
@@ -759,6 +1241,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       </div>
 
       <form onSubmit={handleSubmit} className="p-6 space-y-8">
+
+        {/* MULTIDESTINO: con tramos ya creados (reintento pendiente), el form
+            queda bloqueado — el snapshot está congelado y editar mentiría. */}
+        <fieldset disabled={isLocked} className="space-y-8 border-0 p-0 m-0 min-w-0">
 
         {/* Section 1: General Info */}
         <div className="space-y-6">
@@ -1032,6 +1518,19 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           <div className="flex justify-between items-center mb-4 flex-wrap gap-3">
             <h3 className="text-md font-medium text-gray-900">{isHotelOnly ? 'Hospedaje' : 'Itinerario'}</h3>
             <div className="flex items-center gap-4 flex-wrap">
+              {/* MULTIDESTINO toggle — solo en creación de vuelos */}
+              {!isModification && !isHotelOnly && (
+                <label className={`flex items-center gap-2 px-3 py-1 rounded-lg border text-xs font-bold transition ${multiDestino ? 'bg-purple-50 border-purple-300 text-purple-800' : 'bg-white border-gray-300 text-gray-600'} ${(loading || isLocked) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    checked={multiDestino}
+                    disabled={loading || isLocked}
+                    onChange={(e) => handleMultiDestinoToggle(e.target.checked)}
+                  />
+                  🧭 Viaje multidestino
+                </label>
+              )}
               {/* International badge (auto) */}
               <div className="flex items-center gap-2">
                 <input
@@ -1045,23 +1544,39 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                 <label htmlFor="isInternational" className="text-sm font-bold text-blue-900">¿Internacional? (Auto)</label>
               </div>
               <div className="h-6 w-px bg-gray-300"></div>
-              {/* MODE PILLS: 3 opciones */}
+              {/* MODE PILLS: 3 opciones. Con multidestino activo, cambiar de modo
+                  corrompería el estado por-tramo → se bloquean (menos "Solo Ida",
+                  que es el modo forzado de cada tramo). */}
               <div className="flex bg-gray-200 p-1 rounded-lg">
                 <button type="button" onClick={() => { setRequestMode('FLIGHT'); setTripType('ROUND_TRIP'); }}
-                  className={`px-3 py-1 text-xs font-bold rounded-md transition ${requestMode === 'FLIGHT' && tripType === 'ROUND_TRIP' ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>
+                  disabled={multiDestino || isLocked}
+                  title={multiDestino ? 'Desactive multidestino para cambiar de modo' : undefined}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition disabled:opacity-40 disabled:cursor-not-allowed ${requestMode === 'FLIGHT' && tripType === 'ROUND_TRIP' ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>
                   ✈️ Ida y Regreso
                 </button>
                 <button type="button" onClick={() => { setRequestMode('FLIGHT'); setTripType('ONE_WAY'); }}
-                  className={`px-3 py-1 text-xs font-bold rounded-md transition ${requestMode === 'FLIGHT' && tripType === 'ONE_WAY' ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>
+                  disabled={isLocked}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition disabled:opacity-40 disabled:cursor-not-allowed ${requestMode === 'FLIGHT' && tripType === 'ONE_WAY' ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>
                   ✈️ Solo Ida
                 </button>
                 <button type="button" onClick={() => setRequestMode('HOTEL_ONLY')}
-                  className={`px-3 py-1 text-xs font-bold rounded-md transition ${isHotelOnly ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>
+                  disabled={multiDestino || isLocked}
+                  title={multiDestino ? 'Desactive multidestino para cambiar de modo' : undefined}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition disabled:opacity-40 disabled:cursor-not-allowed ${isHotelOnly ? 'bg-white shadow text-brand-red' : 'text-gray-500'}`}>
                   🏨 Solo Hospedaje
                 </button>
               </div>
             </div>
           </div>
+
+          {multiDestino && (
+            <div className="mb-2 flex items-center gap-2">
+              <span className="bg-purple-100 text-purple-800 text-xs font-bold px-2 py-0.5 rounded">Tramo 1 de {extraTramos.length + 1}</span>
+              {legIntl(formData.origin || '', formData.destination || '') === true && (
+                <span className="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded border border-blue-200">Internacional 🌍</span>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Ciudad Origen — solo para vuelos */}
@@ -1126,6 +1641,32 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               </>
             )}
           </div>
+
+          {/* MULTIDESTINO: tramos extra (el hospedaje del tramo 1 sigue en la
+              sección de hotel de abajo; cada tramo extra trae el suyo). */}
+          {multiDestino && extraTramos.map((t, i) => (
+            <TramoFields
+              key={`tramo-${i}`}
+              index={i}
+              tramo={t}
+              totalLegs={extraTramos.length + 1}
+              cities={cities}
+              isCitiesLoading={isCitiesLoading}
+              minDate={(i === 0 ? formData.departureDate : extraTramos[i - 1].departureDate) || formData.departureDate || new Date().toISOString().split('T')[0]}
+              intl={legIntl(t.origin, t.destination)}
+              suggestedNights={suggestedNightsForLeg(i + 1)}
+              disabled={loading || isLocked}
+              onUpdate={updateTramo}
+              onRemove={removeTramo}
+              onOpenPicker={handleOpenPicker}
+            />
+          ))}
+          {multiDestino && extraTramos.length < MAX_EXTRA_TRAMOS && (
+            <button type="button" onClick={addTramo} disabled={loading || isLocked}
+              className="mt-3 text-sm text-purple-700 font-semibold hover:text-purple-900 disabled:opacity-50">
+              + Agregar tramo
+            </button>
+          )}
         </div>
 
         <hr />
@@ -1137,7 +1678,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               <div className="flex items-center h-5">
                 <input id="hotel" type="checkbox" className="focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded" checked={requiresHotel} onChange={(e) => setRequiresHotel(e.target.checked)} />
               </div>
-              <div className="text-sm"><label htmlFor="hotel" className="font-medium text-gray-700">¿Requiere Hospedaje?</label></div>
+              <div className="text-sm"><label htmlFor="hotel" className="font-medium text-gray-700">¿Requiere Hospedaje{multiDestino ? ' en el Tramo 1' : ''}?</label></div>
             </div>
           )}
           {isHotelOnly && (
@@ -1165,6 +1706,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Número de Noches *</label>
                     <input type="number" min="1" required className="mt-1 block w-32 bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={numberOfNights} onChange={(e) => setNumberOfNights(parseInt(e.target.value) || 0)} />
+                    {multiDestino && suggestedNightsForLeg(0) > 0 && (
+                      <p className="text-[11px] text-gray-500 mt-1 italic">Sugerencia: {suggestedNightsForLeg(0)} noche{suggestedNightsForLeg(0) > 1 ? 's' : ''} (hasta el tramo 2).</p>
+                    )}
                   </div>
                 ) : (
                   <div><span className="text-sm text-gray-600">Noches calculadas: </span><span className="font-bold text-gray-900 text-lg">{numberOfNights}</span></div>
@@ -1198,6 +1742,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           </div>
         )}
 
+        </fieldset>
+
         {/* ACTIONS & ALERTS */}
         <div className="pt-4 space-y-4">
 
@@ -1230,7 +1776,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </div>
           )}
 
-          {policyViolation && (
+          {(multiDestino ? legPolicyViolations.some(Boolean) : policyViolation) && (
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-md animate-pulse">
               <div className="flex">
                 <div className="flex-shrink-0">
@@ -1240,20 +1786,77 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                   <p className="text-sm text-yellow-700 font-bold">
                     Solicitud Fuera de Política de Anticipación
                   </p>
-                  <p className="text-xs text-yellow-600 mt-1">
-                    {isInternational
-                      ? "Los viajes internacionales requieren al menos 30 días de anticipación."
-                      : "Los viajes nacionales requieren al menos 8 días de anticipación."
-                    }
-                    <br />Esta solicitud requerirá aprobaciones adicionales.
-                  </p>
+                  {multiDestino ? (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      Tramos fuera de política: {legPolicyViolations.map((v, i) => v ? `Tramo ${i + 1}` : null).filter(Boolean).join(', ')}.
+                      {' '}Los viajes internacionales requieren 30 días de anticipación; los nacionales, 8.
+                      <br />Esas solicitudes requerirán aprobaciones adicionales.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      {isInternational
+                        ? "Los viajes internacionales requieren al menos 30 días de anticipación."
+                        : "Los viajes nacionales requieren al menos 8 días de anticipación."
+                      }
+                      <br />Esta solicitud requerirá aprobaciones adicionales.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
           )}
 
+          {/* MULTIDESTINO: aviso informativo de qué va a pasar al enviar */}
+          {multiDestino && !submitError && !isLocked && (
+            <div className="bg-purple-50 border border-purple-200 rounded-md p-3 text-xs text-purple-800 leading-relaxed">
+              <strong>🧭 Multidestino:</strong> al enviar se crearán <strong>{extraTramos.length + 1} solicitudes</strong> (una por
+              tramo), enlazadas entre sí en las observaciones. Cada tramo seguirá su proceso normal de opciones, aprobación y
+              reserva por separado.
+            </div>
+          )}
+
+          {/* MULTIDESTINO: fallo (parcial o total) — tramos creados + tramo fallido + guía */}
+          {submitError && (
+            <div className="bg-red-50 border border-red-300 rounded-md p-4 text-sm space-y-2">
+              <p className="font-bold text-red-800">
+                {isLocked ? '⚠️ Creación parcial del multidestino' : '⚠️ No se pudieron crear las solicitudes'}
+              </p>
+              {Object.keys(createdLegIds).length > 0 && (
+                <p className="text-xs text-red-700">
+                  Tramos ya creados: {Object.entries(createdLegIds)
+                    .sort(([a], [b]) => Number(a) - Number(b))
+                    .map(([i, id]) => `Tramo ${Number(i) + 1} → ${id}`)
+                    .join(' · ')}
+                </p>
+              )}
+              <p className="text-xs text-red-700">Falló el tramo {submitError.legIndex + 1}: {submitError.message}</p>
+              {submitError.maybeCreated && (
+                <p className="text-xs font-bold text-red-800">
+                  ⚠️ Este tramo PUDO haberse creado a pesar del error. Verifique en "Mis Solicitudes" (en otra pestaña)
+                  antes de reintentar, para evitar duplicados.
+                </p>
+              )}
+              {isLocked ? (
+                <p className="text-[11px] text-red-600">
+                  Use <strong>"Reintentar tramos pendientes"</strong> para crear solo los que faltan, o
+                  <strong> "Descartar tramos pendientes"</strong> para terminar aquí — los ya creados son solicitudes válidas.
+                </p>
+              ) : (
+                <p className="text-[11px] text-red-600">
+                  No se creó ninguna solicitud. Corrija lo necesario y vuelva a enviar.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end gap-3">
-            <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50" disabled={loading}>
+            {isLocked && !loading && (
+              <button type="button" onClick={handleDiscardPending} className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50">
+                Descartar tramos pendientes
+              </button>
+            )}
+            <button type="button" onClick={onCancel} className="px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50" disabled={loading || isLocked}
+              title={isLocked ? 'Hay tramos creados: use "Reintentar" o "Descartar tramos pendientes".' : undefined}>
               Cancelar
             </button>
             <button
@@ -1270,7 +1873,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                       : undefined
               }
             >
-              {loading ? 'Procesando...' : (isModification ? 'Confirmar Cambio' : 'Crear Solicitud')}
+              {loading
+                ? (submitProgress ? `Creando tramo ${submitProgress.current}/${submitProgress.total}…` : 'Procesando...')
+                : isLocked
+                  ? 'Reintentar tramos pendientes'
+                  : (isModification
+                    ? 'Confirmar Cambio'
+                    : (multiDestino ? `Crear ${extraTramos.length + 1} Solicitudes` : 'Crear Solicitud'))}
             </button>
           </div>
         </div>

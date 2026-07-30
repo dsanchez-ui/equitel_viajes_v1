@@ -576,3 +576,32 @@ Guard `H() === -1`: backend nuevo sin columna → aprueba idéntico a hoy (comen
 5. No correr "Reorganizar Base Principal" entre los pasos 2-4.
 
 ---
+
+## **#A59 — Feature: Viaje Multidestino (caso Simón García / solicitud de Yurani)**
+**Fecha:** 2026-07-30 · **Reportado por:** Yurani (correo 28-jul, fwd de Simón García) · **Estado:** Implementado, pendiente de despliegue
+
+**Necesidad:** Simón García necesitaba un itinerario de 3 tramos (Medellín→Panamá 11/08 + hotel, Panamá→Miami 13/08, Miami→Medellín 16/08) y lo pidió por correo porque la app no tenía opción multidestino — exactamente el bypass que queremos eliminar.
+
+### Diseño (frontend-only, CERO cambios a Code.gs)
+- Toggle **"🧭 Viaje multidestino"** en el formulario (solo creación de vuelos; oculto en modificación y solo-hospedaje). Permite hasta **5 tramos** (cap bajo el rate limit de 10 creaciones/día). Cada tramo: origen (pre-llenado = destino del anterior, **editable**), destino, fecha, hora y hotel propio con **sugerencia automática de noches** (días hasta el siguiente tramo).
+- Al enviar se crean **N solicitudes estándar en secuencia** (`createRequest` existente, IDs consecutivos bajo lock del backend), cada una con nota single-line en observaciones: `[MULTIDESTINO] Tramo i/N · Itinerario: MEDELLIN→PANAMA (11/08) | ...`. La nota es **texto inerte** para el backend (validado: solo `USER_CONSULT_MARKER` se parsea) y viaja sola a correos/detalle/hoja.
+- Cada tramo vive su **ciclo 100% normal** por separado: opciones, selección, aprobación, costos, PNR, facturas, modificación, anulación.
+- **Internacional por tramo** (`legIntl`): el estado global pasa a "algún tramo internacional" (activa pasaportes/co-aprobadores/gating para todo el itinerario); cada payload lleva su valor propio. **Política por tramo** (`legPolicyViolations`): banner lista los tramos que violan; cada solicitud persiste su propio flag. Miami→Medellín queda internacional correctamente (origen O destino ≠ Colombia).
+- **Fallo parcial**: snapshot congelado de {payload, email} por tramo (`pendingSubmissionRef`), progreso "Creando tramo i/N…", bookkeeping de IDs creados; al fallar → form bloqueado (fieldset) con "Reintentar tramos pendientes" (solo crea faltantes, numeración inmutable) y "Descartar tramos pendientes". Aviso explícito cuando el error es timeout/red ("el tramo PUDO haberse creado — verifique antes de reintentar").
+- Validaciones por tramo insertadas en la secuencia existente: ciudades contra lista, fechas presentes y cronológicas, hotel (nombre + 1-100 noches), y **clamp pre-envío de observaciones** (nota + texto ≤ 2000, evita fallo a mitad de loop).
+- Refactors conservadores (comportamiento idéntico): matemática de política → `computePolicyViolation` puro; resolución de CC/aprobador → `resolveSharedSubmitFields`; `getVariousCCFormatted` izado. Camino single-leg verificado **byte-idéntico** contra HEAD por el auditor.
+- `RequestDetail`: +`whitespace-pre-line` en observaciones (los saltos de línea de todas las notas ahora se ven).
+
+### Auditoría (adversarial, corregida)
+- **HIGH**: ventana de doble-click durante el `await import` del generador de correos → dos loops concurrentes → duplicados. Fix: `setLoading(true)` síncrono antes del primer await (misma garantía del camino single-leg).
+- **HIGH**: fallo en el tramo 1 (0 creados) dejaba el form editable con el snapshot armado → un reenvío replayaba data vieja saltándose validaciones. Fix: con 0 creados se descarta el snapshot (el próximo envío revalida y reconstruye); el toggle también limpia snapshot/error; banner diferenciado "No se pudieron crear" vs "Creación parcial".
+- **LOW**: ID falsy del backend (respuesta vacía) rompía el skip del reintento → duplicado. Fix: ID falsy = error con aviso "pudo haberse creado".
+- Verificado limpio: regresión single-leg/modificación/hotel-only, máquina de estados del toggle, pills bloqueados, fieldset (cubre botones de pasaporte; acciones fuera), pureza de updaters (StrictMode-safe), snapshot genuinamente congelado, regex de maybeCreated contra los mensajes reales de gasService, numeración consistente de tramos, EmailGenerator por tramo.
+
+### Verificado
+`npx tsc --noEmit` · `npm run build` — limpios. `git diff --stat`: **solo** `RequestForm.tsx` y `RequestDetail.tsx` (Code.gs intacto).
+
+### Despliegue
+**Solo frontend**: push a `main` → Cloud Run. **Sin pasos de Apps Script** (no hay versión nueva del web app, ni migración, ni columna). Rollback = revert del commit.
+
+---
