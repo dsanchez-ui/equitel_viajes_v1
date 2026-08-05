@@ -983,9 +983,16 @@ function verPropiedadesDelScript() {
   } else {
     configuredKeys.forEach(function(key) {
       var val = props[key];
-      // Ocultar valores sensibles
-      var display = (key.indexOf('PIN') > -1 || key.indexOf('KEY') > -1 || key.indexOf('HASH') > -1)
-        ? val.substring(0, 8) + '...' : val;
+      // Ocultar valores sensibles (PIN/HASH/KEY/TOKEN/SECRET vía _maskPropValue_)
+      // y compactar sesiones (no imprimir tokens de sesión en el log).
+      var display;
+      if (key.indexOf('SESSION_') === 0) {
+        var sessEmail = '?';
+        try { sessEmail = JSON.parse(val).email || '?'; } catch (e) { /* raw */ }
+        display = '(sesión activa de ' + sessEmail + ')';
+      } else {
+        display = _maskPropValue_(key, val);
+      }
       console.log('  ✅ ' + key + ' = ' + display);
     });
   }
