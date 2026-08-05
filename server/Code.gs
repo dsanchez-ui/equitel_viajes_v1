@@ -12133,6 +12133,36 @@ function transicionRollbackAliasAWendy() {
 }
 
 /**
+ * FASE C.3: depreca el PIN global rotándolo a un valor aleatorio que NO se
+ * muestra ni se guarda en ningún lado. Tras ejecutarla, nadie conoce el PIN
+ * compartido; los admins con fila en USUARIOS (David, Laura) siguen entrando
+ * con su PIN personal. Recuperación futura: INITIAL_ADMIN_PIN +
+ * configurarPinInicial() desde el editor.
+ *
+ * CANDADO DE SEGURIDAD: se niega a ejecutarse mientras apcompras siga siendo
+ * analista (convivencia activa), porque Wendy entra con el PIN global y
+ * rotarlo la dejaría por fuera. Solo corre después de aplicar el retiro de
+ * la Fase C (apcompras fuera de la whitelist).
+ */
+function transicionDeprecarPinGlobal() {
+  if (isUserAnalyst(TRANSICION_EMAIL_WENDY)) {
+    Logger.log('🔒 BLOQUEADO: apcompras todavía es analista (convivencia activa) y Wendy');
+    Logger.log('   entra con el PIN global — rotarlo ahora la dejaría por fuera.');
+    Logger.log('   Nada fue modificado. Ejecuta esta función solo en la Fase C, DESPUÉS de');
+    Logger.log('   aplicar el retiro de apcompras (código Fase C + actualizarAnalystEmails()).');
+    return false;
+  }
+  var randomPin = generateRandomPin_();
+  updateAdminPin(randomPin);
+  randomPin = null; // no se loguea, no se retorna, no se guarda
+  Logger.log('✅ PIN global rotado a un valor aleatorio desconocido. Queda deprecado.');
+  Logger.log('   David y Laura siguen entrando con su PIN personal (fila en USUARIOS).');
+  Logger.log('   Recuperación futura si algún día hace falta: crear la propiedad');
+  Logger.log('   INITIAL_ADMIN_PIN con 8 dígitos y ejecutar configurarPinInicial().');
+  return true;
+}
+
+/**
  * ESTADO: resumen enfocado de la transición. Ejecutar en cualquier momento
  * para saber en qué fase está cada cosa.
  */
