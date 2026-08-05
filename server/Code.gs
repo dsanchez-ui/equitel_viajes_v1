@@ -12040,6 +12040,122 @@ function actualizarAnalystEmails() {
   return stored;
 }
 
+// =====================================================================
+// PANEL DE TRANSICIÓN DE ADMINISTRADORA (2026-08) — apcompras → compras.equitel
+// Funciones SIN argumentos, listas para ejecutar desde el desplegable del
+// editor (▶ Ejecutar). No hay que editar código: cada una valida internamente
+// que el correo sea EXACTAMENTE el esperado antes de escribir nada.
+// Seguridad: solo quien tiene acceso al editor de Apps Script (David) puede
+// ejecutarlas — un analista normal no puede tocar estas propiedades.
+// =====================================================================
+
+var TRANSICION_EMAIL_LAURA = 'compras.equitel@equitel.com.co';
+var TRANSICION_EMAIL_WENDY = 'apcompras@equitel.com.co';
+
+/** Valida el formato exacto del correo antes de cualquier escritura (regla de oro). */
+function _transicionValidarEmail_(email) {
+  if (!/^[a-z0-9.]+@equitel\.com\.co$/.test(email) || email !== email.trim().toLowerCase()) {
+    throw new Error('TRANSICIÓN ABORTADA: el correo "' + email + '" no pasa la validación de formato exacto. Nada fue modificado.');
+  }
+  return email;
+}
+
+/**
+ * PASO 0.2 y ROLLBACK: fija las notificaciones de administrador en Wendy
+ * (apcompras). Ejecutar en el Paso 0.2 de la guía (deja el valor actual
+ * explícito para que el código nuevo no adelante el cutover) o como rollback
+ * de la Fase B.
+ */
+function transicionNotificacionesAWendy() {
+  var email = _transicionValidarEmail_(TRANSICION_EMAIL_WENDY);
+  setScriptProperty('ADMIN_EMAIL', email);
+  Logger.log('✅ Las notificaciones de administrador ahora llegan a: ' + email);
+  return email;
+}
+
+/**
+ * FASE B.1: mueve las notificaciones de administrador a Laura
+ * (compras.equitel). Efecto inmediato, sin necesidad de nueva versión.
+ */
+function transicionNotificacionesALaura() {
+  var email = _transicionValidarEmail_(TRANSICION_EMAIL_LAURA);
+  setScriptProperty('ADMIN_EMAIL', email);
+  Logger.log('✅ Las notificaciones de administrador ahora llegan a: ' + email);
+  Logger.log('Recuerda: para que Wendy reciba COPIA durante la convivencia, configura el reenvío en el Gmail de compras.equitel (sección "Notificaciones en los dos correos" de la guía).');
+  return email;
+}
+
+/**
+ * FASE B.3: activa el alias de remitente hacia compras.equitel. SEGURA:
+ * primero verifica que el alias ya esté registrado como "Enviar como" en el
+ * Gmail de esta cuenta; si no lo está, NO cambia nada y deja instrucciones
+ * en el registro.
+ */
+function transicionActivarAliasLaura() {
+  var email = _transicionValidarEmail_(TRANSICION_EMAIL_LAURA);
+  var aliases = [];
+  try {
+    aliases = GmailApp.getAliases().map(function(a) { return String(a).toLowerCase().trim(); });
+  } catch (e) {
+    Logger.log('❌ No se pudieron leer los alias de Gmail: ' + e);
+    return null;
+  }
+  if (aliases.indexOf(email) < 0) {
+    Logger.log('❌ El alias ' + email + ' AÚN NO está registrado en Gmail. Nada fue modificado.');
+    Logger.log('Pasos: Gmail → Configuración → Cuentas e importación → "Enviar correo como" → Añadir ' + email);
+    Logger.log('(el código de verificación llega al buzón de Laura). Luego vuelve a ejecutar esta función.');
+    Logger.log('Alias registrados actualmente: ' + JSON.stringify(aliases));
+    return null;
+  }
+  setScriptProperty('MAIL_FROM_ALIAS', email);
+  var name = PropertiesService.getScriptProperties().getProperty('MAIL_FROM_NAME');
+  if (!name) setScriptProperty('MAIL_FROM_NAME', 'Sistema Viajes Equitel');
+  Logger.log('✅ MAIL_FROM_ALIAS activado: los correos del sistema ahora salen desde ' + email);
+  Logger.log('Verifica con verificarAliasCorreo() y enviarCorreoDePruebaAlias().');
+  return email;
+}
+
+/**
+ * ROLLBACK B.3: regresa el remitente al alias de apcompras (si sigue
+ * registrado en Gmail) o desactiva el alias por completo.
+ */
+function transicionRollbackAliasAWendy() {
+  var email = _transicionValidarEmail_(TRANSICION_EMAIL_WENDY);
+  var aliases = [];
+  try { aliases = GmailApp.getAliases().map(function(a) { return String(a).toLowerCase().trim(); }); } catch (e) {}
+  if (aliases.indexOf(email) >= 0) {
+    setScriptProperty('MAIL_FROM_ALIAS', email);
+    Logger.log('✅ Remitente regresado a ' + email);
+  } else {
+    deleteScriptProperty('MAIL_FROM_ALIAS');
+    Logger.log('⚠️ El alias de apcompras ya no está registrado en Gmail — MAIL_FROM_ALIAS fue desactivado (los correos salen desde la cuenta desplegadora).');
+  }
+}
+
+/**
+ * ESTADO: resumen enfocado de la transición. Ejecutar en cualquier momento
+ * para saber en qué fase está cada cosa.
+ */
+function transicionVerEstado() {
+  var props = PropertiesService.getScriptProperties();
+  var adminProp = props.getProperty('ADMIN_EMAIL');
+  var analysts = props.getProperty('ANALYST_EMAILS');
+  var superAdmins = props.getProperty('SUPER_ADMIN_EMAILS');
+  var alias = props.getProperty('MAIL_FROM_ALIAS');
+  Logger.log('=== ESTADO DE LA TRANSICIÓN ===');
+  Logger.log('ADMIN_EMAIL (notificaciones): ' + (adminProp || '(sin propiedad → usa el default del código: ' + ADMIN_EMAIL + ')'));
+  Logger.log('ANALYST_EMAILS: ' + (analysts || '(vacío)'));
+  Logger.log('SUPER_ADMIN_EMAILS (NO debe cambiar — David + Yurani): ' + (superAdmins || '(vacío)'));
+  Logger.log('MAIL_FROM_ALIAS (remitente): ' + (alias || '(sin alias → correos salen desde la cuenta desplegadora)'));
+  Logger.log('Whitelist efectiva de analistas: ' + JSON.stringify(getAnalystWhitelist_()));
+  Logger.log('¿Laura es analista?: ' + isUserAnalyst(TRANSICION_EMAIL_LAURA));
+  Logger.log('¿apcompras sigue siendo analista?: ' + isUserAnalyst(TRANSICION_EMAIL_WENDY));
+  return {
+    adminEmail: adminProp, analystEmails: analysts,
+    superAdmins: superAdmins, mailFromAlias: alias
+  };
+}
+
 /**
  * DIAGNÓSTICO: ejecuta desde el editor para ver qué correo detecta el script
  * y si está en la whitelist. Útil para debuggear el error "Acción no autorizada".
