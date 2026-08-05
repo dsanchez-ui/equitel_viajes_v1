@@ -50,7 +50,7 @@ const USE_USUARIOS_SHEET = true;
 
 // DRIVE & EMAIL CONFIG (set in ScriptProperties for production)
 const ROOT_DRIVE_FOLDER_ID = getConfig_('ROOT_DRIVE_FOLDER_ID', '1uaett_yH1qZcS-rVr_sUh73mODvX02im');
-const ADMIN_EMAIL = getConfig_('ADMIN_EMAIL', 'apcompras@equitel.com.co');
+const ADMIN_EMAIL = getConfig_('ADMIN_EMAIL', 'compras.equitel@equitel.com.co');
 const CEO_EMAIL = getConfig_('CEO_EMAIL', 'misaza@equitel.com.co');
 const DIRECTOR_EMAIL = getConfig_('DIRECTOR_EMAIL', 'yprieto@equitel.com.co');
 
@@ -961,13 +961,13 @@ function verPropiedadesDelScript() {
   var props = PropertiesService.getScriptProperties().getProperties();
   var expected = [
     { key: 'GEMINI_API_KEY', desc: 'API key de Google Gemini (para mejora de texto con IA)', required: false },
-    { key: 'ANALYST_EMAILS', desc: 'JSON array de correos admin, ej: ["apcompras@equitel.com.co"]', required: true },
+    { key: 'ANALYST_EMAILS', desc: 'JSON array de correos admin, ej: ["compras.equitel@equitel.com.co"]', required: true },
     { key: 'ADMIN_PIN_HASH', desc: 'Hash del PIN admin (se genera automáticamente)', required: true },
     { key: 'REPORT_TEMPLATE_ID', desc: 'ID del template de reportes (se genera con createReportTemplate)', required: false },
     { key: 'WEB_APP_URL', desc: 'URL del web app de GAS (tiene default)', required: false },
     { key: 'PLATFORM_URL', desc: 'URL del frontend en Cloud Run (tiene default)', required: false },
     { key: 'ROOT_DRIVE_FOLDER_ID', desc: 'ID de la carpeta raíz en Drive (tiene default)', required: false },
-    { key: 'ADMIN_EMAIL', desc: 'Correo del admin principal (default: apcompras@equitel.com.co)', required: false },
+    { key: 'ADMIN_EMAIL', desc: 'Correo del admin principal (default: compras.equitel@equitel.com.co)', required: false },
     { key: 'CEO_EMAIL', desc: 'Correo del CEO (default: misaza@equitel.com.co)', required: false },
     { key: 'DIRECTOR_EMAIL', desc: 'Correo del director CDS (default: yprieto@equitel.com.co)', required: false }
   ];
@@ -1104,7 +1104,7 @@ function _maskPropValue_(key, value) {
  * crear funciones temporales como esta, ejecutarlas, y eliminarlas.
  *
  * Ejemplos comunes:
- *   setScriptProperty('ANALYST_EMAILS', '["apcompras@equitel.com.co","dsanchez@equitel.com.co"]');
+ *   setScriptProperty('ANALYST_EMAILS', '["compras.equitel@equitel.com.co","dsanchez@equitel.com.co"]');
  *   setScriptProperty('SUPER_ADMIN_EMAILS', '["dsanchez@equitel.com.co","yprieto@equitel.com.co"]');
  *   setScriptProperty('HR_MAESTRO_ID', '1AbCdEfG...');
  *   deleteScriptProperty('PIN_FAILED_ATTEMPTS');
@@ -3518,12 +3518,12 @@ function sendEmailRich(to, subject, htmlBody, cc) {
 // =====================================================================
 // MAIL SENDER — wrapper central con soporte de alias "Send As"
 // =====================================================================
-// Permite que todos los correos salgan desde un alias (ej: apcompras@equitel)
+// Permite que todos los correos salgan desde un alias (ej: compras.equitel@equitel)
 // en lugar de la dirección del usuario que desplegó el web app. Requiere:
 //   1. El alias debe estar configurado como "Send As" en la cuenta Gmail de
 //      la persona que desplegó (ver Configuración → Cuentas e importación).
 //   2. Script Properties:
-//        MAIL_FROM_ALIAS          → dirección del alias (ej: apcompras@...)
+//        MAIL_FROM_ALIAS          → dirección del alias (ej: compras.equitel@...)
 //        MAIL_FROM_NAME           → nombre visible (ej: "Sistema Viajes Equitel")
 //        MAIL_TECH_SUPPORT_EMAIL  → correo de soporte técnico para el footer
 //
@@ -3713,7 +3713,7 @@ function verificarAliasCorreo() {
     Logger.log('   que desplegó la app (comportamiento legacy). No hay nada que verificar.');
     Logger.log('');
     Logger.log('   Para activar el alias ejecuta, una sola vez:');
-    Logger.log('     setScriptProperty(\'MAIL_FROM_ALIAS\', \'apcompras@equitel.com.co\')');
+    Logger.log('     setScriptProperty(\'MAIL_FROM_ALIAS\', \'compras.equitel@equitel.com.co\')');
     Logger.log('     setScriptProperty(\'MAIL_FROM_NAME\', \'Sistema Viajes Equitel\')');
     Logger.log('     setScriptProperty(\'MAIL_TECH_SUPPORT_EMAIL\', \'dsanchez@equitel.com.co\')');
     return;
@@ -3866,7 +3866,7 @@ const HtmlTemplates = {
 
                 '<div style="border-top: 1px solid #e5e7eb; margin-top: 25px; padding-top: 15px;">' +
                     '<p style="color: #6b7280; font-size: 11px; line-height: 1.5; margin: 0;">' +
-                        'Si <strong>no solicitaste este correo</strong>, ignóralo o repórtalo al área de viajes (apcompras@equitel.com.co). ' +
+                        'Si <strong>no solicitaste este correo</strong>, ignóralo o repórtalo al área de viajes (compras.equitel@equitel.com.co). ' +
                         'Por seguridad, nunca compartas tu PIN con nadie.' +
                     '</p>' +
                 '</div>' +
@@ -6802,9 +6802,11 @@ function getAnalystWhitelist_() {
   // está corrupto o vacío, este set hardcoded garantiza que los admins
   // conocidos nunca queden excluidos del sistema. Capa de defensa adicional
   // sobre ADMIN_EMAIL + ANALYST_EMAILS.
-  const whitelist = ['apcompras@equitel.com.co'];
+  // Transición 2026-08: convivencia apcompras (Wendy) + compras.equitel (Laura).
+  // Al finalizar la convivencia, retirar apcompras de este array (Fase C de la guía).
+  const whitelist = ['apcompras@equitel.com.co', 'compras.equitel@equitel.com.co'];
 
-  // DEFENSIVE: agregar ADMIN_EMAIL (default apcompras) por si está configurado a otra cosa
+  // DEFENSIVE: agregar ADMIN_EMAIL (default compras.equitel) por si está configurado a otra cosa
   try {
     const adminEmail = String(ADMIN_EMAIL || '').toLowerCase().trim();
     if (adminEmail && whitelist.indexOf(adminEmail) < 0) whitelist.push(adminEmail);
@@ -6829,7 +6831,7 @@ function getAnalystWhitelist_() {
 
 /**
  * One-time setup: call from GAS editor to configure analyst emails.
- * Example: setAnalystWhitelist(['apcompras@equitel.com.co', 'analista@equitel.com.co'])
+ * Example: setAnalystWhitelist(['compras.equitel@equitel.com.co', 'analista@equitel.com.co'])
  */
 function setAnalystWhitelist(emails) {
   if (!Array.isArray(emails) || emails.length === 0) throw new Error('Debe proporcionar un array de correos.');
@@ -12028,8 +12030,9 @@ function _emptyAnalystPerformance_() {
  */
 function actualizarAnalystEmails() {
   var emails = [
-    'apcompras@equitel.com.co',
-    'dsanchez@equitel.com.co'
+    'apcompras@equitel.com.co',       // Wendy — retirar al finalizar la convivencia (Fase C)
+    'dsanchez@equitel.com.co',
+    'compras.equitel@equitel.com.co'  // Laura — nueva administradora (transición 2026-08)
   ];
   setAnalystWhitelist(emails);
   var stored = PropertiesService.getScriptProperties().getProperty('ANALYST_EMAILS');

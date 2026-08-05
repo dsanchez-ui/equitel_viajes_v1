@@ -42,7 +42,7 @@ En la pantalla donde te pide el PIN, hay un enlace que dice **"Reenviar PIN"**. 
 
 ### Mi correo no está registrado
 
-Si al escribir tu correo el portal dice que no estás registrado, significa que el área de viajes aún no te tiene en su directorio. Escribe a **apcompras@equitel.com.co** pidiendo que te agreguen — suele tomar 5 minutos.
+Si al escribir tu correo el portal dice que no estás registrado, significa que el área de viajes aún no te tiene en su directorio. Escribe a **compras.equitel@equitel.com.co** pidiendo que te agreguen — suele tomar 5 minutos.
 
 ---
 
@@ -76,7 +76,7 @@ Pasos:
 1. En la fila del pasajero #1, escribe la **cédula** (solo números, sin puntos ni espacios).
 2. Si la cédula está registrada, el campo **Nombre** se llena automáticamente. Excelente, sigue adelante.
 3. Si aparece un banner rojo que dice **"⚠️ Cédula no encontrada en el directorio"**, significa que esa persona no está registrada. Dos opciones:
-   - Si **tú** eres quien viaja, pero tu cédula no aparece: escribe a apcompras@equitel.com.co para que te registren. No puedes continuar sin esto.
+   - Si **tú** eres quien viaja, pero tu cédula no aparece: escribe a compras.equitel@equitel.com.co para que te registren. No puedes continuar sin esto.
    - Si es **otra persona** (por ejemplo, viaja tu gerente y tú solo estás registrando la solicitud a su nombre): escribe al área de viajes pidiendo que la registren.
 4. Si aparece un banner ámbar que dice **"⚠️ No se pudo cargar el directorio"**: no es tu cédula, es un problema temporal de carga. **Presiona `Ctrl+Shift+R`** (o cierra la pestaña y vuelve a abrir) y vuelve a intentar.
 
@@ -255,7 +255,7 @@ Cuando el área de viajes registra la reserva, te llega un correo de confirmaci�
 
 Guarda estos datos — los vas a necesitar en el aeropuerto o al llegar al hotel.
 
-**Importante:** el correo viene del **Sistema de Viajes Equitel** (`apcompras@equitel.com.co`). Si respondes a ese correo, tu mensaje llega al área de viajes.
+**Importante:** el correo viene del **Sistema de Viajes Equitel** (`compras.equitel@equitel.com.co`). Si respondes a ese correo, tu mensaje llega al área de viajes.
 
 ### Correcciones posteriores
 
@@ -424,7 +424,7 @@ El área de viajes los contabilizará por separado al momento de facturar.
 1. Revisa la carpeta **Spam / correo no deseado**.
 2. Espera 2 minutos — a veces hay demora.
 3. Verifica que estás usando tu correo **corporativo exacto** (sin typos).
-4. En el login, haz click en **"Reenviar PIN"**. Si el portal te dice que tu correo no está registrado, contacta a apcompras@equitel.com.co.
+4. En el login, haz click en **"Reenviar PIN"**. Si el portal te dice que tu correo no está registrado, contacta a compras.equitel@equitel.com.co.
 
 ### Mi PIN no funciona
 
@@ -440,7 +440,7 @@ Si fallas 5 veces seguidas, el sistema bloquea tu correo por **15 minutos** como
 
 Lo define el área de RRHH cuando te registran en el directorio. Para saber quién es, entra al portal, crea una solicitud borrador llenando el pasajero 1 con tu cédula — el portal te muestra automáticamente el nombre del aprobador debajo de los pasajeros antes de enviar.
 
-Si el aprobador mostrado está mal o la persona ya no trabaja en la empresa, escribe a apcompras@equitel.com.co pidiendo que actualicen tu aprobador.
+Si el aprobador mostrado está mal o la persona ya no trabaja en la empresa, escribe a compras.equitel@equitel.com.co pidiendo que actualicen tu aprobador.
 
 ### Mi aprobador no recibió el correo de aprobación
 
@@ -456,7 +456,7 @@ Hasta que la solicitud no esté en `PENDIENTE_APROBACION`, **es normal que tu ap
 Si tu solicitud **sí está en `PENDIENTE_APROBACION`** y el aprobador insiste en que no le llegó:
 
 - Pídele que revise la carpeta de **spam / correo no deseado** una vez más (a veces Gmail filtra correos con enlaces de aprobación).
-- Si no aparece, escribe a `apcompras@equitel.com.co` pidiendo que reenvíen.
+- Si no aparece, escribe a `compras.equitel@equitel.com.co` pidiendo que reenvíen.
 - Verifica en el detalle de tu solicitud (en el portal) que el correo del aprobador listado es correcto. Si está mal (ej: persona que ya no está en la empresa), eso se ajusta desde el área de viajes.
 
 ### Cuánto tiempo tarda el proceso completo
@@ -491,7 +491,7 @@ Al final de todos los correos del sistema hay una línea en gris chiquito que di
 
 > *¿Problemas técnicos con el aplicativo? Escribe a dsanchez@equitel.com.co*
 
-Ese correo es para **errores del portal** (no carga, mensajes extraños, bugs visuales). Para dudas de **gestión de tu viaje** (opciones, tarifas, fechas), sigue escribiendo a apcompras@equitel.com.co.
+Ese correo es para **errores del portal** (no carga, mensajes extraños, bugs visuales). Para dudas de **gestión de tu viaje** (opciones, tarifas, fechas), sigue escribiendo a compras.equitel@equitel.com.co.
 
 ### Puedo entrar al portal desde el celular
 
@@ -546,8 +546,8 @@ Listados en el **orden real** en que los verás pasar:
 
 | Para qué | A quién escribir |
 |---|---|
-| Gestión del viaje (opciones, tarifas, fechas, cambios). | **apcompras@equitel.com.co** |
-| Agregar / actualizar tu cédula, correo o aprobador en el directorio. | **apcompras@equitel.com.co** |
+| Gestión del viaje (opciones, tarifas, fechas, cambios). | **compras.equitel@equitel.com.co** |
+| Agregar / actualizar tu cédula, correo o aprobador en el directorio. | **compras.equitel@equitel.com.co** |
 | Problemas técnicos del aplicativo (no carga, errores, bugs). | **dsanchez@equitel.com.co** |
 
 ---

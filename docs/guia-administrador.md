@@ -250,7 +250,7 @@ Relacionado: si el login del admin falla por un error de red (no por PIN incorre
 
 ## 5.bis. Capacidades exclusivas de SUPERADMIN
 
-Los **superadmins** (configurados en `SUPER_ADMIN_EMAILS` — actualmente David y Yurani) tienen capacidades adicionales que un analista normal (Wendy) no tiene:
+Los **superadmins** (configurados en `SUPER_ADMIN_EMAILS` — actualmente David y Yurani) tienen capacidades adicionales que un analista normal no tiene:
 
 | Capacidad | Disponible desde |
 |---|---|
@@ -435,13 +435,13 @@ Son variables de configuración en el proyecto Apps Script. **NO editar desde la
 
 | Propiedad | Valor | ¿Cómo editar? |
 |---|---|---|
-| `ANALYST_EMAILS` | JSON array: `["apcompras@equitel.com.co","dsanchez@equitel.com.co"]` | Ejecutar `actualizarAnalystEmails()` después de editar el array en código. |
+| `ANALYST_EMAILS` | JSON array: `["compras.equitel@equitel.com.co","dsanchez@equitel.com.co"]` | Ejecutar `actualizarAnalystEmails()` después de editar el array en código. |
 | `SUPER_ADMIN_EMAILS` | JSON array de correos superadmin. Actualmente David + Yurani. | `setScriptProperty('SUPER_ADMIN_EMAILS', '[...]')` desde el editor. |
-| `ADMIN_PIN_HASH` | SHA-256 del PIN admin compartido. Solo se usa si un admin NO tiene fila propia en USUARIOS (ej. `apcompras@`). | `updateAdminPin(nuevoPin)` desde el editor. Primera vez: `configurarPinInicial()` tras poner `INITIAL_ADMIN_PIN`. |
+| `ADMIN_PIN_HASH` | SHA-256 del PIN admin compartido. Solo se usa si un admin NO tiene fila propia en USUARIOS (cuentas de área compartidas). Deprecado tras la transición 2026-08: todos los admins activos usan su PIN personal. | `updateAdminPin(nuevoPin)` desde el editor. Primera vez: `configurarPinInicial()` tras poner `INITIAL_ADMIN_PIN`. |
 | `APPROVAL_LINK_SECRET` | Secreto HMAC para firmar los links de aprobación de correos. Se genera automáticamente la primera vez. | NO tocar manualmente. Si lo borras, todos los links firmados dejan de funcionar. |
 | `APPROVAL_LINK_HMAC_CUTOVER_AT` | ISO timestamp opcional. Tras esa fecha, los links **sin firma** de solicitudes que entraron a su etapa DESPUÉS del cutover se rechazan (defensa contra links manipulados). Links de solicitudes pendientes al momento del deploy siguen funcionando. | `setScriptProperty('APPROVAL_LINK_HMAC_CUTOVER_AT', '2026-04-19T00:01:00-05:00')`. Recomendado: setear 10-14 días después del deploy. |
 | `USE_USUARIOS_SHEET` | **DEPRECADO** desde 2026-04-24. Ignorado por el runtime — la app siempre lee de USUARIOS. Se puede borrar. | — |
-| `MAIL_FROM_ALIAS` | Alias de Gmail desde el que salen todos los correos del sistema (ej. `apcompras@equitel.com.co`). Requiere que ese alias esté configurado como "Send As" en la cuenta que desplegó el web app. Si no se setea, los correos salen desde la cuenta desplegadora (comportamiento legacy). | `setScriptProperty('MAIL_FROM_ALIAS', 'apcompras@equitel.com.co')`. Verificar luego con `verificarAliasCorreo()`. |
+| `MAIL_FROM_ALIAS` | Alias de Gmail desde el que salen todos los correos del sistema (ej. `compras.equitel@equitel.com.co`). Requiere que ese alias esté configurado como "Send As" en la cuenta que desplegó el web app. Si no se setea, los correos salen desde la cuenta desplegadora (comportamiento legacy). | `setScriptProperty('MAIL_FROM_ALIAS', 'compras.equitel@equitel.com.co')`. Verificar luego con `verificarAliasCorreo()`. |
 | `MAIL_FROM_NAME` | Nombre visible del remitente (ej. "Sistema Viajes Equitel"). Ignorado si `MAIL_FROM_ALIAS` no está activo. | `setScriptProperty('MAIL_FROM_NAME', 'Sistema Viajes Equitel')`. |
 | `MAIL_TECH_SUPPORT_EMAIL` | Correo que aparece en el footer de todos los correos como contacto técnico del aplicativo (ej. `dsanchez@equitel.com.co`). Si no se setea, el footer no se inyecta. | `setScriptProperty('MAIL_TECH_SUPPORT_EMAIL', 'dsanchez@equitel.com.co')`. |
 | `WEB_APP_URL` | URL del deploy Apps Script. | Default hardcoded. Si cambia el deploy, actualizar via editor → propiedades. |
@@ -455,23 +455,23 @@ Son variables de configuración en el proyecto Apps Script. **NO editar desde la
 
 ### Remitente de los correos (alias "Send As")
 
-Por defecto, todos los correos del sistema salen desde la cuenta que desplegó el web app. Si la cuenta desplegadora es distinta del área operativa (caso típico: David despliega desde `dsanchez@`, pero los correos deberían salir desde `apcompras@` para que los usuarios respondan a Wendy), se configura un alias `Send As`.
+Por defecto, todos los correos del sistema salen desde la cuenta que desplegó el web app. Si la cuenta desplegadora es distinta del área operativa (caso típico: David despliega desde `dsanchez@`, pero los correos deberían salir desde `compras.equitel@` para que los usuarios respondan al área de compras), se configura un alias `Send As`.
 
 **Setup (una sola vez, ~5 minutos):**
 
 1. En el Gmail de la cuenta que desplegó el web app → **Configuración → Cuentas e importación → Enviar correo como → Añadir otra dirección de correo**.
-2. Escribe la dirección del alias (ej. `apcompras@equitel.com.co`), un nombre visible (ej. `Sistema Viajes Equitel`), deja marcado "Tratarlo como un alias" y continúa.
+2. Escribe la dirección del alias (ej. `compras.equitel@equitel.com.co`), un nombre visible (ej. `Sistema Viajes Equitel`), deja marcado "Tratarlo como un alias" y continúa.
 3. Google envía un código de verificación a la bandeja del alias. Abre esa bandeja, copia el código, pégalo.
 4. En el editor GAS ejecuta **una sola vez**:
    ```javascript
-   setScriptProperty('MAIL_FROM_ALIAS', 'apcompras@equitel.com.co');
+   setScriptProperty('MAIL_FROM_ALIAS', 'compras.equitel@equitel.com.co');
    setScriptProperty('MAIL_FROM_NAME', 'Sistema Viajes Equitel');
    setScriptProperty('MAIL_TECH_SUPPORT_EMAIL', 'dsanchez@equitel.com.co');
    ```
 5. Ejecuta `verificarAliasCorreo()` — loguea si el alias está bien configurado antes de confiar. Si dice **ALIAS VÁLIDO** todo listo; si no, sigue los pasos que sugiere el log.
 6. Opcional: ejecuta `enviarCorreoDePruebaAlias()` para recibir un correo real y verificar que el remitente aparece como esperas.
 
-**Qué ve el usuario:** `De: Sistema Viajes Equitel <apcompras@equitel.com.co>`. Cuando responde, la respuesta llega a la bandeja de apcompras.
+**Qué ve el usuario:** `De: Sistema Viajes Equitel <compras.equitel@equitel.com.co>`. Cuando responde, la respuesta llega a la bandeja de compras.equitel.
 
 **Footer de soporte técnico:** se inyecta automáticamente en todos los correos con el valor de `MAIL_TECH_SUPPORT_EMAIL`. El frontend NO lo incluye para evitar duplicación — el backend es la fuente única de verdad.
 
@@ -481,8 +481,8 @@ Por defecto, todos los correos del sistema salen desde la cuenta que desplegó e
 
 ### Detalles de autenticación (PIN admin + PIN personal)
 
-- Si un admin **tiene fila propia en USUARIOS** (caso David, Yurani, Wendy), puede ingresar con el botón negro **ADMINISTRADOR** usando o bien el PIN admin compartido, o bien **su PIN personal** (el mismo que usa para ingresar como usuario). Esto evita el "cruce" cuando Chrome autocompleta el PIN personal en el formulario de admin.
-- Si un admin **NO tiene fila en USUARIOS** (caso `apcompras@`), solo puede ingresar con el PIN admin compartido.
+- Si un admin **tiene fila propia en USUARIOS** (caso David, Yurani, Laura), puede ingresar con el botón negro **ADMINISTRADOR** usando o bien el PIN admin compartido, o bien **su PIN personal** (el mismo que usa para ingresar como usuario). Esto evita el "cruce" cuando Chrome autocompleta el PIN personal en el formulario de admin.
+- Si un admin **NO tiene fila en USUARIOS** (cuentas de área compartidas, como fue `apcompras@` hasta la transición 2026-08), solo puede ingresar con el PIN admin compartido.
 - El rate-limit por intentos fallidos es **por email**: fallar 5 veces con un correo bloquea solo ese correo por 15 min, no al resto de admins.
 
 ### Rate-limits y protecciones anti-abuso

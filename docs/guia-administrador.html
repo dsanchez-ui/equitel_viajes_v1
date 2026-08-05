@@ -428,7 +428,7 @@
 <p>Relacionado: si el login del admin falla por un error de red (no por PIN incorrecto), el mensaje ahora lo dice explícitamente y <strong>no</strong> consume un intento del rate-limit.</p>
 <hr>
 <h2>5.bis. Capacidades exclusivas de SUPERADMIN</h2>
-<p>Los <strong>superadmins</strong> (configurados en <code>SUPER_ADMIN_EMAILS</code> — actualmente David y Yurani) tienen capacidades adicionales que un analista normal (Wendy) no tiene:</p>
+<p>Los <strong>superadmins</strong> (configurados en <code>SUPER_ADMIN_EMAILS</code> — actualmente David y Yurani) tienen capacidades adicionales que un analista normal no tiene:</p>
 <table>
 <thead>
 <tr>
@@ -679,7 +679,7 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 <tbody>
 <tr>
 <td><code>ANALYST_EMAILS</code></td>
-<td>JSON array: <code>[&quot;apcompras@equitel.com.co&quot;,&quot;dsanchez@equitel.com.co&quot;]</code></td>
+<td>JSON array: <code>[&quot;compras.equitel@equitel.com.co&quot;,&quot;dsanchez@equitel.com.co&quot;]</code></td>
 <td>Ejecutar <code>actualizarAnalystEmails()</code> después de editar el array en código.</td>
 </tr>
 <tr>
@@ -689,7 +689,7 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 </tr>
 <tr>
 <td><code>ADMIN_PIN_HASH</code></td>
-<td>SHA-256 del PIN admin compartido. Solo se usa si un admin NO tiene fila propia en USUARIOS (ej. <code>apcompras@</code>).</td>
+<td>SHA-256 del PIN admin compartido. Solo se usa si un admin NO tiene fila propia en USUARIOS (cuentas de área compartidas). Deprecado tras la transición 2026-08: todos los admins activos usan su PIN personal.</td>
 <td><code>updateAdminPin(nuevoPin)</code> desde el editor. Primera vez: <code>configurarPinInicial()</code> tras poner <code>INITIAL_ADMIN_PIN</code>.</td>
 </tr>
 <tr>
@@ -709,8 +709,8 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 </tr>
 <tr>
 <td><code>MAIL_FROM_ALIAS</code></td>
-<td>Alias de Gmail desde el que salen todos los correos del sistema (ej. <code>apcompras@equitel.com.co</code>). Requiere que ese alias esté configurado como “Send As” en la cuenta que desplegó el web app. Si no se setea, los correos salen desde la cuenta desplegadora (comportamiento legacy).</td>
-<td><code>setScriptProperty('MAIL_FROM_ALIAS', 'apcompras@equitel.com.co')</code>. Verificar luego con <code>verificarAliasCorreo()</code>.</td>
+<td>Alias de Gmail desde el que salen todos los correos del sistema (ej. <code>compras.equitel@equitel.com.co</code>). Requiere que ese alias esté configurado como “Send As” en la cuenta que desplegó el web app. Si no se setea, los correos salen desde la cuenta desplegadora (comportamiento legacy).</td>
+<td><code>setScriptProperty('MAIL_FROM_ALIAS', 'compras.equitel@equitel.com.co')</code>. Verificar luego con <code>verificarAliasCorreo()</code>.</td>
 </tr>
 <tr>
 <td><code>MAIL_FROM_NAME</code></td>
@@ -756,13 +756,13 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 </table>
 <p><strong>Diagnóstico de propiedades:</strong> ejecuta <code>verPropiedadesDelScript()</code> desde el editor para ver el estado de todas.</p>
 <h3>Remitente de los correos (alias “Send As”)</h3>
-<p>Por defecto, todos los correos del sistema salen desde la cuenta que desplegó el web app. Si la cuenta desplegadora es distinta del área operativa (caso típico: David despliega desde <code>dsanchez@</code>, pero los correos deberían salir desde <code>apcompras@</code> para que los usuarios respondan a Wendy), se configura un alias <code>Send As</code>.</p>
+<p>Por defecto, todos los correos del sistema salen desde la cuenta que desplegó el web app. Si la cuenta desplegadora es distinta del área operativa (caso típico: David despliega desde <code>dsanchez@</code>, pero los correos deberían salir desde <code>compras.equitel@</code> para que los usuarios respondan al área de compras), se configura un alias <code>Send As</code>.</p>
 <p><strong>Setup (una sola vez, ~5 minutos):</strong></p>
 <ol>
 <li>En el Gmail de la cuenta que desplegó el web app → <strong>Configuración → Cuentas e importación → Enviar correo como → Añadir otra dirección de correo</strong>.</li>
-<li>Escribe la dirección del alias (ej. <code>apcompras@equitel.com.co</code>), un nombre visible (ej. <code>Sistema Viajes Equitel</code>), deja marcado “Tratarlo como un alias” y continúa.</li>
+<li>Escribe la dirección del alias (ej. <code>compras.equitel@equitel.com.co</code>), un nombre visible (ej. <code>Sistema Viajes Equitel</code>), deja marcado “Tratarlo como un alias” y continúa.</li>
 <li>Google envía un código de verificación a la bandeja del alias. Abre esa bandeja, copia el código, pégalo.</li>
-<li>En el editor GAS ejecuta <strong>una sola vez</strong>:<pre><code class="language-javascript">setScriptProperty('MAIL_FROM_ALIAS', 'apcompras@equitel.com.co');
+<li>En el editor GAS ejecuta <strong>una sola vez</strong>:<pre><code class="language-javascript">setScriptProperty('MAIL_FROM_ALIAS', 'compras.equitel@equitel.com.co');
 setScriptProperty('MAIL_FROM_NAME', 'Sistema Viajes Equitel');
 setScriptProperty('MAIL_TECH_SUPPORT_EMAIL', 'dsanchez@equitel.com.co');
 </code></pre>
@@ -770,14 +770,14 @@ setScriptProperty('MAIL_TECH_SUPPORT_EMAIL', 'dsanchez@equitel.com.co');
 <li>Ejecuta <code>verificarAliasCorreo()</code> — loguea si el alias está bien configurado antes de confiar. Si dice <strong>ALIAS VÁLIDO</strong> todo listo; si no, sigue los pasos que sugiere el log.</li>
 <li>Opcional: ejecuta <code>enviarCorreoDePruebaAlias()</code> para recibir un correo real y verificar que el remitente aparece como esperas.</li>
 </ol>
-<p><strong>Qué ve el usuario:</strong> <code>De: Sistema Viajes Equitel &lt;apcompras@equitel.com.co&gt;</code>. Cuando responde, la respuesta llega a la bandeja de apcompras.</p>
+<p><strong>Qué ve el usuario:</strong> <code>De: Sistema Viajes Equitel &lt;compras.equitel@equitel.com.co&gt;</code>. Cuando responde, la respuesta llega a la bandeja de compras.equitel.</p>
 <p><strong>Footer de soporte técnico:</strong> se inyecta automáticamente en todos los correos con el valor de <code>MAIL_TECH_SUPPORT_EMAIL</code>. El frontend NO lo incluye para evitar duplicación — el backend es la fuente única de verdad.</p>
 <p><strong>Rollback:</strong> si necesitas volver al comportamiento anterior (correos desde la cuenta desplegadora), ejecuta <code>deleteScriptProperty('MAIL_FROM_ALIAS')</code>. Toma efecto en el siguiente request, sin redeploy.</p>
 <p><strong>Fail-safe:</strong> si el alias queda mal configurado o Gmail bloquea el envío, el wrapper <code>_sendMail_</code> cae automáticamente a <code>MailApp.sendEmail</code> (comportamiento legacy). Los correos siempre salen — nunca se pierde nada. El fallback queda logueado en Ejecuciones.</p>
 <h3>Detalles de autenticación (PIN admin + PIN personal)</h3>
 <ul>
-<li>Si un admin <strong>tiene fila propia en USUARIOS</strong> (caso David, Yurani, Wendy), puede ingresar con el botón negro <strong>ADMINISTRADOR</strong> usando o bien el PIN admin compartido, o bien <strong>su PIN personal</strong> (el mismo que usa para ingresar como usuario). Esto evita el “cruce” cuando Chrome autocompleta el PIN personal en el formulario de admin.</li>
-<li>Si un admin <strong>NO tiene fila en USUARIOS</strong> (caso <code>apcompras@</code>), solo puede ingresar con el PIN admin compartido.</li>
+<li>Si un admin <strong>tiene fila propia en USUARIOS</strong> (caso David, Yurani, Laura), puede ingresar con el botón negro <strong>ADMINISTRADOR</strong> usando o bien el PIN admin compartido, o bien <strong>su PIN personal</strong> (el mismo que usa para ingresar como usuario). Esto evita el “cruce” cuando Chrome autocompleta el PIN personal en el formulario de admin.</li>
+<li>Si un admin <strong>NO tiene fila en USUARIOS</strong> (cuentas de área compartidas, como fue <code>apcompras@</code> hasta la transición 2026-08), solo puede ingresar con el PIN admin compartido.</li>
 <li>El rate-limit por intentos fallidos es <strong>por email</strong>: fallar 5 veces con un correo bloquea solo ese correo por 15 min, no al resto de admins.</li>
 </ul>
 <h3>Rate-limits y protecciones anti-abuso</h3>
@@ -960,7 +960,7 @@ setScriptProperty('MAIL_TECH_SUPPORT_EMAIL', 'dsanchez@equitel.com.co');
 <hr>
 <h2>14. Contacto y mantenimiento</h2>
 <ul>
-<li><strong>Código en:</strong> <a href="http://github.com/dsanchez-ui/equitel_viajes_v1">github.com/dsanchez-ui/equitel_viajes_v1</a></li>
+<li><strong>Código en:</strong> github.com/dsanchez-ui/equitel_viajes_v1</li>
 <li><strong>Deploy frontend:</strong> Cloud Run <code>sistematiquetesequitel-302740316698.us-west1.run.app</code></li>
 <li><strong>Deploy backend:</strong> Apps Script Web App, URL en <code>WEB_APP_URL</code></li>
 <li><strong>Modelo de deploy:</strong>
