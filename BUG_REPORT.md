@@ -605,3 +605,20 @@ Guard `H() === -1`: backend nuevo sin columna → aprueba idéntico a hoy (comen
 **Solo frontend**: push a `main` → Cloud Run. **Sin pasos de Apps Script** (no hay versión nueva del web app, ni migración, ni columna). Rollback = revert del commit.
 
 ---
+
+## **#A60 — CRÍTICO: "Editar Opciones" abría con galería vacía y podía borrar las opciones existentes al guardar**
+**Fecha:** 2026-08-06 · **Reportado por:** David (galería en 0 con opciones ya cargadas, SOL-000420 y otras) · **Estado:** Corregido y desplegado (`4694a02`)
+
+**Síntoma:** en solicitudes PENDIENTE_SELECCIÓN, el botón "Editar Opciones" de la fila del panel admin abría el modal con "GALERÍA DE OPCIONES (0)", aunque el detalle y el correo sí mostraban las opciones. Imposible corregir/eliminar opciones.
+
+**Causa raíz:** NO fue un cambio reciente ni Google/Drive — las imágenes estaban intactas. La optimización "lite" (Etapa 1.2) hace que las filas del dashboard viajen sin `analystOptions` (el detalle hidrata el objeto completo vía `getRequestById` antes de abrirse), pero el botón de fila pasaba la fila lite **directo** a `OptionUploadModal`. Riesgo mayor: `executeSubmission` reescribe OPCIONES (JSON) con `confirmados-sobrevivientes + nuevos`; con confirmados=[] (lite), **guardar habría borrado las opciones existentes** de la solicitud.
+
+### Fix (2 capas, frontend-only)
+1. **AdminDashboard**: "Editar/Cargar Opciones" ahora hidrata la solicitud completa antes de abrir el modal (mismo patrón del detalle). Botón muestra "Cargando…", se deshabilita durante la carga, y si el fetch falla el modal NO se abre (alerta explícita, sin datos parciales).
+2. **OptionUploadModal**: candado anti-sobrescritura estructural — si `status === PENDIENTE_SELECCIÓN` y la galería de confirmadas está vacía (estado imposible con datos completos), el guardado se bloquea con alerta, sin importar desde dónde se abrió el modal. Protege también contra futuros puntos de entrada con datos lite.
+
+### Auditoría del resto de la superficie lite (pedida por David)
+`mapRowToRequest(lite)` omite **únicamente** `analystOptions` — `selectedOption`, `supportData`, `approverComments`, pasajeros y todos los escalares se parsean idéntico (verificado en Code.gs). Consumidores revisados uno a uno: tabla admin y filtros (no usan opciones) ✓ · UserDashboard ✓ · RequestDetail (hidratado; si falla NO abre) ✓ · ReservationModal (lee approverComments, incluido en lite; escribe solo reserva) ✓ · CostConfirmationModal (escribe solo costos) ✓ · SupportUploadModal (lee supportData incluido en lite; sube archivo-por-archivo y el backend agrega server-side, sin round-trip de array) ✓ · CancellationModal admin/user ✓ · MetricsPanel (datos propios vía getMetrics) ✓. **OptionUploadModal era el único lector de `analystOptions` fuera del detalle → superficie cerrada.**
+
+### Verificado
+`npx tsc --noEmit` · `npm run build` — limpios. Cero cambios a Code.gs (no interfiere con la transición de administradora en curso).
