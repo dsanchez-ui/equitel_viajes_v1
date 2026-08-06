@@ -318,8 +318,11 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
     // (residuo de algún bug previo) crasheaba el render con "Cannot read type
     // of null" y el modal se veía en blanco. Ahora ignoramos entradas inválidas.
     const _validOptions = (request.analystOptions || []).filter((o): o is NonNullable<typeof o> => !!o && typeof o === 'object');
-    const flightOptions = _validOptions.filter(o => o.type === 'FLIGHT');
-    const hotelOptions = _validOptions.filter(o => o.type === 'HOTEL');
+    // #A61: mostrar siempre en orden alfabético de letra (el array guarda orden
+    // de subida, que tras ediciones puede quedar desordenado).
+    const _byLetter = (a: { id?: string }, b: { id?: string }) => String(a.id || '').localeCompare(String(b.id || ''));
+    const flightOptions = _validOptions.filter(o => o.type === 'FLIGHT').sort(_byLetter);
+    const hotelOptions = _validOptions.filter(o => o.type === 'HOTEL').sort(_byLetter);
 
     // Archivos de reserva (PNRs / vouchers cargados por el analista). Pueden ser
     // varios — ej. tiquetes ida + vuelta + asistencia médica como PDFs separados.

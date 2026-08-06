@@ -622,3 +622,22 @@ Guard `H() === -1`: backend nuevo sin columna → aprueba idéntico a hoy (comen
 
 ### Verificado
 `npx tsc --noEmit` · `npm run build` — limpios. Cero cambios a Code.gs (no interfiere con la transición de administradora en curso).
+
+## **#A61 — Letras de opciones duplicadas (SOL-000419: "B, C, C") y galería en desorden**
+**Fecha:** 2026-08-06 · **Reportado por:** Wendy (chat: "las opciones me salen en desorden de alfabeto... me dicen la opción C pero hay dos") · **Estado:** Corregido
+
+**Evidencia:** OPCIONES (JSON) de SOL-000419 contenía 3 archivos Drive distintos con ids `B`, `C`, `C` (dos "Opcion_C"). El solicitante "seleccionó la C" habiendo dos C distintas (JetSmart $557.939 vs Avianca $854.960).
+
+**Causa raíz (pre-existente, NO relacionada con los cambios recientes):** `getNextLetter` asignaba la siguiente letra por CONTEO (`65 + cantidad de opciones`), no por letras usadas. Subir A, B, C → eliminar A → agregar una nueva: conteo = 2 → la nueva se llama "C" otra vez. Reproducible desde siempre, incluso quitando/re-agregando imágenes pendientes en la primera carga.
+
+### Fix (frontend-only, 3 capas)
+1. **Asignación**: siguiente letra = `MAX(letras usadas) + 1` por tipo, incluyendo pendientes y marcadas-para-borrar → letras monotónicas por solicitud; pueden quedar huecos (B, C, D sin A) pero jamás duplicados.
+2. **Compuerta de guardado**: antes de confirmar, se valida que el set final (sobrevivientes + nuevas) no tenga letras repetidas por tipo — bloquea con alerta explicativa incluso con datos legacy ya duplicados o estados anómalos.
+3. **Display**: galerías de RequestDetail y OptionUploadModal ordenadas alfabéticamente por letra (el array guarda orden de subida).
+
+**Reparación de SOL-000419 (operativa):** con "Editar Opciones" (ya funcional por #A60), eliminar una de las dos C y re-subirla → entra como "D" (B, C, D). Confirmar con el solicitante por aerolínea/precio cuál "C" quiso antes de comprar.
+
+**Límite conocido:** dos analistas editando la MISMA solicitud simultáneamente en dos navegadores podrían asignar la misma letra (el guardado es last-write-wins por diseño); escenario sin ocurrencia real con una sola analista operando. La compuerta de la capa 2 protege cada sesión contra su propio estado.
+
+### Verificado
+`npx tsc --noEmit` · `npm run build` — limpios. Cero cambios a Code.gs.

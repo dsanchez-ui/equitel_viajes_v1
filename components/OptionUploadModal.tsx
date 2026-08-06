@@ -83,11 +83,20 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
 
     const getDriveImageUrl = (driveId: string) => `https://drive.google.com/uc?export=view&id=${driveId}`;
 
-    // Count all options of a type (confirmed-no-deleted + pending) for letter assignment
+    // #A61: la siguiente letra es MAX(letras usadas) + 1 — nunca por conteo.
+    // Con conteo, eliminar una opción y agregar otra reutilizaba una letra ya
+    // ocupada (caso real SOL-000419: quitar A y agregar una nueva dejó B, C, C
+    // y el usuario "seleccionó la C" con dos C distintas). Se incluyen también
+    // las marcadas para eliminar: las letras son monotónicas dentro de la
+    // solicitud — pueden quedar huecos (B, C, D sin A), pero jamás duplicados.
     const getNextLetter = (type: 'FLIGHT' | 'HOTEL') => {
-        const confirmedCount = confirmedOptions.filter(o => o.type === type && !markedForDeletion.has(o.driveId)).length;
-        const pendingCount = pendingOptions.filter(o => o.type === type).length;
-        return String.fromCharCode(65 + confirmedCount + pendingCount);
+        const usedCodes = [
+            ...confirmedOptions.filter(o => o.type === type).map(o => String(o.id || '').trim().toUpperCase()),
+            ...pendingOptions.filter(p => p.type === type).map(p => String(p.letter || '').trim().toUpperCase()),
+        ]
+            .filter(l => /^[A-Z]$/.test(l))
+            .map(l => l.charCodeAt(0));
+        return String.fromCharCode(usedCodes.length > 0 ? Math.max(...usedCodes) + 1 : 65);
     };
 
     // Store image locally (NO Drive upload)
@@ -191,6 +200,30 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
             setDialog({
                 isOpen: true, title: 'Sin Opciones',
                 message: 'Debe cargar al menos una imagen (vuelo u hotel) para continuar.',
+                type: 'ALERT', onConfirm: closeDialog
+            });
+            return;
+        }
+
+        // #A61 capa 2: compuerta de unicidad — pase lo que pase con la asignación
+        // (datos legacy ya duplicados, estados raros), NUNCA se guarda un set de
+        // opciones con letras repetidas por tipo. El caso SOL-000419 (B, C, C)
+        // dejó al usuario "seleccionando la C" con dos C distintas.
+        const finalLetters = [
+            ...confirmedOptions.filter(o => !markedForDeletion.has(o.driveId)).map(o => ({ type: o.type, letter: String(o.id || '').trim().toUpperCase() })),
+            ...pendingOptions.map(p => ({ type: p.type, letter: String(p.letter || '').trim().toUpperCase() })),
+        ];
+        const seen = new Set<string>();
+        const dupes: string[] = [];
+        for (const f of finalLetters) {
+            const k = `${f.type}-${f.letter}`;
+            if (seen.has(k)) dupes.push(`${f.type === 'FLIGHT' ? 'Vuelo' : 'Hotel'} ${f.letter}`);
+            seen.add(k);
+        }
+        if (dupes.length > 0) {
+            setDialog({
+                isOpen: true, title: '⚠️ Letras duplicadas — guardado bloqueado',
+                message: `Hay opciones con la misma letra: ${dupes.join(', ')}. Esto confundiría al usuario al seleccionar.\n\nElimine la(s) opción(es) duplicada(s) y vuelva a subirlas — recibirán una letra nueva automáticamente.`,
                 type: 'ALERT', onConfirm: closeDialog
             });
             return;
@@ -461,8 +494,8 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                                 )}
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {/* CONFIRMED OPTIONS (already in Drive). Las marcadas para borrar se muestran tachadas con botón Restaurar. El borrado real solo ocurre en Confirmar y Enviar. */}
-                                    {confirmedOptions.map((opt, idx) => {
+                                    {/* CONFIRMED OPTIONS (already in Drive). Las marcadas para borrar se muestran tachadas con botón Restaurar. El borrado real solo ocurre en Confirmar y Enviar. #A61: orden alfabético por letra en el display (copia — no muta el estado). */}
+                                    {[...confirmedOptions].sort((a, b) => String(a.id || '').localeCompare(String(b.id || ''))).map((opt, idx) => {
                                         const isMarkedForDelete = markedForDeletion.has(opt.driveId);
                                         return (
                                         <div
