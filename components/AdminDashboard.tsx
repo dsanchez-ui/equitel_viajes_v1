@@ -132,6 +132,28 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
     return m;
   }, [requests]);
   const [selectedRequestForOptions, setSelectedRequestForOptions] = useState<TravelRequest | null>(null);
+  // #A60: las filas del dashboard son LITE (analystOptions = []). Abrir el
+  // modal de opciones con una fila lite mostraba la galería vacía y, peor,
+  // guardar desde ahí sobrescribiría el JSON de opciones borrando las
+  // existentes. Igual que hace App.tsx con el detalle, hidratamos el objeto
+  // COMPLETO antes de abrir el modal.
+  const [hydratingOptionsId, setHydratingOptionsId] = useState<string | null>(null);
+  const openOptionsModal = async (req: TravelRequest) => {
+    if (hydratingOptionsId) return;
+    setHydratingOptionsId(req.requestId);
+    try {
+      const full = await gasService.getRequestById(req.requestId);
+      if (full) {
+        setSelectedRequestForOptions(full);
+      } else {
+        alert('No se pudo cargar la información completa de la solicitud (incluidas sus opciones ya subidas). Verifique su conexión e intente de nuevo — el modal NO se abrió para evitar sobrescribir opciones existentes.');
+      }
+    } catch (e) {
+      alert('Error cargando la solicitud completa: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setHydratingOptionsId(null);
+    }
+  };
   const [selectedRequestForSupports, setSelectedRequestForSupports] = useState<TravelRequest | null>(null);
   const [selectedRequestForReservation, setSelectedRequestForReservation] = useState<TravelRequest | null>(null);
   const [selectedRequestForCosts, setSelectedRequestForCosts] = useState<TravelRequest | null>(null);
@@ -672,10 +694,13 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
                                 {/* OPTION UPLOAD & CORRECTION */}
                                 {(req.status === RequestStatus.PENDING_OPTIONS || req.status === RequestStatus.PENDING_SELECTION) && (
                                   <button
-                                    onClick={() => setSelectedRequestForOptions(req)}
-                                    className="text-brand-red hover:text-red-900 bg-red-50 px-3 py-1 rounded border border-red-100 text-xs font-medium"
+                                    onClick={() => openOptionsModal(req)}
+                                    disabled={hydratingOptionsId !== null}
+                                    className="text-brand-red hover:text-red-900 bg-red-50 px-3 py-1 rounded border border-red-100 text-xs font-medium disabled:opacity-50 disabled:cursor-wait"
                                   >
-                                    {req.status === RequestStatus.PENDING_SELECTION ? 'Editar Opciones' : 'Cargar Opciones'}
+                                    {hydratingOptionsId === req.requestId
+                                      ? 'Cargando…'
+                                      : req.status === RequestStatus.PENDING_SELECTION ? 'Editar Opciones' : 'Cargar Opciones'}
                                   </button>
                                 )}
 

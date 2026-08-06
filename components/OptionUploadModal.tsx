@@ -175,6 +175,18 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
     const totalCount = visibleConfirmedCount + pendingOptions.length;
 
     const handleSubmit = () => {
+        // #A60: candado anti-sobrescritura. Una solicitud en PENDIENTE_SELECCION
+        // tiene por definición opciones ya cargadas; si aquí no las vemos, el
+        // modal se abrió con datos incompletos (fila lite u otro fallo de carga)
+        // y guardar REEMPLAZARÍA el JSON de opciones borrando las existentes.
+        if (request.status === RequestStatus.PENDING_SELECTION && confirmedOptions.length === 0) {
+            setDialog({
+                isOpen: true, title: '⚠️ Datos incompletos — guardado bloqueado',
+                message: 'Esta solicitud ya tiene opciones cargadas, pero no se pudieron cargar en esta ventana. Guardar ahora las borraría.\n\nCierre este modal y vuelva a abrirlo. Si el problema persiste, contacte al administrador del aplicativo.',
+                type: 'ALERT', onConfirm: closeDialog
+            });
+            return;
+        }
         if (totalCount === 0) {
             setDialog({
                 isOpen: true, title: 'Sin Opciones',
