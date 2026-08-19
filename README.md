@@ -15,6 +15,8 @@ View your app in AI Studio: https://ai.studio/apps/aa6bacc7-18f1-47d3-b856-622b5
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Set `VITE_API_BASE_URL` in [.env.local](.env.local) to your GAS deployment URL.
+   (Note: `GEMINI_API_KEY` is a **backend** secret — it lives in Apps Script
+   Script Properties, never in a frontend `.env` file.)
 3. Run the app:
    `npm run dev`

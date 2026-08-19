@@ -719,15 +719,25 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     && !!passengers[0].idNumber
     && isPassengerInDb(passengers[0].idNumber);
 
-  // Gemini Enhancement
+  // Mejora con IA. Antes: cualquier fallo se tragaba en console.error y el
+  // botón no hacía NADA visible (el usuario no sabía si funcionó). Ahora el
+  // backend devuelve un mensaje accionable y se muestra; el borrador del
+  // usuario nunca se pierde ni se sobrescribe con vacío.
   const handleEnhanceText = async () => {
     if (!changeReason.trim() || !initialData) return;
     setGeminiLoading(true);
     try {
       const enhanced = await gasService.enhanceTextWithGemini(initialData, changeReason);
-      setChangeReason(enhanced);
+      if (enhanced && String(enhanced).trim()) {
+        setChangeReason(String(enhanced).trim());
+      } else {
+        alert('La IA no devolvió texto. Tu texto se conservó sin cambios.');
+      }
     } catch (e) {
       console.error(e);
+      const raw = e instanceof Error ? e.message : String(e);
+      // El backend envuelve el error como "Error: <mensaje>" — se limpia.
+      alert(raw.replace(/^Error:\s*/, '') || 'No se pudo mejorar el texto con IA. Tu texto se conservó sin cambios.');
     } finally {
       setGeminiLoading(false);
     }

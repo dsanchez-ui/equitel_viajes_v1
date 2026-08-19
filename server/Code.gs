@@ -19,6 +19,14 @@ const EMAIL_LOGO_URL = getConfig_('EMAIL_LOGO_URL', 'https://drive.google.com/th
 // Secrets (MUST be set in ScriptProperties for production)
 const GEMINI_API_KEY = getConfig_('GEMINI_API_KEY', '');
 
+// Modelo de IA para la mejora de textos. Configurable por Script Property para
+// poder cambiarlo o revertirlo SIN desplegar (ver diagnosticarGemini()).
+// Migración 2026-08: gemini-2.5-flash tiene retiro anunciado (oct-2026) y ya
+// hubo 404 anticipados. gemini-3.1-flash-lite es GA, más barato que el 2.5-flash
+// ($0.25/$1.50 vs $0.30/$2.50 por millón de tokens) y Google lo describe como
+// "frontier-class performance ... at a fraction of the cost".
+const GEMINI_MODEL = getConfig_('GEMINI_MODEL', 'gemini-3.1-flash-lite');
+
 // TIMEOUT PARA BLOQUEOS (CONCURRENCIA)
 const LOCK_WAIT_MS = 30000;
 
@@ -961,6 +969,7 @@ function verPropiedadesDelScript() {
   var props = PropertiesService.getScriptProperties().getProperties();
   var expected = [
     { key: 'GEMINI_API_KEY', desc: 'API key de Google Gemini (para mejora de texto con IA)', required: false },
+    { key: 'GEMINI_MODEL', desc: 'Modelo de IA a usar (default: gemini-3.1-flash-lite). Ver diagnosticarGemini()', required: false },
     { key: 'ANALYST_EMAILS', desc: 'JSON array de correos admin, ej: ["compras.equitel@equitel.com.co"]', required: true },
     { key: 'ADMIN_PIN_HASH', desc: 'Hash del PIN admin (se genera automáticamente)', required: true },
     { key: 'REPORT_TEMPLATE_ID', desc: 'ID del template de reportes (se genera con createReportTemplate)', required: false },
@@ -1721,38 +1730,161 @@ function logout(email, token) {
   return true;
 }
 
-function enhanceTextWithGemini(currentRequest, userDraft) {
-  if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('test')) return userDraft;
+// =====================================================================
+// GEMINI — mejora de texto con IA (migración 2026-08, fuera de Gemini 2.5)
+// =====================================================================
+// Los modelos de Google se retiran periódicamente. Para que eso nunca vuelva a
+// ser una emergencia (ni un botón que falla en silencio):
+//   1) El modelo se lee de la Script Property GEMINI_MODEL → cambiarlo o
+//      revertirlo NO requiere desplegar.
+//   2) Cadena de respaldo: si ese ID no existe, se pasa al siguiente y se
+//      RECUERDA cuál funcionó (cache 6h). Un ID muerto nunca deja sin IA.
+//   3) SOLO se cambia de modelo ante errores de DISPONIBILIDAD (404/not found).
+//      Cuota (429), credencial o red se propagan tal cual: reintentar con otro
+//      modelo multiplicaría el gasto y ocultaría el problema real.
+//   4) Todo fallo devuelve un mensaje accionable al usuario (antes se tragaba
+//      el error y el botón no hacía nada).
 
-  // #A28: limitar tamaño del draft antes de invocar Gemini. Un borrador de
-  // 5000 caracteres es ~5x más largo que una justificación normal. Evita
-  // gastar cuota de Gemini en entradas absurdas o cuentas comprometidas.
-  // Si excede, retornamos el input tal cual (fallback seguro — sin mejora IA).
-  if (userDraft && String(userDraft).length > 5000) {
-    console.warn('enhanceTextWithGemini: userDraft excede 5000 chars (' + String(userDraft).length + '), retornando sin procesar.');
-    return userDraft;
+var GEMINI_FALLBACK_MODELS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-2.5-flash'];
+var GEMINI_RESOLVED_CACHE_KEY = 'GEMINI_RESOLVED_MODEL';
+
+/** Cadena de modelos a probar, sin duplicados y con el que funcionó al frente. */
+function _geminiCandidates_() {
+  var out = [], seen = {};
+  [String(GEMINI_MODEL || '').trim()].concat(GEMINI_FALLBACK_MODELS).forEach(function(m) {
+    var id = String(m || '').trim();
+    if (!id || seen[id]) return;
+    seen[id] = true;
+    out.push(id);
+  });
+  // El modelo que funcionó la última vez se adelanta, PERO nunca por delante
+  // del configurado: si un día cambias GEMINI_MODEL, debe tomar efecto de
+  // inmediato y no quedar tapado por el cache durante horas. Coste de esa
+  // garantía: un 404 (no facturable, ~200 ms) mientras el primario esté caído.
+  try {
+    var cached = CacheService.getScriptCache().get(GEMINI_RESOLVED_CACHE_KEY);
+    if (cached && out.indexOf(cached) > 1) {
+      var configured = out[0];
+      out = [configured, cached].concat(out.filter(function(m) {
+        return m !== configured && m !== cached;
+      }));
+    }
+  } catch (e) { /* el cache es opcional */ }
+  return out;
+}
+
+/** ¿El error indica que el MODELO no existe (vs. cuota/credencial/red)? */
+function _geminiModelUnavailable_(code, body) {
+  if (code === 404) return true;
+  var s = String(body || '').toLowerCase();
+  return s.indexOf('not_found') > -1 || s.indexOf('not found') > -1
+      || s.indexOf('is not supported') > -1 || s.indexOf('does not exist') > -1
+      || s.indexOf('no longer available') > -1;
+}
+
+/**
+ * Llama a Gemini recorriendo la cadena de respaldo. Retorna el texto generado
+ * o lanza Error con un mensaje pensado para mostrarse al usuario final.
+ */
+function _geminiGenerateText_(prompt) {
+  var candidates = _geminiCandidates_();
+  var unavailable = [];
+
+  for (var i = 0; i < candidates.length; i++) {
+    var model = candidates[i];
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+            + encodeURIComponent(model) + ':generateContent';
+    var response;
+    try {
+      response = UrlFetchApp.fetch(url, {
+        method: 'post',
+        contentType: 'application/json',
+        // La key va en header (no en la URL): las URLs terminan en logs.
+        headers: { 'x-goog-api-key': GEMINI_API_KEY },
+        payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        muteHttpExceptions: true
+      });
+    } catch (e) {
+      // Red/timeout NO es problema del modelo → no tiene sentido seguir probando.
+      console.error('[Gemini] Error de red: ' + e);
+      throw new Error('No se pudo conectar con el servicio de IA. Intenta de nuevo en un momento. Tu texto se conservó sin cambios.');
+    }
+
+    var code = response.getResponseCode();
+    var body = response.getContentText();
+
+    if (code === 200) {
+      var text = '';
+      try {
+        var json = JSON.parse(body);
+        text = (((((json.candidates || [])[0] || {}).content || {}).parts || [])[0] || {}).text || '';
+      } catch (e) { text = ''; }
+
+      if (String(text).trim()) {
+        try { CacheService.getScriptCache().put(GEMINI_RESOLVED_CACHE_KEY, model, 21600); } catch (e) {}
+        if (model !== candidates[0]) {
+          console.warn('[Gemini] "' + candidates[0] + '" no disponible; se usó "' + model + '".');
+        }
+        return String(text).trim();
+      }
+      // 200 sin texto = filtro de contenido o respuesta vacía. Otro modelo no lo arregla.
+      throw new Error('La IA no devolvió texto (posible filtro de contenido). Tu texto se conservó sin cambios.');
+    }
+
+    if (_geminiModelUnavailable_(code, body)) {
+      unavailable.push(model);
+      console.warn('[Gemini] Modelo "' + model + '" no disponible (HTTP ' + code + ').');
+      continue; // ← ÚNICO caso que avanza al siguiente modelo
+    }
+
+    if (code === 429) {
+      console.error('[Gemini] 429 RESOURCE_EXHAUSTED: ' + body.substring(0, 300));
+      throw new Error('El servicio de IA no tiene cuota disponible ahora mismo (créditos agotados o límite por minuto). Reintentar no lo soluciona: avisa al administrador del aplicativo. Tu texto se conservó sin cambios.');
+    }
+    if (code === 401 || code === 403 || (code === 400 && body.toLowerCase().indexOf('api_key') > -1)) {
+      console.error('[Gemini] Credencial rechazada (HTTP ' + code + '): ' + body.substring(0, 300));
+      throw new Error('El servicio de IA rechazó la credencial del servidor. Avisa al administrador del aplicativo. Tu texto se conservó sin cambios.');
+    }
+
+    console.error('[Gemini] HTTP ' + code + ': ' + body.substring(0, 300));
+    throw new Error('El servicio de IA respondió con un error (HTTP ' + code + '). Tu texto se conservó sin cambios.');
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-  
-  const context = `
-    ID Solicitud: ${currentRequest.requestId}
-    Solicitante: ${currentRequest.requesterEmail}
-    Empresa: ${currentRequest.company}
-    Ruta Original: ${currentRequest.origin} -> ${currentRequest.destination}
-    Fecha Ida Original: ${currentRequest.departureDate}
-    Fecha Regreso Original: ${currentRequest.returnDate || 'N/A'}
-  `;
+  throw new Error('Ningún modelo de IA está disponible (se probaron: ' + unavailable.join(', ') + '). Avisa al administrador: hay que actualizar la propiedad GEMINI_MODEL. Tu texto se conservó sin cambios.');
+}
 
-  const prompt = `
+function enhanceTextWithGemini(currentRequest, userDraft) {
+  var draft = String(userDraft || '');
+
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.includes('test')) {
+    throw new Error('La mejora con IA no está configurada en el servidor. Tu texto se conservó sin cambios.');
+  }
+  if (!draft.trim()) {
+    throw new Error('Escribe primero un borrador del motivo del cambio para poder mejorarlo.');
+  }
+  // #A28: tope de tamaño antes de gastar cuota en entradas absurdas.
+  if (draft.length > 5000) {
+    throw new Error('El texto es demasiado largo para mejorarlo con IA (máximo 5.000 caracteres; el tuyo tiene ' + draft.length + '). Resúmelo un poco e intenta de nuevo.');
+  }
+
+  var req = currentRequest || {};
+  var context = ''
+    + '\n    ID Solicitud: ' + (req.requestId || 'N/A')
+    + '\n    Solicitante: ' + (req.requesterEmail || 'N/A')
+    + '\n    Empresa: ' + (req.company || 'N/A')
+    + '\n    Ruta Original: ' + (req.origin || 'N/A') + ' -> ' + (req.destination || 'N/A')
+    + '\n    Fecha Ida Original: ' + (req.departureDate || 'N/A')
+    + '\n    Fecha Regreso Original: ' + (req.returnDate || 'N/A') + '\n  ';
+
+  var prompt = `
     Actúa como un asistente administrativo experto en gestión de viajes corporativos.
     Tu tarea es redactar una JUSTIFICACIÓN FORMAL Y CLARA para un cambio en una solicitud de viaje.
-    
+
     CONTEXTO DE LA SOLICITUD ORIGINAL:
     ${context}
 
     EL USUARIO DICE (BORRADOR):
-    "${userDraft}"
+    "${draft}"
 
     INSTRUCCIONES:
     1. Redacta un párrafo breve (máximo 3 oraciones) que explique el motivo del cambio de manera profesional.
@@ -1761,23 +1893,82 @@ function enhanceTextWithGemini(currentRequest, userDraft) {
     4. Devuelve SOLAMENTE el texto final de la justificación.
   `;
 
+  return _geminiGenerateText_(prompt);
+}
+
+/**
+ * DIAGNÓSTICO: prueba cada modelo de la cadena contra la API real y reporta si
+ * existe, si no existe, o si existe pero sin cuota (429 = facturación, no código).
+ * Ejecutar desde el editor: dropdown → diagnosticarGemini → ▶ Ejecutar.
+ * La API key nunca sale del entorno: se lee de la Script Property.
+ */
+function diagnosticarGemini() {
+  Logger.log('======== DIAGNÓSTICO GEMINI ========');
+  if (!GEMINI_API_KEY) {
+    Logger.log('❌ GEMINI_API_KEY no está configurada. La mejora con IA está apagada.');
+    return null;
+  }
+  Logger.log('GEMINI_MODEL (propiedad o default): ' + GEMINI_MODEL);
+  var candidates = _geminiCandidates_();
+  Logger.log('Cadena efectiva: ' + JSON.stringify(candidates));
+  Logger.log('--- Probando cada modelo ---');
+
+  var results = {};
+  candidates.forEach(function(model) {
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+            + encodeURIComponent(model) + ':generateContent';
+    var verdict;
+    try {
+      var r = UrlFetchApp.fetch(url, {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { 'x-goog-api-key': GEMINI_API_KEY },
+        payload: JSON.stringify({ contents: [{ parts: [{ text: 'responde solo: ok' }] }] }),
+        muteHttpExceptions: true
+      });
+      var code = r.getResponseCode();
+      var body = r.getContentText();
+      if (code === 200) verdict = '✅ FUNCIONA';
+      else if (_geminiModelUnavailable_(code, body)) verdict = '❌ NO EXISTE / retirado (HTTP ' + code + ')';
+      else if (code === 429) verdict = '⚠️ EXISTE pero SIN CUOTA (HTTP 429 — es facturación, no código)';
+      else verdict = '⚠️ HTTP ' + code + ' — ' + body.substring(0, 160);
+    } catch (e) {
+      verdict = '⚠️ Error de red: ' + e;
+    }
+    Logger.log('  ' + model + '  →  ' + verdict);
+    results[model] = verdict;
+  });
+
+  Logger.log('------------------------------------');
+  Logger.log('Si el primero NO funciona, la app usa automáticamente el primero que sí.');
+  Logger.log('Para fijar otro modelo sin desplegar:');
+  Logger.log("   setScriptProperty('GEMINI_MODEL', 'gemini-3.1-flash-lite')");
+  return results;
+}
+
+/**
+ * PRUEBA END-TO-END: corre la mejora de texto real con un borrador de ejemplo.
+ * Ejecutar desde el editor: dropdown → probarMejoraIA → ▶ Ejecutar.
+ */
+function probarMejoraIA() {
+  var ejemplo = {
+    requestId: 'SOL-PRUEBA', requesterEmail: 'prueba@equitel.com.co', company: 'Equitel',
+    origin: 'MEDELLIN, COLOMBIA', destination: 'BOGOTA, COLOMBIA',
+    departureDate: '2026-09-10', returnDate: '2026-09-12'
+  };
+  var draft = 'necesito cambiar la fecha porque el cliente movio la reunion para el jueves';
+  Logger.log('BORRADOR ORIGINAL:\n  ' + draft);
   try {
-    const payload = {
-      contents: [{
-        parts: [{ text: prompt }]
-      }]
-    };
-    const response = UrlFetchApp.fetch(url, { 
-      method: 'post', 
-      contentType: 'application/json', 
-      payload: JSON.stringify(payload) 
-    });
-    const json = JSON.parse(response.getContentText());
-    return json.candidates?.[0]?.content?.parts?.[0]?.text || userDraft;
-  } catch (e) { 
-    return userDraft; 
+    var salida = enhanceTextWithGemini(ejemplo, draft);
+    Logger.log('✅ TEXTO MEJORADO:\n  ' + salida);
+    return salida;
+  } catch (e) {
+    Logger.log('❌ FALLÓ: ' + e.message);
+    Logger.log('Ejecuta diagnosticarGemini() para ver qué modelo está disponible.');
+    throw e;
   }
 }
+
 
 // --- NEW MODIFICATION ARCHITECTURE ---
 
