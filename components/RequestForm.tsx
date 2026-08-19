@@ -181,7 +181,6 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   initialData
 }) => {
   const [loading, setLoading] = useState(false);
-  const [geminiLoading, setGeminiLoading] = useState(false);
 
   // Initialize State
   const [passengers, setPassengers] = useState<Passenger[]>(
@@ -718,30 +717,6 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const firstPassengerValid = passengers.length > 0
     && !!passengers[0].idNumber
     && isPassengerInDb(passengers[0].idNumber);
-
-  // Mejora con IA. Antes: cualquier fallo se tragaba en console.error y el
-  // botón no hacía NADA visible (el usuario no sabía si funcionó). Ahora el
-  // backend devuelve un mensaje accionable y se muestra; el borrador del
-  // usuario nunca se pierde ni se sobrescribe con vacío.
-  const handleEnhanceText = async () => {
-    if (!changeReason.trim() || !initialData) return;
-    setGeminiLoading(true);
-    try {
-      const enhanced = await gasService.enhanceTextWithGemini(initialData, changeReason);
-      if (enhanced && String(enhanced).trim()) {
-        setChangeReason(String(enhanced).trim());
-      } else {
-        alert('La IA no devolvió texto. Tu texto se conservó sin cambios.');
-      }
-    } catch (e) {
-      console.error(e);
-      const raw = e instanceof Error ? e.message : String(e);
-      // El backend envuelve el error como "Error: <mensaje>" — se limpia.
-      alert(raw.replace(/^Error:\s*/, '') || 'No se pudo mejorar el texto con IA. Tu texto se conservó sin cambios.');
-    } finally {
-      setGeminiLoading(false);
-    }
-  };
 
   // =====================================================================
   // MULTIDESTINO — handlers, resolvers compartidos y loop de creación
@@ -1795,12 +1770,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             <h4 className="text-sm font-bold text-blue-800 uppercase mb-4 border-b border-blue-200 pb-2">Motivo del Cambio (Obligatorio)</h4>
             <div className="mb-4">
               <label className="block text-xs text-gray-600 mb-1">Escriba qué desea cambiar y por qué</label>
-              <div className="flex gap-2">
-                <textarea className="flex-1 p-2 border rounded text-sm bg-white text-gray-900" rows={3} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} required />
-                <button type="button" onClick={handleEnhanceText} disabled={geminiLoading || !changeReason} className="bg-purple-600 text-white px-3 rounded font-bold text-xs hover:bg-purple-700 transition flex flex-col items-center justify-center min-w-[120px]">
-                  {geminiLoading ? '...' : 'Mejorar con IA (Opcional)'}
-                </button>
-              </div>
+              <textarea className="w-full p-2 border rounded text-sm bg-white text-gray-900" rows={3} value={changeReason} onChange={(e) => setChangeReason(e.target.value)} required />
             </div>
           </div>
         )}

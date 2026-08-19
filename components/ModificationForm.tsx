@@ -16,7 +16,6 @@ type TripType = 'ROUND_TRIP' | 'ONE_WAY';
 
 export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequest, integrantes, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
-  const [geminiLoading, setGeminiLoading] = useState(false);
 
   // --- FORM STATE INITIALIZATION ---
   
@@ -216,23 +215,6 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
 
   const handleRemoveVariousCC = (codeToRemove: string) => {
     setVariousCCList(variousCCList.filter(c => c !== codeToRemove));
-  };
-
-  // Gemini & Submit
-  const handleEnhanceText = async () => {
-    if (!changeDraft.trim()) return;
-    setGeminiLoading(true);
-    try {
-       // We pass the ORIGINAL request context to Gemini so it knows what changed
-       const enhanced = await gasService.enhanceTextWithGemini(originalRequest, changeDraft);
-       setChangeReason(enhanced);
-    } catch (e) {
-       console.error(e);
-       alert("Error conectando con Gemini. Se usará el texto original.");
-       setChangeReason(changeDraft);
-    } finally {
-       setGeminiLoading(false);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -594,7 +576,7 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
 
                     </div>
 
-                    {/* --- STEP 2: REASON & GEMINI --- */}
+                    {/* --- STEP 2: REASON --- */}
                     <div className="bg-blue-50 p-6 rounded-md border border-blue-200">
                         <h4 className="text-sm font-bold text-blue-800 uppercase mb-4 border-b border-blue-200 pb-2">
                             2. Describa el motivo del cambio
@@ -602,30 +584,13 @@ export const ModificationForm: React.FC<ModificationFormProps> = ({ originalRequ
                         
                         <div className="mb-4">
                             <label className="block text-xs text-gray-600 mb-1">Borrador de su solicitud (Escriba aquí qué desea cambiar)</label>
-                            <div className="flex gap-2">
-                                <textarea 
-                                    className="flex-1 p-2 border rounded text-sm bg-white text-gray-900 focus:ring-purple-500 focus:border-purple-500" 
-                                    rows={2}
-                                    value={changeDraft}
-                                    onChange={(e) => setChangeDraft(e.target.value)}
-                                    placeholder="Ej: Necesito cambiar la fecha de regreso para un día después porque la reunión se extendió..."
-                                />
-                                <button 
-                                    type="button"
-                                    onClick={handleEnhanceText}
-                                    disabled={geminiLoading || !changeDraft}
-                                    className="bg-purple-600 text-white px-3 rounded font-bold text-xs hover:bg-purple-700 transition flex flex-col items-center justify-center min-w-[100px]"
-                                >
-                                    {geminiLoading ? (
-                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                    ) : (
-                                        <>
-                                            <span className="text-lg">✨</span>
-                                            <span>Mejorar<br/>con Gemini</span>
-                                        </>
-                                    )}
-                                </button>
-                            </div>
+                            <textarea 
+                                className="w-full p-2 border rounded text-sm bg-white text-gray-900 focus:ring-purple-500 focus:border-purple-500" 
+                                rows={2}
+                                value={changeDraft}
+                                onChange={(e) => setChangeDraft(e.target.value)}
+                                placeholder="Ej: Necesito cambiar la fecha de regreso para un día después porque la reunión se extendió..."
+                            />
                         </div>
 
                         <div>

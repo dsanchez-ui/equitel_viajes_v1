@@ -11,7 +11,6 @@ Plataforma web de gestión de viajes corporativos para la Organización Equitel 
 - **Base de datos:** Google Sheets (hoja "Nueva Base Solicitudes")
 - **Almacenamiento:** Google Drive (imágenes de opciones, soportes)
 - **Email:** Gmail (notificaciones automáticas con HTML)
-- **IA opcional:** Google Gemini (mejora de textos de modificación) — modelo `gemini-3.1-flash-lite`
 
 ## Estructura de Archivos Clave
 
@@ -109,8 +108,6 @@ Hojas principales:
 - `WEB_APP_URL` — URL del endpoint GAS
 - `PLATFORM_URL` — URL del frontend desplegado
 - `ROOT_DRIVE_FOLDER_ID` — Carpeta raíz en Drive
-- `GEMINI_API_KEY` — Clave API Gemini (opcional)
-- `GEMINI_MODEL` — Modelo de IA (default `gemini-3.1-flash-lite`; cambiar sin desplegar)
 - `REPORT_TEMPLATE_ID` — Template de reportes en Drive
 - `CEO_EMAIL`, `DIRECTOR_EMAIL`, `ADMIN_EMAIL` — Emails de notificación
 
@@ -132,24 +129,26 @@ Hojas principales:
 - Máximo 5 pasajeros por solicitud
 - Los vuelos pueden tener dirección IDA y VUELTA (opciones separadas)
 
-## Modelo de IA (migración fuera de Gemini 2.5 — agosto 2026)
+## Integración de IA — RETIRADA (agosto 2026)
 
-Única llamada a IA del sistema: `enhanceTextWithGemini` (Code.gs), botón "Mejorar
-con IA" del formulario de modificación. Texto libre, sin `responseSchema`, no crítica.
+El sistema tuvo un botón opcional "Mejorar con IA" (Gemini) que reescribía la
+justificación de una solicitud de modificación. **Se retiró por completo.**
 
-- **Modelo elegido:** `gemini-3.1-flash-lite` — GA (no preview), y **más barato que
-  el anterior** `gemini-2.5-flash`: $0.25/$1.50 vs $0.30/$2.50 por millón de tokens
-  (in/out). Google lo describe como "frontier-class performance at a fraction of the cost".
-- **Descartados:** `gemini-3.5-flash` ($1.50/$9.00 → 5× más caro), `gemini-3.7-flash`
-  y `3.6-flash` ($0.75/$3.75, y el doble desde 2027), cualquier `preview`/`exp`
-  (se retiran con ~2 semanas de aviso), y el Pro actual (solo existe en preview).
-- **Motivo de la migración:** `gemini-2.5-flash` tiene retiro anunciado (oct-2026) y
-  ya hubo reportes de 404 anticipados.
-- **Cómo cambiar/revertir SIN desplegar:** `setScriptProperty('GEMINI_MODEL', '<id>')`
-  desde el editor. Para volver al anterior: `'gemini-2.5-flash'`.
-- **Cadena de respaldo:** si el ID configurado no existe, la app pasa sola al
-  siguiente (`gemini-3.1-flash-lite` → `gemini-3.5-flash-lite` → `gemini-2.5-flash`).
-  Solo se cambia de modelo ante errores de disponibilidad (404); cuota (429),
-  credencial y red se propagan con mensaje claro al usuario.
-- **Verificación:** `diagnosticarGemini()` (prueba cada modelo contra la API real y
-  distingue 404 de 429) y `probarMejoraIA()` (prueba end-to-end), ambas desde el editor.
+**Por qué:** el proyecto de Apps Script no tiene concedido el scope
+`script.external_request`, así que `UrlFetchApp` no podía hacer llamadas
+salientes — el botón devolvía el texto sin cambios en silencio (el `catch` se
+tragaba la excepción) y nadie lo reportó nunca. Habilitarlo exigía modificar
+los scopes OAuth de un sistema en producción (con riesgo para los triggers de
+recordatorios y backup) para recuperar una función opcional y sin uso: no
+compensaba. Ver también el retiro anunciado de los modelos Gemini 2.5.
+
+**Qué se eliminó:** `enhanceTextWithGemini` y el `case 'enhanceChangeText'` del
+dispatch, las constantes `GEMINI_API_KEY`/`GEMINI_MODEL`, el método
+`gasService.enhanceTextWithGemini`, y el botón en `RequestForm` y
+`ModificationForm`. Tras esto **no queda ni un solo uso de `UrlFetchApp`** en el
+backend: el sistema no necesita salida a internet.
+
+**Si algún día se quiere IA de nuevo** (p. ej. el OCR de facturas del plan de
+legalizaciones): primero habilitar `script.external_request` en el manifiesto
+`appsscript.json`, re-autorizar desde el editor de inmediato (para no dejar los
+triggers sin autorización) y verificar antes de crear una versión nueva del web app.

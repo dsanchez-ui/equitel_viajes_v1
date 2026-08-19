@@ -641,3 +641,21 @@ Guard `H() === -1`: backend nuevo sin columna → aprueba idéntico a hoy (comen
 
 ### Verificado
 `npx tsc --noEmit` · `npm run build` — limpios. Cero cambios a Code.gs.
+
+## **#A62 — Retirada de la integración con IA (botón "Mejorar con IA")**
+**Fecha:** 2026-08-19 · **Estado:** Retirada · **Decisión:** David
+
+**Diagnóstico:** al ejecutar `diagnosticarGemini()` desde el editor, los tres modelos fallaron con `Specified permissions are not sufficient to call UrlFetchApp.fetch. Required permissions: script.external_request`. Es decir: el proyecto NO tiene concedido el scope de llamadas HTTP salientes.
+
+**Implicación:** el botón "Mejorar con IA" llevaba tiempo devolviendo el borrador **sin cambios y en silencio** (el `catch { return userDraft; }` original se tragaba la excepción de permisos). La retirada de Gemini 2.5 nunca llegó a ser la causa operativa — el problema era anterior y de permisos. Nadie lo reportó nunca en todo ese tiempo.
+
+**Decisión:** retirar la función en vez de habilitarla. Recuperarla exigía modificar los scopes OAuth de un sistema en producción recién estabilizado (riesgo real para los triggers de recordatorios/backup, que corren con la autorización del dueño) a cambio de un botón opcional en un flujo secundario y sin uso demostrado.
+
+**Alcance de la limpieza:**
+- `server/Code.gs`: `enhanceTextWithGemini`, `case 'enhanceChangeText'` del dispatch, constantes `GEMINI_API_KEY`/`GEMINI_MODEL` y sus filas en `verPropiedadesDelScript`. **Tras esto no queda ni un solo uso de `UrlFetchApp` en el backend** — el sistema ya no necesita salida a internet.
+- Frontend: botón + handler + estado en `RequestForm.tsx` y en el (muerto) `ModificationForm.tsx`; método `gasService.enhanceTextWithGemini`; paso 4 del `correo-introductorio.html`.
+- Docs: `CLAUDE.md` (sección de retiro con el porqué y la ruta si algún día se reactiva), `README.md`.
+
+**Verificado:** `npx tsc --noEmit` · `npm run build` · sintaxis de `Code.gs` — limpios. Diff contra la versión desplegada (`c05aa89`): **solo eliminaciones, todas de Gemini, cero líneas agregadas**; transición de administradora (ADMIN_EMAIL, whitelists, `MAIL_FROM_ALIAS`, `_sendMail_`, panel de transición) intacta línea por línea.
+
+**Propiedad huérfana (opcional):** `GEMINI_API_KEY` sigue en Script Properties sin uso. Se puede borrar con `deleteScriptProperty('GEMINI_API_KEY')`.

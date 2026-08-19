@@ -556,12 +556,6 @@ class GasService {
 
   // --- MODIFICATION FEATURES ---
 
-  async enhanceTextWithGemini(currentRequest: TravelRequest, userDraft: string): Promise<string> {
-    const response = await this.runGas('enhanceChangeText', { currentRequest, userDraft });
-    if (!response.success) throw new Error(response.error);
-    return response.data;
-  }
-
   async requestModification(requestId: string, modifiedRequest: Partial<TravelRequest>, changeReason: string, emailHtml?: string): Promise<void> {
     const response = await this.runGas('requestModification', { requestId, modifiedRequest, changeReason, emailHtml });
     if (!response.success) throw new Error(response.error);
