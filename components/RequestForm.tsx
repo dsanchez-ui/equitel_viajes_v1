@@ -1205,7 +1205,14 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
       onSuccess();
     } catch (error) {
-      alert('Error: ' + error);
+      // El backend envuelve el mensaje ("Error: <texto>") y gasService lo
+      // re-lanza como Error, así que concatenar aquí producía "Error: Error: …".
+      // Se limpian los prefijos para que el usuario lea el mensaje tal cual —
+      // importa sobre todo en el bloqueo de cambios duplicados (#A63).
+      const msg = (error instanceof Error ? error.message : String(error))
+        .replace(/^(Error:\s*)+/i, '')
+        .trim();
+      alert(msg || 'Ocurrió un error al enviar la solicitud. Intenta de nuevo.');
     } finally {
       setLoading(false);
     }
