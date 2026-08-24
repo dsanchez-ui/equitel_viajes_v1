@@ -659,3 +659,31 @@ Guard `H() === -1`: backend nuevo sin columna → aprueba idéntico a hoy (comen
 **Verificado:** `npx tsc --noEmit` · `npm run build` · sintaxis de `Code.gs` — limpios. Diff contra la versión desplegada (`c05aa89`): **solo eliminaciones, todas de Gemini, cero líneas agregadas**; transición de administradora (ADMIN_EMAIL, whitelists, `MAIL_FROM_ALIAS`, `_sendMail_`, panel de transición) intacta línea por línea.
 
 **Propiedad huérfana (opcional):** `GEMINI_API_KEY` sigue en Script Properties sin uso. Se puede borrar con `deleteScriptProperty('GEMINI_API_KEY')`.
+
+## **#A63 — Dos solicitudes de cambio sobre la misma solicitud (SOL-000470 / SOL-000471)**
+**Fecha:** 2026-08-24 · **Reportado por:** Laura (chat) vía David · **Estado:** Corregido
+
+**Síntoma reportado:** de SOL-000464 salieron dos solicitudes de cambio (470 y 471); al anular una, apareció además SOL-000472 colgando de 471.
+
+**Qué pasó realmente (evidencia de la hoja, no hipótesis):**
+- `SOL-000470` (15:12:50) — TEXTO_CAMBIO: *"hay mejor opción el 31"*
+- `SOL-000471` (15:14:49) — TEXTO_CAMBIO: *"hay mejor opción el 31 de agosto en avianca 5:15am categoria flex. el regreso en opción D categoria flex"*
+
+**Los textos son distintos**: el segundo es el primero ampliado. No hubo duplicación automática — el usuario envió el formulario, quiso detallar más su justificación y lo volvió a enviar 2 minutos después. `SOL-000472` (15:34) es un tercer cambio legítimo del mismo usuario ("me quedo mal la hora de ida, es a las 5 am") sobre la que ya era la solicitud viva. Ambas las anuló él mismo ("la veo duplicada" / "ya quedo en la 471").
+
+**Causa raíz (defecto de diseño, no regresión):** `requestModification` solo bloqueaba padres en estado terminal (ANULADO/DENEGADO/PROCESADO). **Nada impedía crear una segunda solicitud de cambio mientras la primera seguía viva.** `_parentHasActiveChild_` existía pero solo se usaba para bloquear la ANULACIÓN del padre, nunca la creación.
+
+**Descartado explícitamente:** no tiene relación con el botón de IA (retirado el 19-ago, cinco días antes, y solo eliminaba un botón) ni con multidestino. El primer caso histórico es del **18 de abril de 2026**.
+
+**Alcance histórico (barrido de las 474 solicitudes):** ocurrió **5 veces en 4 meses** — SOL-000053, 082, 174, 419 y 464. Todas cerradas salvo la de 464 (que ya quedó consistente: solo SOL-000471 viva). Cadenas hija-de-hija: 2 en total (SOL-000009→010 y 471→472).
+
+### Fix (dos capas)
+1. **Backend — guard duro** (`requestModification`): nuevo helper `_findActiveChildOfParent_` que devuelve la primera hija en estado NO terminal. Si existe, se rechaza el cambio con un mensaje que nombra el ID y el estado de la solicitud de cambio ya en curso y explica qué hacer. Corre bajo `LockService` (`requestModification` es acción de escritura), así que también cubre el doble-click real: el segundo envío ve la fila del primero.
+   - Deliberadamente **más amplio** que `_parentHasActiveChild_` (#A43), que solo mira `PENDIENTE_ANALISIS_CAMBIO` porque responde otra pregunta ("¿puedo anular el padre?"). Ambos helpers conviven documentados.
+2. **Frontend — confirmación explícita**: `gasService.requestModification` ahora devuelve el ID de la solicitud creada y `RequestForm` muestra *"Solicitud de cambio creada: SOL-XXXXXX"* con la instrucción de no enviar otra. Antes el formulario se cerraba en silencio y el usuario no tenía señal de que hubiera funcionado.
+
+**No bloquea flujos legítimos:** si el cambio anterior fue DENEGADO o ANULADO, se puede pedir uno nuevo; si fue APROBADO, el padre queda ANULADO (ya bloqueado antes) y la hija —ahora la solicitud viva— sí admite cambios.
+
+**Orden de despliegue seguro en ambos sentidos:** frontend nuevo + backend viejo → comportamiento actual con confirmación; backend nuevo + frontend viejo → el guard lanza y el `alert('Error: ...')` existente muestra el mensaje.
+
+**Verificado:** `npx tsc --noEmit` · `npm run build` · sintaxis `Code.gs` — limpios. Diff en `Code.gs`: **51 líneas agregadas, 0 eliminadas**.

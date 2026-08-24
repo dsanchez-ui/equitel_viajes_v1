@@ -1183,7 +1183,17 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       }, isModification);
 
       if (isModification && initialData) {
-        await gasService.requestModification(initialData.requestId, payload, changeReason, emailHtml);
+        const newChangeId = await gasService.requestModification(initialData.requestId, payload, changeReason, emailHtml);
+        // #A63: confirmación explícita con el ID. Antes el formulario se cerraba
+        // en silencio y algunos usuarios reenviaban creyendo que no había
+        // funcionado, generando dos solicitudes de cambio sobre la misma
+        // solicitud (caso SOL-000470/471).
+        alert(
+          'Solicitud de cambio creada' + (newChangeId ? ': ' + newChangeId : '') + '.\n\n' +
+          'El área de viajes la revisará y te avisará por correo. ' +
+          'Mientras tanto NO envíes otra solicitud de cambio para este viaje: ' +
+          'si necesitas corregir algo, contacta al área de viajes.'
+        );
       } else {
         await gasService.createRequest(payload, emailHtml);
       }

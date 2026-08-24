@@ -556,9 +556,13 @@ class GasService {
 
   // --- MODIFICATION FEATURES ---
 
-  async requestModification(requestId: string, modifiedRequest: Partial<TravelRequest>, changeReason: string, emailHtml?: string): Promise<void> {
+  /** Devuelve el ID de la solicitud de cambio creada (SOL-xxxxxx) para poder
+   *  confirmárselo al usuario — sin confirmación explícita, algunos reenviaban
+   *  el formulario creyendo que no había funcionado (#A63). */
+  async requestModification(requestId: string, modifiedRequest: Partial<TravelRequest>, changeReason: string, emailHtml?: string): Promise<string> {
     const response = await this.runGas('requestModification', { requestId, modifiedRequest, changeReason, emailHtml });
     if (!response.success) throw new Error(response.error);
+    return response.data as string;
   }
 
   /**

@@ -1763,6 +1763,21 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
       throw new Error('No se puede solicitar modificación: la solicitud original está en estado ' + _parentStatusStr + '. Crea una solicitud nueva.');
    }
 
+   // #A63: UNA SOLA SOLICITUD DE CAMBIO VIVA POR SOLICITUD.
+   // Sin este guard, un usuario podía enviar el formulario dos veces (p. ej.
+   // para ampliar el texto de la justificación) y quedaban DOS solicitudes de
+   // cambio hermanas sobre el mismo padre — el analista no sabía cuál gestionar
+   // y el usuario terminaba anulando una a mano (caso real SOL-000470/471).
+   // Ocurrió 5 veces desde abril de 2026. Ahora se rechaza con un mensaje que
+   // nombra la solicitud de cambio existente y explica cómo proceder.
+   const _activeChild = _findActiveChildOfParent_(sheet, originalRequestId);
+   if (_activeChild) {
+      throw new Error('Esta solicitud ya tiene una solicitud de cambio en curso: ' + _activeChild.id +
+         ' (estado ' + _activeChild.status + '). No se puede crear otra.\n\n' +
+         'Si necesitas ajustar algo más, pide al área de viajes que anule ' + _activeChild.id +
+         ' y vuelve a solicitar el cambio, o espera a que la gestionen.');
+   }
+
    // Logic for Extra Cost Warning
    const parentWasReserved = (parentStatus === 'RESERVADO');
    
@@ -8435,6 +8450,42 @@ function _cancelParentIfModificationApproved_(childId, sheet) {
   } catch (e) {
     console.error('_cancelParentIfModificationApproved_ error: ' + e);
   }
+}
+
+/**
+ * #A63 helper: retorna la PRIMERA solicitud de cambio (hija) del padre dado que
+ * siga viva, o null si no hay ninguna. "Viva" = cualquier estado que no sea
+ * ANULADO / DENEGADO / PROCESADO.
+ *
+ * Es DELIBERADAMENTE más amplio que `_parentHasActiveChild_` (que solo mira
+ * PENDIENTE_ANALISIS_CAMBIO). Son dos preguntas distintas:
+ *   - `_parentHasActiveChild_` responde "¿puedo ANULAR el padre?" → solo
+ *     bloquea si el cambio aún no ha sido decidido (ver #A43).
+ *   - esta responde "¿puedo crear OTRO cambio?" → basta con que exista una
+ *     hija en cualquier etapa activa; dos cambios simultáneos sobre la misma
+ *     solicitud siempre son ambiguos para el analista y para el usuario.
+ *
+ * @returns {{id:string, status:string}|null}
+ */
+function _findActiveChildOfParent_(sheet, parentId) {
+  var idCol = H('ID RESPUESTA');
+  var parentIdCol = H('ID SOLICITUD PADRE');
+  var statusCol = H('STATUS');
+  if (idCol < 0 || parentIdCol < 0 || statusCol < 0) return null;
+  var target = String(parentId || '').trim();
+  if (!target) return null;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return null;
+  var TERMINAL = ['ANULADO', 'DENEGADO', 'PROCESADO'];
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][parentIdCol] || '').trim() !== target) continue;
+    var st = String(data[i][statusCol] || '').trim().toUpperCase();
+    if (TERMINAL.indexOf(st) === -1) {
+      return { id: String(data[i][idCol] || '').trim(), status: st };
+    }
+  }
+  return null;
 }
 
 /**
