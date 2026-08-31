@@ -6391,11 +6391,24 @@ function updateRequestStatus(id, status, payload) {
                      var _obsIdxPpto = H('OBSERVACIONES');
                      if (_obsIdxPpto > -1) {
                         var _currObsPpto = sheet.getRange(rowNumber, _obsIdxPpto + 1).getValue();
-                        var _notePpto = '[PRESUPUESTO]: Solicitud excede presupuesto del periodo ' + _chk.periodLabel +
-                                        ' para la unidad. Requiere aprobación adicional. Ppto: $' +
-                                        Number(_chk.budgetPeriod).toLocaleString('es-CO') + ', ejecutado previo: $' +
-                                        Number(_chk.executedPeriod).toLocaleString('es-CO') + ', total proyectado: $' +
-                                        Number(_chk.newTotalProjected).toLocaleString('es-CO') + '.';
+                        // #A64: la nota indica cuál de las dos ventanas se excedió
+                        // (periodo configurado y/o mes en curso), con sus cifras.
+                        var _parts = [];
+                        if (_chk.exceedsPeriod) {
+                           _parts.push('periodo ' + _chk.periodLabel + ' (ppto $' +
+                              Number(_chk.budgetPeriod).toLocaleString('es-CO') + ', ejecutado previo $' +
+                              Number(_chk.executedPeriod).toLocaleString('es-CO') + ', proyectado $' +
+                              Number(_chk.newTotalProjected).toLocaleString('es-CO') + ')');
+                        }
+                        if (_chk.exceedsMonth) {
+                           _parts.push('mes ' + _chk.monthLabel + ' (ppto $' +
+                              Number(_chk.budgetMonth).toLocaleString('es-CO') + ', ejecutado previo $' +
+                              Number(_chk.executedMonth).toLocaleString('es-CO') + ', proyectado $' +
+                              Number(_chk.newTotalProjectedMonth).toLocaleString('es-CO') + ')');
+                        }
+                        var _notePpto = '[PRESUPUESTO]: Solicitud excede el presupuesto de la unidad en ' +
+                                        (_parts.length ? _parts.join(' y en ') : 'el periodo evaluado') +
+                                        '. Requiere aprobación adicional.';
                         sheet.getRange(rowNumber, _obsIdxPpto + 1).setValue((_currObsPpto ? _currObsPpto + '\n' : '') + _notePpto);
                      }
                   } catch (eObs) { console.error('Error logging budget note: ' + eObs); }
@@ -13456,6 +13469,9 @@ function _calcularEjecutadoPeriodo_(empresa, unidad, totalCost, excludeIds) {
   for (var m = fromMonth - 1; m <= toMonth - 1; m++) {
     budgetPeriod += pptoEntry.monthly[m] || 0;
   }
+  // #A64: presupuesto y ejecutado del MES en curso, para la condición estricta.
+  var budgetMonth = pptoEntry.monthly[currentMonth - 1] || 0;
+  var executedMonth = 0;
 
   // Lectura del sheet — filtra por unidad+empresa+periodo, suma real+estimado.
   // Excluye explícitamente la solicitud actual (requestId) para evitar
@@ -13512,19 +13528,38 @@ function _calcularEjecutadoPeriodo_(empresa, unidad, totalCost, excludeIds) {
       if (_esOTValida_(rOT)) continue;
     }
     var exec = _csComputeRowExecuted_(row, headerMap, config);
-    executedPeriod += (exec.real || 0) + (exec.estimated || 0);
+    var _rowExec = (exec.real || 0) + (exec.estimated || 0);
+    executedPeriod += _rowExec;
+    // #A64: se acumula también el MES en curso por separado (ver abajo).
+    if (my.month === currentMonth) executedMonth += _rowExec;
   }
 
-  var newTotal = executedPeriod + Number(totalCost || 0);
+  // #A64: la regla es el MÁS ESTRICTO de dos ventanas — el periodo configurado
+  // y el mes en curso. Con un periodo largo (trimestre), un mes podía dispararse
+  // muy por encima de su presupuesto sin pedir aprobación mientras el trimestre
+  // aún tuviera holgura. David: "lo importante es que no sea posible exceder el
+  // presupuesto en ningún mes". Si periodMonths=1 ambas ventanas coinciden y la
+  // condición se reduce a la de siempre.
+  var cost = Number(totalCost || 0);
+  var newTotal = executedPeriod + cost;
+  var newTotalMonth = executedMonth + cost;
+  var exceedsPeriod = newTotal > budgetPeriod;
+  var exceedsMonth = budgetMonth > 0 && newTotalMonth > budgetMonth;
   return {
-    exceedsBudget: newTotal > budgetPeriod,
+    exceedsBudget: exceedsPeriod || exceedsMonth,
+    exceedsPeriod: exceedsPeriod,
+    exceedsMonth: exceedsMonth,
     hasBudget: true,
     featureEnabled: true,
     budgetPeriod: budgetPeriod,
     executedPeriod: executedPeriod,
-    newRequestCost: Number(totalCost || 0),
+    budgetMonth: budgetMonth,
+    executedMonth: executedMonth,
+    newRequestCost: cost,
     newTotalProjected: newTotal,
+    newTotalProjectedMonth: newTotalMonth,
     periodLabel: fromMonth + '-' + toMonth + '/' + year,
+    monthLabel: currentMonth + '/' + year,
     periodMonths: periodMonths
   };
 }
@@ -13714,7 +13749,8 @@ function getMonthlyBudgetUsage(empresa, unidad) {
     // staleness aceptable. Se invalida explícitamente al crear/modificar una
     // solicitud (ver invalidateBudgetUsageCache_).
     var unidadNorm = _csNormalize_(unidad);
-    var cacheKey = 'bu:' + unidadNorm + '|' + year + '-' + month;
+    var _cfgPeriodKey = (function() { try { return Number(_csLoadConfig_().budgetPeriodMonths) || 2; } catch (e) { return 2; } })();
+    var cacheKey = 'bu:' + unidadNorm + '|' + year + '-' + month + '|p' + _cfgPeriodKey;
     var cache = null;
     try {
       cache = CacheService.getScriptCache();
@@ -13762,9 +13798,21 @@ function getMonthlyBudgetUsage(empresa, unidad) {
     }
 
     // Sumar ejecutado del mes: SOLO por unidad, ignorando empresa.
+    // #A64: ventana del periodo configurado (la misma que usa la regla real
+    // en _calcularEjecutadoPeriodo_), para que la barra y la aprobación
+    // hablen SIEMPRE de lo mismo.
+    var _periodMonths = Number(config.budgetPeriodMonths) || 2;
+    if ([1, 2, 3, 4, 6, 12].indexOf(_periodMonths) < 0) _periodMonths = 2;
+    var _bucket = Math.floor((month - 1) / _periodMonths);
+    var _fromMonth = _bucket * _periodMonths + 1;
+    var _toMonth = Math.min(_fromMonth + _periodMonths - 1, 12);
+    var budgetPeriod = 0;
+    for (var _pm = _fromMonth - 1; _pm <= _toMonth - 1; _pm++) budgetPeriod += (pptoEntry.monthly[_pm] || 0);
+
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
     var executedMonth = 0;
+    var executedPeriod = 0;
     if (sheet) {
       var lastRow = sheet.getLastRow();
       var lastCol = sheet.getLastColumn();
@@ -13787,41 +13835,64 @@ function getMonthlyBudgetUsage(empresa, unidad) {
           if (rUnid !== unidadNorm) continue;
           // BUGFIX: NO filtrar por empresa (ver explicación arriba).
           var my = _csResolveMonthYear_(_csReadCell_(row, headerMap, config.purchaseDateHeader));
-          if (!my || my.year !== year || my.month !== month) continue;
+          // #A64: una sola pasada acumula el mes en curso Y el periodo configurado.
+          if (!my || my.year !== year) continue;
+          if (my.month !== month && (my.month < _fromMonth || my.month > _toMonth)) continue;
           if (config.workOrderHeader) {
             var rOT = _csReadCell_(row, headerMap, config.workOrderHeader);
             if (_esOTValida_(rOT)) continue;
           }
           var exec = _csComputeRowExecuted_(row, headerMap, config);
-          executedMonth += (exec.real || 0) + (exec.estimated || 0);
+          var _e = (exec.real || 0) + (exec.estimated || 0);
+          if (my.month === month) executedMonth += _e;
+          if (my.month >= _fromMonth && my.month <= _toMonth) executedPeriod += _e;
         }
       }
     }
+
+    // #A64: se evalúan las DOS ventanas (mes en curso y periodo configurado) y
+    // manda la más consumida — es exactamente el criterio de la regla real en
+    // `_calcularEjecutadoPeriodo_`, así que la barra ya no puede contradecir a
+    // la aprobación. La barra muestra y nombra la ventana que realmente limita.
+    var pctMonthRaw = budgetMonth > 0 ? (executedMonth / budgetMonth) * 100 : 0;
+    var pctPeriodRaw = budgetPeriod > 0 ? (executedPeriod / budgetPeriod) * 100 : 0;
+    var useMonth = pctMonthRaw >= pctPeriodRaw;
+
+    var bindingBudget = useMonth ? budgetMonth : budgetPeriod;
+    var bindingExecuted = useMonth ? executedMonth : executedPeriod;
+    var bindingLabel = useMonth
+      ? (monthNames[month - 1] + ' ' + year)
+      : (monthNames[_fromMonth - 1] + '–' + monthNames[_toMonth - 1] + ' ' + year);
 
     // % con reserva del 10% sumada al ejecutado. La reserva NO se expone al
     // cliente: el endpoint solo retorna el porcentaje final calculado. Esto
     // evita que un REQUESTER pueda inferir montos exactos de la unidad
     // (presupuesto, ejecutado o reserva) inspeccionando la respuesta de red.
-    var reserveBase = budgetMonth * 0.10;
-    var executedWithReserve = executedMonth + reserveBase;
-    var percent = (executedWithReserve / budgetMonth) * 100;
+    // Sirve para PRESIONAR visualmente, no para decidir.
+    var reserveBase = bindingBudget * 0.10;
+    var percent = bindingBudget > 0 ? ((bindingExecuted + reserveBase) / bindingBudget) * 100 : 0;
     var percentClamped = Math.min(100, Math.max(0, percent));
 
-    // Exponer el flag de feature y el nombre del aprobador SOLO si se va a
-    // exceder el presupuesto. Si no se excede, no tiene sentido revelar la
-    // identidad del aprobador (información de menor valor pero no esencial
-    // para el usuario solicitante).
+    // DECISIÓN (sin reserva): la solicitud requerirá aprobación de presupuesto
+    // si alguna de las dos ventanas YA está excedida — mismo criterio que
+    // aplicará el backend al confirmar costos. Antes esto se derivaba del %
+    // inflado por la reserva, así que el aviso podía prometer una aprobación
+    // que la regla real no iba a exigir (y al revés, callar cuando sí).
+    var willRequireApproval = (budgetMonth > 0 && executedMonth > budgetMonth)
+                           || (budgetPeriod > 0 && executedPeriod > budgetPeriod);
     var isOver = percent >= 100;
     var result = {
       hasBudget: true,
-      monthLabel: monthNames[month - 1] + ' ' + year,
+      monthLabel: bindingLabel,
       unit: String(unidad),
       company: String(empresa || ''),
       percent: percent,             // real (puede ser >100)
       percentClamped: percentClamped, // para la barra (0..100)
       isOverBudget: isOver,
+      willRequireApproval: willRequireApproval,
+      periodMonths: _periodMonths,
       budgetOverrunCheckEnabled: !!config.budgetOverrunCheckEnabled,
-      budgetApproverName: isOver ? String(config.budgetApproverName || '') : ''
+      budgetApproverName: willRequireApproval ? String(config.budgetApproverName || '') : ''
     };
     if (cache) { try { cache.put(cacheKey, JSON.stringify(result), 300); } catch (_) {} }
     return result;

@@ -442,6 +442,12 @@ class GasService {
     percent?: number;
     percentClamped?: number;
     isOverBudget?: boolean;
+    /** #A64: true solo si la regla real de presupuesto YA está excedida (mes en
+     *  curso o periodo configurado, sin la reserva del 10%). Es lo que decide
+     *  si se anuncia la aprobación adicional — `isOverBudget` sigue siendo el
+     *  indicador visual de la barra, que sí incluye la reserva. */
+    willRequireApproval?: boolean;
+    periodMonths?: number;
     reason?: string;
     error?: string;
   }> {

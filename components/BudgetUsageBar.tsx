@@ -172,10 +172,14 @@ export const BudgetUsageBar: React.FC<Props> = ({ empresa, unidad }) => {
     message = `Esta unidad ha consumido ${pct.toFixed(1)}% de su presupuesto de ${data.monthLabel}. Use el presupuesto con responsabilidad — cada gasto innecesario lo agota más rápido.`;
   }
 
-  // Mensaje de aprobador adicional: solo cuando excede Y el feature flag está
-  // activo Y hay un nombre configurado. Si falta cualquiera de los tres, no
-  // se muestra (la regla aún no aplica o no está completamente configurada).
-  const showApproverMsg = isOver && !!data.budgetOverrunCheckEnabled && !!data.budgetApproverName;
+  // Mensaje de aprobador adicional. #A64: se rige por `willRequireApproval`,
+  // que el backend calcula con la MISMA regla que aplicará al confirmar costos
+  // (mes en curso o periodo configurado, sin la reserva del 10%). Antes se
+  // derivaba del % de la barra —inflado por la reserva—, así que podía anunciar
+  // una aprobación que la regla real no iba a exigir. Fallback a `isOver` para
+  // que un backend anterior siga comportándose como hasta ahora.
+  const willRequire = typeof data.willRequireApproval === 'boolean' ? data.willRequireApproval : isOver;
+  const showApproverMsg = willRequire && !!data.budgetOverrunCheckEnabled && !!data.budgetApproverName;
 
   return (
     <div className={`mt-2 p-3 border rounded ${tier.bg} ${tier.border}`}>

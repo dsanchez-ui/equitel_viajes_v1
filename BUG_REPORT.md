@@ -687,3 +687,24 @@ Guard `H() === -1`: backend nuevo sin columna → aprueba idéntico a hoy (comen
 **Orden de despliegue seguro en ambos sentidos:** frontend nuevo + backend viejo → comportamiento actual con confirmación; backend nuevo + frontend viejo → el guard lanza y el `alert('Error: ...')` existente muestra el mensaje.
 
 **Verificado:** `npx tsc --noEmit` · `npm run build` · sintaxis `Code.gs` — limpios. Diff en `Code.gs`: **51 líneas agregadas, 0 eliminadas**.
+
+## **#A64 — El banner de presupuesto y la regla de aprobación medían ventanas distintas**
+**Fecha:** 2026-08-31 · **Detectado durante:** análisis del caso SOL-000453 (JC Pineda / N. Tobón) · **Estado:** Corregido
+
+**Problema:** la barra del formulario (`getMonthlyBudgetUsage`) calculaba sobre el **mes en curso**, mientras la regla que realmente marca `REQUIERE APROB PPTO` (`_calcularEjecutadoPeriodo_`) calculaba sobre el **periodo configurado** (`budgetPeriodMonths`, hoy **3** = trimestre). Dos medidas distintas, y el banner afirmaba categóricamente *"Esta solicitud requerirá la aprobación adicional de X"*.
+
+Podían discrepar en ambas direcciones. La peligrosa: **mes holgado dentro de un trimestre agotado** → el usuario veía todo en verde y la aprobación le caía después. Agravante: el % del banner incluye la reserva del 10% (deterrente deliberado), así que el aviso de aprobación se derivaba de un número inflado.
+
+**Caso real que lo expuso:** POTENCIA (GDM – P&M) marcaba **119,2% (agosto)** en el banner mientras el trimestre jul–sep iba en **99,9%** — margen real de $44.734.
+
+### Cambio (decisión de David: "que no sea posible exceder el presupuesto en ningún mes")
+1. **Regla (`_calcularEjecutadoPeriodo_`)**: ahora exige aprobación si se excede **el periodo configurado O el mes en curso** — la más estricta de las dos ventanas. Con `budgetPeriodMonths = 1` ambas coinciden y el comportamiento se reduce al de siempre. Devuelve `exceedsPeriod` / `exceedsMonth` y las cifras de ambas ventanas.
+2. **Nota de auditoría** en OBSERVACIONES: dice **cuál** ventana se excedió, con presupuesto, ejecutado previo y proyectado de cada una.
+3. **Banner (`getMonthlyBudgetUsage`)**: evalúa las dos ventanas en una sola pasada, muestra y **nombra la que realmente limita** (p. ej. *"Presupuesto julio–septiembre 2026"*), y expone `willRequireApproval` calculado **sin la reserva**, con el mismo criterio del backend.
+4. **Frontend (`BudgetUsageBar`)**: el aviso de aprobación se rige por `willRequireApproval`; la barra y su color siguen usando el % con reserva (la presión visual se mantiene). Fallback a la lógica anterior si el backend es viejo.
+
+**Impacto medido sobre datos reales (15 unidades con presupuesto 2026):** cambian **3** — ADM DESARROLLO HUMANO (142,7% mes / 47,6% trimestre), ENERGIA PROYECTOS (151,1% / 85,7%) y POTENCIA (109,2% / 99,9%, que iba a disparar igual en la siguiente solicitud). Las otras 12 no cambian. Es exactamente el agujero que se quería cerrar: unidades que reventaban su mes amparadas en la holgura del trimestre.
+
+**Reversible sin código:** subir `budgetPeriodMonths` no relaja el mes; para volver al criterio anterior habría que revertir este commit. Bajarlo a 1 hace que ambas ventanas coincidan.
+
+**Verificado:** `npx tsc --noEmit` · `npm run build` · sintaxis `Code.gs` — limpios. La réplica del cálculo reproduce el 119,2% del banner al decimal contra la hoja real.
