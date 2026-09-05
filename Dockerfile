@@ -23,11 +23,16 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Install `serve` globally so it lives on PATH (/usr/local/bin/serve).
-# Pinned to v14 to match the version declared in package.json.
 # Doing this instead of `npm ci --omit=dev` keeps the runtime image
 # leaner (no node_modules tree, no package.json) AND ensures the
 # binary is invocable directly as `serve` from CMD.
-RUN npm install -g serve@14 && npm cache clean --force
+#
+# Versión EXACTA, no el rango `serve@14`: este stage no usa package-lock.json,
+# así que un rango flotante hacía que cada build trajera lo que hubiera en npm
+# ese día — incluidas versiones con vulnerabilidades sin auditar. 14.2.6 es la
+# misma que resuelve el lockfile (serve-handler 6.1.7 → minimatch 3.1.5, sin
+# el ReDoS de GHSA-3ppc-4f35-3m26). Al subirla, subir también la de package.json.
+RUN npm install -g serve@14.2.6 && npm cache clean --force
 
 # Copy only the built static assets from the builder stage
 COPY --from=builder /app/dist ./dist

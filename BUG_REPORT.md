@@ -782,3 +782,31 @@ El validador está escrito dos veces porque Apps Script y Vite/TS no comparten c
 
 **Orden seguro en ambos sentidos:** frontend nuevo + backend viejo → el formulario bloquea y el backend acepta lo que llegue (comportamiento actual). Backend nuevo + frontend viejo → el backend lanza y el `alert` existente muestra el mensaje.
 
+## **#A67 — Vulnerabilidades de dependencias y limpieza de código muerto**
+**Fecha:** 2026-09-05 · **Solicitado por:** David · **Estado:** Corregido
+
+### Vulnerabilidades (5 → 0)
+`npm audit` reportaba **4 high + 1 moderate**, todas en la cadena del servidor estático: `serve` → `serve-handler` → `minimatch` (ReDoS) / `brace-expansion`, más `ajv`.
+
+`npm audit fix` las resolvió **sin cambiar un solo rango de `package.json`** — todo se resolvió en el lockfile. Se movieron 34 paquetes, todos herramientas de build (Babel, browserslist, postcss, `vite` 6.4.1→6.4.3) más los arreglos de seguridad (`minimatch` 3.1.2→3.1.5, `brace-expansion` 1.1.12→1.1.18, `serve` 14.2.5→14.2.6, `serve-handler` 6.1.6→6.1.7, `ajv` 8.12→8.18).
+
+**`react` y `react-dom` NO se movieron** (siguen en 19.2.4): el runtime que se le sirve al usuario es idéntico.
+
+**Hallazgo adicional — el arreglo del lockfile no cubría el contenedor.** El `Dockerfile` instala el servidor con `npm install -g serve@14`, un rango **flotante** que ignora `package-lock.json`. Cada build traía lo que hubiera en npm ese día, incluidas versiones sin auditar. Se ancló a `serve@14.2.6`, la misma versión que resuelve el lockfile. Hoy el comportamiento es idéntico (el rango ya resolvía ahí); la diferencia es que ahora el build es reproducible y auditable.
+
+> Nota para el futuro: al subir `serve`, subirlo en **los dos** sitios — `package.json` y `Dockerfile`.
+
+### Código muerto
+Se eliminó **`components/ModificationForm.tsx`** (620 líneas). Ya estaba señalado como muerto en #A62. Verificado antes de borrar:
+- Ninguna referencia en todo el repo salvo su propia definición.
+- **0 apariciones en el bundle construido** — nunca entró al grafo de módulos, así que su borrado no puede alterar el runtime.
+- Lo único propio que importaba (`BudgetUsageBar`) lo sigue usando `RequestForm`, así que no quedaron huérfanos.
+- Tras el borrado, el build sigue transformando los mismos 53 módulos.
+
+Se revisaron también los otros candidatos que arrojó el barrido: `utils/EmailGenerator.ts` (**vivo** — se carga con `import()` dinámico desde `RequestForm`, tiene chunk propio en `dist/`) y `vite.config.ts` (**vivo** — lo consume Vite). Ninguno se tocó.
+
+### Verificado
+`npm run verify` limpio y `npm audit` en **0 vulnerabilidades**.
+
+### Despliegue
+**Solo frontend**: push a `main` → Cloud Run. El cambio del `Dockerfile` solo aplica si el trigger de Cloud Build está configurado con Dockerfile en vez de buildpacks; en ambos caminos la versión de `serve` queda en 14.2.6. Sin pasos de Apps Script.
