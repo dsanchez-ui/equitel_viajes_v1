@@ -27,4 +27,7 @@ node scripts/build-guia.cjs hoja-calculo     # solo la del Sheets
 
 Esto genera HTML + PDF para cada guía. Usa Chrome headless para el PDF.
 
-Requiere Chrome instalado en `C:/Program Files/Google/Chrome/Application/chrome.exe`. Si está en otra ruta, edita `scripts/build-guia.cjs`.
+Requiere Google Chrome (o Chromium/Brave/Edge) instalado. El script lo busca solo
+según el sistema operativo —macOS, Windows y Linux— y también en el `PATH`. Si lo
+tienes en una ruta no estándar, agrégala a la lista `byPlatform` de
+`scripts/build-guia.cjs`.

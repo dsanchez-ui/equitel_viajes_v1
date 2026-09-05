@@ -1,154 +1,281 @@
-# Equitel Viajes v2 - Guía de Proyecto para Claude
+# Equitel Viajes — Guía de Proyecto para Claude
 
-## Descripción General
+> Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
+> máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A64) — es el diario real
+> del proyecto y la fuente de verdad sobre por qué las cosas son como son.
+>
+> Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
 
-Plataforma web de gestión de viajes corporativos para la Organización Equitel (Colombia). Permite a empleados solicitar viajes, a gerentes aprobarlos, y a analistas (equipo de viajes) gestionar opciones de vuelo/hotel, costos y reservas.
+## Qué es
 
-## Stack Tecnológico
+Plataforma web de gestión de viajes corporativos de la Organización Equitel
+(Colombia). Los empleados solicitan viajes, sus jefes aprueban por correo, y el
+equipo de viajes (analista) gestiona opciones de vuelo/hotel, costos y reservas.
+**Está en producción y en uso diario real.** Cualquier cambio afecta a gente que
+está viajando.
 
-- **Frontend:** React 19 + TypeScript + Tailwind CSS 4 + Vite 6
-- **Backend:** Google Apps Script (GAS) desplegado como web app pública
-- **Base de datos:** Google Sheets (hoja "Nueva Base Solicitudes")
-- **Almacenamiento:** Google Drive (imágenes de opciones, soportes)
-- **Email:** Gmail (notificaciones automáticas con HTML)
+**Stack:** React 19 + TypeScript + Tailwind 4 + Vite 6 en el frontend; Google Apps
+Script como backend (web app pública); Google Sheets como base de datos; Drive para
+archivos; Gmail para notificaciones.
 
-## Estructura de Archivos Clave
+## Reglas de trabajo (importantes)
 
-```
-/
-├── App.tsx                     # Componente principal, routing, estado global
-├── index.tsx                   # Entry point React DOM
-├── types.ts                    # Interfaces y enums TypeScript
-├── constants.ts                # Configuración, empresas, sedes, colores
-├── components/
-│   ├── Layout.tsx              # Header/footer wrapper
-│   ├── AdminDashboard.tsx      # Vista analista (tabla de solicitudes)
-│   ├── UserDashboard.tsx       # Vista solicitante (mis solicitudes)
-│   ├── RequestForm.tsx         # Formulario crear/modificar solicitudes
-│   ├── RequestDetail.tsx       # Modal detalle de solicitud (acciones)
-│   ├── ModificationForm.tsx    # Formulario de modificación
-│   ├── OptionUploadModal.tsx   # Subir imágenes vuelos/hotel
-│   ├── ReservationModal.tsx    # Registrar reserva
-│   ├── SupportUploadModal.tsx  # Subir soportes post-aprobación
-│   ├── CostConfirmationModal.tsx # Confirmar costos finales
-│   ├── PinEntryModal.tsx       # Ingreso PIN admin (8 dígitos)
-│   ├── CancellationModal.tsx   # Anular solicitudes
-│   ├── ConfirmationDialog.tsx  # Diálogo genérico de confirmación
-│   └── CityCombobox.tsx        # Selector autocompletado de ciudades
-├── services/
-│   └── gasService.ts           # Cliente API hacia GAS
-├── utils/
-│   ├── dateUtils.ts            # Parseo y formato de fechas
-│   └── EmailGenerator.ts      # Generador de emails HTML
-├── server/
-│   └── Code.gs                 # Backend completo en GAS (~3000 líneas)
-├── correo-introductorio.html   # Template email introductorio
-└── .env                        # VITE_API_BASE_URL (no se commitea)
+1. **No hacer `git push` sin informar antes** qué se cambió y con evidencia de que
+   el flujo operativo queda intacto. **Un push a `main` despliega el frontend a
+   producción** (ver Mapa de despliegue).
+2. **Verificar siempre antes de proponer un push:** `npm run verify` (typecheck +
+   sintaxis del backend + build). Debe salir en verde.
+3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
+4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
+   siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
+5. Los commits van **en inglés** con prefijo conventional (`fix:`, `feat:`, `chore:`).
+   Todo el UI y la documentación van **en español**.
+
+## Cómo se corre en local
+
+```bash
+npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
+npm run dev          # servidor de desarrollo, puerto 3000
+npm run verify       # typecheck + sintaxis backend + build  ← antes de cualquier push
+npm run build        # build de producción a dist/
+npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
 
-## Comandos
+**Cuidado con el backend al que apuntas.** `VITE_API_BASE_URL` decide contra qué
+deployment de Apps Script corre la app:
 
-- `npm run dev` — Servidor de desarrollo (puerto 3000)
-- `npm run build` — Build de producción (output en `dist/`)
-- `npm run preview` — Preview del build
-- El backend (Code.gs) se despliega manualmente desde Google Apps Script Editor
+| Archivo | Apunta a | Gana en `npm run dev` |
+|---|---|---|
+| `.env.local` | deployment de **PRUEBA** | **Sí** (Vite prioriza `.local`) |
+| `.env` | deployment de **PRODUCCIÓN** | No, si existe `.env.local` |
+| default en `constants.ts` | producción | Solo si no hay ninguna env var |
 
-## Flujo de Negocio (Ciclo de Vida de una Solicitud)
+Si necesitas pegarle a producción desde local, renombra `.env.local`. Si no estás
+seguro de contra qué estás corriendo, revísalo antes de probar cualquier escritura.
 
-1. **Solicitante** ingresa con email → crea solicitud de viaje
-2. **Validación automática** de política (8 días anticipación nacional, 30 internacional)
-3. **Aprobador** (jefe directo, mapeado en hoja INTEGRANTES) aprueba/rechaza vía email
-4. **Escalamiento automático**: viajes internacionales o >1.2M COP requieren aprobación adicional de CEO/CDS
-5. **Analista** sube imágenes de opciones de vuelo/hotel
-6. **Solicitante** revisa imágenes y describe su selección por escrito
-7. **Analista** confirma costos finales (tiquetes + hotel)
-8. **Analista** registra reserva (número, documento confirmación)
-9. **Post-viaje**: se suben soportes (facturas, recibos)
-10. **Estado final**: PROCESADO
+## Mapa de despliegue (crítico)
 
-### Estados posibles (RequestStatus):
-- `PENDIENTE_APROBACION` → Esperando aprobación del jefe
-- `PENDIENTE_OPCIONES` → Aprobado, esperando opciones del analista
-- `PENDIENTE_SELECCION` → Opciones subidas, esperando selección del usuario
-- `PENDIENTE_CONFIRMACION_COSTO` → Selección hecha, pendiente confirmar costo
-- `APROBADO` → Costo confirmado, listo para reservar
-- `RESERVADO` → Reserva registrada
-- `PROCESADO` → Ciclo completado
-- `DENEGADO` → Solicitud rechazada
-- `ANULADO` → Solicitud cancelada
-- `PENDIENTE_ANALISIS_CAMBIO` → Modificación solicitada, pendiente revisión
+| Qué | Cómo se despliega | ¿Automático? |
+|---|---|---|
+| **Frontend** | `git push` a `main` → Cloud Build → Cloud Run | **SÍ — el push despliega** |
+| **Backend (`server/Code.gs`)** | Pegar el archivo en el editor de Apps Script → Guardar → **crear versión nueva** del web app | No, 100% manual |
+| **Sidebars (`server/*.html`)** | Igual que Code.gs, pegar en el editor | No, manual |
+| **Migraciones de hoja** | Ejecutar la función de migración a mano desde el editor o el menú | No, manual |
 
-## Empresas del grupo
+El trigger de Cloud Build está configurado del lado de GCP (no hay GitHub Actions
+en el repo). **Crear la versión nueva del web app conserva el `WEB_APP_URL`** — no
+cambia la URL, así que el frontend no necesita reconfigurarse.
 
-- **Cumandes** (antes "Cummins" — renombrada abril 2026)
-- **Equitel**
-- **Ingenergía**
-- **LAP**
+**Orden seguro de despliegue:** los cambios se diseñan para ser compatibles en
+ambos sentidos (frontend nuevo + backend viejo, y viceversa). Cuando un cambio
+toca los dos lados, documentar explícitamente el orden y qué pasa en cada
+combinación — así se ha hecho en #A58, #A63 y #A64.
 
-## Seguridad Implementada
+**Rollback:** frontend = revert del commit; backend = seleccionar la versión
+anterior del web app (~30 s).
 
-- Login por email validado contra hoja INTEGRANTES
-- Panel admin protegido con PIN de 8 dígitos (SHA-256 + salt, rate-limit 5 intentos/15 min)
-- Sanitización HTML (prevención XSS) en emails
-- Bloqueo de concurrencia en escrituras (LockService 30s)
-- Roles: REQUESTER (solicitante), ANALYST (analista/admin)
+## Flujo de negocio (ciclo de vida de una solicitud)
 
-## Google Sheets (Base de Datos)
+1. El **solicitante** entra con su correo + PIN → crea la solicitud.
+2. **Validación automática de política**: 8 días de anticipación para nacional,
+   30 para internacional. Si no cumple, se marca `policyViolation` (no bloquea).
+3. El **aprobador de área** (jefe directo, según la hoja `USUARIOS`) aprueba o
+   rechaza desde un link firmado en el correo. Puede dejar un **comentario
+   opcional**, que prima sobre la selección del usuario (#A58).
+4. **Escalamiento automático** — se pide aprobación adicional cuando aplica:
+   - Viaje internacional o costo alto → CEO y/o Dirección de Cadena de Suministro.
+   - La solicitud haría exceder el presupuesto de la unidad → aprobador de
+     presupuesto (#A64).
+5. El **analista** sube imágenes de las opciones de vuelo/hotel.
+6. El **solicitante** revisa las imágenes y describe **por escrito** cuál eligió.
+7. El **analista** confirma los costos finales (tiquetes + hotel).
+8. El **analista** registra la reserva (PNR, documento de confirmación).
+9. **Post-viaje:** se suben los soportes (facturas, recibos).
+10. Estado final: **PROCESADO**.
 
-Hojas principales:
-- **Nueva Base Solicitudes** — Tabla principal de solicitudes
-- **INTEGRANTES** — Directorio de empleados (email, aprobador asignado)
-- **CIUDADES DEL MUNDO** — Mapeo ciudad/país para autocompletar
-- **CDS vs UDEN** — Relaciones centros de costo
+### Estados (`RequestStatus`)
 
-## Propiedades del Script GAS (Script Properties)
+`PENDIENTE_APROBACION` → `PENDIENTE_OPCIONES` → `PENDIENTE_SELECCION` →
+`PENDIENTE_CONFIRMACION_COSTO` → `APROBADO` → `RESERVADO` → `PROCESADO`
 
-- `ANALYST_EMAILS` — JSON array de emails analistas
-- `ADMIN_PIN_HASH` — PIN admin hasheado
-- `WEB_APP_URL` — URL del endpoint GAS
-- `PLATFORM_URL` — URL del frontend desplegado
-- `ROOT_DRIVE_FOLDER_ID` — Carpeta raíz en Drive
-- `REPORT_TEMPLATE_ID` — Template de reportes en Drive
-- `CEO_EMAIL`, `DIRECTOR_EMAIL`, `ADMIN_EMAIL` — Emails de notificación
+Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO`
+(hay una solicitud de modificación en curso).
 
-## Convenciones
+### Roles (`UserRole`)
 
-- Todo el UI está en español
-- Commits en inglés con prefijo conventional (fix:, feat:, etc.)
-- El frontend se despliega en Cloud Run (build con Vite, serve con `serve -s dist`)
-- No hay tests automatizados; validación manual
-- Las opciones de vuelo/hotel son imágenes (PNG/JPG), no datos estructurados — decisión intencional de seguridad para evitar aprobación con un solo clic
-- Las ciudades usan un componente CityCombobox custom (reemplazó datalist por problemas de compatibilidad)
+`REQUESTER` · `ANALYST` (equipo de viajes / admin) · `APPROVER` · `SUPERADMIN`
+(puede saltar etapas y revertir a selección).
 
-## Notas Importantes
+## Decisiones de negocio vigentes (no se deducen del código)
 
-- El backend NO valida nombres de empresa — se guardan como texto libre en Sheets
-- Las solicitudes existentes que decían "Cummins" siguen así en historial
-- La API base URL viene de `.env` (VITE_API_BASE_URL) y debe apuntar al deploy actual de GAS
-- El polling de actualizaciones en App.tsx es cada 15 segundos
-- Máximo 5 pasajeros por solicitud
-- Los vuelos pueden tener dirección IDA y VUELTA (opciones separadas)
+- **Las opciones de vuelo/hotel son imágenes, no datos estructurados.** Es una
+  decisión de seguridad deliberada: obliga al solicitante a describir su selección
+  por escrito y evita aprobar un viaje con un solo clic. No "mejorar" esto.
+- **Archivos de reserva en `ANYONE_WITH_LINK`** (#A18). Decisión explícita de David
+  (2026-04-20): se necesita para que proveedores y pasajeros externos accedan al
+  PNR. No cambiar a `DOMAIN_WITH_LINK`.
+- **No se puede exceder el presupuesto en ningún mes** (#A64, decisión de David).
+  La regla de aprobación usa **la ventana más estricta** entre el periodo
+  configurado (`budgetPeriodMonths`, hoy 3 = trimestre) y el mes en curso.
+- **Máximo 5 pasajeros** por solicitud; **máximo 5 tramos** en multidestino;
+  **máximo 10 creaciones/día** por solicitante (rate limit).
+- El backend **no valida nombres de empresa** — se guardan como texto libre.
+  Empresas del grupo: **Cumandes** (antes "Cummins", renombrada abril 2026),
+  **Equitel**, **Ingenergía**, **LAP**. Las solicitudes históricas siguen diciendo
+  "Cummins" y así se quedan.
+- Solo una **solicitud de cambio viva** por solicitud (#A63).
+
+## Incidentes pasados — lecciones que no hay que revertir
+
+Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
+
+- **#A49 — Silencio en los fetches de bootstrap.** Los errores se tragaban y la app
+  mostraba arrays vacíos como si fueran datos válidos. **Nunca silenciar un error de
+  fetch**: hay que reintentar y avisar al usuario.
+- **#A60 — La optimización "lite" casi borra datos.** Las filas de dashboard viajan
+  sin `analystOptions`; pasar una fila lite a un modal que reescribe ese campo habría
+  **borrado las opciones existentes**. Antes de abrir un modal que escriba, **hidratar
+  la solicitud completa** con `getRequestById`.
+- **#A61 — Letras de opciones duplicadas.** La siguiente letra se asigna por
+  `MAX(letras usadas) + 1`, **nunca por conteo**.
+- **#A53 — El botón APROBAR no abría en Chrome móvil Android** con varias cuentas
+  de Google. Cuidado al tocar los links de aprobación.
+- **#A5 — Links de aprobación firmados con HMAC**, con cutover per-request para no
+  invalidar correos en vuelo. No romper esa compatibilidad.
+- **#A62 — La integración con IA (Gemini) fue retirada.** Ver abajo.
+- **`setupDatabase()` NO se debe ejecutar**: recrearía la hoja `INTEGRANTES`, que
+  fue eliminada en producción. Usar las funciones de migración específicas.
+
+## Base de datos (Google Sheets)
+
+| Hoja | Contenido |
+|---|---|
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. |
+| **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. |
+| ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
+| **MAESTROS** | Centros de costo. |
+| **CDS vs UDEN** | Relación centro de costo ↔ unidad de negocio. |
+| **CIUDADES DEL MUNDO** | Ciudad/país para el autocompletado. |
+| **MISC** | Sedes, tarjetas de crédito y varios (ojo: los datos empiezan en la fila 2). |
+| **REGLAS_COAPROBADOR** | Reglas de co-aprobación. |
+| **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
+
+## Script Properties (Apps Script)
+
+**Secretos / seguridad:** `ADMIN_PIN_HASH`, `APPROVAL_LINK_SECRET`,
+`APPROVAL_LINK_HMAC_CUTOVER_AT`, `ANALYST_EMAILS`, `SUPER_ADMIN_EMAILS`,
+`INITIAL_ADMIN_PIN`.
+
+**URLs y Drive:** `WEB_APP_URL`, `PLATFORM_URL`, `ROOT_DRIVE_FOLDER_ID`,
+`BACKUP_FOLDER_ID`, `REPORT_TEMPLATE_ID`, `EMAIL_LOGO_URL`.
+
+**Correo:** `ADMIN_EMAIL`, `CEO_EMAIL`, `DIRECTOR_EMAIL`, `MAIL_FROM_ALIAS`,
+`MAIL_FROM_NAME`, `MAIL_TECH_SUPPORT_EMAIL`, `CORPORATE_DOMAINS`.
+
+**Otros:** `HR_MAESTRO_ID`, `HR_MAESTRO_SHEET`, `COSTS_DASHBOARD_CONFIG_KEY`.
+
+Todo se lee con `getConfig_(clave, default)`, así que hay defaults en el código.
+Con más de 50 propiedades la GUI de Apps Script se bloquea: usar las funciones
+helper del propio `Code.gs` (`verPropiedadesDelScript`, etc.).
+
+`GEMINI_API_KEY` puede seguir ahí, huérfana. Se puede borrar.
+
+## Triggers de Apps Script
+
+| Trigger | Qué hace | Instalación |
+|---|---|---|
+| `backupDiarioAutomatico` | Copia el spreadsheet a una carpeta externa | `setupBackupDiarioTrigger()` |
+| `cleanupExpiredPropsWeekly` | Limpia sesiones, lockouts y contadores de rate limit vencidos | `setupWeeklyCleanupTrigger()` |
+| `sendPendingApprovalReminders` / `sendPendingSelectionReminders` / `sendPendingConsultReminders` | Recordatorios; escalan a superadmins tras ~30 h laborales (#A16) | Configurados a mano en la UI |
+| `warmupPing` | Cada 10 min, mantiene tibio el isolate de GAS | Configurado a mano |
+
+**Los triggers corren con la autorización del dueño del script.** Por eso no se
+tocan los scopes OAuth a la ligera — ver la sección de IA.
+
+## Estructura de archivos
+
+```
+App.tsx                    Componente raíz: routing, sesión, polling (30 s)
+types.ts                   Interfaces y enums (fuente de verdad del contrato)
+constants.ts               API URL, colores, empresas, APP_VERSION
+components/
+  AdminDashboard.tsx       Vista analista (tabla + paginación de 50)
+  UserDashboard.tsx        Vista solicitante
+  RequestForm.tsx          Crear/modificar solicitud (incluye multidestino)
+  RequestDetail.tsx        Modal de detalle + acciones
+  OptionUploadModal.tsx    Subir imágenes de vuelo/hotel
+  CostConfirmationModal.tsx  Confirmar costos finales
+  ReservationModal.tsx     Registrar reserva (+ guardado parcial, #A57)
+  SupportUploadModal.tsx   Soportes post-aprobación
+  PassportUploadModal.tsx  Pasaportes (viajes internacionales)
+  ChangeRequestModal.tsx   Decisión sobre solicitudes de cambio
+  MetricsPanel.tsx         Panel de métricas (admin)
+  BudgetUsageBar.tsx       Barra de presupuesto en el formulario
+  PinEntryModal.tsx        Login por PIN
+  CancellationModal.tsx    Anulaciones
+  CityCombobox.tsx         Autocompletado de ciudades (custom, reemplazó datalist)
+  Layout.tsx, ConfirmationDialog.tsx
+  ModificationForm.tsx     ⚠️ CÓDIGO MUERTO — no lo importa nadie
+services/gasService.ts     Cliente HTTP hacia GAS (timeout 30 s + AbortController)
+utils/dateUtils.ts         Parseo/formato de fechas (zona America/Bogota)
+utils/EmailGenerator.ts    Generación de correos HTML (carga diferida)
+server/
+  Code.gs                  Backend completo (~14.400 líneas)
+  AdminSidebar.html        Sidebar de administración del Sheets
+  AdminMobile.html         Panel móvil (público, protegido por sesión)
+  CostsDashboard.html      Dashboard de costos por unidad
+  ReorgSidebar.html        Workflow de reorganización de columnas
+tools/check-gas-syntax.cjs Verifica sintaxis de Code.gs y del JS de los HTML
+scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)
+docs/                      Guías de administrador, hoja de cálculo y planes
+```
+
+## Arquitectura y patrones que hay que respetar
+
+- **Sin tests automatizados.** La verificación es `npm run verify` + prueba manual
+  contra el deployment de prueba. Por eso los cambios se auditan a conciencia y se
+  documentan en `BUG_REPORT.md`.
+- **Lectura de columnas por nombre en runtime** (`HEADERS_REQUESTS` es la schema
+  canónica). Agregar una columna es seguro; el código tolera cualquier orden.
+- **Toda escritura corre bajo `LockService`** (30 s) para evitar carreras.
+- **Endpoints "lite"** (`getAllRequestsLite`, `getMyRequestsLite`) omiten
+  `analystOptions` para aligerar el dashboard. Ver #A60 antes de usarlos.
+- **Caches per-execution** (headers, cédulas, alias de Gmail, fila por requestId)
+  se resetean en cada `doGet`/`doPost` — no convertirlos en caches per-isolate.
+- **Sanitización:** `escapeHtml_` en correos, `safeSheetValue_` contra formula
+  injection en Sheets, y el escape nativo de React en la app.
+- **Rate limits:** PIN admin 5 intentos/15 min por correo; regeneración de PIN
+  3/hora; creación de solicitudes 10/día.
 
 ## Integración de IA — RETIRADA (agosto 2026)
 
-El sistema tuvo un botón opcional "Mejorar con IA" (Gemini) que reescribía la
-justificación de una solicitud de modificación. **Se retiró por completo.**
+Existió un botón opcional "Mejorar con IA" (Gemini) que reescribía la justificación
+de una solicitud de modificación. **Se retiró por completo** (#A62).
 
 **Por qué:** el proyecto de Apps Script no tiene concedido el scope
-`script.external_request`, así que `UrlFetchApp` no podía hacer llamadas
-salientes — el botón devolvía el texto sin cambios en silencio (el `catch` se
-tragaba la excepción) y nadie lo reportó nunca. Habilitarlo exigía modificar
-los scopes OAuth de un sistema en producción (con riesgo para los triggers de
-recordatorios y backup) para recuperar una función opcional y sin uso: no
-compensaba. Ver también el retiro anunciado de los modelos Gemini 2.5.
+`script.external_request`, así que `UrlFetchApp` no podía hacer llamadas salientes.
+El botón devolvía el texto sin cambios **en silencio** (el `catch` se tragaba la
+excepción) y nadie lo reportó nunca. Habilitarlo exigía modificar los scopes OAuth
+de un sistema en producción —con riesgo para los triggers de recordatorios y
+backup, que corren con la autorización del dueño— para recuperar una función
+opcional y sin uso. No compensaba.
 
-**Qué se eliminó:** `enhanceTextWithGemini` y el `case 'enhanceChangeText'` del
-dispatch, las constantes `GEMINI_API_KEY`/`GEMINI_MODEL`, el método
-`gasService.enhanceTextWithGemini`, y el botón en `RequestForm` y
-`ModificationForm`. Tras esto **no queda ni un solo uso de `UrlFetchApp`** en el
-backend: el sistema no necesita salida a internet.
+**Tras la limpieza no queda ni un solo uso de `UrlFetchApp` en el backend: el
+sistema no necesita salida a internet.**
 
 **Si algún día se quiere IA de nuevo** (p. ej. el OCR de facturas del plan de
-legalizaciones): primero habilitar `script.external_request` en el manifiesto
-`appsscript.json`, re-autorizar desde el editor de inmediato (para no dejar los
-triggers sin autorización) y verificar antes de crear una versión nueva del web app.
+legalizaciones): habilitar `script.external_request` en `appsscript.json`,
+**re-autorizar desde el editor de inmediato** (para no dejar los triggers sin
+autorización) y verificar antes de crear una versión nueva del web app.
+
+## Trabajo pendiente conocido
+
+- **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
+  2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
+  [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).
+- **Optimizaciones** — plan por etapas en [OPTIMIZACIONES.md](OPTIMIZACIONES.md).
+  Etapa 1 completada; el resto documentado con riesgo y beneficio.
+- **#A50** — limpiar el cableado legacy de `INTEGRANTES`.
+- **Deuda menor:** `components/ModificationForm.tsx` es código muerto;
+  `serve` (usado en Cloud Run) tiene vulnerabilidades `high` sin parchear.

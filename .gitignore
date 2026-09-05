@@ -25,6 +25,9 @@ dist-ssr
 !.vscode/extensions.json
 .idea
 .DS_Store
+# AppleDouble: macOS los crea al copiar carpetas a discos no-HFS (USB, red).
+# Aparecen en masa al migrar el proyecto desde el Mac. Ver MIGRACION.md.
+._*
 *.suo
 *.ntvs*
 *.njsproj
