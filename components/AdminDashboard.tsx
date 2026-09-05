@@ -531,7 +531,10 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
 
       {/* Filters — PENDIENTE_CONFIRMACION_COSTO removido del filtro visual */}
       {/* (el estado sigue existiendo en el flujo, solo no aparece como pill) */}
-      <div className="flex gap-2 pb-4 overflow-x-auto">
+      {/* Los filtros bajan de línea en vez de scrollear: con scroll horizontal,
+          los estados de la derecha (DENEGADO, ANULADO…) quedaban ocultos tras
+          una barra que además competía visualmente con la de la tabla. */}
+      <div className="flex flex-wrap gap-2 pb-4">
         {['ALL', ...Object.values(RequestStatus)].map(s => (
           <button
             key={s}

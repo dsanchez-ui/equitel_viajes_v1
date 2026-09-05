@@ -708,3 +708,35 @@ Podían discrepar en ambas direcciones. La peligrosa: **mes holgado dentro de un
 **Reversible sin código:** subir `budgetPeriodMonths` no relaja el mes; para volver al criterio anterior habría que revertir este commit. Bajarlo a 1 hace que ambas ventanas coincidan.
 
 **Verificado:** `npx tsc --noEmit` · `npm run build` · sintaxis `Code.gs` — limpios. La réplica del cálculo reproduce el 119,2% del banner al decimal contra la hoja real.
+
+## **#A65 — El panel de analista se encogía a 1280px y cortaba la tabla y los filtros**
+**Fecha:** 2026-09-05 · **Reportado por:** David · **Estado:** Corregido
+
+**Síntoma:** en el panel de analista la lista se extendía más allá de su recuadro y se cortaba. La tabla tenía barra de scroll horizontal, pero al estar al final de las 50 filas de la página había que bajar hasta el fondo para alcanzarla. Todo esto con espacio en blanco de sobra a los lados. Confuso para quien está aprendiendo el sistema.
+
+**Causa raíz:** `Layout` fijaba `max-w-7xl` (1280px) para TODAS las vistas. Medido con Chrome headless sobre el panel real: la tabla quedaba clavada en **1216px sin importar el monitor** (1440, 1600 o 1920 daban lo mismo). Además la fila de filtros de estado tenía su propio `overflow-x-auto`, así que los estados de la derecha (DENEGADO, PROCESADO, ANULADO) quedaban ocultos tras una segunda barra.
+
+### Fix (frontend-only, 3 archivos)
+1. **`Layout`**: nueva prop `wide` que cambia el contenedor a `max-w-[1800px]` en header, main y footer a la vez (quedan alineados). Sin la prop, el ancho es idéntico al de siempre.
+2. **`App.tsx`**: `wide` se activa solo con `isEffectiveAdmin && view === 'LIST'`. El formulario y el dashboard de usuario conservan la columna angosta, que se lee mejor.
+3. **`AdminDashboard`**: los filtros pasan de `overflow-x-auto` a `flex-wrap` — bajan de línea en vez de esconderse tras una barra.
+
+### Verificado (medición, no impresión)
+Render del panel real en Chrome headless con datos de peor caso tomados de la hoja (las ciudades más largas: "BARRA DE PARISMINA, COSTA RICA" / "PUNTA CANA, DOMINICAN REPUBLIC", el centro de costos más largo, y los estados que generan 3 botones de acción):
+
+| Viewport | Ancho de tabla antes | Ancho después | Contenedores con scroll-H |
+|---|---|---|---|
+| 1920 | 1216 | **1736** | 1 → **0** |
+| 1600 | 1216 | **1521** | 1 → **0** |
+| 1440 | 1216 | **1361** | 1 → **0** |
+| 1280 | 1201 | 1201 | 0 → 0 |
+
+La columna "después" refleja los dos cambios juntos. Atribución precisa: el ensanchamiento por sí solo llevaba los contenedores con scroll de 1 a 0 en 1920 y 1600, pero **a 1440 seguía en 1** — ahí el que sobra es el `flex-wrap` de los filtros. Los dos cambios se necesitan para llegar a cero en todos los anchos.
+
+Comparación visual antes/después: la ruta pasa de 2 líneas a 1, los botones de acción de 2 filas a 1, y las filas quedan más compactas.
+
+### Despliegue
+**Solo frontend**: push a `main` → Cloud Run. Sin pasos de Apps Script. Rollback = revert del commit.
+
+---
+

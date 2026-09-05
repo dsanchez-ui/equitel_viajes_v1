@@ -968,6 +968,10 @@ const App: React.FC = () => {
       canToggleView={role === UserRole.ANALYST || role === UserRole.SUPERADMIN}
       viewAsRequester={viewAsRequester}
       onToggleView={handleToggleView}
+      // Solo el panel de analista necesita el ancho extra: es la única vista con
+      // una tabla ancha. El formulario y el dashboard de usuario se leen mejor
+      // en la columna angosta de siempre.
+      wide={isEffectiveAdmin && view === 'LIST'}
     >
 
       {!isEffectiveAdmin && view === 'LIST' && (

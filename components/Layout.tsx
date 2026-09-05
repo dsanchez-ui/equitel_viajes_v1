@@ -14,13 +14,21 @@ interface LayoutProps {
   canToggleView?: boolean;
   viewAsRequester?: boolean;
   onToggleView?: () => void;
+  // Ensancha el contenedor para vistas densas (el panel de analista, que tiene
+  // una tabla de ~10 columnas). Sin esto, el tope de max-w-7xl (1280px) obliga a
+  // la tabla a hacer scroll horizontal aunque la pantalla tenga espacio de sobra,
+  // y la barra de scroll queda al final de las 50 filas de la página.
+  wide?: boolean;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, role, onLogout, onRefresh, canToggleView, viewAsRequester, onToggleView }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, role, onLogout, onRefresh, canToggleView, viewAsRequester, onToggleView, wide }) => {
+  // Header, main y footer comparten el mismo ancho para que el logo y el
+  // contenido queden alineados en ambos modos.
+  const containerWidth = wide ? 'max-w-[1800px]' : 'max-w-7xl';
   return (
     <div className="min-h-screen flex flex-col bg-gray-50">
       <header className="bg-black shadow-md border-b border-gray-800 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className={`${containerWidth} mx-auto px-4 sm:px-6 lg:px-8`}>
           <div className="flex justify-between h-16">
             <div className="flex items-center min-w-0 flex-1">
               <div className="flex items-center gap-4 min-w-0">
@@ -94,11 +102,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, r
           </div>
         </div>
       </header>
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className={`flex-1 ${containerWidth} w-full mx-auto px-4 sm:px-6 lg:px-8 py-8`}>
         {children}
       </main>
       <footer className="bg-white border-t mt-auto">
-        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500">
+        <div className={`${containerWidth} mx-auto py-4 px-4 sm:px-6 lg:px-8 text-center text-sm text-gray-500`}>
           &copy; {new Date().getFullYear()} Equitel • Gestión de Viajes Corporativos.
         </div>
       </footer>
