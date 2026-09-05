@@ -5043,6 +5043,82 @@ function _getIntegrantesDataFromIntegrantes_() {
 }
 
 // --- SECURITY: Server-side input validation ---
+// =====================================================================
+// ORDEN DE TRABAJO — normalización + validación de formato
+// =====================================================================
+// ⚠️ GEMELO DE `utils/workOrder.ts` (frontend). Si cambian las reglas aquí,
+// cambiarlas allá. No se puede compartir código entre Apps Script y Vite/TS.
+//
+// Formato canónico: OT-<EE><CCC>-<NÚMERO>   ej. OT-CUBTA-110256
+//   EE  = 2 letras de empresa (CU, ET, IG, LI)
+//   CCC = 3 letras de ciudad  (BTA, MED, BQL, PEI, YUM, URA, BEL, PSO, RSO…)
+//
+// Se valida la ESTRUCTURA, no una lista cerrada de códigos: no existe hoja
+// maestra de OT, y una ciudad o empresa nueva debe poder operar sin desplegar.
+//
+// Relación con `_esOTValida_` (más abajo, sección del dashboard de costos):
+// aquélla decide si una OT YA GUARDADA exime del presupuesto y es deliberadamente
+// laxa para no reinterpretar el histórico. Ésta es la compuerta de ENTRADA, y es
+// estricta para que de ahora en adelante lo guardado sea siempre canónico.
+// Toda OT que pase por aquí pasa también `_esOTValida_`.
+
+/**
+ * Lleva una OT escrita de cualquier forma razonable a la forma canónica.
+ * Devuelve '' si no es reconocible como OT.
+ * No rescata valores con texto extra: esa información va en observaciones.
+ */
+function _normalizeWorkOrder_(raw) {
+  if (raw === null || raw === undefined) return '';
+  var s = String(raw).trim().toUpperCase().replace(/\s+/g, ' ');
+  if (!s) return '';
+  // Quita el prefijo OT con el separador que traiga (o sin ninguno).
+  var body = s.replace(/^OT[\s\-_.]*/, '');
+  var m = body.match(/^([A-Z]{2})[\s\-_.]*([A-Z]{3})[\s\-_.]*(\d{1,10})$/);
+  if (!m) return '';
+  // El número se conserva tal cual: es un identificador, no una cantidad
+  // (no se le quitan ceros a la izquierda).
+  return 'OT-' + m[1] + m[2] + '-' + m[3];
+}
+
+/**
+ * Valida y NORMALIZA data.workOrder en sitio. La OT es opcional: vacío pasa.
+ * Lanza Error con mensaje para el usuario si el valor no es una OT bien formada.
+ *
+ * Se invoca solo desde `validateRequestInput_`, es decir solo al CREAR una
+ * solicitud o una solicitud de cambio. Nunca corre sobre las solicitudes ya
+ * existentes ni sobre los flujos de aprobación, reserva o costos.
+ */
+function _validateAndNormalizeWorkOrder_(data) {
+  if (!data) return;
+  var original = String(data.workOrder === null || data.workOrder === undefined ? '' : data.workOrder).trim();
+  if (!original) { data.workOrder = ''; return; }
+
+  if (/^(N\.?\/?A\.?|NO\s*APLICA|NINGUN[AO]?|SIN\s*OT|NO\s*TIENE|PENDIENTE)$/i.test(original)) {
+    throw new Error(
+      'La Orden de Trabajo es opcional: si el viaje no tiene OT, deje el campo vacío ' +
+      'en vez de escribir "' + original + '".'
+    );
+  }
+
+  var normalized = _normalizeWorkOrder_(original);
+  if (!normalized) {
+    if (/^\d+$/.test(original)) {
+      throw new Error(
+        '"' + original + '" es solo el consecutivo de la Orden de Trabajo. Falta el ' +
+        'prefijo y el código de empresa y ciudad. Formato: OT-CUBTA-110256.'
+      );
+    }
+    throw new Error(
+      '"' + original + '" no tiene el formato de una Orden de Trabajo. Debe ser ' +
+      'OT-CUBTA-110256: el prefijo OT-, 2 letras de empresa, 3 de ciudad, un guion ' +
+      'y el número. Si quiere anotar algo más, use el campo de observaciones.'
+    );
+  }
+  // Se guarda siempre la forma canónica, sin importar cómo la haya escrito el
+  // cliente (o si el cliente es viejo y no normaliza).
+  data.workOrder = normalized;
+}
+
 function validateRequestInput_(data) {
   var errors = [];
   if (!data.requesterEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.requesterEmail)) errors.push('Correo del solicitante inválido.');
@@ -5063,6 +5139,14 @@ function validateRequestInput_(data) {
   }
   if (data.comments && String(data.comments).length > 2000) errors.push('Observaciones demasiado largas (máx 2000 caracteres).');
   if (data.workOrder && String(data.workOrder).length > 100) errors.push('Orden de trabajo demasiado larga.');
+  // Formato de la OT. Va aquí para que cubra por igual createNewRequest y
+  // requestModification, que son los dos únicos llamadores de esta función.
+  // Normaliza data.workOrder en sitio (ver _validateAndNormalizeWorkOrder_).
+  try {
+    _validateAndNormalizeWorkOrder_(data);
+  } catch (otErr) {
+    errors.push(otErr.message);
+  }
   if (data.hotelName && String(data.hotelName).length > 200) errors.push('Nombre de hotel demasiado largo.');
   if (data.changeReason && String(data.changeReason).length > 2000) errors.push('Motivo del cambio demasiado largo.');
   if (errors.length > 0) throw new Error('Validación: ' + errors.join(' '));

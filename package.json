@@ -11,7 +11,8 @@
     "build:guia": "node scripts/build-guia.cjs",
     "typecheck": "tsc --noEmit",
     "check:gas": "node tools/check-gas-syntax.cjs",
-    "verify": "npm run typecheck && npm run check:gas && npm run build"
+    "check:ot": "node tools/check-workorder-parity.cjs",
+    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run build"
   },
   "dependencies": {
     "react": "^19.2.4",

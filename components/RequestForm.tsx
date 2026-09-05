@@ -7,6 +7,7 @@ import { formatToYYYYMMDD, formatToDDMMYYYY, parseDate } from '../utils/dateUtil
 import { CityCombobox } from './CityCombobox';
 import { BudgetUsageBar, invalidateBudgetCache } from './BudgetUsageBar';
 import { PassportUploadModal } from './PassportUploadModal';
+import { validateWorkOrder, WORK_ORDER_PLACEHOLDER } from '../utils/workOrder';
 
 interface RequestFormProps {
   userEmail: string;
@@ -181,6 +182,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   initialData
 }) => {
   const [loading, setLoading] = useState(false);
+  // Mensaje bajo el campo de Orden de Trabajo. Se llena al salir del campo para
+  // que el usuario corrija en el momento y no al final, con un alert.
+  const [workOrderError, setWorkOrderError] = useState<string | null>(null);
 
   // Initialize State
   const [passengers, setPassengers] = useState<Passenger[]>(
@@ -964,6 +968,20 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       alert('Debe agregar al menos un centro de costos en la lista de VARIOS.');
       return;
     }
+
+    // ORDEN DE TRABAJO: formato obligatorio si se registra una (el campo sigue
+    // siendo opcional). Se valida aquí y no solo en el onBlur porque se puede
+    // enviar el formulario sin haber salido nunca del campo.
+    // El valor normalizado se inyecta en los payloads más abajo — no se puede
+    // confiar en setFormData, que no se refleja dentro de este mismo handler.
+    const workOrderCheck = validateWorkOrder(formData.workOrder);
+    if (!workOrderCheck.ok) {
+      setWorkOrderError(workOrderCheck.error || null);
+      alert(workOrderCheck.error);
+      return;
+    }
+    setWorkOrderError(null);
+    const normalizedWorkOrder = workOrderCheck.value;
     // GUARD: primer pasajero obligatoriamente en directorio (define el aprobador).
     if (!firstPassengerValid) {
       alert(
@@ -1100,6 +1118,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           const note = `[MULTIDESTINO] Tramo ${i + 1}/${legs.length} · Itinerario: ${itinerary}`;
           const legPayload: Partial<TravelRequest> = {
             ...formData,
+            workOrder: normalizedWorkOrder,
             requestMode: 'FLIGHT' as const,
             origin: leg.origin,
             destination: leg.destination,
@@ -1143,6 +1162,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
       const payload: Partial<TravelRequest> = {
         ...formData,
+        workOrder: normalizedWorkOrder,
         requestMode: requestMode,
         departureDate: formatToDDMMYYYY(formData.departureDate),
         isInternational,
@@ -1284,8 +1304,34 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Orden de Trabajo (Opcional)</label>
-                <input type="text" name="workOrder" className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.workOrder} onChange={handleInputChange} />
-                <p className="text-[10px] text-gray-500 mt-1 italic">Si registra una OT válida (ej. <span className="font-mono">OT-1234</span>), el costo se carga directamente a la orden y no afecta el presupuesto de la unidad.</p>
+                <input
+                  type="text"
+                  name="workOrder"
+                  placeholder={WORK_ORDER_PLACEHOLDER}
+                  className={`mt-1 block w-full bg-white rounded-md shadow-sm sm:text-sm border p-2 text-gray-900 ${workOrderError
+                    ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+                    : 'border-gray-300 focus:border-brand-red focus:ring-brand-red'}`}
+                  value={formData.workOrder}
+                  onChange={(e) => { setWorkOrderError(null); handleInputChange(e); }}
+                  onBlur={(e) => {
+                    // Al salir del campo se normaliza lo que se pueda (mayúsculas,
+                    // separadores, prefijo faltante) y se avisa si no es una OT.
+                    const check = validateWorkOrder(e.target.value);
+                    setWorkOrderError(check.ok ? null : check.error || null);
+                    if (check.ok && check.value !== formData.workOrder) {
+                      setFormData(prev => ({ ...prev, workOrder: check.value }));
+                    }
+                  }}
+                />
+                {workOrderError ? (
+                  <p className="text-[11px] text-red-600 mt-1">{workOrderError}</p>
+                ) : (
+                  <p className="text-[10px] text-gray-500 mt-1 italic">
+                    Formato: <span className="font-mono">{WORK_ORDER_PLACEHOLDER}</span> — prefijo OT, 2 letras de empresa,
+                    3 de ciudad y el número. Si registra una OT, el costo se carga a la orden y no afecta el presupuesto
+                    de la unidad. Si el viaje no tiene OT, deje el campo vacío.
+                  </p>
+                )}
               </div>
             </div>
 

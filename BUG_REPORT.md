@@ -740,3 +740,45 @@ Comparación visual antes/después: la ruta pasa de 2 líneas a 1, los botones d
 
 ---
 
+## **#A66 — El campo de Orden de Trabajo aceptaba cualquier cosa (SOL-000512: "CUBEL 482")**
+**Fecha:** 2026-09-05 · **Reportado por:** David · **Estado:** Corregido
+
+**Síntoma:** al crear una solicitud se podía escribir cualquier texto en la OT. En producción había `CUBEL 482` (SOL-000512), `16034` (SOL-000511), `123573` (SOL-000513, SOL-000492), y también `NA`, `PRUEBA!!`, `Visita Barranquilla`.
+
+**Por qué no era cosmético:** una OT bien formada **exime a la solicitud de cargar al presupuesto de la unidad** y de pedir la aprobación del responsable de presupuesto (`_esOTValida_` / `_requiresBudgetOverrun_`). `_esOTValida_` exige empezar por "OT" y tener un dígito, así que `CUBEL 482` **no** la reconocía. El daño va en la dirección contraria a la que uno teme: no es que la basura evadiera el control, es que **OT reales mal escritas perdían la exención**, cargando el viaje al presupuesto de la unidad y disparando una aprobación que no correspondía.
+
+**Contribuyó la propia ayuda del formulario**, que ponía como ejemplo `OT-1234` — sin código de empresa ni ciudad, es decir un formato que no existe.
+
+**Alcance medido** sobre las 699 solicitudes de la hoja (2026-09-05): 149 tenían OT escrita; **67 no eran reconocibles** por el backend. De ellas, 3 eran OT reales que solo estaban mal escritas (`CUBEL 482`, `ETMED 31701`, `CUYUM 11301`).
+
+### Formato canónico
+`OT-<EE><CCC>-<NÚMERO>` — ej. `OT-CUBTA-110256`. `EE` = 2 letras de empresa (CU=Cumandes, ET=Equitel, IG=Ingenergía, LI=LAP); `CCC` = 3 letras de ciudad (BTA, MED, BQL, PEI, YUM, URA, BEL, PSO, RSO…).
+
+Se valida la **estructura, no una lista cerrada de códigos** (decisión de David): no existe hoja maestra de OT contra la cual verificar, y una ciudad o empresa nueva debe poder operar sin esperar un despliegue.
+
+### Fix (frontend + backend)
+1. **`utils/workOrder.ts`** (nuevo): `normalizeWorkOrder` + `validateWorkOrder`. **La OT sigue siendo opcional** — vacío es válido. Normaliza las variantes reales de la hoja (`OTCUURA-207`, `OT-CUMED 46437`, `OT CUBTA 15560`, `OT-CUMED55980`, `CUBEL 482`) a la forma canónica. El número se conserva tal cual, sin quitar ceros a la izquierda: es un identificador, no una cantidad.
+2. **`RequestForm`**: normaliza al salir del campo, muestra el error en línea bajo el input, y bloquea el envío (también en el camino multidestino, que comparte una sola OT). El valor normalizado se inyecta en ambos payloads — no se puede confiar en `setFormData` dentro del mismo handler.
+3. **`Code.gs`**: gemelo `_normalizeWorkOrder_` / `_validateAndNormalizeWorkOrder_`, invocado desde `validateRequestInput_`, cuyos **únicos dos llamadores** son `createNewRequest` y `requestModification`. No toca las 699 solicitudes existentes ni los flujos de aprobación, reserva o costos. El backend guarda siempre la forma canónica, aunque el cliente sea viejo.
+4. **Ayuda del formulario corregida**: el ejemplo pasa de `OT-1234` a `OT-CUBTA-110256`, y dice explícitamente que si no hay OT se deje vacío.
+
+**Mensajes diferenciados:** `NA`/`N/A` recibe "es opcional, deje el campo vacío" (36 de los 67 casos malos son de este tipo); un valor puramente numérico recibe "es solo el consecutivo, falta el prefijo y el código"; el resto recibe el formato esperado con la sugerencia de usar observaciones para notas.
+
+**Deliberadamente NO se rescatan** valores con texto extra (`INDUSUR-PUNTO NET.. OT-CUBTA-110256`, `OT-CUMED-55738 Medellín`): esa información es del usuario y va en observaciones, no en un campo que el backend interpreta.
+
+### Riesgo de deriva entre los gemelos
+El validador está escrito dos veces porque Apps Script y Vite/TS no comparten código. Para que no se separen en silencio se agregó **`tools/check-workorder-parity.cjs`**, que extrae las funciones de `Code.gs`, compila las de TypeScript y verifica que coincidan sobre 55 casos (los reales de la hoja + bordes). Corre dentro de `npm run verify`. Se validó que **detecta** una divergencia inyectada (cambiar 10→12 dígitos en un solo lado hace fallar el chequeo).
+
+### Consecuencia conocida
+`_esOTValida_` (la lectura del histórico) se dejó intacta a propósito, para no reinterpretar las 699 solicitudes ya guardadas. Esto implica que **8 solicitudes vivas** con OT mal formada quedarían bloqueadas si alguien intenta modificarlas, hasta corregir el campo: SOL-000381, 000400, 000413, 000434, 000492, 000505, 000511 y 000513. El mensaje de error dice exactamente qué hacer. También quedan fuera del formato los ~11 casos históricos tipo `OT-122912` / `OT 15606` (con prefijo pero sin código de ciudad), que sí pasaban antes.
+
+### Verificado
+`npm run verify` — typecheck, sintaxis de los 5 archivos del backend, paridad de validadores y build, todo limpio. El validador se corrió contra **las 149 OT reales** de producción: 57 aceptadas tal cual, 19 corregidas automáticamente, 73 rechazadas con el mensaje correspondiente.
+
+### Despliegue
+1. Push a `main` → Cloud Run (frontend).
+2. Apps Script: pegar `Code.gs`, **Guardar** y **crear versión nueva** del web app.
+3. Sin migración de hoja ni columnas nuevas.
+
+**Orden seguro en ambos sentidos:** frontend nuevo + backend viejo → el formulario bloquea y el backend acepta lo que llegue (comportamiento actual). Backend nuevo + frontend viejo → el backend lanza y el `alert` existente muestra el mensaje.
+
