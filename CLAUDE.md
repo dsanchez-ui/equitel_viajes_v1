@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A71) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A72) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -139,6 +139,11 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
 - **La fecha de nacimiento por pasajero en el detalle de la solicitud solo la ven
   los administradores** (#A71). El solicitante no: en una solicitud se pueden
   escribir cédulas ajenas. Hacia el navegador del solicitante nunca sale una fecha.
+- **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
+  de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
+  sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
+  la lista se pide al ejecutar: su ID **no se guarda en el código** porque la hoja
+  trae datos personales.
 - **Exposición de funciones vía `google.script.run` desde las páginas públicas del
   web app: descartada por decisión de David (2026-09-10).** Constancia técnica y
   verificación en [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md),
@@ -307,7 +312,7 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A50** — limpiar el cableado legacy de `INTEGRANTES`.
 - **Plan de la reunión del 2026-09-10** —
   [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md). Implementados
-  #A68 (fecha de nacimiento en usuarios), #A69 (recordatorio), #A70 (fecha de
-  nacimiento en el formulario de solicitudes) y #A71 (fecha visible en el detalle
-  para administradores), pendientes de despliegue. Pendiente: carga masiva con la
-  lista de Karen y decidir las mejoras C1 y C3.
+  #A68–#A71 (fecha de nacimiento en usuarios, formulario y detalle; recordatorio)
+  están en `main` (`72b825e`); falta desplegar Apps Script. #A72 (carga masiva
+  desde la lista de RR. HH., menú 7) implementado. Mejoras C1 y C3 descartadas por
+  David.

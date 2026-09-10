@@ -958,3 +958,50 @@ Se despliega junto con #A68 y #A70.
 Con el orden inverso, entre el push y la versión nueva la consulta no existe: los administradores ven "No se pudo cargar la fecha de nacimiento" y el detalle sigue funcionando. Con backend nuevo y frontend viejo no cambia nada visible.
 
 **Rollback:** versión anterior del web app + revert del commit.
+
+## **#A72 — Carga masiva de fechas de nacimiento desde la lista de RR. HH.**
+**Fecha:** 2026-09-10 · **Solicitado por:** David · **Estado:** Implementado, pendiente de despliegue
+
+**Necesidad:** Karen (RR. HH.) envió la lista de integrantes de septiembre 2026: 842 personas con su fecha de nacimiento, en una hoja de Google Sheets con la misma estructura del maestro de RR. HH. (`cc`, `nombre`, `fecha de nacimiento`, `correo corporativo`…). Hay que cargar la fecha **por cédula** a los usuarios ya registrados. **No se crean usuarios**: la lista no trae aprobador, y los nuevos se siguen creando por el sidebar o el panel móvil (decisión de David).
+
+### Diseño
+- **Menú** *Equitel Viajes → 7. Cargar fechas de nacimiento (lista RR. HH.)*. Pide el **enlace al ejecutarse**: el ID de una hoja con datos personales **no queda en el código ni en el repositorio**. El menú exige ser analista (`_requireAnalyst_`), y corre con la cuenta de quien lo ejecuta, que debe tener acceso a la lista.
+- **Lectura tolerante:** busca en cualquier pestaña, en las primeras 5 filas, los encabezados de cédula (`cc`, `cédula`, `documento`…) y de fecha de nacimiento.
+  - Las fechas tipo `Date` se formatean con la **zona horaria de la hoja de origen**: con otra zona, una fecha a medianoche se corre un día.
+  - Mismas reglas del sistema (fecha real, edad 15–100).
+  - Una cédula repetida en la lista con fechas distintas se excluye y se reporta.
+- **Cruce con `USUARIOS`** (columna de fecha localizada por nombre):
+  - Llena celdas **vacías o con texto que no es fecha**.
+  - **Nunca sobrescribe una fecha válida distinta:** la reporta como conflicto.
+  - Usuarios que no están en la lista o que tienen fecha inválida en ella: se reportan.
+- **Flujo seguro:**
+  1. Vista previa con resumen y confirmación, sin escribir nada.
+  2. Al confirmar, recalcula **dentro de `LockService`** (las filas pudieron cambiar) y escribe en **bloques de filas contiguas** con formato texto.
+  3. Deja la pestaña **"Reporte fechas nacimiento"** con una fila por usuario: Cargada / Conflicto / Fecha inválida o repetida / No está en la lista / Ya la tenía. Se reescribe en cada carga.
+- **Núcleo sin interfaz** `cargarFechasNacimientoDesdeHoja(enlace, aplicar)`, usable también desde el editor.
+- Es **idempotente**: una segunda corrida no cambia nada.
+
+### Resultado esperado con la lista real
+Análisis independiente en Python y simulación del backend coinciden: de **763 usuarios registrados**, **636** reciben su fecha, **4** tienen en la lista una fecha fuera de 15–100 años, y **123** no aparecen en la lista. **202** integrantes de la lista no están registrados y no se crean.
+
+### Verificado
+- `npm run verify` limpio.
+- **Simulación del `Code.gs` completo con los datos reales** (lista de 842 filas y `USUARIOS` de 763, con la columna en la O y el `ADMIN` suelto en N233, igual que producción), 20 escenarios:
+  - vista previa y carga con los mismos 636/4/123, sin escribir nada en la vista previa
+  - 636 fechas escritas en bloques como texto `AAAA-MM-DD`, cada una igual a la de la lista para esa cédula
+  - columnas A–N intactas en las 763 filas; reporte de 763 filas; segunda corrida idempotente
+  - conflicto no sobrescrito; texto no fecha reemplazado; cédula repetida excluida
+  - hoja de origen en otra zona horaria (Tokio) sin desfase de un día
+  - errores claros: enlace inválido, hoja sin acceso, lista sin columna de fecha, `USUARIOS` sin migrar
+  - menú: cancelar, responder No, confirmar Sí, y bloqueo a quien no es analista
+  - **Detectó 4 de 4 errores inyectados** (sobrescribir conflictos, formatear con la zona equivocada, quitar el control de analista, no detectar repetidos).
+  - Un escenario falló al principio por un error **de la simulación**: comparaba cédulas sin normalizar y a veces nunca creaba el duplicado. Se corrigió y la mutación correspondiente confirma que ahora sí prueba algo.
+- Regresiones con el `Code.gs` final: #A68 (19), #A70 (20), #A71 (11) y posición de columna (15).
+
+### Despliegue y uso
+1. Pegar `Code.gs` en Apps Script → Guardar. La carga corre desde la hoja, no desde el web app.
+2. Recargar la hoja para ver el menú **7**.
+3. Ejecutarlo, pegar el enlace de la lista, revisar el resumen y confirmar.
+4. Revisar la pestaña "Reporte fechas nacimiento".
+
+**Rollback:** los valores escritos son solo fechas en celdas que estaban vacías o sin fecha válida; el reporte lista exactamente qué filas se cargaron.

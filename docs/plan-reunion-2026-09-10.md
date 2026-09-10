@@ -1,10 +1,9 @@
 # Plan — Ajustes de la reunión "Tiquetes / Aviatur" (2026-09-10)
 
-> **Estado (2026-09-10):** A (#A68), A2 (#A70), B1 (#A69) y C2 (#A71)
-> **implementados y verificados, pendientes de despliegue**. Sin push por
-> instrucción de David hasta terminar y probar todo lo pedido. D actualizado.
-> Siguen pendientes la carga masiva (espera la lista de Karen) y decidir C1 y C3.
-> P0 descartado por decisión de David.
+> **Estado (2026-09-10):** A (#A68), A2 (#A70), B1 (#A69) y C2 (#A71) publicados
+> en `main` (`72b825e`); **falta desplegar Apps Script**. Carga masiva implementada
+> (#A72, menú 7). C1 y C3 descartadas por David. P0 descartado por decisión de
+> David.
 >
 > **Asistentes:** Diego Fernando Caballero Vargas, Yurani Astrid Prieto Forero,
 > Laura Cristina Molina Ortiz, David Santiago Sánchez Rocha.
@@ -110,13 +109,19 @@ nacimiento para cargarla.
 | `server/AdminMobile.html` | Campo `type="date"` obligatorio en "Crear usuario nuevo", validación y envío en el payload. |
 | Validador de fecha | Autoritativo en el backend (`_validateBirthdate_`), verificado por `tools/check-birthdate-rules.cjs` dentro de `npm run verify`. Los formularios validan presencia y muestran el mensaje del backend. El gemelo TypeScript llega con A2. |
 
-### Carga masiva (cuando llegue la lista de Karen)
+### Carga masiva desde la lista de RR. HH. · implementado en #A72
 
-Función `cargarFechasNacimiento()` desde una hoja temporal `CARGA_FECHAS` con dos
-columnas (`Cédula`, `Fecha`). Cruza por cédula y **por defecto solo llena celdas
-vacías**; nunca borra. Reporta: cargadas, cédulas no encontradas en `USUARIOS`,
-fechas inválidas y filas que ya tenían fecha distinta. **Se necesita ver el formato
-real de la lista antes de escribirla.**
+Lista recibida el 2026-09-10 (Karen, "Integrantes septiembre 2026"): 842 personas
+con fecha de nacimiento. Menú *Equitel Viajes → 7. Cargar fechas de nacimiento*:
+pide el enlace (no se guarda en el código), muestra un resumen, pide confirmación,
+escribe y deja la pestaña "Reporte fechas nacimiento".
+
+- Solo usuarios **ya registrados**; no crea usuarios (la lista no trae aprobador).
+- Llena celdas vacías o con texto que no es fecha; **nunca sobrescribe** una fecha
+  válida distinta (conflicto al reporte).
+- Resultado esperado con la lista real: **636** usuarios reciben fecha, **4** tienen
+  fecha inválida en la lista, **123** no aparecen; 202 integrantes no registrados
+  no se crean.
 
 ### Despliegue
 
@@ -224,9 +229,9 @@ Actualizado en el Anexo. Además de agregar la fecha de nacimiento:
 
 | # | Mejora | Por qué | Esfuerzo |
 |---|---|---|---|
-| C1 | **Autollenar `PERSONA QUE TRAMITA EL TIQUETE /HOTEL`** al registrar la reserva, con el nombre de quien la registra (correo → nombre de `Tabla_3`), **solo si la celda está vacía**. | En la reunión se pidió que no quede en blanco; hoy la app nunca la llena. | ~1 h, solo backend |
+| C1 | ~~Autollenar `PERSONA QUE TRAMITA EL TIQUETE /HOTEL` al registrar la reserva.~~ | **Descartada por David (2026-09-10).** | — |
 | C2 | ✅ **Implementado (#A71).** Fecha de nacimiento de cada pasajero en el detalle de la solicitud, bajo nombre y cédula, con edad, "registrada en esta solicitud" para externos y aviso "Sin fecha de nacimiento". **Solo administradores** (en una solicitud se pueden escribir cédulas ajenas). | El área de viajes la registra en la aerolínea sin abrir la hoja. | Hecho |
-| C3 | **Nota en los encabezados de la hoja principal:** "Ocultar, no borrar". | Refuerza lo acordado en la reunión justo donde se comete el error. | ~10 min |
+| C3 | ~~Nota "Ocultar, no borrar" en los encabezados de la hoja principal.~~ | **Descartada por David (2026-09-10).** | — |
 
 ---
 
@@ -247,17 +252,17 @@ Actualizado en el Anexo. Además de agregar la fecha de nacimiento:
 |---|---|---|---|
 | 1 | David | ✅ JSON del dashboard pegado y mensaje de preregistro enviado. Borrar `Temporal` si falta. | No |
 | 2 | Claude | ✅ A (#A68), A2 (#A70) y B1 (#A69) implementados y verificados. | Sí |
-| 3 | David | Autorizar commit + push. Despliegue: **primero Apps Script** (pegar `Code.gs`, `AdminSidebar.html`, `AdminMobile.html` → menú 6 → versión nueva), **después el push**. | — |
-| 4 | David | Pasar la lista de Karen apenas llegue. | No |
-| 5 | Claude | Carga masiva de fechas con el formato real de la lista (solo llena vacías). | Sí |
-| 6 | Claude | ✅ C2 (#A71) implementado y verificado. C1 y C3 pendientes de decisión de David. | Sí |
+| 3 | David | ✅ Push autorizado y hecho (`72b825e`). **Falta desplegar Apps Script:** pegar `Code.gs`, `AdminSidebar.html`, `AdminMobile.html` → menú 6 → versión nueva. | — |
+| 4 | David | ✅ Lista de Karen recibida (842 integrantes). Ejecutar el menú 7 tras pegar el `Code.gs` final. | — |
+| 5 | Claude | ✅ Carga masiva implementada y verificada con los datos reales (#A72). | Sí |
+| 6 | Claude | ✅ C2 (#A71) implementado. C1 y C3 descartadas por David. | Sí |
 
 ## Decisiones pendientes de David
 
 1. ✅ **A:** obligatoria al crear usuario y opcional al editar; edad válida 15–100 años — confirmado (2026-09-10).
 2. ✅ **A2:** obligatoria en vuelos; externos también, guardada en la solicitud — decidido (2026-09-10).
-3. ✅ C2 aprobada e implementada (#A71). Pendiente decidir C1 y C3.
-4. Formato de la lista de Karen (cuando llegue).
+3. ✅ C2 implementada (#A71); C1 y C3 descartadas por David.
+4. ✅ Lista de Karen recibida; carga masiva implementada (#A72).
 
 ---
 

@@ -9499,6 +9499,274 @@ function agregarColumnaFechasNacimientoSolicitudes() {
   return { added: true, col: nextCol };
 }
 
+// ---------------------------------------------------------------------
+// CARGA MASIVA DE FECHAS DE NACIMIENTO DESDE LA LISTA DE RR. HH. (2026-09-10)
+// ---------------------------------------------------------------------
+// Lee la hoja de integrantes que envía RR. HH. (Karen), cruza por cédula con
+// USUARIOS y completa la fecha de nacimiento:
+//   - Solo usuarios YA registrados: no crea usuarios (decisión de David; la
+//     lista no trae aprobador y los usuarios nuevos se crean por el sidebar/móvil).
+//   - Llena celdas vacías o con texto que no es fecha. NUNCA sobrescribe una
+//     fecha válida distinta: la reporta como conflicto.
+//   - Mismas reglas que el resto del sistema (fecha real, edad 15-100).
+//   - Muestra un resumen y pide confirmación antes de escribir; deja el detalle
+//     fila por fila en la pestaña BIRTHDATES_REPORT_SHEET.
+// El enlace se pide al ejecutar y NO se guarda en el código: la lista trae
+// datos personales y su ID no debe quedar en el repositorio.
+// ---------------------------------------------------------------------
+const BIRTHDATES_REPORT_SHEET = 'Reporte fechas nacimiento';
+const BULK_CEDULA_HEADERS = ['cc', 'c.c.', 'cedula', 'cédula', 'cedula numero', 'numero documento', 'número documento', 'numero de documento', 'número de documento', 'documento'];
+const BULK_BIRTHDATE_HEADERS = ['fecha de nacimiento', 'fecha nacimiento', 'fecha nac', 'fecha nac.', 'f. nacimiento', 'nacimiento'];
+const BULK_NAME_HEADERS = ['nombre', 'nombres', 'apellidos y nombres', 'nombre completo'];
+
+/** ID de una hoja de Google a partir del enlace completo o del ID solo. '' si no se reconoce. */
+function _extractSpreadsheetId_(raw) {
+  var s = String(raw || '').trim();
+  var m = s.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+  if (m) return m[1];
+  return /^[a-zA-Z0-9_-]{20,}$/.test(s) ? s : '';
+}
+
+/**
+ * Lee la lista externa. Busca en cada pestaña (primeras 5 filas) los encabezados
+ * de cédula y fecha de nacimiento. Las fechas tipo Date se formatean con la ZONA
+ * HORARIA DE ESA HOJA: con otra zona, una fecha a medianoche se corre un día.
+ * @return {{ok: boolean, error?: string, sheetName?: string, rows?: number,
+ *   byCedula?: Object<string, {iso: string, nombre: string}>,
+ *   invalid?: Array<{cedula, nombre, detalle}>, duplicates?: Array<{cedula, nombre, detalle}>}}
+ */
+function _readBirthdatesSource_(spreadsheetId) {
+  var file;
+  try {
+    file = SpreadsheetApp.openById(spreadsheetId);
+  } catch (e) {
+    return { ok: false, error: 'No se pudo abrir la hoja (ID ' + spreadsheetId + '). Verifique el enlace y que la cuenta con la que ejecuta el menú tenga acceso a esa hoja. Detalle: ' + (e && e.message ? e.message : e) };
+  }
+  var tz = file.getSpreadsheetTimeZone() || 'America/Bogota';
+  var today = _todayBogotaIso_();
+  var sheets = file.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s];
+    var lastRow = sh.getLastRow();
+    var lastCol = sh.getLastColumn();
+    if (lastRow < 2 || lastCol < 2) continue;
+    var values = sh.getRange(1, 1, lastRow, lastCol).getValues();
+    for (var h = 0; h < Math.min(5, values.length); h++) {
+      var idxCed = _findHeaderIndex_(values[h], BULK_CEDULA_HEADERS);
+      var idxBirth = _findHeaderIndex_(values[h], BULK_BIRTHDATE_HEADERS);
+      if (idxCed < 0 || idxBirth < 0) continue;
+      var idxName = _findHeaderIndex_(values[h], BULK_NAME_HEADERS);
+      var out = { ok: true, sheetName: sh.getName(), rows: 0, byCedula: {}, invalid: [], duplicates: [] };
+      var conflicted = {};
+      for (var r = h + 1; r < values.length; r++) {
+        var row = values[r];
+        var ced = _sanitizeCedula_(row[idxCed]);
+        if (!ced) continue;
+        out.rows++;
+        var nombre = idxName >= 0 ? String(row[idxName] || '').trim() : '';
+        var rawBirth = row[idxBirth];
+        var text;
+        if (Object.prototype.toString.call(rawBirth) === '[object Date]') {
+          text = isNaN(rawBirth.getTime()) ? '' : Utilities.formatDate(rawBirth, tz, 'yyyy-MM-dd');
+        } else {
+          text = String(rawBirth === null || rawBirth === undefined ? '' : rawBirth).trim();
+        }
+        var check = _validateBirthdate_(text, today);
+        if (!check.ok) {
+          out.invalid.push({ cedula: ced, nombre: nombre, detalle: text ? check.error : 'Sin fecha en la lista.' });
+          continue;
+        }
+        if (conflicted[ced]) continue;
+        var prev = out.byCedula[ced];
+        if (prev && prev.iso !== check.value) {
+          conflicted[ced] = true;
+          delete out.byCedula[ced];
+          out.duplicates.push({ cedula: ced, nombre: nombre, detalle: 'Aparece varias veces en la lista con fechas distintas (' + prev.iso + ' y ' + check.value + ').' });
+          continue;
+        }
+        out.byCedula[ced] = { iso: check.value, nombre: nombre };
+      }
+      return out;
+    }
+  }
+  return { ok: false, error: 'No se encontró una pestaña con las columnas de cédula ("cc") y "fecha de nacimiento" en sus primeras 5 filas.' };
+}
+
+/** Clasifica cada fila de USUARIOS frente a la lista. No escribe nada. */
+function _planBirthdatesBulkLoad_(usuarios, col, source) {
+  var plan = { total: 0, toFill: [], same: [], conflicts: [], invalidInList: [], notInList: [] };
+  var lastRow = usuarios.getLastRow();
+  if (lastRow < 2) return plan;
+  var ids = usuarios.getRange(2, 1, lastRow - 1, 2).getValues();
+  var births = usuarios.getRange(2, col, lastRow - 1, 1).getValues();
+  var problemByCed = {};
+  source.invalid.concat(source.duplicates).forEach(function(x) { problemByCed[x.cedula] = x.detalle; });
+  for (var i = 0; i < ids.length; i++) {
+    var ced = _sanitizeCedula_(ids[i][0]);
+    if (!ced) continue;
+    plan.total++;
+    var item = { row: i + 2, cedula: ced, nombre: String(ids[i][1] || '').trim(), iso: '', detalle: '' };
+    var rawCurrent = births[i][0];
+    var current = _normalizeBirthdate_(_birthdateCellToIso_(rawCurrent));
+    var fromList = source.byCedula[ced];
+    if (!fromList) {
+      if (problemByCed[ced]) { item.detalle = problemByCed[ced]; plan.invalidInList.push(item); }
+      else plan.notInList.push(item);
+      continue;
+    }
+    item.iso = fromList.iso;
+    if (!current) {
+      var rawText = String(rawCurrent === null || rawCurrent === undefined ? '' : rawCurrent).trim();
+      if (rawText) item.detalle = 'Reemplaza un valor que no era fecha: "' + rawText + '".';
+      plan.toFill.push(item);
+    } else if (current === fromList.iso) {
+      plan.same.push(item);
+    } else {
+      item.detalle = 'Ya tenía ' + current + ' y la lista dice ' + fromList.iso + '. No se modificó.';
+      plan.conflicts.push(item);
+    }
+  }
+  return plan;
+}
+
+/** Escribe las fechas en bloques de filas contiguas (menos llamadas a la hoja). */
+function _applyBirthdatesBulkLoad_(usuarios, col, toFill) {
+  var items = toFill.slice().sort(function(a, b) { return a.row - b.row; });
+  var written = 0;
+  var i = 0;
+  while (i < items.length) {
+    var j = i;
+    while (j + 1 < items.length && items[j + 1].row === items[j].row + 1) j++;
+    var vals = [];
+    for (var k = i; k <= j; k++) vals.push([items[k].iso]);
+    var range = usuarios.getRange(items[i].row, col, vals.length, 1);
+    range.setNumberFormat('@');
+    range.setValues(vals);
+    written += vals.length;
+    i = j + 1;
+  }
+  return written;
+}
+
+/** Detalle fila por fila en la pestaña de reporte (se reescribe en cada carga). */
+function _writeBirthdatesReport_(plan) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(BIRTHDATES_REPORT_SHEET) || ss.insertSheet(BIRTHDATES_REPORT_SHEET);
+  sh.clear();
+  var rows = [['Cédula', 'Nombre (USUARIOS)', 'Resultado', 'Fecha de nacimiento', 'Detalle']];
+  var add = function(list, label) {
+    list.forEach(function(x) { rows.push([x.cedula, x.nombre, label, x.iso || '', x.detalle || '']); });
+  };
+  add(plan.toFill, 'Cargada');
+  add(plan.conflicts, 'Conflicto: no se modificó');
+  add(plan.invalidInList, 'Fecha inválida o repetida en la lista');
+  add(plan.notInList, 'No está en la lista');
+  add(plan.same, 'Ya la tenía (igual)');
+  sh.getRange(1, 1, rows.length, 5).setNumberFormat('@').setValues(rows);
+  sh.getRange(1, 1, 1, 5).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  return rows.length - 1;
+}
+
+function _summarizeBirthdatesLoad_(plan, source) {
+  var sample = function(list) {
+    return list.slice(0, 5).map(function(x) { return x.nombre + ' (CC ' + x.cedula + '): ' + x.detalle; });
+  };
+  return {
+    sheetName: source.sheetName,
+    listRows: source.rows,
+    listValid: Object.keys(source.byCedula).length,
+    usuarios: plan.total,
+    toFill: plan.toFill.length,
+    same: plan.same.length,
+    conflicts: plan.conflicts.length,
+    invalidInList: plan.invalidInList.length,
+    notInList: plan.notInList.length,
+    conflictExamples: sample(plan.conflicts),
+    invalidExamples: sample(plan.invalidInList)
+  };
+}
+
+/**
+ * Núcleo sin interfaz (también se puede correr desde el editor).
+ * apply=false → solo vista previa, no escribe nada.
+ * apply=true  → recalcula bajo LockService, escribe y deja el reporte.
+ */
+function cargarFechasNacimientoDesdeHoja(linkOrId, apply) {
+  var id = _extractSpreadsheetId_(linkOrId);
+  if (!id) throw new Error('El enlace no parece de una hoja de Google Sheets.');
+  var usuarios = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (!usuarios) throw new Error('Hoja USUARIOS no encontrada.');
+  var col = _getUsuarioBirthdateCol_(usuarios);
+  if (col < 0) throw new Error(BIRTHDATE_COLUMN_MISSING_MSG);
+  var source = _readBirthdatesSource_(id);
+  if (!source.ok) throw new Error(source.error);
+
+  if (!apply) {
+    var preview = _summarizeBirthdatesLoad_(_planBirthdatesBulkLoad_(usuarios, col, source), source);
+    preview.applied = false;
+    return preview;
+  }
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) throw new Error('Sistema ocupado. Intente de nuevo en unos segundos.');
+  try {
+    // Se recalcula dentro del lock: las filas pudieron cambiar desde la vista previa.
+    var plan = _planBirthdatesBulkLoad_(usuarios, col, source);
+    var written = _applyBirthdatesBulkLoad_(usuarios, col, plan.toFill);
+    SpreadsheetApp.flush();
+    _writeBirthdatesReport_(plan);
+    var result = _summarizeBirthdatesLoad_(plan, source);
+    result.applied = true;
+    result.written = written;
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function menuCargarFechasNacimiento() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    var resp = ui.prompt('Cargar fechas de nacimiento',
+      'Pegue el enlace de la hoja de RR. HH. Debe tener las columnas "cc" y "fecha de nacimiento".\n\n' +
+      'Solo se completan usuarios ya registrados. No se crean usuarios ni se sobrescriben fechas válidas.',
+      ui.ButtonSet.OK_CANCEL);
+    if (resp.getSelectedButton() !== ui.Button.OK) return;
+    var link = resp.getResponseText();
+
+    var p = cargarFechasNacimientoDesdeHoja(link, false);
+    var resumen =
+      'Lista: pestaña "' + p.sheetName + '", ' + p.listRows + ' integrantes (' + p.listValid + ' con fecha válida).\n\n' +
+      'Usuarios registrados: ' + p.usuarios + '\n' +
+      '• Se cargará la fecha a: ' + p.toFill + '\n' +
+      '• Ya la tienen igual: ' + p.same + '\n' +
+      '• Conflictos (tienen otra fecha, NO se tocan): ' + p.conflicts + '\n' +
+      '• Fecha inválida o repetida en la lista: ' + p.invalidInList + '\n' +
+      '• No aparecen en la lista: ' + p.notInList;
+    if (p.conflictExamples.length) resumen += '\n\nConflictos (primeros):\n' + p.conflictExamples.join('\n');
+    if (p.invalidExamples.length) resumen += '\n\nInválidas (primeras):\n' + p.invalidExamples.join('\n');
+
+    if (p.toFill === 0) {
+      ui.alert('No hay fechas para cargar', resumen, ui.ButtonSet.OK);
+      return;
+    }
+    var ok = ui.alert('Confirmar carga', resumen + '\n\n¿Cargar ahora? El detalle quedará en la pestaña "' + BIRTHDATES_REPORT_SHEET + '".', ui.ButtonSet.YES_NO);
+    if (ok !== ui.Button.YES) return;
+
+    var r = cargarFechasNacimientoDesdeHoja(link, true);
+    ui.alert('Carga completada',
+      'Fechas cargadas: ' + r.written + '\n' +
+      'Conflictos sin modificar: ' + r.conflicts + '\n' +
+      'Sin fecha válida en la lista: ' + r.invalidInList + '\n' +
+      'No aparecen en la lista: ' + r.notInList + '\n\n' +
+      'Detalle fila por fila en la pestaña "' + BIRTHDATES_REPORT_SHEET + '".', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
+}
+
 // Maestro RH (Recursos Humanos) — Sheet externo con la lista completa de
 // empleados. Se usa durante la migración para "rellenar" aprobadores que no
 // existen en INTEGRANTES (huérfanos) creando filas stub en USUARIOS.
@@ -9741,6 +10009,7 @@ function onOpen() {
     .addItem('4. Recargar resoluciones (cols H, I)', 'recargarResolucionesUsuarios')
     .addItem('5. Agregar columnas Pasaporte (K, L)', 'agregarColumnasPasaporte')
     .addItem('6. Agregar columnas Fecha de Nacimiento', 'menuAgregarColumnaFechaNacimiento')
+    .addItem('7. Cargar fechas de nacimiento (lista RR. HH.)', 'menuCargarFechasNacimiento')
     .addToUi();
 }
 
