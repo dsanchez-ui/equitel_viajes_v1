@@ -607,6 +607,11 @@
           <div id="dupe_nombre" class="dupe-alert"></div>
         </div>
         <div class="field">
+          <label id="lbl_fechaNac">Fecha de nacimiento *</label>
+          <input type="date" id="f_fechaNac" />
+          <div id="help_fechaNac" class="help-text">La exigen las aerolíneas y agencias de viaje para emitir los tiquetes. Obligatoria al crear el usuario.</div>
+        </div>
+        <div class="field">
           <label>Correo *</label>
           <input type="email" id="f_correo" placeholder="usuario@equitel.com.co" />
           <div id="dupe_correo" class="dupe-alert"></div>
@@ -834,6 +839,8 @@
     // ============ STATE ============
     var allUsers = [];
     var approverCedulasSet = {}; // cedulas que aparecen como aprobador en col G de algún usuario
+    // true cuando el administrador tocó el campo de fecha de nacimiento en este formulario.
+    var fechaNacDirty = false;
     var catalogo = [];
     var sedes = [];
     var empresas = [];
@@ -864,6 +871,11 @@
       // Users tab
       document.getElementById('searchBox').addEventListener('input', renderList);
       document.getElementById('btnNew').addEventListener('click', startCreate);
+      // Al editar, la fecha solo se envía si se tocó el campo: una fecha guardada
+      // en un formato que el selector no puede mostrar no se borra por accidente
+      // al guardar otros cambios del usuario.
+      document.getElementById('f_fechaNac').addEventListener('input', function() { fechaNacDirty = true; });
+      document.getElementById('f_fechaNac').addEventListener('change', function() { fechaNacDirty = true; });
       document.getElementById('btnCancel').addEventListener('click', cancelForm);
       document.getElementById('btnSave').addEventListener('click', saveForm);
       document.getElementById('btnDelete').addEventListener('click', deleteUser);
@@ -1161,6 +1173,7 @@
       document.getElementById('f_empresa').value = u.empresa || '';
       document.getElementById('f_sede').value = u.sede || '';
       document.getElementById('f_cc').value = u.centroCosto || '';
+      prepareFechaNacField(u.fechaNacimiento, false);
 
       var cedulas = (u.cedulasAprobadores || '').split(',').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
       var nombres = (u.nombresAprobadores || '').split(',').map(function(n) { return n.trim(); });
@@ -1188,10 +1201,43 @@
       showForm();
     }
 
+    // Hoy en la zona del navegador como 'AAAA-MM-DD' (máximo del selector de fecha).
+    function todayIsoLocal() {
+      var d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+
+    // Prepara el campo de fecha de nacimiento. Al crear es obligatoria; al editar
+    // es opcional y, si falta o no se reconoce, se avisa. Reglas de edad (15-100)
+    // las valida el backend y su mensaje aparece en el estado del formulario.
+    function prepareFechaNacField(storedValue, creating) {
+      var input = document.getElementById('f_fechaNac');
+      var help = document.getElementById('help_fechaNac');
+      var raw = String(storedValue || '').trim();
+      var isIso = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+      input.max = todayIsoLocal();
+      input.value = isIso ? raw : '';
+      fechaNacDirty = false;
+      document.getElementById('lbl_fechaNac').textContent = creating ? 'Fecha de nacimiento *' : 'Fecha de nacimiento';
+      help.style.color = '';
+      if (creating) {
+        help.textContent = 'La exigen las aerolíneas y agencias de viaje para emitir los tiquetes. Obligatoria al crear el usuario.';
+      } else if (!raw) {
+        help.textContent = 'Pendiente: complétela cuando la tenga. La exigen las aerolíneas y agencias de viaje.';
+        help.style.color = '#b45309';
+      } else if (!isIso) {
+        help.textContent = 'Valor guardado no reconocido: "' + raw + '". Selecciónela de nuevo para corregirla.';
+        help.style.color = '#b91c1c';
+      } else {
+        help.textContent = 'La exigen las aerolíneas y agencias de viaje para emitir los tiquetes.';
+      }
+    }
+
     function clearForm() {
       ['f_cedula', 'f_nombre', 'f_correo', 'f_cc'].forEach(function(id) {
         document.getElementById(id).value = '';
       });
+      prepareFechaNacField('', true);
       document.getElementById('f_empresa').value = '';
       document.getElementById('f_sede').value = '';
       // Limpiar alertas de duplicados y desbloquear botón Guardar
@@ -1241,6 +1287,11 @@
         showStatus('El centro de costo debe ser numérico.', 'error');
         return;
       }
+      var fechaNacRaw = String(document.getElementById('f_fechaNac').value || '').trim();
+      if (!currentEditing && !fechaNacRaw) {
+        showStatus('La fecha de nacimiento es obligatoria para crear el usuario.', 'error');
+        return;
+      }
 
       // Self-approver: la cédula del usuario actual va sola en col G; backend
       // resolverá H/I correctamente porque inyectamos al lookup en usuarios_create.
@@ -1261,6 +1312,9 @@
         centroCosto: ccRaw,
         cedulasAprobadores: cedulasAprobadoresStr
       };
+      // Al crear siempre se envía. Al editar, solo si se tocó el campo: sin la
+      // clave, el backend no modifica la fecha guardada.
+      if (!currentEditing || fechaNacDirty) data.fechaNacimiento = fechaNacRaw;
 
       // Auto-completar cédula+correo desde catálogo si están vacíos
       if (data.nombre) {

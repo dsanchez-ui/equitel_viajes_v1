@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster, PassportStatus } from '../types';
+import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster, PassportStatus, BirthdateStatus } from '../types';
 import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 import { formatToYYYYMMDD, formatToDDMMYYYY, parseDate } from '../utils/dateUtils';
@@ -8,6 +8,7 @@ import { CityCombobox } from './CityCombobox';
 import { BudgetUsageBar, invalidateBudgetCache } from './BudgetUsageBar';
 import { PassportUploadModal } from './PassportUploadModal';
 import { validateWorkOrder, WORK_ORDER_PLACEHOLDER } from '../utils/workOrder';
+import { validateBirthdate, todayIsoLocal } from '../utils/birthdate';
 
 interface RequestFormProps {
   userEmail: string;
@@ -585,6 +586,54 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     setPassportModal(null);
   };
 
+  // FECHA DE NACIMIENTO (reunión 2026-09-10): obligatoria en solicitudes de VUELO
+  // para los pasajeros que aún no la tienen. Registrados → se guarda una vez en
+  // USUARIOS; externos → se guarda solo en esta solicitud. El backend solo
+  // informa SI falta (nunca devuelve fechas) y repite la validación.
+  const [birthdateStatuses, setBirthdateStatuses] = useState<Record<string, BirthdateStatus>>({});
+  const [birthdateLoading, setBirthdateLoading] = useState<boolean>(false);
+  // Si la consulta falla (red o servidor) NO se bloquea la solicitud: se pide la
+  // fecha a todos los pasajeros y el backend ignora la de quien ya la tiene.
+  const [birthdateFetchFailed, setBirthdateFetchFailed] = useState<boolean>(false);
+  const [passengerBirthdates, setPassengerBirthdates] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (isHotelOnly || passengerCedulas.length === 0) {
+      setBirthdateStatuses({});
+      setBirthdateFetchFailed(false);
+      setBirthdateLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setBirthdateLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const statuses = await gasService.getBirthdateStatus(passengerCedulas);
+        if (cancelled) return;
+        const map: Record<string, BirthdateStatus> = {};
+        statuses.forEach(s => { map[s.cedula] = s; });
+        setBirthdateStatuses(map);
+        setBirthdateFetchFailed(false);
+      } catch (e) {
+        if (cancelled) return;
+        console.warn('No se pudo verificar la fecha de nacimiento de los pasajeros:', e);
+        setBirthdateFetchFailed(true);
+      } finally {
+        if (!cancelled) setBirthdateLoading(false);
+      }
+    }, 300);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [isHotelOnly, passengerCedulas]);
+
+  // ¿Hay que pedirle la fecha a este pasajero? null = todavía se está consultando.
+  const birthdateNeeded = (cedulaKey: string): boolean | null => {
+    if (isHotelOnly || !cedulaKey) return false;
+    if (birthdateFetchFailed) return true;
+    const s = birthdateStatuses[cedulaKey];
+    if (!s) return birthdateLoading ? null : true;
+    return !(s.registered && s.hasBirthdate);
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     let finalValue = value;
@@ -1011,6 +1060,32 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         return;
       }
     }
+    // GUARD: fecha de nacimiento de los pasajeros en solicitudes de vuelo. El
+    // backend repite la validación. `birthdatesPayload` lleva solo a los pasajeros
+    // a los que les faltaba.
+    const birthdatesPayload: Record<string, string> = {};
+    if (!isHotelOnly) {
+      if (birthdateLoading) {
+        alert('Estamos verificando las fechas de nacimiento de los pasajeros. Espere un momento.');
+        return;
+      }
+      const todayIso = todayIsoLocal();
+      const birthProblems: string[] = [];
+      const seenBirth: Record<string, boolean> = {};
+      passengers.forEach((p, idx) => {
+        const key = sanitizeCedulaClient(p.idNumber);
+        if (!key || seenBirth[key]) return;
+        seenBirth[key] = true;
+        if (birthdateNeeded(key) !== true) return;
+        const check = validateBirthdate(passengerBirthdates[key], todayIso);
+        if (check.ok) birthdatesPayload[key] = check.value;
+        else birthProblems.push(`${(p.name || '').trim() || `Pasajero ${idx + 1}`} — CC ${key}: ${check.error}`);
+      });
+      if (birthProblems.length > 0) {
+        alert('Falta la fecha de nacimiento de algunos pasajeros (la exigen las aerolíneas para emitir el tiquete):\n\n' + birthProblems.join('\n'));
+        return;
+      }
+    }
     // Fecha de retorno obligatoria para round-trip y hotel-only (check-out)
     if ((isHotelOnly || tripType === 'ROUND_TRIP') && !formData.returnDate) {
       alert(isHotelOnly ? 'La fecha de check-out es obligatoria.' : 'Para vuelos de ida y regreso, la fecha de retorno es obligatoria.');
@@ -1133,6 +1208,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             approverEmail,
             requesterEmail: userEmail,
             passengers,
+            passengerBirthdates: birthdatesPayload,
             requiresHotel: leg.requiresHotel,
             hotelName: leg.requiresHotel ? leg.hotelName : '',
             nights: leg.requiresHotel ? leg.nights : 0,
@@ -1177,6 +1253,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         departureTimePreference: isHotelOnly ? '' : formData.departureTimePreference,
         requesterEmail: isModification && initialData?.requesterEmail ? initialData.requesterEmail : userEmail,
         passengers,
+        // Solo en vuelos: su presencia le indica al backend que el formulario ya
+        // pide la fecha de nacimiento.
+        passengerBirthdates: isHotelOnly ? undefined : birthdatesPayload,
         requiresHotel: isHotelOnly ? true : requiresHotel,
         nights: (isHotelOnly || requiresHotel) ? numberOfNights : 0,
         status: isModification ? RequestStatus.PENDING_CHANGE_APPROVAL : RequestStatus.PENDING_OPTIONS,
@@ -1292,6 +1371,15 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </div>
           </div>
 
+          {/* Recordatorio pedido en la reunión Tiquetes/Aviatur (2026-09-10): el
+              viaje se carga a la unidad y centro de costos elegidos aquí, y el
+              aprobador NO cambia por esa elección (sale de USUARIOS, por el
+              primer pasajero). */}
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span className="font-bold">⚠️ Verifique la unidad de negocio y el centro de costos.</span>{' '}
+            El costo del viaje se cargará exactamente a los que seleccione aquí. El aprobador no cambia por
+            esta elección: es el que tiene asignado en el sistema el primer pasajero.
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             <div className="space-y-6">
               <div>
@@ -1401,6 +1489,12 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               // Pasajero 1 bloqueante: si tiene cédula pero no matchea el
               // directorio, muestra error rojo (define el aprobador de área).
               const firstPassengerMissing = idx === 0 && p.idNumber && !inDb;
+              // Fecha de nacimiento: solo en vuelos y cuando le falta al pasajero.
+              const birthKey = sanitizeCedulaClient(p.idNumber);
+              const showBirthdate = !firstPassengerMissing && birthdateNeeded(birthKey) === true;
+              const birthValue = passengerBirthdates[birthKey] || '';
+              const birthCheck = birthValue ? validateBirthdate(birthValue, todayIsoLocal()) : null;
+              const birthRegistered = !!birthdateStatuses[birthKey]?.registered;
               return (
               <div key={idx} className="flex flex-col gap-3 bg-gray-50 p-4 rounded-md">
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
@@ -1433,6 +1527,36 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                         Esta cédula no está en el directorio. Escriba manualmente el nombre y correo (si aplica) del pasajero externo.
                       </p>
                     </div>
+                  </div>
+                )}
+                {showBirthdate && (
+                  <div className="rounded-md border border-sky-200 bg-sky-50 p-3">
+                    <label className="block text-xs font-medium text-sky-900">
+                      🎂 Fecha de nacimiento de {(p.name || '').trim() || `el pasajero ${idx + 1}`} *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      max={todayIsoLocal()}
+                      data-birthdate-for={birthKey}
+                      className="mt-1 block w-full sm:w-56 bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900"
+                      value={birthValue}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPassengerBirthdates(prev => ({ ...prev, [birthKey]: v }));
+                      }}
+                    />
+                    {birthCheck && !birthCheck.ok && (
+                      <p className="text-[11px] text-red-600 mt-1">{birthCheck.error}</p>
+                    )}
+                    <p className="text-[11px] text-sky-800 mt-1 leading-relaxed">
+                      La exigen las aerolíneas y agencias de viaje para emitir el tiquete.{' '}
+                      {birthdateFetchFailed
+                        ? 'No pudimos verificar si ya está registrada; ingrésela para continuar.'
+                        : birthRegistered
+                          ? 'Se guarda una sola vez en su perfil y no se volverá a pedir.'
+                          : 'Como este pasajero no está registrado en el sistema, se guarda solo en esta solicitud.'}
+                    </p>
                   </div>
                 )}
                 {firstPassengerMissing && integrantes.length > 0 && (

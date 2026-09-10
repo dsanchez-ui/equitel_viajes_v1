@@ -1,10 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { TravelRequest, RequestStatus, Integrant, SupportFile, PassportStatus, APPROVER_ROLE_LABELS } from '../types';
+import { TravelRequest, RequestStatus, Integrant, SupportFile, PassportStatus, PassengerBirthdate, APPROVER_ROLE_LABELS } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { getDaysDiff, formatToDDMMYYYY, formatLongDateTime } from '../utils/dateUtils';
 import { PassportUploadModal } from './PassportUploadModal';
+import { ageOnDate, todayIsoLocal } from '../utils/birthdate';
 
 interface RequestDetailProps {
     request: TravelRequest;
@@ -108,6 +109,38 @@ interface PassportsPanelProps {
 }
 
 const sanitizeCedula = (raw: string) => String(raw || '').replace(/\D+/g, '').substring(0, 30);
+
+// ============================================================
+// FECHA DE NACIMIENTO por pasajero (mejora C2, reunión 2026-09-10).
+// Solo se muestra a administradores: el área de viajes la necesita para emitir
+// el tiquete. El solicitante no la ve: en una solicitud se pueden escribir
+// cédulas de otras personas.
+// ============================================================
+type BirthdatesLoadState = 'idle' | 'loading' | 'ready' | 'error';
+
+const PassengerBirthdateLine: React.FC<{ state: BirthdatesLoadState; entry?: PassengerBirthdate }> = ({ state, entry }) => {
+    if (state === 'loading' || state === 'idle') {
+        return <span className="text-[11px] text-gray-400 animate-pulse">Fecha de nacimiento…</span>;
+    }
+    if (state === 'error') {
+        return <span className="text-[11px] text-gray-400">No se pudo cargar la fecha de nacimiento.</span>;
+    }
+    if (!entry || !entry.birthdate) {
+        return <span className="text-[11px] font-semibold text-amber-700">⚠️ Sin fecha de nacimiento</span>;
+    }
+    const age = ageOnDate(entry.birthdate, todayIsoLocal());
+    // Se reordena el texto 'AAAA-MM-DD' → 'DD-MM-AAAA' sin crear un Date: una
+    // fecha así interpretada en UTC se ve un día antes en Colombia.
+    const fecha = entry.birthdate.split('-').reverse().join('-');
+    return (
+        <span className="text-xs text-gray-600">
+            🎂 Nac.: <span className="font-mono">{fecha}</span> ({age} años)
+            {entry.source === 'SOLICITUD' && (
+                <span className="text-[10px] text-gray-400"> · registrada en esta solicitud</span>
+            )}
+        </span>
+    );
+};
 
 const PassportsPanel: React.FC<PassportsPanelProps> = ({ passengers, requestId }) => {
     const [statuses, setStatuses] = useState<Record<string, PassportStatus>>({});
@@ -251,6 +284,29 @@ const PassportsPanel: React.FC<PassportsPanelProps> = ({ passengers, requestId }
 };
 
 export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModify, isAdmin = false, isSuperAdmin = false }: RequestDetailProps) => {
+    // Fecha de nacimiento por pasajero (C2): solo se consulta para administradores.
+    const [birthdates, setBirthdates] = useState<Record<string, PassengerBirthdate>>({});
+    const [birthdatesState, setBirthdatesState] = useState<BirthdatesLoadState>('idle');
+    useEffect(() => {
+        if (!isAdmin || !request.requestId) {
+            setBirthdates({});
+            setBirthdatesState('idle');
+            return;
+        }
+        let cancelled = false;
+        setBirthdatesState('loading');
+        gasService.getPassengerBirthdates(request.requestId)
+            .then(rows => {
+                if (cancelled) return;
+                const map: Record<string, PassengerBirthdate> = {};
+                rows.forEach(r => { map[r.cedula] = r; });
+                setBirthdates(map);
+                setBirthdatesState('ready');
+            })
+            .catch(() => { if (!cancelled) setBirthdatesState('error'); });
+        return () => { cancelled = true; };
+    }, [isAdmin, request.requestId]);
+
     const [loading, setLoading] = useState(false);
     const [userSelectionText, setUserSelectionText] = useState('');
 
@@ -733,6 +789,9 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                 <div key={idx} className="flex flex-col bg-gray-50 p-2 rounded border border-gray-100">
                                                     <span className="font-bold text-gray-800 text-sm">{p.name}</span>
                                                     <span className="text-xs text-gray-500 font-mono">CC: {p.idNumber}</span>
+                                                    {isAdmin && (
+                                                        <PassengerBirthdateLine state={birthdatesState} entry={birthdates[sanitizeCedula(p.idNumber)]} />
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>

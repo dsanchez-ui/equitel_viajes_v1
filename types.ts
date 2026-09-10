@@ -88,6 +88,24 @@ export interface PassportStatus {
   source: 'USUARIOS' | 'DRIVE' | 'NONE';
 }
 
+// Estado de la fecha de nacimiento de un pasajero, consultado por cédula.
+// El backend NUNCA devuelve la fecha: solo si la persona está registrada en
+// USUARIOS y si ya la tiene (formulario de solicitudes, reunión 2026-09-10).
+export interface BirthdateStatus {
+  cedula: string;
+  registered: boolean;
+  hasBirthdate: boolean;
+}
+
+// Fecha de nacimiento de un pasajero para el detalle de la solicitud. SOLO la
+// reciben los administradores (el backend lo exige). source: 'USUARIOS' = del
+// perfil; 'SOLICITUD' = de un externo, guardada en la solicitud; 'NONE' = falta.
+export interface PassengerBirthdate {
+  cedula: string;
+  birthdate: string; // 'AAAA-MM-DD' o '' si falta
+  source: 'USUARIOS' | 'SOLICITUD' | 'NONE';
+}
+
 export interface TravelRequest {
   requestId: string;
   timestamp: string;
@@ -200,6 +218,12 @@ export interface TravelRequest {
   // La instrucción del aprobador prima sobre la selección del usuario.
   // Presente también en el payload lite (el ReservationModal lo necesita).
   approverComments?: ApproverComment[];
+
+  // FECHA DE NACIMIENTO (2026-09-10): solo en el payload de creación de vuelos.
+  // { cédula: 'AAAA-MM-DD' } con los pasajeros a los que les faltaba. Su sola
+  // presencia le indica al backend que el formulario ya pide la fecha. No se
+  // devuelve en las lecturas de solicitudes.
+  passengerBirthdates?: Record<string, string>;
 }
 
 // Comentario opcional dejado por un aprobador al aprobar (ver Code.gs

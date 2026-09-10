@@ -810,3 +810,151 @@ Se revisaron también los otros candidatos que arrojó el barrido: `utils/EmailG
 
 ### Despliegue
 **Solo frontend**: push a `main` → Cloud Run. El cambio del `Dockerfile` solo aplica si el trigger de Cloud Build está configurado con Dockerfile en vez de buildpacks; en ambos caminos la versión de `serve` queda en 14.2.6. Sin pasos de Apps Script.
+
+## **#A68 — Fecha de nacimiento en la creación y edición de usuarios**
+**Fecha:** 2026-09-10 · **Solicitado en:** reunión Tiquetes/Aviatur (Diego Caballero, Yurani Prieto, Laura Molina, David) · **Estado:** Implementado, pendiente de despliegue
+
+**Necesidad:** las aerolíneas y agencias de viaje exigen la fecha de nacimiento para emitir tiquetes, y `USUARIOS` no la tenía. En la reunión se acordó que sea **obligatoria al crear usuarios nuevos**. Plan completo: [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md), sección A.
+
+### Diseño
+- **Columna `Fecha Nacimiento` al final de `USUARIOS`**, agregada por la migración idempotente `agregarColumnaFechaNacimiento()` (menú *Equitel Viajes → 6. Agregar columnas Fecha de Nacimiento*, que desde #A70 crea también la columna de la hoja de solicitudes). **Por qué al final:** a diferencia de la hoja principal, `USUARIOS` se lee y escribe **por posición** (PIN en la col 10, aprobadores en 7–9, `_writeUsuarioRow_` escribe 1–9 fijas); una columna en medio desplazaría el PIN y rompería el inicio de sesión. La fecha se lee y escribe **siempre por nombre de encabezado**.
+- **Formato:** texto `AAAA-MM-DD` en celda con formato `@`. Una fecha "real" de Sheets vuelve como `Date` con zona horaria y puede correrse un día. Se acepta también `DD/MM/AAAA`.
+- **Reglas (confirmadas por David):** obligatoria al crear, opcional al editar; fecha de calendario válida, no posterior a hoy, edad entre 15 y 100 años. El backend es la autoridad (`_validateBirthdate_`); los formularios validan presencia y muestran el mensaje del backend.
+- **`usuarios_create`** valida la fecha y confirma que exista la columna **antes** de escribir la fila. Si fallara después, quedaría un usuario a medias y el reintento diría "ya existe".
+- **`usuarios_update`:** clave ausente = no se toca la fecha; vacía = se borra; con valor = se valida.
+- **Sidebar:** campo en crear y editar. Al editar, la fecha **solo se envía si se tocó el campo**. Así, una fecha escrita a mano en un formato que el selector no puede mostrar no se borra al guardar otros cambios, y se avisa "valor guardado no reconocido". Un usuario sin fecha se muestra como "Pendiente".
+- **Panel móvil:** campo obligatorio en "Crear usuario nuevo".
+- **Privacidad:** nunca se incluye en `getIntegrantesData` / `bootstrap` (ese directorio llega al navegador de cada usuario). `mobileAdmin_getBootstrap` la quita del listado: el panel móvil solo crea usuarios.
+- `sincronizarConMaestroRH` no cambia: sigue creando fichas sin fecha.
+
+### Verificado
+- `npm run verify` limpio. Incluye el nuevo **`check:birthdate`**: 30 casos de reglas (años bisiestos, 31/04, fechas futuras, límites exactos de 15 y 100 años, formatos).
+- **Simulación del `Code.gs` completo** sobre una hoja `USUARIOS` en memoria, 19 escenarios:
+  - migración: con grilla recortada, idempotente, repara encabezados con espacios raros, y deja las columnas 1–12 intactas
+  - crear: sin columna, sin fecha o con edad inválida **no escribe nada**; creación válida
+  - editar: sin la clave conserva fecha, PIN y pasaporte; con fecha, vacía o inválida se comporta como se espera
+  - otros caminos: la sincronización con RH, el listado sin hash de PIN, una celda convertida en `Date` que vuelve como `AAAA-MM-DD`, el panel móvil sin fechas ajenas y el directorio público sin fecha
+  - **La simulación detectó 3 de 3 errores inyectados a propósito** (clave ausente tratada como vacía, escritura por posición sobre el PIN, fechas ajenas en el móvil).
+- **Sidebar en Chrome headless** con servidor simulado, 14 pasos (crear sin/con fecha, editar sin tocar, valor no reconocido, completar pendiente, borrar a propósito, nuevo tras editar). Los errores de consola de anomalías y duplicados aparecen **idénticos con el sidebar original de git**: son un efecto de la simulación, no una regresión.
+- **Panel móvil en Chrome headless**, 9 pasos (máximo de fecha al iniciar, bloqueo sin fecha, error de edad del backend visible y formulario conservado, envío correcto, limpieza, caché local sin fechas).
+- Diff de `Code.gs`: 243 líneas agregadas; las 6 "eliminadas" son líneas existentes ampliadas (un campo o una coma más), sin lógica removida.
+
+### Despliegue
+1. Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` → **Guardar**.
+2. En la hoja: *Equitel Viajes → 6. Agregar columnas Fecha de Nacimiento*.
+3. Crear **versión nueva** del web app (lo necesita el panel móvil).
+
+Se despliega junto con #A70 (mismo `Code.gs`); ver el orden recomendado allí. No requiere push. **Entre los pasos 1 y 2**, crear un usuario responde "Falta la columna Fecha Nacimiento…" sin escribir nada; editar funciona siempre. Un sidebar abierto antes del paso 1 debe cerrarse y volver a abrirse.
+
+**Rollback:** versión anterior del web app y pegar los archivos anteriores. La columna puede quedarse: el código anterior no la lee.
+
+**Nota:** `USUARIOS` tiene una tabla de Sheets (`USERS`, A1:L). La columna nueva puede quedar fuera del formato de esa tabla; el código no depende de eso. Opcional: extender la tabla desde la interfaz de Sheets.
+
+**Posición en producción (2026-09-10):** la migración ubicó la columna en la **O**, no en la M, porque la celda **N233** tenía un valor suelto (`ADMIN`). La migración se ubica a propósito después de la última columna con datos, para no rotular datos ajenos como fecha de nacimiento. Todo el código la localiza por **nombre de encabezado**, así que funciona en la O o movida a cualquier posición desde la M (verificado: 15 escenarios con la columna en O y movida a M, incluida la consulta del formulario, el guardado desde solicitudes, la migración repetida y un encabezado con espacios de más; la prueba detecta un código que asuma posición fija). Si se mueve, arrastrar la **columna completa** y no ubicarla entre A y L.
+
+## **#A69 — Recordatorio de unidad de negocio y centro de costos en el formulario de solicitud**
+**Fecha:** 2026-09-10 · **Solicitado en:** reunión Tiquetes/Aviatur · **Estado:** Implementado, pendiente de despliegue
+
+**Necesidad:** los solicitantes registraban mal la unidad de negocio o el centro de costos, y algunos pedían cambiar de aprobador por viajar a cargo de otra unidad. En la reunión se acordó un recordatorio en el formulario y **mantener fijos los aprobadores**.
+
+**Cambio:** aviso ámbar sobre los campos *Unidad de Negocio* / *Centro de Costos* en `RequestForm`: *"⚠️ Verifique la unidad de negocio y el centro de costos. El costo del viaje se cargará exactamente a los que seleccione aquí. El aprobador no cambia por esta elección: es el que tiene asignado en el sistema el primer pasajero."* Solo texto: sin cambios de lógica ni de validación. Aparece también en modificaciones y en solo hospedaje, que usan los mismos campos.
+
+**Verificado:** `npm run typecheck` · `npm run build` — limpios.
+
+**Despliegue:** solo frontend, push a `main` → Cloud Run. Rollback = revert del commit.
+
+## **#A70 — Fecha de nacimiento obligatoria en el formulario de solicitudes de vuelo**
+**Fecha:** 2026-09-10 · **Solicitado por:** David · **Estado:** Implementado, pendiente de despliegue
+
+**Necesidad:** ir completando la fecha de nacimiento sin esperar la base de integrantes que se pidió a Karen: pedirla al crear una solicitud a los pasajeros que aún no la tengan, explicando para qué se usa. Plan: [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md), sección A2.
+
+### Decisiones (David)
+- **Obligatoria** en solicitudes de vuelo (crear, modificar y multidestino) para todo pasajero sin fecha. Solo hospedaje no la pide.
+- **Registrado sin fecha** → se guarda una vez en `USUARIOS`. **Externo** → se guarda solo en la solicitud; como no tiene perfil, se le pide en cada solicitud.
+
+### Diseño
+- **Consulta `getBirthdateStatus`** (máx. 5 cédulas, requiere sesión): devuelve solo `{cedula, registered, hasBirthdate}`, **nunca la fecha**. Un texto que no es fecha válida cuenta como "sin fecha".
+- **Formulario (`RequestForm`):** campo por pasajero con la explicación según el caso ("la exigen las aerolíneas y agencias de viaje…", "se guarda una sola vez en su perfil" / "se guarda solo en esta solicitud"); error de edad en línea; al enviar bloquea y nombra a los pasajeros sin fecha. **Si la consulta falla, no bloquea:** pide la fecha a todos.
+- **Payload `passengerBirthdates: {cédula: 'AAAA-MM-DD'}`** solo con los faltantes. **La clave presente activa la regla en el backend:** un formulario anterior abierto en otra pestaña crea solicitudes igual que antes.
+- **Backend (`createNewRequest`):**
+  - `_planPassengerBirthdates_` valida **antes** de escribir y rechaza nombrando al pasajero.
+  - Externos → `FECHAS NACIMIENTO PASAJEROS (JSON)`, en la misma escritura de la fila.
+  - Registrados → `_fillUsuariosBirthdates_` **después** de guardar la solicitud, dentro de `try/catch`: un fallo nunca afecta la solicitud.
+  - **Nunca se sobrescribe una fecha válida**, con dos capas: la validación omite a quien ya la tiene y el guardado lo vuelve a comprobar.
+  - `requestModification` hereda el campo por el spread del payload hija; multidestino es idempotente.
+- **Columna nueva** `FECHAS NACIMIENTO PASAJEROS (JSON)` en `HEADERS_REQUESTS` (sobrevive a "Reorganizar Base Principal"), con migración `agregarColumnaFechasNacimientoSolicitudes()`. El menú *6. Agregar columnas Fecha de Nacimiento* crea las dos columnas (esta y la de `USUARIOS` de #A68).
+- **Validador gemelo** `utils/birthdate.ts`, comparado con el backend en `check:birthdate`.
+- **Privacidad:** la fecha nunca vuelve al navegador ni viaja en los correos. La de los externos queda visible en la hoja para el área de viajes.
+
+### Verificado
+- `npm run verify` limpio. `check:birthdate` compara frontend y backend en 30 casos (aceptación, valor normalizado y mensaje) y **detectó 3 de 3 divergencias inyectadas**.
+- **Simulación del `Code.gs` completo** con ambas hojas en memoria, **20 escenarios**:
+  - consulta: no devuelve fechas y respeta el límite de 5
+  - formulario anterior: sin cambios
+  - registrado sin fecha: rechazo sin escribir, edad inválida, guardado único como texto
+  - registrado con fecha: no se exige y nunca se sobrescribe
+  - externo: rechazo, guardado en la solicitud, y la fecha basura de un registrado se reemplaza
+  - solo hospedaje, y columnas sin migrar (la solicitud se crea igual, con aviso en el log)
+  - migración idempotente, solicitud de cambio (hereda la fecha y rechaza si falta), multidestino y la capa de guardado aislada
+  - **Detectó 5 de 5 errores inyectados**, incluida cada capa de protección por separado.
+  - Durante la verificación aparecieron 4 fallos que resultaron **falsos**: la simulación reutilizaba el mismo arreglo de encabezados y un escenario le quitaba la columna. Se depuró hasta confirmar que el backend era correcto (ningún caché de `Code.gs` retiene hojas ni columnas), se corrigió la simulación y se agregaron escenarios para la capa de guardado, que la primera capa ocultaba.
+- **Formulario en Chrome headless** con servidor simulado, 13 pasos:
+  - campos para registrado sin fecha y externo, cada uno con su texto
+  - enviar sin fechas bloquea nombrando a ambos; la edad inválida se marca en línea y al enviar
+  - el payload lleva solo los faltantes; un registrado con fecha no ve campo y envía el mapa vacío
+  - con la consulta caída pide la fecha a todos, y con fecha la solicitud se crea
+- Regresión de #A68: los 19 escenarios de `USUARIOS` siguen pasando con el `Code.gs` final.
+
+### Despliegue (orden recomendado)
+1. **Apps Script primero:** pegar `Code.gs` (junto con `AdminSidebar.html` y `AdminMobile.html` de #A68) → Guardar → menú *6. Agregar columnas Fecha de Nacimiento* → **versión nueva** del web app. El formulario anterior no envía la clave: nada cambia para los usuarios.
+2. **Después el push** a `main` (frontend de #A69 y #A70).
+
+El orden inverso también es seguro (nunca bloquea), pero mientras tanto la consulta nueva no existe, el formulario la trata como caída y pide la fecha a todos, y el backend viejo la descarta.
+
+**Rollback:** versión anterior del web app + revert del commit. Las columnas nuevas pueden quedarse.
+
+## **#A71 — Fecha de nacimiento visible por pasajero en el detalle de la solicitud (solo administradores)**
+**Fecha:** 2026-09-10 · **Solicitado por:** David (mejora C2 del plan) · **Estado:** Implementado, pendiente de despliegue
+
+**Necesidad:** que el área de viajes vea la fecha de nacimiento de cada pasajero en el detalle de la solicitud, junto al nombre y la cédula, para registrarla en la aerolínea o agencia sin abrir la hoja.
+
+### Decisión de visibilidad
+**Solo administradores** (analista y superadmin). En una solicitud cualquiera puede escribir cédulas de otras personas; si el solicitante también viera las fechas, bastaría crear una solicitud para averiguar la fecha de nacimiento de un compañero. Para el solicitante, el detalle queda exactamente igual que antes.
+
+### Diseño
+- **Endpoint `getPassengerBirthdates(requestId)`**, incluido en `adminOnlyActions` de `dispatch`:
+  - Los pasajeros se leen **de la fila de la solicitud**, no de cédulas enviadas por el navegador.
+  - Fuente: primero `USUARIOS`; si no está, la columna `FECHAS NACIMIENTO PASAJEROS (JSON)` de la solicitud (externos, #A70); si no, "falta".
+  - Tolera un JSON dañado (aviso en el log) y la columna sin migrar.
+- **`_lookupUsuariosBirthdates_`** ahora también conserva la fecha, pero **solo para uso interno**: `getBirthdateStatus` (formulario de solicitudes) sigue devolviendo únicamente booleanos.
+- **Detalle (`RequestDetail`):** bajo "CC" de cada pasajero se muestra:
+  - `🎂 Nac.: DD-MM-AAAA (N años)`
+  - `· registrada en esta solicitud` cuando es de un externo
+  - `⚠️ Sin fecha de nacimiento` cuando falta
+  - mientras carga, "Fecha de nacimiento…"; si la consulta falla, un aviso discreto sin afectar el resto del detalle
+
+  La fecha se formatea **reordenando el texto**, sin crear un `Date`: una fecha `AAAA-MM-DD` interpretada en UTC se ve un día antes en Colombia.
+
+### Verificado
+- `npm run verify` limpio.
+- **Simulación del `Code.gs` completo**, 11 escenarios:
+  - fuentes: registrados desde `USUARIOS` (incluida la fecha recogida en el formulario), externos desde la solicitud, y solicitud antigua sin fechas
+  - orden de los pasajeros sin duplicados, y prioridad de `USUARIOS` si el externo se registra luego con fecha (si se registra sin fecha, se sigue mostrando la de la solicitud)
+  - robustez: JSON dañado, ID inexistente y hoja sin migrar
+  - **acceso por `dispatch` real:** un solicitante recibe "requiere permisos de administrador" sin ninguna fecha, y la analista sí las recibe
+  - la consulta del formulario sigue sin exponer fechas
+  - **Detectó 3 de 3 errores inyectados:** control de administrador quitado, prioridad invertida y fecha filtrada en la consulta del formulario.
+- **Detalle en Chrome headless con zona horaria `America/Bogota`**, 8 pasos:
+  - administrador: estado de carga, una sola consulta por ID, "20-01-1985 (41 años)" sin desfase, "Sin fecha de nacimiento" y externo "registrada en esta solicitud"
+  - administrador con la consulta caída: el detalle se ve igual con aviso discreto
+  - solicitante: no se consulta nada y la tarjeta queda igual que antes
+- Regresiones con el `Code.gs` final: #A68 (19 escenarios), #A70 (20) y posición de la columna (15), todas en verde.
+
+### Despliegue
+Se despliega junto con #A68 y #A70.
+1. **Apps Script primero:** pegar `Code.gs` → Guardar → versión nueva del web app. No requiere migración adicional.
+2. **Después el push** a `main`.
+
+Con el orden inverso, entre el push y la versión nueva la consulta no existe: los administradores ven "No se pudo cargar la fecha de nacimiento" y el detalle sigue funcionando. Con backend nuevo y frontend viejo no cambia nada visible.
+
+**Rollback:** versión anterior del web app + revert del commit.

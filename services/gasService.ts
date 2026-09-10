@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PassportStatus } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PassportStatus, BirthdateStatus, PassengerBirthdate } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -400,6 +400,22 @@ class GasService {
     const response = await this.runGas('getPassportStatus', { cedulas, requestId });
     if (!response.success) throw new Error(response.error);
     return response.data as PassportStatus[];
+  }
+
+  // Fecha de nacimiento de los pasajeros (máx. 5 cédulas): solo indica si cada
+  // persona está registrada y si ya tiene fecha. Nunca devuelve la fecha.
+  async getBirthdateStatus(cedulas: string[]): Promise<BirthdateStatus[]> {
+    const response = await this.runGas('getBirthdateStatus', { cedulas });
+    if (!response.success) throw new Error(response.error);
+    return response.data as BirthdateStatus[];
+  }
+
+  // Solo administradores: fecha de nacimiento de cada pasajero de una solicitud,
+  // para el detalle (el área de viajes la necesita al emitir el tiquete).
+  async getPassengerBirthdates(requestId: string): Promise<PassengerBirthdate[]> {
+    const response = await this.runGas('getPassengerBirthdates', { requestId });
+    if (!response.success) throw new Error(response.error);
+    return response.data as PassengerBirthdate[];
   }
 
   async uploadPassport(payload: { cedula: string; nombre: string; fileData: string; fileName: string; mimeType: string; requestContext?: string }): Promise<PassportStatus> {

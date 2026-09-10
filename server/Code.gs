@@ -259,7 +259,8 @@ const HEADERS_REQUESTS = [
   "MODO_SOLICITUD", // 'VIAJE' (default) o 'SOLO_HOSPEDAJE' — determina flujo visual (emails, modales, form)
   "REQUIERE APROB PPTO",  // "SI" o vacío — marca persistente del chequeo de presupuesto excedido (calculado en confirmación de costos)
   "APROBADO PRESUPUESTO",   // "Sí_email_fecha" / "No_email_fecha" / vacío — voto del aprobador de presupuesto (Alejandro o quien configure)
-  "COMENTARIOS APROBADORES (JSON)" // Array [{role, email, comment, at}] — comentario OPCIONAL que cada aprobador puede dejar al aprobar
+  "COMENTARIOS APROBADORES (JSON)", // Array [{role, email, comment, at}] — comentario OPCIONAL que cada aprobador puede dejar al aprobar
+  "FECHAS NACIMIENTO PASAJEROS (JSON)" // Objeto {cédula: 'AAAA-MM-DD'} — fecha de nacimiento de pasajeros NO registrados en USUARIOS, recogida en el formulario
 ];
 
 // =====================================================================
@@ -613,7 +614,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -748,6 +749,8 @@ function dispatch(action, payload) {
       // consultar/subir. El acceso al fileUrl está gateado dentro de
       // getPassportStatus por requestId (ownership) o por ser dueño/admin.
       case 'getPassportStatus': result = getPassportStatus(payload.cedulas || [], currentUserEmail, payload.requestId); break;
+      case 'getBirthdateStatus': result = getBirthdateStatus(payload.cedulas || []); break;
+      case 'getPassengerBirthdates': result = getPassengerBirthdates(payload.requestId); break;
       case 'uploadPassport': result = uploadPassport(payload, currentUserEmail); break;
 
       // PIN FEATURES
@@ -5170,6 +5173,10 @@ function createNewRequest(data, emailHtml) {
   // protege contra clientes que bypaseen la UI.
   _assertPassportsForInternational_(data);
 
+  // Fecha de nacimiento de los pasajeros (vuelos). Se valida ANTES de escribir
+  // nada y solo si el formulario nuevo envía `passengerBirthdates`.
+  const _birthPlan = _planPassengerBirthdates_(data);
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const idColIndex = H("ID RESPUESTA") + 1;
@@ -5260,6 +5267,14 @@ function createNewRequest(data, emailHtml) {
   set("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)", approverEmail);
 
   set("CORREOS PASAJEROS (JSON)", JSON.stringify(data.passengers.map(p => p.email).filter(e=>e)));
+  // Fechas de nacimiento de pasajeros EXTERNOS: viajan con la solicitud (no
+  // tienen fila en USUARIOS). Las de registrados se completan en USUARIOS abajo.
+  if (_birthPlan && Object.keys(_birthPlan.external).length > 0) {
+    if (H(REQUEST_BIRTHDATES_HEADER) < 0) {
+      console.warn('createNewRequest: falta la columna "' + REQUEST_BIRTHDATES_HEADER + '"; fechas de externos no guardadas. ' + BIRTHDATE_COLUMN_MISSING_MSG);
+    }
+    set(REQUEST_BIRTHDATES_HEADER, JSON.stringify(_birthPlan.external));
+  }
 
   // NEW LINKED REQUEST FIELDS
   set("ID SOLICITUD PADRE", data.relatedRequestId || '');
@@ -5350,6 +5365,14 @@ function createNewRequest(data, emailHtml) {
 
   // METRICS: registrar evento de creación
   _recordEvent_(id, 'created');
+
+  // Completar en USUARIOS la fecha de nacimiento de pasajeros registrados que no
+  // la tenían. La solicitud ya quedó guardada: un fallo aquí no la afecta.
+  try {
+    _fillUsuariosBirthdates_(_birthPlan && _birthPlan.registered);
+  } catch (birthErr) {
+    console.warn('createNewRequest: no se pudo completar la fecha de nacimiento en USUARIOS para ' + id + ': ' + birthErr);
+  }
 
   // Rate-limit counter (solo tras éxito). Si falló validación o inserción,
   // no cuenta.
@@ -9045,8 +9068,436 @@ const HEADERS_USUARIOS = [
   'Cedula', 'Nombre', 'Correo', 'Empresa', 'Sede', 'Centro de Costo',
   'Cedulas Aprobadores', 'Correos Aprobadores (auto)', 'Nombres Aprobadores (auto)',
   'PIN',
-  'Pasaporte Fecha', 'Pasaporte File ID'
+  'Pasaporte Fecha', 'Pasaporte File ID',
+  'Fecha Nacimiento'
 ];
+
+// =====================================================================
+// FECHA DE NACIMIENTO (reunión Tiquetes/Aviatur, 2026-09-10)
+// =====================================================================
+// La exigen aerolíneas y agencias de viaje para emitir el tiquete. Vive en la
+// columna 'Fecha Nacimiento' de USUARIOS, que agregarColumnaFechaNacimiento()
+// pone AL FINAL de la hoja: USUARIOS se lee y escribe por POSICIÓN (PIN en la
+// col 10, aprobadores en 7-9, _writeUsuarioRow_ escribe 1-9 fijas), así que
+// una columna en medio desplazaría el PIN y rompería el inicio de sesión.
+// Por eso la fecha se lee y escribe SIEMPRE por nombre de encabezado.
+//
+// Se guarda como texto 'AAAA-MM-DD' en celda con formato '@': una fecha "real"
+// de Sheets vuelve a Apps Script como Date con zona horaria y puede correrse
+// un día.
+//
+// Reglas (confirmadas por David, 2026-09-10):
+//   - obligatoria al CREAR un usuario (usuarios_create); opcional al editar
+//   - fecha de calendario válida, no posterior a hoy, edad entre 15 y 100 años
+//
+// NUNCA se incluye en getIntegrantesData / bootstrap: ese directorio llega al
+// navegador de cada usuario que inicia sesión.
+// =====================================================================
+const USUARIOS_BIRTHDATE_HEADER = 'Fecha Nacimiento';
+const BIRTHDATE_MIN_AGE = 15;
+const BIRTHDATE_MAX_AGE = 100;
+const BIRTHDATE_COLUMN_MISSING_MSG =
+  'Falta la columna "Fecha Nacimiento" en la hoja USUARIOS. Ejecútela desde la hoja: ' +
+  'Equitel Viajes → 6. Agregar columnas Fecha de Nacimiento.';
+
+/**
+ * Normaliza una fecha de nacimiento a 'AAAA-MM-DD'. Acepta 'AAAA-MM-DD' (lo que
+ * envía un <input type="date">) y 'DD/MM/AAAA' con '/', '-' o '.' (lo que
+ * escribe una persona o trae una lista externa). Devuelve '' si no es una fecha
+ * de calendario válida (p. ej. 31/04 o 29/02 de un año no bisiesto).
+ */
+function _normalizeBirthdate_(raw) {
+  if (raw === null || raw === undefined) return '';
+  var s = String(raw).trim();
+  if (!s) return '';
+  var y, m, d, mt;
+  if ((mt = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) {
+    y = Number(mt[1]); m = Number(mt[2]); d = Number(mt[3]);
+  } else if ((mt = s.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/))) {
+    d = Number(mt[1]); m = Number(mt[2]); y = Number(mt[3]);
+  } else {
+    return '';
+  }
+  if (y < 1900 || m < 1 || m > 12 || d < 1) return '';
+  var leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  var daysInMonth = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+  if (d > daysInMonth) return '';
+  return y + '-' + (m < 10 ? '0' : '') + m + '-' + (d < 10 ? '0' : '') + d;
+}
+
+/** Edad cumplida en `todayIso` para alguien nacido en `birthIso` (ambas 'AAAA-MM-DD'). */
+function _ageOnDate_(birthIso, todayIso) {
+  var b = String(birthIso).split('-').map(Number);
+  var t = String(todayIso).split('-').map(Number);
+  var age = t[0] - b[0];
+  if (t[1] < b[1] || (t[1] === b[1] && t[2] < b[2])) age--;
+  return age;
+}
+
+/**
+ * Valida una fecha de nacimiento contra las reglas de negocio. `todayIso` se
+ * inyecta ('AAAA-MM-DD') para que la regla sea determinista y verificable
+ * (ver tools/check-birthdate-rules.cjs).
+ * @return {{ok: boolean, value: string, error?: string}}
+ */
+function _validateBirthdate_(raw, todayIso) {
+  var original = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (!original) {
+    return { ok: false, value: '', error: 'La fecha de nacimiento es obligatoria.' };
+  }
+  var iso = _normalizeBirthdate_(original);
+  if (!iso) {
+    return {
+      ok: false,
+      value: original,
+      error: '"' + original + '" no es una fecha de nacimiento válida. Use el formato DD/MM/AAAA.'
+    };
+  }
+  if (iso > todayIso) {
+    return { ok: false, value: iso, error: 'La fecha de nacimiento no puede ser posterior a hoy.' };
+  }
+  var age = _ageOnDate_(iso, todayIso);
+  if (age < BIRTHDATE_MIN_AGE || age > BIRTHDATE_MAX_AGE) {
+    return {
+      ok: false,
+      value: iso,
+      error: 'La fecha de nacimiento da una edad de ' + age + ' años; debe estar entre ' +
+        BIRTHDATE_MIN_AGE + ' y ' + BIRTHDATE_MAX_AGE + '. Revise el año.'
+    };
+  }
+  return { ok: true, value: iso };
+}
+
+/** Hoy en Bogotá como 'AAAA-MM-DD' (misma zona que el resto del backend, #A24). */
+function _todayBogotaIso_() {
+  return Utilities.formatDate(new Date(), 'America/Bogota', 'yyyy-MM-dd');
+}
+
+/**
+ * Convierte el valor crudo de la celda a 'AAAA-MM-DD'. Tolera una fecha
+ * digitada a mano que Sheets haya convertido en Date. Si el texto no es una
+ * fecha reconocible se devuelve tal cual, para que el administrador lo vea y
+ * lo corrija.
+ */
+function _birthdateCellToIso_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    if (isNaN(v.getTime())) return '';
+    return Utilities.formatDate(v, 'America/Bogota', 'yyyy-MM-dd');
+  }
+  var s = String(v).trim();
+  return _normalizeBirthdate_(s) || s;
+}
+
+/** Columna (1-based) de 'Fecha Nacimiento' en USUARIOS, o -1 si no existe. */
+function _getUsuarioBirthdateCol_(sheet) {
+  if (!sheet) return -1;
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return -1;
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(_normalizeHeader_);
+  var idx = headers.indexOf(USUARIOS_BIRTHDATE_HEADER);
+  return idx >= 0 ? idx + 1 : -1;
+}
+
+/**
+ * Escribe la fecha (ya validada, 'AAAA-MM-DD' o '' para dejarla vacía) en la
+ * fila indicada, localizando la columna por nombre.
+ */
+function _writeUsuarioBirthdate_(sheet, rowNumber, iso) {
+  var value = String(iso || '').trim();
+  var col = _getUsuarioBirthdateCol_(sheet);
+  if (col < 0) {
+    if (value) throw new Error(BIRTHDATE_COLUMN_MISSING_MSG);
+    return;
+  }
+  sheet.getRange(rowNumber, col).setNumberFormat('@').setValue(value);
+}
+
+/**
+ * MIGRACIÓN idempotente: agrega 'Fecha Nacimiento' AL FINAL de USUARIOS.
+ * UI-free (invocable desde el editor); el menú usa menuAgregarColumnaFechaNacimiento.
+ * Si la columna ya existe con espacios o caracteres raros, repara el encabezado
+ * (la lectura por nombre no la encontraría).
+ * @returns {{added: boolean, col?: number, reason?: string}}
+ */
+function agregarColumnaFechaNacimiento() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) return { added: false, reason: 'la hoja USUARIOS no existe' };
+  var lastCol = sheet.getLastColumn();
+  var raw = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var idx = raw.map(_normalizeHeader_).indexOf(USUARIOS_BIRTHDATE_HEADER);
+  if (idx !== -1) {
+    var exact = String(raw[idx] == null ? '' : raw[idx]).trim();
+    if (exact !== USUARIOS_BIRTHDATE_HEADER) {
+      sheet.getRange(1, idx + 1).setValue(USUARIOS_BIRTHDATE_HEADER);
+      SpreadsheetApp.flush();
+      return { added: false, col: idx + 1, reason: 'ya existía (encabezado normalizado)' };
+    }
+    return { added: false, col: idx + 1, reason: 'ya existe' };
+  }
+  var col = lastCol + 1;
+  // Grid recortado al ancho exacto de los datos: insertar la columna primero.
+  if (lastCol > 0 && sheet.getMaxColumns() < col) {
+    sheet.insertColumnsAfter(lastCol, 1);
+  }
+  sheet.getRange(1, col).setValue(USUARIOS_BIRTHDATE_HEADER)
+    .setFontWeight('bold').setBackground('#1f2937').setFontColor('white');
+  sheet.setColumnWidth(col, 130);
+  sheet.getRange(1, col).setNote(
+    'Fecha de nacimiento (AAAA-MM-DD). La exigen aerolíneas y agencias de viaje para emitir tiquetes. ' +
+    'Se llena desde el sidebar de usuarios, el panel móvil o el formulario de solicitudes.'
+  );
+  // Formato texto solo al crear la columna (no hay datos que alterar): evita
+  // que Sheets convierta 'AAAA-MM-DD' en fecha con zona horaria.
+  var maxRows = sheet.getMaxRows();
+  if (maxRows > 1) sheet.getRange(2, col, maxRows - 1, 1).setNumberFormat('@');
+  SpreadsheetApp.flush();
+  return { added: true, col: col };
+}
+
+function menuAgregarColumnaFechaNacimiento() {
+  var ui = SpreadsheetApp.getUi();
+  var describe = function(label, r) {
+    if (r.added) return '• ' + label + ': agregada en la columna ' + r.col + '.';
+    return '• ' + label + ': ' + (r.reason || 'sin cambios') + (r.col ? ' (columna ' + r.col + ')' : '') + '.';
+  };
+  try {
+    var rUsuarios = agregarColumnaFechaNacimiento();
+    var rSolicitudes = agregarColumnaFechasNacimientoSolicitudes();
+    ui.alert('Columnas de fecha de nacimiento',
+      describe('USUARIOS → "Fecha Nacimiento"', rUsuarios) + '\n' +
+      describe('Nueva Base Solicitudes → "' + REQUEST_BIRTHDATES_HEADER + '"', rSolicitudes) +
+      '\n\nLos datos existentes no se tocaron.', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', String(e), ui.ButtonSet.OK);
+  }
+}
+
+// ---------------------------------------------------------------------
+// FECHA DE NACIMIENTO EN EL FORMULARIO DE SOLICITUDES (A2, 2026-09-10)
+// ---------------------------------------------------------------------
+// En solicitudes de VUELO es obligatoria para los pasajeros que no la tienen:
+//   - Registrado en USUARIOS con fecha válida → no se pide ni se toca.
+//   - Registrado sin fecha                    → se guarda UNA vez en USUARIOS.
+//   - No registrado (externo)                 → se guarda solo en la solicitud,
+//     columna REQUEST_BIRTHDATES_HEADER, como {cédula: 'AAAA-MM-DD'}.
+// Solo se exige cuando el cliente envía la clave `passengerBirthdates` (el
+// formulario nuevo): una pestaña abierta con la versión anterior sigue creando
+// solicitudes igual que antes. Nunca se sobrescribe una fecha válida.
+// ---------------------------------------------------------------------
+const REQUEST_BIRTHDATES_HEADER = 'FECHAS NACIMIENTO PASAJEROS (JSON)';
+
+/**
+ * Para cada cédula (sanitizada) indica si está en USUARIOS, si ya tiene una
+ * fecha de nacimiento VÁLIDA (y cuál) y en qué fila. Dos lecturas de la hoja.
+ * USO INTERNO: la fecha solo sale al navegador por getPassengerBirthdates (admin).
+ * @return {Object<string, {registered: boolean, hasBirthdate: boolean, birthdate: string, row: number}>}
+ */
+function _lookupUsuariosBirthdates_(cedulas) {
+  var out = {};
+  (cedulas || []).forEach(function(raw) {
+    var c = _sanitizeCedula_(raw);
+    if (c && !out[c]) out[c] = { registered: false, hasBirthdate: false, birthdate: '', row: -1 };
+  });
+  if (Object.keys(out).length === 0) return out;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) return out;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return out;
+  var ceds = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  var col = _getUsuarioBirthdateCol_(sheet);
+  var births = col > 0 ? sheet.getRange(2, col, lastRow - 1, 1).getValues() : null;
+  for (var i = 0; i < ceds.length; i++) {
+    var c = _sanitizeCedula_(ceds[i][0]);
+    if (!c || !out[c] || out[c].registered) continue;
+    out[c].registered = true;
+    out[c].row = i + 2;
+    // Un texto que no es fecha válida cuenta como "sin fecha": se vuelve a pedir.
+    // `birthdate` es de uso interno: getBirthdateStatus solo expone los booleanos.
+    out[c].birthdate = births ? _normalizeBirthdate_(_birthdateCellToIso_(births[i][0])) : '';
+    out[c].hasBirthdate = !!out[c].birthdate;
+  }
+  return out;
+}
+
+/**
+ * Endpoint (dispatch 'getBirthdateStatus'): estado por cédula, máximo 5.
+ * Devuelve SOLO booleanos; nunca la fecha.
+ */
+function getBirthdateStatus(cedulas) {
+  if (!Array.isArray(cedulas)) throw new Error('cedulas debe ser un array.');
+  if (cedulas.length > 5) throw new Error('Máximo 5 cédulas por consulta.');
+  var info = _lookupUsuariosBirthdates_(cedulas);
+  var out = [];
+  var seen = {};
+  cedulas.forEach(function(raw) {
+    var c = _sanitizeCedula_(raw);
+    if (!c || seen[c]) return;
+    seen[c] = true;
+    out.push({ cedula: c, registered: info[c].registered, hasBirthdate: info[c].hasBirthdate });
+  });
+  return out;
+}
+
+/**
+ * Endpoint (dispatch 'getPassengerBirthdates', SOLO ADMINISTRADORES): fecha de
+ * nacimiento de cada pasajero de una solicitud, para que el área de viajes la
+ * vea en el detalle al emitir el tiquete (mejora C2, reunión 2026-09-10).
+ * Los pasajeros se leen de la fila de la solicitud, no del cliente. Fuente:
+ * primero USUARIOS; si no está, la columna de externos de la solicitud.
+ * @return {Array<{cedula: string, birthdate: string, source: 'USUARIOS'|'SOLICITUD'|'NONE'}>}
+ */
+function getPassengerBirthdates(requestId) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error('Base de datos no encontrada.');
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber < 2) throw new Error('Solicitud no encontrada: ' + requestId);
+  var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var get = function(h) { var i = H(h); return (i > -1 && i < row.length) ? row[i] : ''; };
+
+  var fromRequest = {};
+  var raw = String(get(REQUEST_BIRTHDATES_HEADER) || '').trim();
+  if (raw) {
+    try {
+      var parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        Object.keys(parsed).forEach(function(k) {
+          var c = _sanitizeCedula_(k);
+          var iso = _normalizeBirthdate_(parsed[k]);
+          if (c && iso) fromRequest[c] = iso;
+        });
+      }
+    } catch (e) {
+      console.warn('getPassengerBirthdates: JSON inválido en ' + REQUEST_BIRTHDATES_HEADER + ' de ' + requestId + ': ' + e);
+    }
+  }
+
+  var cedulas = [];
+  for (var i = 1; i <= 5; i++) {
+    var c = _sanitizeCedula_(get('CÉDULA PERSONA ' + i));
+    if (c && cedulas.indexOf(c) === -1) cedulas.push(c);
+  }
+  var info = _lookupUsuariosBirthdates_(cedulas);
+  return cedulas.map(function(ced) {
+    var st = info[ced] || {};
+    if (st.birthdate) return { cedula: ced, birthdate: st.birthdate, source: 'USUARIOS' };
+    if (fromRequest[ced]) return { cedula: ced, birthdate: fromRequest[ced], source: 'SOLICITUD' };
+    return { cedula: ced, birthdate: '', source: 'NONE' };
+  });
+}
+
+/**
+ * Valida las fechas de nacimiento de una solicitud de vuelo y decide dónde se
+ * guarda cada una. Se llama ANTES de escribir la solicitud y lanza si falta
+ * alguna o es inválida. Devuelve null si no aplica (formulario anterior o
+ * solo hospedaje).
+ * @return {{registered: Object<string,string>, external: Object<string,string>}|null}
+ */
+function _planPassengerBirthdates_(data) {
+  if (!data || data.passengerBirthdates === undefined || data.passengerBirthdates === null) return null;
+  if (data.requestMode === 'HOTEL_ONLY') return null;
+  var provided = {};
+  if (typeof data.passengerBirthdates === 'object') {
+    Object.keys(data.passengerBirthdates).forEach(function(k) {
+      var c = _sanitizeCedula_(k);
+      if (c) provided[c] = data.passengerBirthdates[k];
+    });
+  }
+  var passengers = data.passengers || [];
+  var info = _lookupUsuariosBirthdates_(passengers.map(function(p) { return p && p.idNumber; }));
+  var today = _todayBogotaIso_();
+  var plan = { registered: {}, external: {} };
+  var problems = [];
+  var seen = {};
+  for (var i = 0; i < passengers.length; i++) {
+    var p = passengers[i] || {};
+    var ced = _sanitizeCedula_(p.idNumber);
+    if (!ced || seen[ced]) continue;
+    seen[ced] = true;
+    var st = info[ced];
+    if (st.registered && st.hasBirthdate) continue;
+    var check = _validateBirthdate_(provided[ced], today);
+    if (!check.ok) {
+      var label = (p.name ? String(p.name).trim() : 'Pasajero ' + (i + 1)) + ' (CC ' + ced + ')';
+      problems.push(label + ': ' + check.error);
+      continue;
+    }
+    if (st.registered) plan.registered[ced] = check.value;
+    else plan.external[ced] = check.value;
+  }
+  if (problems.length > 0) {
+    throw new Error('Falta o no es válida la fecha de nacimiento de: ' + problems.join(' · ') +
+      ' La exigen las aerolíneas y agencias de viaje para emitir el tiquete.');
+  }
+  return plan;
+}
+
+/**
+ * Completa en USUARIOS las fechas recogidas en el formulario. Nunca sobrescribe
+ * una fecha válida. Se llama DESPUÉS de crear la solicitud y dentro de
+ * try/catch: un fallo aquí jamás afecta la solicitud ya guardada.
+ * @return {number} cantidad de fechas escritas
+ */
+function _fillUsuariosBirthdates_(registeredMap) {
+  if (!registeredMap) return 0;
+  var ceds = Object.keys(registeredMap);
+  if (ceds.length === 0) return 0;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) return 0;
+  var col = _getUsuarioBirthdateCol_(sheet);
+  if (col < 0) {
+    console.warn('_fillUsuariosBirthdates_: ' + BIRTHDATE_COLUMN_MISSING_MSG + ' Fechas no guardadas: ' + ceds.join(', '));
+    return 0;
+  }
+  var info = _lookupUsuariosBirthdates_(ceds);
+  var written = 0;
+  ceds.forEach(function(ced) {
+    var st = info[ced];
+    if (!st || !st.registered || st.hasBirthdate || st.row < 2) return;
+    var iso = _normalizeBirthdate_(registeredMap[ced]);
+    if (!iso) return;
+    sheet.getRange(st.row, col).setNumberFormat('@').setValue(iso);
+    written++;
+  });
+  return written;
+}
+
+/**
+ * MIGRACIÓN idempotente: agrega REQUEST_BIRTHDATES_HEADER al final de la hoja
+ * principal (que se lee por nombre, así que la posición no importa). Mismo
+ * patrón que agregarColumnaComentariosAprobadores.
+ * @returns {{added: boolean, col?: number, reason?: string}}
+ */
+function agregarColumnaFechasNacimientoSolicitudes() {
+  var HEADER = REQUEST_BIRTHDATES_HEADER;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return { added: false, reason: 'hoja "' + SHEET_NAME_REQUESTS + '" no encontrada' };
+  var lastCol = sheet.getLastColumn();
+  var rawHeaders = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var normIdx = rawHeaders.map(_normalizeHeader_).indexOf(HEADER);
+  if (normIdx !== -1) {
+    var exact = String(rawHeaders[normIdx] == null ? '' : rawHeaders[normIdx]).trim();
+    if (exact !== HEADER) {
+      sheet.getRange(1, normIdx + 1).setValue(HEADER);
+      _clearReqHeadersCache_();
+      SpreadsheetApp.flush();
+      return { added: false, col: normIdx + 1, reason: 'ya existía (encabezado normalizado)' };
+    }
+    return { added: false, col: normIdx + 1, reason: 'ya existe' };
+  }
+  var nextCol = lastCol + 1;
+  if (lastCol > 0 && sheet.getMaxColumns() < nextCol) {
+    sheet.insertColumnsAfter(lastCol, 1);
+  }
+  sheet.getRange(1, nextCol).setValue(HEADER)
+    .setFontWeight('bold').setBackground('#D71920').setFontColor('white');
+  sheet.setColumnWidth(nextCol, 260);
+  sheet.getRange(1, nextCol).setNote('Objeto JSON {cédula: AAAA-MM-DD} con la fecha de nacimiento de los pasajeros NO registrados en USUARIOS, recogida en el formulario de solicitudes. Lo escribe el sistema — NO editar manualmente.');
+  _clearReqHeadersCache_();
+  SpreadsheetApp.flush();
+  return { added: true, col: nextCol };
+}
 
 // Maestro RH (Recursos Humanos) — Sheet externo con la lista completa de
 // empleados. Se usa durante la migración para "rellenar" aprobadores que no
@@ -9289,6 +9740,7 @@ function onOpen() {
     .addItem('3. Sincronizar con Maestro RH', 'sincronizarConMaestroRH')
     .addItem('4. Recargar resoluciones (cols H, I)', 'recargarResolucionesUsuarios')
     .addItem('5. Agregar columnas Pasaporte (K, L)', 'agregarColumnasPasaporte')
+    .addItem('6. Agregar columnas Fecha de Nacimiento', 'menuAgregarColumnaFechaNacimiento')
     .addToUi();
 }
 
@@ -9684,6 +10136,7 @@ function crearHojaUsuarios() {
   sheet.setColumnWidth(10, 100); // PIN
   sheet.setColumnWidth(11, 130); // Pasaporte Fecha
   sheet.setColumnWidth(12, 260); // Pasaporte File ID
+  sheet.setColumnWidth(13, 130); // Fecha Nacimiento
 
   sheet.getRange(1, 7).setNote('Cédulas separadas por coma. Cada una debe existir en la columna A.');
   sheet.getRange(1, 8).setNote('Resuelto al guardar/migrar desde la columna G. Si editas G manualmente, usa "3. Recargar resoluciones" del menú.');
@@ -9691,6 +10144,8 @@ function crearHojaUsuarios() {
   sheet.getRange(1, 10).setNote('Hash SHA-256 del PIN del usuario. NO editar manualmente.');
   sheet.getRange(1, 11).setNote('Fecha ISO en que se cargó el pasaporte vigente. Se actualiza automáticamente. NO editar manualmente.');
   sheet.getRange(1, 12).setNote('ID del archivo de pasaporte en Drive. Se actualiza automáticamente. NO editar manualmente.');
+  sheet.getRange(1, 13).setNote('Fecha de nacimiento (AAAA-MM-DD). La exigen aerolíneas y agencias de viaje para emitir tiquetes.');
+  sheet.getRange(2, 13, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('@');
 
   ui.alert(
     'Hoja USUARIOS creada.\n\n' +
@@ -9984,6 +10439,12 @@ function _writeUsuarioRow_(sheet, rowNumber, data, lookup) {
   if (data.pinHash !== undefined && data.pinHash !== null && data.pinHash !== '') {
     sheet.getRange(rowNumber, 10).setValue(data.pinHash);
   }
+  // Fecha de nacimiento: solo si el llamador la envía (clave presente).
+  // undefined = no tocar (sincronizarConMaestroRH, o un sidebar abierto con la
+  // versión anterior). Se escribe por NOMBRE de columna, nunca por posición.
+  if (data.fechaNacimiento !== undefined) {
+    _writeUsuarioBirthdate_(sheet, rowNumber, data.fechaNacimiento);
+  }
 }
 
 /**
@@ -10100,7 +10561,8 @@ function usuarios_listAll() {
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   const idxPasaporteFecha = headers.indexOf('Pasaporte Fecha');
   const idxPasaporteFile = headers.indexOf('Pasaporte File ID');
-  const maxCol = Math.max(10, idxPasaporteFecha + 1, idxPasaporteFile + 1, 1);
+  const idxFechaNac = headers.map(_normalizeHeader_).indexOf(USUARIOS_BIRTHDATE_HEADER);
+  const maxCol = Math.max(10, idxPasaporteFecha + 1, idxPasaporteFile + 1, idxFechaNac + 1, 1);
   const data = sheet.getRange(2, 1, lastRow - 1, maxCol).getValues();
   return data.filter(function(r) { return r[0]; }).map(function(r) {
     var passportDate = idxPasaporteFecha >= 0 ? String(r[idxPasaporteFecha] || '').trim() : '';
@@ -10120,7 +10582,10 @@ function usuarios_listAll() {
       // Pasaporte: expone solo si tiene + fecha. NO expone fileId al sidebar
       // (no se usa allí, reduce attack surface).
       hasPassport: hasPassport,
-      passportDate: passportDate
+      passportDate: passportDate,
+      // Solo contextos de administración (sidebar). mobileAdmin_getBootstrap la
+      // quita: el panel móvil solo crea usuarios y no necesita fechas ajenas.
+      fechaNacimiento: idxFechaNac >= 0 ? _birthdateCellToIso_(r[idxFechaNac]) : ''
     };
   });
 }
@@ -10257,6 +10722,17 @@ function usuarios_create(data) {
       throw new Error('Ya existe un usuario con esa cédula.');
     }
 
+    // Fecha de nacimiento: obligatoria al crear (reunión 2026-09-10). Se valida
+    // y se confirma que exista la columna ANTES de escribir la fila: si fallara
+    // después, quedaría un usuario a medias y el reintento diría "ya existe".
+    if (!String(data.fechaNacimiento || '').trim()) {
+      throw new Error('La fecha de nacimiento es obligatoria para crear el usuario. ' +
+        'Si no ve el campo en el formulario, cierre y vuelva a abrir el panel.');
+    }
+    const birth = _validateBirthdate_(data.fechaNacimiento, _todayBogotaIso_());
+    if (!birth.ok) throw new Error(birth.error);
+    if (_getUsuarioBirthdateCol_(sheet) < 0) throw new Error(BIRTHDATE_COLUMN_MISSING_MSG);
+
     // Pre-construir lookup con el nuevo usuario inyectado para que cols H/I
     // se resuelvan correctamente cuando es su propio aprobador (su cédula
     // aparece en cedulasAprobadores antes de existir en la hoja).
@@ -10274,7 +10750,8 @@ function usuarios_create(data) {
       empresa: data.empresa,
       sede: data.sede,
       centroCosto: data.centroCosto,
-      cedulasAprobadores: data.cedulasAprobadores
+      cedulasAprobadores: data.cedulasAprobadores,
+      fechaNacimiento: birth.value
     }, lookup);
     SpreadsheetApp.flush();
     return { success: true, cedula: cedula };
@@ -10303,6 +10780,23 @@ function usuarios_update(originalCedula, data) {
   const correo = String(data.correo || '').toLowerCase().trim();
   if (!correo || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) throw new Error('Correo inválido.');
 
+  // Fecha de nacimiento: opcional al editar (los usuarios existentes aún no la
+  // tienen). Clave ausente = no tocar (sidebar con la versión anterior);
+  // vacía = sin fecha; con valor = se valida. Todo se resuelve antes de escribir.
+  var birthUpdate;
+  if (data.fechaNacimiento !== undefined) {
+    var rawBirth = String(data.fechaNacimiento || '').trim();
+    var birthCol = _getUsuarioBirthdateCol_(sheet);
+    if (rawBirth) {
+      var birthU = _validateBirthdate_(rawBirth, _todayBogotaIso_());
+      if (!birthU.ok) throw new Error(birthU.error);
+      if (birthCol < 0) throw new Error(BIRTHDATE_COLUMN_MISSING_MSG);
+      birthUpdate = birthU.value;
+    } else if (birthCol > 0) {
+      birthUpdate = '';
+    }
+  }
+
   // Preservar el hash de PIN existente
   const existingPin = String(sheet.getRange(row, 10).getValue() || '').trim();
 
@@ -10327,7 +10821,8 @@ function usuarios_update(originalCedula, data) {
     sede: data.sede,
     centroCosto: data.centroCosto,
     cedulasAprobadores: data.cedulasAprobadores,
-    pinHash: existingPin
+    pinHash: existingPin,
+    fechaNacimiento: birthUpdate
   }, lookup);
   SpreadsheetApp.flush();
   return { success: true };
@@ -12376,7 +12871,13 @@ function _requireMobileAdminAuth_(email, token) {
 function mobileAdmin_getBootstrap(email, token) {
   _requireMobileAdminAuth_(email, token);
   return {
-    users: usuarios_listAll(),
+    // Se quita fechaNacimiento: el panel móvil solo usa el listado para detectar
+    // duplicados y elegir aprobadores; no necesita datos personales ajenos.
+    users: usuarios_listAll().map(function(u) {
+      var copy = {};
+      Object.keys(u).forEach(function(k) { if (k !== 'fechaNacimiento') copy[k] = u[k]; });
+      return copy;
+    }),
     empresas: usuarios_getEmpresas(),
     sedes: usuarios_getSedes()
   };
