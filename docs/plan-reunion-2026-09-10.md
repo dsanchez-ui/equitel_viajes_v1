@@ -211,7 +211,7 @@ formulario de solicitud (`components/RequestForm.tsx`). Propuesta:
 
 La segunda frase refuerza la decisión de mantener fijos los aprobadores.
 
-**Solo frontend** (push a `main`). **Esfuerzo:** ~20 min. **Estado:** ✅ implementado (#A69), pendiente de push.
+**Solo frontend** (push a `main`). **Esfuerzo:** ~20 min. **Estado:** ✅ desplegado en producción (#A69, `72b825e`).
 
 ### B2 · Mensaje de preregistro
 
