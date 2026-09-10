@@ -612,6 +612,11 @@
           <div id="help_fechaNac" class="help-text">La exigen las aerolíneas y agencias de viaje para emitir los tiquetes. Obligatoria al crear el usuario.</div>
         </div>
         <div class="field">
+          <label>Celular (opcional)</label>
+          <input type="tel" id="f_celular" placeholder="Ej: 300 123 4567" inputmode="tel" autocomplete="off" maxlength="20" />
+          <div id="help_celular" class="help-text">Para que el área de viajes pueda contactar al usuario si surge algo con un viaje. 10 dígitos.</div>
+        </div>
+        <div class="field">
           <label>Correo *</label>
           <input type="email" id="f_correo" placeholder="usuario@equitel.com.co" />
           <div id="dupe_correo" class="dupe-alert"></div>
@@ -841,6 +846,8 @@
     var approverCedulasSet = {}; // cedulas que aparecen como aprobador en col G de algún usuario
     // true cuando el administrador tocó el campo de fecha de nacimiento en este formulario.
     var fechaNacDirty = false;
+    // true cuando el administrador tocó el campo de celular (#A75).
+    var celularDirty = false;
     var catalogo = [];
     var sedes = [];
     var empresas = [];
@@ -876,6 +883,8 @@
       // al guardar otros cambios del usuario.
       document.getElementById('f_fechaNac').addEventListener('input', function() { fechaNacDirty = true; });
       document.getElementById('f_fechaNac').addEventListener('change', function() { fechaNacDirty = true; });
+      // Igual con el celular: al editar solo se envía si se tocó.
+      document.getElementById('f_celular').addEventListener('input', function() { celularDirty = true; });
       document.getElementById('btnCancel').addEventListener('click', cancelForm);
       document.getElementById('btnSave').addEventListener('click', saveForm);
       document.getElementById('btnDelete').addEventListener('click', deleteUser);
@@ -1174,6 +1183,7 @@
       document.getElementById('f_sede').value = u.sede || '';
       document.getElementById('f_cc').value = u.centroCosto || '';
       prepareFechaNacField(u.fechaNacimiento, false);
+      prepareCelularField(u.celular);
 
       var cedulas = (u.cedulasAprobadores || '').split(',').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
       var nombres = (u.nombresAprobadores || '').split(',').map(function(n) { return n.trim(); });
@@ -1233,11 +1243,31 @@
       }
     }
 
+    // Prepara el campo de celular (opcional, #A75). Si el valor guardado no parece
+    // un celular de 10 dígitos se avisa; la validación real la hace el backend.
+    function prepareCelularField(storedValue) {
+      var input = document.getElementById('f_celular');
+      var help = document.getElementById('help_celular');
+      var raw = String(storedValue || '').trim();
+      var digits = raw.replace(/\D+/g, '');
+      if (digits.length === 12 && digits.indexOf('57') === 0) digits = digits.substring(2);
+      input.value = raw;
+      celularDirty = false;
+      help.style.color = '';
+      if (raw && !/^3\d{9}$/.test(digits)) {
+        help.textContent = 'Valor guardado no reconocido: "' + raw + '". Corríjalo o bórrelo.';
+        help.style.color = '#b91c1c';
+      } else {
+        help.textContent = 'Para que el área de viajes pueda contactar al usuario si surge algo con un viaje. 10 dígitos.';
+      }
+    }
+
     function clearForm() {
       ['f_cedula', 'f_nombre', 'f_correo', 'f_cc'].forEach(function(id) {
         document.getElementById(id).value = '';
       });
       prepareFechaNacField('', true);
+      prepareCelularField('');
       document.getElementById('f_empresa').value = '';
       document.getElementById('f_sede').value = '';
       // Limpiar alertas de duplicados y desbloquear botón Guardar
@@ -1315,6 +1345,10 @@
       // Al crear siempre se envía. Al editar, solo si se tocó el campo: sin la
       // clave, el backend no modifica la fecha guardada.
       if (!currentEditing || fechaNacDirty) data.fechaNacimiento = fechaNacRaw;
+      // Celular (opcional): al crear se envía si se escribió; al editar, solo si
+      // se tocó el campo (vacío = quitarlo). El backend lo valida.
+      var celularRaw = String(document.getElementById('f_celular').value || '').trim();
+      if (currentEditing ? celularDirty : !!celularRaw) data.celular = celularRaw;
 
       // Auto-completar cédula+correo desde catálogo si están vacíos
       if (data.nombre) {

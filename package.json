@@ -13,7 +13,8 @@
     "check:gas": "node tools/check-gas-syntax.cjs",
     "check:ot": "node tools/check-workorder-parity.cjs",
     "check:birthdate": "node tools/check-birthdate-rules.cjs",
-    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run build"
+    "check:phone": "node tools/check-phone-rules.cjs",
+    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run build"
   },
   "dependencies": {
     "react": "^19.2.4",

@@ -264,6 +264,18 @@ Actualizado en el Anexo. Además de agregar la fecha de nacimiento:
 3. ✅ C2 implementada (#A71); C1 y C3 descartadas por David.
 4. ✅ Lista de Karen recibida; carga masiva implementada (#A72).
 
+## Ajustes posteriores (mismo día): #A74 y #A75
+
+- **Detalle más rápido:** la fecha de nacimiento ya no se consulta en una segunda
+  llamada; llega con la solicitud cuando la abre un administrador.
+- **Celular del pasajero** junto a la fecha (con enlace a WhatsApp), pedido de Laura
+  para contactar a los viajeros. Se carga desde la lista de RR. HH. con el menú
+  *8. Cargar celulares* (corporativo si hay; si no, personal): 633 usuarios.
+- **#A75:** el celular también se pide como campo **opcional** en el formulario de
+  solicitudes (vuelos y solo hospedaje, a quien no lo tenga) y al crear o editar usuarios en el
+  sidebar y el panel móvil. Si se escribe, debe ser un celular válido.
+- Estado: implementado, pendiente de push y de desplegar Apps Script.
+
 ## Seguimiento pendiente (sin código)
 
 1. Pedir a RR. HH. las 4 fechas de nacimiento mal digitadas (Yasmín Muñoz, Santiago

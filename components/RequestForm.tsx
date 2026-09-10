@@ -9,6 +9,7 @@ import { BudgetUsageBar, invalidateBudgetCache } from './BudgetUsageBar';
 import { PassportUploadModal } from './PassportUploadModal';
 import { validateWorkOrder, WORK_ORDER_PLACEHOLDER } from '../utils/workOrder';
 import { validateBirthdate, todayIsoLocal } from '../utils/birthdate';
+import { validateOptionalPhone } from '../utils/phone';
 
 interface RequestFormProps {
   userEmail: string;
@@ -596,9 +597,16 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   // fecha a todos los pasajeros y el backend ignora la de quien ya la tiene.
   const [birthdateFetchFailed, setBirthdateFetchFailed] = useState<boolean>(false);
   const [passengerBirthdates, setPassengerBirthdates] = useState<Record<string, string>>({});
+  // CELULAR (#A75): OPCIONAL, en vuelos Y en solo hospedaje (sirve para avisar
+  // cambios o novedades). Se ofrece a los pasajeros sin celular registrado; si se
+  // escribe, debe ser válido. Registrado → una vez en USUARIOS; externo → solo en
+  // esta solicitud.
+  const [passengerPhones, setPassengerPhones] = useState<Record<string, string>>({});
 
+  // También corre en solo hospedaje: ahí no se pide la fecha, pero sí se ofrece
+  // el celular (#A75).
   useEffect(() => {
-    if (isHotelOnly || passengerCedulas.length === 0) {
+    if (passengerCedulas.length === 0) {
       setBirthdateStatuses({});
       setBirthdateFetchFailed(false);
       setBirthdateLoading(false);
@@ -623,7 +631,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       }
     }, 300);
     return () => { cancelled = true; window.clearTimeout(timer); };
-  }, [isHotelOnly, passengerCedulas]);
+  }, [passengerCedulas]);
 
   // ¿Hay que pedirle la fecha a este pasajero? null = todavía se está consultando.
   const birthdateNeeded = (cedulaKey: string): boolean | null => {
@@ -632,6 +640,17 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     const s = birthdateStatuses[cedulaKey];
     if (!s) return birthdateLoading ? null : true;
     return !(s.registered && s.hasBirthdate);
+  };
+
+  // ¿Se le ofrece el celular (opcional)? null = consultando. Solo si el backend
+  // informa `hasPhone`: uno anterior no lo guardaría. Si la consulta falla no se
+  // ofrece (no es vital y no se sabe si ya lo tiene).
+  const phoneOffered = (cedulaKey: string): boolean | null => {
+    if (!cedulaKey || birthdateFetchFailed) return false;
+    const s = birthdateStatuses[cedulaKey];
+    if (!s) return birthdateLoading ? null : false;
+    if (s.hasPhone === undefined) return false;
+    return !(s.registered && s.hasPhone);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -1064,6 +1083,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     // backend repite la validación. `birthdatesPayload` lleva solo a los pasajeros
     // a los que les faltaba.
     const birthdatesPayload: Record<string, string> = {};
+    // Celulares opcionales que se escribieron (#A75), ya normalizados.
+    const phonesPayload: Record<string, string> = {};
     if (!isHotelOnly) {
       if (birthdateLoading) {
         alert('Estamos verificando las fechas de nacimiento de los pasajeros. Espere un momento.');
@@ -1085,6 +1106,24 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         alert('Falta la fecha de nacimiento de algunos pasajeros (la exigen las aerolíneas para emitir el tiquete):\n\n' + birthProblems.join('\n'));
         return;
       }
+    }
+    // GUARD: celular OPCIONAL (#A75), en vuelos y en solo hospedaje. Vacío no
+    // bloquea; uno escrito debe ser válido. Solo cuenta a los pasajeros a los que
+    // se les ofreció el campo.
+    const phoneProblems: string[] = [];
+    const seenPhone: Record<string, boolean> = {};
+    passengers.forEach((p, idx) => {
+      const key = sanitizeCedulaClient(p.idNumber);
+      if (!key || seenPhone[key]) return;
+      seenPhone[key] = true;
+      if (phoneOffered(key) !== true) return;
+      const check = validateOptionalPhone(passengerPhones[key]);
+      if (!check.ok) phoneProblems.push(`${(p.name || '').trim() || `Pasajero ${idx + 1}`} — CC ${key}: ${check.error}`);
+      else if (check.value) phonesPayload[key] = check.value;
+    });
+    if (phoneProblems.length > 0) {
+      alert('Revise el celular de algunos pasajeros. Es opcional: puede corregirlo o dejarlo vacío.\n\n' + phoneProblems.join('\n'));
+      return;
     }
     // Fecha de retorno obligatoria para round-trip y hotel-only (check-out)
     if ((isHotelOnly || tripType === 'ROUND_TRIP') && !formData.returnDate) {
@@ -1209,6 +1248,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             requesterEmail: userEmail,
             passengers,
             passengerBirthdates: birthdatesPayload,
+            passengerPhones: phonesPayload,
             requiresHotel: leg.requiresHotel,
             hotelName: leg.requiresHotel ? leg.hotelName : '',
             nights: leg.requiresHotel ? leg.nights : 0,
@@ -1256,6 +1296,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         // Solo en vuelos: su presencia le indica al backend que el formulario ya
         // pide la fecha de nacimiento.
         passengerBirthdates: isHotelOnly ? undefined : birthdatesPayload,
+        // Celulares opcionales (#A75), también en solo hospedaje: solo los que se escribieron.
+        passengerPhones: phonesPayload,
         requiresHotel: isHotelOnly ? true : requiresHotel,
         nights: (isHotelOnly || requiresHotel) ? numberOfNights : 0,
         status: isModification ? RequestStatus.PENDING_CHANGE_APPROVAL : RequestStatus.PENDING_OPTIONS,
@@ -1500,6 +1542,12 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               const birthValue = passengerBirthdates[birthKey] || '';
               const birthCheck = birthValue ? validateBirthdate(birthValue, todayIsoLocal()) : null;
               const birthRegistered = !!birthdateStatuses[birthKey]?.registered;
+              // Celular (opcional, #A75). El error se muestra cuando ya hay 10+
+              // dígitos, para no marcar el número mientras se escribe.
+              const showPhone = !firstPassengerMissing && phoneOffered(birthKey) === true;
+              const phoneValue = passengerPhones[birthKey] || '';
+              const phoneCheck = phoneValue ? validateOptionalPhone(phoneValue) : null;
+              const phoneShowError = !!phoneCheck && !phoneCheck.ok && phoneValue.replace(/\D/g, '').length >= 10;
               return (
               <div key={idx} className="flex flex-col gap-3 bg-gray-50 p-4 rounded-md">
                 <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
@@ -1572,6 +1620,37 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                         : birthRegistered
                           ? 'Se guarda una sola vez en su perfil y no se volverá a pedir.'
                           : 'Como este pasajero no está registrado en el sistema, se guarda solo en esta solicitud.'}
+                    </p>
+                  </div>
+                )}
+                {showPhone && (
+                  <div className="rounded-md border border-gray-200 bg-white p-3">
+                    <label className="block text-xs font-medium text-gray-700">
+                      📱 Celular de {(p.name || '').trim() || `el pasajero ${idx + 1}`}{' '}
+                      <span className="font-normal text-gray-500">(opcional)</span>
+                    </label>
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="off"
+                      maxLength={20}
+                      placeholder="300 123 4567"
+                      data-phone-for={birthKey}
+                      className="mt-1 block w-full sm:w-56 bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900"
+                      value={phoneValue}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setPassengerPhones(prev => ({ ...prev, [birthKey]: v }));
+                      }}
+                    />
+                    {phoneShowError && phoneCheck && (
+                      <p className="text-[11px] text-red-600 mt-1">{phoneCheck.error}</p>
+                    )}
+                    <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                      Para que el área de viajes pueda contactar al pasajero si surge algo con el tiquete.{' '}
+                      {birthRegistered
+                        ? 'Se guarda una sola vez en su perfil.'
+                        : 'Como este pasajero no está registrado en el sistema, se guarda solo en esta solicitud.'}
                     </p>
                   </div>
                 )}

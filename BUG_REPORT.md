@@ -1032,3 +1032,85 @@ Ejecutada por David desde el menú 7: **636 fechas cargadas, 4 inválidas en la 
 - con la consulta caída pide la fecha, sin quedarse en "Verificando…"
 
 **Despliegue:** solo frontend, push a `main`. Sin cambios en Apps Script.
+
+## **#A74 — El detalle tardaba en mostrar la fecha de nacimiento; celular del pasajero para el área de viajes**
+**Fecha:** 2026-09-10 · **Reportado por:** David (celular: pedido de Laura, área de viajes) · **Estado:** Implementado, pendiente de push y despliegue
+
+**Síntomas:**
+- Al abrir el detalle de una solicitud, la fecha de nacimiento de cada pasajero (#A71) aparecía unos segundos después que el resto.
+- Laura necesita el celular del pasajero para contactarlo (llamada o WhatsApp) si surge algo con la solicitud, y la app no lo tenía. La lista de RR. HH. sí lo trae.
+
+**Causa raíz de la lentitud:** el detalle hacía **dos viajes seguidos** a Apps Script: `getRequestById` para abrirlo y, ya abierto, `getPassengerBirthdates`. Cada viaje cuesta del orden de uno a dos segundos; leer la fecha en sí es lo de menos. Guardar la fecha de todos los pasajeros en la columna JSON de la solicitud (lo primero que se evaluó) no quitaba ese segundo viaje, y además copiaba datos personales a cada solicitud, que quedarían desactualizados al corregir una fecha o cambiar un celular en `USUARIOS`.
+
+**Cambio:**
+- **Backend:** `getRequestById` agrega `passengerAdminInfo` (fecha, origen de la fecha y celular de cada pasajero) **solo si quien consulta es administrador**; lo decide `dispatch`. Si esa lectura falla, la solicitud se devuelve igual, sin el campo. `getPassengerBirthdates` queda como respaldo (también trae el celular). La fuente sigue siendo `USUARIOS`, más la columna de externos para las fechas.
+- **Frontend (`RequestDetail`):** si la solicitud trae `passengerAdminInfo`, se muestra al abrir, sin otra llamada. Si no lo trae (backend anterior, o falló esa lectura), consulta aparte como antes. Junto a la fecha: "📱 300 123 4567 · WhatsApp" (enlaces `tel:` y `wa.me`), o "Sin celular registrado". La lista de pasajeros del administrador es un poco más alta para la línea extra; la del solicitante no cambia.
+- **Columna `Celular`** al final de `USUARIOS`, leída por nombre, como texto de 10 dígitos. La crea sola la primera carga (también `agregarColumnaCelular()` desde el editor).
+- **Menú 8. Cargar celulares (lista RR. HH.):** mismas reglas que #A72: solo usuarios ya registrados, nunca sobrescribe un celular válido distinto (lo reporta), vista previa y confirmación, detalle en la pestaña "Reporte celulares", y el enlace se pide al ejecutar. Usa "Cel corporativo"; si no es válido, "Cel personal". Válido = 10 dígitos que empiezan por 3; acepta `+57`, espacios y el número tal como lo guarda Sheets. `#N/A`, fijos y números de 9 u 11 dígitos quedan en el reporte.
+
+**Seguridad:** fecha y celular siguen sin llegar al navegador del solicitante. No van en `mapRowToRequest` (filas lite y correos), ni en `getIntegrantesData` / `bootstrap`, ni en `getBirthdateStatus`.
+
+**Verificado:**
+- `npm run verify`.
+- Simulación del `Code.gs` completo con hojas en memoria, 31 escenarios, usando la lista real de RR. HH. y `USUARIOS` con la disposición de producción:
+  - vista previa: 633 celulares por cargar (312 corporativos, 321 personales), 7 sin celular válido, 123 no están en la lista; no escribe ni crea la columna
+  - carga: columna P, 633 celulares como texto y en bloques; columnas A–O intactas (PIN, pasaporte, fechas, el `ADMIN` de N233); cada celular igual al de la lista; segunda corrida idempotente; la carga de fechas (menú 7) sigue dando lo mismo
+  - protecciones: conflicto sin sobrescribir, mismo celular con otro formato, texto que no es celular, preferencia por el corporativo, corporativo inválido → personal, cédula repetida con celulares distintos, lista sin columnas de celular, enlace inválido, cancelación en el menú
+  - acceso: el administrador recibe fecha y celular dentro de `getRequestById`; el solicitante dueño no recibe el campo ni los datos; otro usuario sigue sin ver la solicitud; filas lite sin datos; respaldo solo para administradores; un fallo de lectura no impide abrir el detalle
+- 6 defectos introducidos a propósito (entregar datos al solicitante, preferir el personal, sobrescribir conflictos, no quitar el 57, sin respaldo ante fallo, crear la columna en la vista previa): todos detectados.
+- Regresión: las simulaciones de #A68, #A70, #A71 y #A72 pasan con el `Code.gs` nuevo.
+- Detalle en Chrome headless (zona America/Bogota) con servidor simulado, 15 pasos:
+  - backend nuevo: fecha y celular desde el primer render, **cero llamadas adicionales**; enlaces `wa.me/57…` (pestaña nueva, `noopener`) y `tel:+57…` correctos; externo con "Sin celular registrado"; un re-render no vuelve a consultar
+  - backend anterior: consulta una vez, muestra las fechas como antes y no inventa "Sin celular"
+  - respaldo del backend nuevo con celular, y consulta caída con aviso discreto
+  - solicitante: sin consultas, tarjeta y alto iguales que hoy; aunque el objeto trajera los datos, no se muestran
+
+**Despliegue:** backend y frontend, en cualquier orden:
+- Frontend nuevo + backend viejo: la solicitud no trae el campo; el detalle consulta aparte como hoy y no muestra celular.
+- Backend nuevo + frontend viejo: el campo extra se ignora y el detalle consulta aparte como hoy.
+
+Pasos en Apps Script: pegar `Code.gs` → Guardar → **nueva versión** del web app → recargar la hoja → **Equitel Viajes → 8. Cargar celulares (lista RR. HH.)** con el enlace de la lista.
+
+## **#A75 — Celular opcional en el formulario de solicitudes y al crear o editar usuarios**
+**Fecha:** 2026-09-10 · **Reportado por:** David · **Estado:** Implementado, pendiente de push y despliegue
+
+**Pedido:** además de cargarlo desde la lista de RR. HH. (#A74), pedir el celular en el formulario de solicitudes y en los formularios de usuarios (sidebar y panel móvil), **sin que sea obligatorio**: no es vital.
+
+**Cambio:**
+- **Regla, en gemelos** (`utils/phone.ts` ↔ `Code.gs`; `tools/check-phone-rules.cjs` los compara en `npm run verify`): vacío es válido; si se escribe, debe ser un celular de 10 dígitos que empiece por 3. Acepta espacios, guiones y `+57`, y se guarda sin espacios. Mismo criterio que la OT (#A66): opcional, pero bien escrito.
+- **Formulario de solicitudes**, en vuelos **y en solo hospedaje** (sirve para avisar cambios o novedades, vuele o no; decisión de David): a cada pasajero sin celular registrado se le ofrece "📱 Celular de … (opcional)". En solo hospedaje la fecha de nacimiento sigue sin pedirse.
+  - Registrado: se guarda una vez en `USUARIOS`; nunca reemplaza un celular válido.
+  - Externo: se guarda solo en la solicitud, en la columna nueva `CELULARES PASAJEROS (JSON)`, que el sistema crea sola la primera vez.
+  - Un número incompleto o que no es celular bloquea el envío con un aviso que nombra al pasajero. Vacío no bloquea. El error en el campo aparece cuando ya hay 10 dígitos, para no marcarlo mientras se escribe.
+  - El campo aparece solo si el backend informa `hasPhone`. Con el backend anterior, o si la consulta falla, no aparece (no se sabría si ya lo tiene ni se guardaría).
+  - En solo hospedaje la consulta de estado ahora también se hace (antes no), pero **no hace esperar**: si tarda o falla, la solicitud se envía igual, sin el campo. En vuelos la espera es la misma que ya existía por la fecha (#A70).
+- **Consulta del formulario** (`getBirthdateStatus`): agrega `hasPhone` (booleano); sigue sin devolver datos.
+- **Sidebar:** "Celular (opcional)" al crear y al editar. Al editar solo se envía si se tocó el campo (vacío = quitarlo); un valor guardado mal escrito se muestra con un aviso para corregirlo.
+- **Panel móvil:** "Celular (opcional)" al crear, con teclado de teléfono. En ambos formularios valida el backend y su mensaje aparece en pantalla.
+- **Backend de usuarios:** `usuarios_create` y `usuarios_update` validan y guardan por nombre de columna; si `Celular` no existe, la crean al final **antes** de escribir la fila. `usuarios_listAll` lo devuelve para el sidebar; `mobileAdmin_getBootstrap` lo quita, igual que la fecha.
+- **Detalle (admin):** el celular de un externo sale de su solicitud.
+- **Menú 8** deja lista también la columna `CELULARES PASAJEROS (JSON)` en `Nueva Base Solicitudes` (idempotente). Así, tras el despliegue, ninguna solicitud tiene que crear columnas; si igual faltara, `createNewRequest` la crea sin bloquear la solicitud.
+
+**Verificado:**
+- `npm run verify`, que ahora incluye `check:phone` (27 casos; frontend y backend coinciden en aceptación, valor y mensaje).
+- Simulación del `Code.gs` completo con hojas en memoria, 31 escenarios:
+  - usuarios: crear con y sin celular; inválido rechazado sin crear la fila; columna creada al final sin tocar A–M; al editar, clave ausente no toca, vacío lo quita, inválido no cambia nada de la fila; editar la fecha no toca el celular
+  - listados: el sidebar lo recibe tal cual; el panel móvil no recibe celulares ni fechas
+  - consulta del formulario: `hasPhone` solo booleano
+  - solicitudes: registrado sin celular → `USUARIOS`; registrado con celular → no se reemplaza; externo → solo en la solicitud y visible en el detalle del administrador; el solicitante no recibe celulares; inválido rechazado antes de escribir; vacío o cédula que no es pasajero se ignoran; formulario anterior igual; varios tramos; columna de la solicitud creada sola solo cuando hace falta; un fallo al completar `USUARIOS` no afecta la solicitud
+  - solo hospedaje: guarda los celulares (registrado y externo) sin pedir ni guardar fechas; rechaza uno inválido antes de escribir; sin celulares queda igual que antes
+- 9 defectos introducidos a propósito, todos detectados. La mutación de "ignorar solo hospedaje" al principio no se aplicaba por un error de formato del propio test; se notó porque no hacía fallar nada, se corrigió y se agregó un control que falla si una mutación no cambia el código. Un escenario falló la primera vez por un error del propio test (comparaba como texto un celular guardado como número en la hoja de prueba); se diagnosticó y se corrigió el test, no el código.
+- Regresión: las simulaciones de #A68–#A74 pasan. La de #A74 suma 2 escenarios (el menú 8 crea la columna de solicitudes y no la duplica) y su mutación. Las dos que verificaban las claves exactas de `getBirthdateStatus` se actualizaron para incluir `hasPhone`.
+- Chrome headless:
+  - formulario, 20 pasos:
+    - vuelos: sin parpadeo mientras consulta; campo opcional para registrado sin celular y para externo; nada para quien ya lo tiene; error solo ante un número completo inválido; envío bloqueado con aviso y luego enviado con los celulares normalizados; sin celular se crea igual; backend anterior y consulta caída no lo ofrecen
+    - solo hospedaje: ofrece el celular sin pedir fecha; nada para quien ya lo tiene; externo opcional; envío bloqueado con un número incompleto y luego creado con los celulares y sin fechas; sin celular se crea igual; con la consulta **caída** o **todavía en curso** la solicitud se crea sin esperar
+  - regresión del formulario: se volvió a correr el arnés de #A73 (11 pasos). Los estados de la fecha no cambiaron; solo se ajustó su expectativa de que solo hospedaje no consultaba
+  - sidebar, 13 pasos: crear con y sin celular; editar sin tocar (no se envía), valor mal escrito (aviso, no se borra), completar y borrar a propósito; formulario limpio al volver a crear. Los dos errores de página del arnés (`usuarios_findDuplicates`, `usuarios_getAnomalias`) son del stub y aparecen igual con el sidebar original de git
+  - panel móvil, 6 pasos: envía lo digitado, muestra el error del servidor conservando los datos, crea sin celular, limpia el formulario y no guarda celulares en su caché
+
+**Despliegue:** junto con #A74, en cualquier orden:
+- Frontend nuevo + backend viejo: el formulario no ofrece el celular (no llega `hasPhone`). En solo hospedaje hace la consulta de estado (que ya existe en producción desde #A70) y sigue igual.
+- Backend nuevo + frontend viejo: el formulario sigue igual que hoy.
+
+Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` → Guardar → **nueva versión** del web app (el panel móvil se sirve desde ahí) → recargar la hoja → menú 8 con el enlace de la lista (crea también la columna de celulares de externos en `Nueva Base Solicitudes`).

@@ -348,6 +348,11 @@
       <div class="hint">La exigen las aerolíneas y agencias de viaje para emitir los tiquetes.</div>
     </div>
     <div class="field">
+      <label>Celular (opcional)</label>
+      <input type="tel" id="f_celular" inputmode="tel" placeholder="Ej: 300 123 4567" autocomplete="off" maxlength="20" />
+      <div class="hint">Para que el área de viajes pueda contactarlo si surge algo con un viaje.</div>
+    </div>
+    <div class="field">
       <label>Correo corporativo <span class="req">*</span></label>
       <input type="email" id="f_correo" placeholder="usuario@equitel.com.co" autocomplete="off" autocapitalize="none" />
       <div id="dupe_correo" class="dupe-alert"></div>
@@ -740,6 +745,8 @@
       showStatus('formStatus', 'La fecha de nacimiento es obligatoria.', 'error');
       return;
     }
+    // Celular: opcional (#A75). El backend lo valida y su mensaje se muestra aquí.
+    var celular = String(document.getElementById('f_celular').value || '').trim();
 
     // Self-approver: la cédula del usuario va sola en col G; el backend
     // resolverá H/I correctamente porque inyectamos al lookup en usuarios_create.
@@ -756,7 +763,8 @@
       sede: sede,
       centroCosto: cc,
       cedulasAprobadores: cedulasAprobadoresStr,
-      fechaNacimiento: fechaNac
+      fechaNacimiento: fechaNac,
+      celular: celular
     };
 
     var btn = document.getElementById('btnSave');
@@ -799,7 +807,7 @@
   }
 
   function clearForm() {
-    ['f_cedula', 'f_nombre', 'f_correo', 'f_cc', 'f_fechaNac'].forEach(function(id) {
+    ['f_cedula', 'f_nombre', 'f_correo', 'f_cc', 'f_fechaNac', 'f_celular'].forEach(function(id) {
       document.getElementById(id).value = '';
     });
     document.getElementById('f_fechaNac').max = todayIsoLocal();

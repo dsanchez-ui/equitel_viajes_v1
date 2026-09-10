@@ -260,7 +260,8 @@ const HEADERS_REQUESTS = [
   "REQUIERE APROB PPTO",  // "SI" o vacío — marca persistente del chequeo de presupuesto excedido (calculado en confirmación de costos)
   "APROBADO PRESUPUESTO",   // "Sí_email_fecha" / "No_email_fecha" / vacío — voto del aprobador de presupuesto (Alejandro o quien configure)
   "COMENTARIOS APROBADORES (JSON)", // Array [{role, email, comment, at}] — comentario OPCIONAL que cada aprobador puede dejar al aprobar
-  "FECHAS NACIMIENTO PASAJEROS (JSON)" // Objeto {cédula: 'AAAA-MM-DD'} — fecha de nacimiento de pasajeros NO registrados en USUARIOS, recogida en el formulario
+  "FECHAS NACIMIENTO PASAJEROS (JSON)", // Objeto {cédula: 'AAAA-MM-DD'} — fecha de nacimiento de pasajeros NO registrados en USUARIOS, recogida en el formulario
+  "CELULARES PASAJEROS (JSON)" // Objeto {cédula: '3001234567'} — celular OPCIONAL de pasajeros NO registrados en USUARIOS, recogido en el formulario (#A75)
 ];
 
 // =====================================================================
@@ -692,8 +693,11 @@ function dispatch(action, payload) {
         // las suyas. Si la solicitud existe pero pertenece a otro y no es
         // analyst, retornamos null (mismo trato que "no encontrada" — no
         // exponemos existencia de IDs ajenos).
-        var _full = getRequestById(payload.requestId);
-        if (_full && !isUserAnalyst(currentUserEmail)) {
+        // Solo el administrador recibe además fecha de nacimiento y celular de
+        // cada pasajero (#A74): así el detalle no hace una segunda llamada.
+        var _viewerIsAnalyst = isUserAnalyst(currentUserEmail);
+        var _full = getRequestById(payload.requestId, _viewerIsAnalyst);
+        if (_full && !_viewerIsAnalyst) {
           var _ownerLower = String(_full.requesterEmail || '').toLowerCase().trim();
           var _meLower = String(currentUserEmail || '').toLowerCase().trim();
           if (_ownerLower !== _meLower) _full = null;
@@ -4704,7 +4708,7 @@ function getMyRequestsLite(email) {
  * Retorna null si no encuentra la solicitud (no lanza, para que el frontend
  * pueda fallback al lite y mostrar un warning suave).
  */
-function getRequestById(requestId) {
+function getRequestById(requestId, withPassengerAdminInfo) {
   if (!requestId) return null;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -4712,7 +4716,18 @@ function getRequestById(requestId) {
   const rowNumber = _getRowByRequestId_(requestId);
   if (rowNumber === -1) return null;
   const row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
-  return mapRowToRequest(row, false);
+  const result = mapRowToRequest(row, false);
+  // SOLO ADMINISTRADORES (lo decide dispatch): fecha de nacimiento y celular por
+  // pasajero en la misma respuesta (#A74). Si falla, el detalle abre igual: sin
+  // el campo, el frontend los consulta aparte con getPassengerBirthdates.
+  if (withPassengerAdminInfo) {
+    try {
+      result.passengerAdminInfo = _passengerAdminInfoFromRow_(row, requestId);
+    } catch (e) {
+      console.warn('getRequestById: sin datos de pasajeros para ' + requestId + ': ' + e);
+    }
+  }
+  return result;
 }
 
 /**
@@ -5177,6 +5192,19 @@ function createNewRequest(data, emailHtml) {
   // nada y solo si el formulario nuevo envía `passengerBirthdates`.
   const _birthPlan = _planPassengerBirthdates_(data);
 
+  // Celulares OPCIONALES de los pasajeros (#A75): se validan ANTES de escribir.
+  const _phonePlan = _planPassengerPhones_(data);
+  // Los de externos van en una columna de la solicitud; si aún no existe se crea
+  // ahora, al final (la hoja se lee por nombre). Si falla, la solicitud se crea
+  // igual sin esos celulares: el campo es opcional.
+  if (_phonePlan && Object.keys(_phonePlan.external).length > 0 && H(REQUEST_PHONES_HEADER) < 0) {
+    try {
+      agregarColumnaCelularesSolicitudes();
+    } catch (colErr) {
+      console.warn('createNewRequest: no se pudo crear la columna "' + REQUEST_PHONES_HEADER + '": ' + colErr);
+    }
+  }
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const idColIndex = H("ID RESPUESTA") + 1;
@@ -5275,6 +5303,10 @@ function createNewRequest(data, emailHtml) {
     }
     set(REQUEST_BIRTHDATES_HEADER, JSON.stringify(_birthPlan.external));
   }
+  // Celulares de pasajeros EXTERNOS (#A75): viajan con la solicitud.
+  if (_phonePlan && Object.keys(_phonePlan.external).length > 0) {
+    set(REQUEST_PHONES_HEADER, JSON.stringify(_phonePlan.external));
+  }
 
   // NEW LINKED REQUEST FIELDS
   set("ID SOLICITUD PADRE", data.relatedRequestId || '');
@@ -5372,6 +5404,12 @@ function createNewRequest(data, emailHtml) {
     _fillUsuariosBirthdates_(_birthPlan && _birthPlan.registered);
   } catch (birthErr) {
     console.warn('createNewRequest: no se pudo completar la fecha de nacimiento en USUARIOS para ' + id + ': ' + birthErr);
+  }
+  // Igual con el celular (#A75): nunca reemplaza uno válido y no afecta la solicitud.
+  try {
+    _fillUsuariosPhones_(_phonePlan && _phonePlan.registered);
+  } catch (phoneErr) {
+    console.warn('createNewRequest: no se pudo completar el celular en USUARIOS para ' + id + ': ' + phoneErr);
   }
 
   // Rate-limit counter (solo tras éxito). Si falló validación o inserción,
@@ -9069,7 +9107,7 @@ const HEADERS_USUARIOS = [
   'Cedulas Aprobadores', 'Correos Aprobadores (auto)', 'Nombres Aprobadores (auto)',
   'PIN',
   'Pasaporte Fecha', 'Pasaporte File ID',
-  'Fecha Nacimiento'
+  'Fecha Nacimiento', 'Celular'
 ];
 
 // =====================================================================
@@ -9290,15 +9328,17 @@ const REQUEST_BIRTHDATES_HEADER = 'FECHAS NACIMIENTO PASAJEROS (JSON)';
 
 /**
  * Para cada cédula (sanitizada) indica si está en USUARIOS, si ya tiene una
- * fecha de nacimiento VÁLIDA (y cuál) y en qué fila. Dos lecturas de la hoja.
- * USO INTERNO: la fecha solo sale al navegador por getPassengerBirthdates (admin).
- * @return {Object<string, {registered: boolean, hasBirthdate: boolean, birthdate: string, row: number}>}
+ * fecha de nacimiento VÁLIDA (y cuál) y en qué fila. Dos lecturas de la hoja
+ * (tres con `opts.withPhone`, que además trae el celular).
+ * USO INTERNO: fecha y celular solo salen al navegador de un administrador
+ * (getRequestById / getPassengerBirthdates).
+ * @return {Object<string, {registered: boolean, hasBirthdate: boolean, birthdate: string, phone: string, row: number}>}
  */
-function _lookupUsuariosBirthdates_(cedulas) {
+function _lookupUsuariosBirthdates_(cedulas, opts) {
   var out = {};
   (cedulas || []).forEach(function(raw) {
     var c = _sanitizeCedula_(raw);
-    if (c && !out[c]) out[c] = { registered: false, hasBirthdate: false, birthdate: '', row: -1 };
+    if (c && !out[c]) out[c] = { registered: false, hasBirthdate: false, birthdate: '', phone: '', row: -1 };
   });
   if (Object.keys(out).length === 0) return out;
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
@@ -9308,6 +9348,8 @@ function _lookupUsuariosBirthdates_(cedulas) {
   var ceds = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
   var col = _getUsuarioBirthdateCol_(sheet);
   var births = col > 0 ? sheet.getRange(2, col, lastRow - 1, 1).getValues() : null;
+  var phoneCol = opts && opts.withPhone ? _getUsuarioPhoneCol_(sheet) : -1;
+  var phones = phoneCol > 0 ? sheet.getRange(2, phoneCol, lastRow - 1, 1).getValues() : null;
   for (var i = 0; i < ceds.length; i++) {
     var c = _sanitizeCedula_(ceds[i][0]);
     if (!c || !out[c] || out[c].registered) continue;
@@ -9317,36 +9359,37 @@ function _lookupUsuariosBirthdates_(cedulas) {
     // `birthdate` es de uso interno: getBirthdateStatus solo expone los booleanos.
     out[c].birthdate = births ? _normalizeBirthdate_(_birthdateCellToIso_(births[i][0])) : '';
     out[c].hasBirthdate = !!out[c].birthdate;
+    if (phones) out[c].phone = _normalizePhone_(phones[i][0]);
   }
   return out;
 }
 
 /**
  * Endpoint (dispatch 'getBirthdateStatus'): estado por cédula, máximo 5.
- * Devuelve SOLO booleanos; nunca la fecha.
+ * Devuelve SOLO booleanos; nunca la fecha ni el celular. `hasPhone` (#A75) le
+ * indica al formulario si ofrecer el campo opcional de celular.
  */
 function getBirthdateStatus(cedulas) {
   if (!Array.isArray(cedulas)) throw new Error('cedulas debe ser un array.');
   if (cedulas.length > 5) throw new Error('Máximo 5 cédulas por consulta.');
-  var info = _lookupUsuariosBirthdates_(cedulas);
+  var info = _lookupUsuariosBirthdates_(cedulas, { withPhone: true });
   var out = [];
   var seen = {};
   cedulas.forEach(function(raw) {
     var c = _sanitizeCedula_(raw);
     if (!c || seen[c]) return;
     seen[c] = true;
-    out.push({ cedula: c, registered: info[c].registered, hasBirthdate: info[c].hasBirthdate });
+    out.push({ cedula: c, registered: info[c].registered, hasBirthdate: info[c].hasBirthdate, hasPhone: info[c].registered && !!info[c].phone });
   });
   return out;
 }
 
 /**
  * Endpoint (dispatch 'getPassengerBirthdates', SOLO ADMINISTRADORES): fecha de
- * nacimiento de cada pasajero de una solicitud, para que el área de viajes la
- * vea en el detalle al emitir el tiquete (mejora C2, reunión 2026-09-10).
- * Los pasajeros se leen de la fila de la solicitud, no del cliente. Fuente:
- * primero USUARIOS; si no está, la columna de externos de la solicitud.
- * @return {Array<{cedula: string, birthdate: string, source: 'USUARIOS'|'SOLICITUD'|'NONE'}>}
+ * nacimiento y celular de cada pasajero de una solicitud (C2 y #A74). Desde
+ * #A74 el detalle los recibe dentro de getRequestById; este endpoint queda como
+ * respaldo (backend anterior, o si esa lectura falló) y para pestañas abiertas
+ * con la versión anterior del frontend.
  */
 function getPassengerBirthdates(requestId) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
@@ -9354,6 +9397,17 @@ function getPassengerBirthdates(requestId) {
   var rowNumber = _getRowByRequestId_(requestId);
   if (rowNumber < 2) throw new Error('Solicitud no encontrada: ' + requestId);
   var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+  return _passengerAdminInfoFromRow_(row, requestId);
+}
+
+/**
+ * Fecha de nacimiento y celular de cada pasajero de una fila de solicitud.
+ * USO INTERNO, SOLO PARA ADMINISTRADORES. Los pasajeros se leen de la fila, no
+ * del cliente. Fecha y celular: primero USUARIOS; si no está, la columna de
+ * externos de la solicitud ('' si no hay).
+ * @return {Array<{cedula: string, birthdate: string, source: 'USUARIOS'|'SOLICITUD'|'NONE', phone: string}>}
+ */
+function _passengerAdminInfoFromRow_(row, requestId) {
   var get = function(h) { var i = H(h); return (i > -1 && i < row.length) ? row[i] : ''; };
 
   var fromRequest = {};
@@ -9373,17 +9427,36 @@ function getPassengerBirthdates(requestId) {
     }
   }
 
+  // Celulares de externos recogidos en el formulario (#A75).
+  var phonesFromRequest = {};
+  var rawPhones = String(get(REQUEST_PHONES_HEADER) || '').trim();
+  if (rawPhones) {
+    try {
+      var parsedPhones = JSON.parse(rawPhones);
+      if (parsedPhones && typeof parsedPhones === 'object') {
+        Object.keys(parsedPhones).forEach(function(k) {
+          var c = _sanitizeCedula_(k);
+          var ph = _normalizePhone_(parsedPhones[k]);
+          if (c && ph) phonesFromRequest[c] = ph;
+        });
+      }
+    } catch (e) {
+      console.warn('getPassengerBirthdates: JSON inválido en ' + REQUEST_PHONES_HEADER + ' de ' + requestId + ': ' + e);
+    }
+  }
+
   var cedulas = [];
   for (var i = 1; i <= 5; i++) {
     var c = _sanitizeCedula_(get('CÉDULA PERSONA ' + i));
     if (c && cedulas.indexOf(c) === -1) cedulas.push(c);
   }
-  var info = _lookupUsuariosBirthdates_(cedulas);
+  var info = _lookupUsuariosBirthdates_(cedulas, { withPhone: true });
   return cedulas.map(function(ced) {
     var st = info[ced] || {};
-    if (st.birthdate) return { cedula: ced, birthdate: st.birthdate, source: 'USUARIOS' };
-    if (fromRequest[ced]) return { cedula: ced, birthdate: fromRequest[ced], source: 'SOLICITUD' };
-    return { cedula: ced, birthdate: '', source: 'NONE' };
+    var phone = st.phone || phonesFromRequest[ced] || '';
+    if (st.birthdate) return { cedula: ced, birthdate: st.birthdate, source: 'USUARIOS', phone: phone };
+    if (fromRequest[ced]) return { cedula: ced, birthdate: fromRequest[ced], source: 'SOLICITUD', phone: phone };
+    return { cedula: ced, birthdate: '', source: 'NONE', phone: phone };
   });
 }
 
@@ -9631,15 +9704,23 @@ function _planBirthdatesBulkLoad_(usuarios, col, source) {
 
 /** Escribe las fechas en bloques de filas contiguas (menos llamadas a la hoja). */
 function _applyBirthdatesBulkLoad_(usuarios, col, toFill) {
-  var items = toFill.slice().sort(function(a, b) { return a.row - b.row; });
+  return _writeTextColumnInBlocks_(usuarios, col, toFill, 'iso');
+}
+
+/**
+ * Escribe item[field] como TEXTO en la columna `col`, fila item.row, agrupando
+ * filas contiguas en un solo setValues. Lo usan las cargas de fechas y celulares.
+ */
+function _writeTextColumnInBlocks_(sheet, col, items, field) {
+  var sorted = items.slice().sort(function(a, b) { return a.row - b.row; });
   var written = 0;
   var i = 0;
-  while (i < items.length) {
+  while (i < sorted.length) {
     var j = i;
-    while (j + 1 < items.length && items[j + 1].row === items[j].row + 1) j++;
+    while (j + 1 < sorted.length && sorted[j + 1].row === sorted[j].row + 1) j++;
     var vals = [];
-    for (var k = i; k <= j; k++) vals.push([items[k].iso]);
-    var range = usuarios.getRange(items[i].row, col, vals.length, 1);
+    for (var k = i; k <= j; k++) vals.push([sorted[k][field]]);
+    var range = sheet.getRange(sorted[i].row, col, vals.length, 1);
     range.setNumberFormat('@');
     range.setValues(vals);
     written += vals.length;
@@ -9762,6 +9843,494 @@ function menuCargarFechasNacimiento() {
       'Sin fecha válida en la lista: ' + r.invalidInList + '\n' +
       'No aparecen en la lista: ' + r.notInList + '\n\n' +
       'Detalle fila por fila en la pestaña "' + BIRTHDATES_REPORT_SHEET + '".', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
+}
+
+// =====================================================================
+// CELULAR DE CONTACTO DEL PASAJERO (#A74, 2026-09-10)
+// =====================================================================
+// El área de viajes lo necesita para contactar al pasajero (llamada o
+// WhatsApp) si surge algo con la solicitud o el tiquete. Vive en la columna
+// 'Celular' de USUARIOS, AL FINAL de la hoja y leída SIEMPRE por nombre (misma
+// razón que 'Fecha Nacimiento': USUARIOS se lee y escribe por posición).
+// Se guarda como texto de 10 dígitos ('3001234567') en celda con formato '@'.
+//
+// Se llena con la carga de la lista de RR. HH. (menú 8) y, OPCIONAL, desde el
+// sidebar, el panel móvil y el formulario de solicitudes (#A75); el de un
+// pasajero externo se guarda solo en su solicitud (REQUEST_PHONES_HEADER).
+//
+// Solo lo ven los administradores: detalle de la solicitud y sidebar. NUNCA va
+// en getIntegrantesData / bootstrap ni en el panel móvil; getBirthdateStatus
+// solo dice si existe (booleano).
+// =====================================================================
+const USUARIOS_PHONE_HEADER = 'Celular';
+const PHONES_REPORT_SHEET = 'Reporte celulares';
+const BULK_PHONE_CORPORATE_HEADERS = ['cel corporativo', 'celular corporativo', 'movil corporativo', 'móvil corporativo', 'telefono corporativo', 'teléfono corporativo'];
+const BULK_PHONE_PERSONAL_HEADERS = ['cel personal', 'celular personal', 'movil personal', 'móvil personal', 'telefono personal', 'teléfono personal', 'celular', 'cel', 'movil', 'móvil'];
+
+/**
+ * Celular colombiano a 10 dígitos ('3001234567'), o '' si no lo es. Tolera
+ * espacios, guiones, '+57' / '57' al inicio y el número tal como lo devuelve
+ * Sheets (3001234567 o '3001234567.0').
+ */
+function _normalizePhone_(raw) {
+  if (raw === null || raw === undefined) return '';
+  var s;
+  if (typeof raw === 'number') {
+    if (!isFinite(raw) || raw !== Math.floor(raw)) return '';
+    s = raw.toFixed(0);
+  } else {
+    s = String(raw).trim().replace(/^(\d+)\.0+$/, '$1');
+  }
+  var d = s.replace(/\D+/g, '');
+  if (d.length === 12 && d.indexOf('57') === 0) d = d.substring(2);
+  return /^3\d{9}$/.test(d) ? d : '';
+}
+
+/** Columna (1-based) de 'Celular' en USUARIOS, o -1 si no existe. */
+function _getUsuarioPhoneCol_(sheet) {
+  if (!sheet) return -1;
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return -1;
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(_normalizeHeader_);
+  var idx = headers.indexOf(USUARIOS_PHONE_HEADER);
+  return idx >= 0 ? idx + 1 : -1;
+}
+
+const REQUEST_PHONES_HEADER = 'CELULARES PASAJEROS (JSON)';
+
+/**
+ * Valida un celular OPCIONAL (#A75): vacío es válido. Con valor, debe ser un
+ * celular de 10 dígitos. ⚠️ Gemelo de validateOptionalPhone en utils/phone.ts:
+ * tools/check-phone-rules.cjs compara reglas y mensajes.
+ * @return {{ok: boolean, value: string, error?: string}}
+ */
+function _validateOptionalPhone_(raw) {
+  var original = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (!original) return { ok: true, value: '' };
+  var phone = _normalizePhone_(typeof raw === 'number' ? raw : original);
+  if (!phone) {
+    return {
+      ok: false,
+      value: original,
+      error: '"' + original + '" no es un celular válido. Escriba los 10 dígitos, por ejemplo 300 123 4567.'
+    };
+  }
+  return { ok: true, value: phone };
+}
+
+/** Valor crudo de la celda como texto, para mostrarlo en el sidebar tal cual. */
+function _phoneCellToText_(v) {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number') return isFinite(v) ? String(v) : '';
+  return String(v).trim();
+}
+
+/**
+ * Escribe el celular (ya validado: 10 dígitos, o '' para dejarlo vacío) en la
+ * fila indicada, por NOMBRE de columna. Si la columna no existe y hay un
+ * celular que guardar, la crea al final.
+ */
+function _writeUsuarioPhone_(sheet, rowNumber, phone) {
+  var value = String(phone || '').trim();
+  var col = _getUsuarioPhoneCol_(sheet);
+  if (col < 0) {
+    if (!value) return;
+    var migration = agregarColumnaCelular();
+    col = migration.col || -1;
+    if (col < 0) throw new Error('No se pudo crear la columna "Celular" en USUARIOS: ' + (migration.reason || 'motivo desconocido'));
+  }
+  sheet.getRange(rowNumber, col).setNumberFormat('@').setValue(value);
+}
+
+/**
+ * Celulares OPCIONALES recogidos en el formulario de solicitudes (#A75). Se
+ * llama ANTES de escribir la solicitud y lanza si alguno escrito no es válido.
+ * Registrado sin celular → se completa una vez en USUARIOS (nunca se reemplaza
+ * uno válido); externo → solo en la solicitud. Las cédulas que no son pasajeros
+ * de la solicitud se ignoran. Devuelve null si no hay nada que guardar.
+ * @return {{registered: Object<string,string>, external: Object<string,string>}|null}
+ */
+function _planPassengerPhones_(data) {
+  if (!data || !data.passengerPhones || typeof data.passengerPhones !== 'object') return null;
+  var labels = {};
+  (data.passengers || []).forEach(function(p, i) {
+    var c = _sanitizeCedula_(p && p.idNumber);
+    if (c && labels[c] === undefined) labels[c] = (p.name ? String(p.name).trim() : 'Pasajero ' + (i + 1)) + ' (CC ' + c + ')';
+  });
+  var valid = {};
+  var problems = [];
+  Object.keys(data.passengerPhones).forEach(function(k) {
+    var c = _sanitizeCedula_(k);
+    if (!c || labels[c] === undefined || valid[c]) return;
+    var check = _validateOptionalPhone_(data.passengerPhones[k]);
+    if (!check.ok) problems.push(labels[c] + ': ' + check.error);
+    else if (check.value) valid[c] = check.value;
+  });
+  if (problems.length > 0) {
+    throw new Error('Celular no válido de: ' + problems.join(' · ') + ' Corríjalo o déjelo vacío: es opcional.');
+  }
+  var ceds = Object.keys(valid);
+  if (ceds.length === 0) return null;
+  var info = _lookupUsuariosBirthdates_(ceds, { withPhone: true });
+  var plan = { registered: {}, external: {} };
+  ceds.forEach(function(c) {
+    if (info[c].registered) {
+      if (!info[c].phone) plan.registered[c] = valid[c];
+    } else {
+      plan.external[c] = valid[c];
+    }
+  });
+  return plan;
+}
+
+/**
+ * Completa en USUARIOS los celulares recogidos en el formulario. Nunca
+ * reemplaza un celular válido. Se llama DESPUÉS de crear la solicitud y dentro
+ * de try/catch: un fallo aquí jamás afecta la solicitud ya guardada.
+ * @return {number} cantidad de celulares escritos
+ */
+function _fillUsuariosPhones_(registeredMap) {
+  if (!registeredMap) return 0;
+  var ceds = Object.keys(registeredMap);
+  if (ceds.length === 0) return 0;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) return 0;
+  var info = _lookupUsuariosBirthdates_(ceds, { withPhone: true });
+  var written = 0;
+  ceds.forEach(function(ced) {
+    var st = info[ced];
+    if (!st || !st.registered || st.phone || st.row < 2) return;
+    var phone = _normalizePhone_(registeredMap[ced]);
+    if (!phone) return;
+    _writeUsuarioPhone_(sheet, st.row, phone);
+    written++;
+  });
+  return written;
+}
+
+/**
+ * MIGRACIÓN idempotente: agrega REQUEST_PHONES_HEADER al final de la hoja
+ * principal (se lee por nombre). createNewRequest la ejecuta sola la primera
+ * vez que hay que guardar el celular de un externo.
+ * @returns {{added: boolean, col?: number, reason?: string}}
+ */
+function agregarColumnaCelularesSolicitudes() {
+  var HEADER = REQUEST_PHONES_HEADER;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) return { added: false, reason: 'hoja "' + SHEET_NAME_REQUESTS + '" no encontrada' };
+  var lastCol = sheet.getLastColumn();
+  var rawHeaders = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var normIdx = rawHeaders.map(_normalizeHeader_).indexOf(HEADER);
+  if (normIdx !== -1) {
+    var exact = String(rawHeaders[normIdx] == null ? '' : rawHeaders[normIdx]).trim();
+    if (exact !== HEADER) {
+      sheet.getRange(1, normIdx + 1).setValue(HEADER);
+      _clearReqHeadersCache_();
+      SpreadsheetApp.flush();
+      return { added: false, col: normIdx + 1, reason: 'ya existía (encabezado normalizado)' };
+    }
+    return { added: false, col: normIdx + 1, reason: 'ya existe' };
+  }
+  var nextCol = lastCol + 1;
+  if (lastCol > 0 && sheet.getMaxColumns() < nextCol) {
+    sheet.insertColumnsAfter(lastCol, 1);
+  }
+  sheet.getRange(1, nextCol).setValue(HEADER)
+    .setFontWeight('bold').setBackground('#D71920').setFontColor('white');
+  sheet.setColumnWidth(nextCol, 220);
+  sheet.getRange(1, nextCol).setNote('Objeto JSON {cédula: celular} con el celular (opcional) de los pasajeros NO registrados en USUARIOS, recogido en el formulario de solicitudes. Lo escribe el sistema — NO editar manualmente.');
+  _clearReqHeadersCache_();
+  SpreadsheetApp.flush();
+  return { added: true, col: nextCol };
+}
+
+/**
+ * MIGRACIÓN idempotente: agrega 'Celular' AL FINAL de USUARIOS. La carga de
+ * celulares la ejecuta sola si falta; también se puede correr desde el editor.
+ * @returns {{added: boolean, col?: number, reason?: string}}
+ */
+function agregarColumnaCelular() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet) return { added: false, reason: 'la hoja USUARIOS no existe' };
+  var lastCol = sheet.getLastColumn();
+  var raw = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var idx = raw.map(_normalizeHeader_).indexOf(USUARIOS_PHONE_HEADER);
+  if (idx !== -1) {
+    var exact = String(raw[idx] == null ? '' : raw[idx]).trim();
+    if (exact !== USUARIOS_PHONE_HEADER) {
+      sheet.getRange(1, idx + 1).setValue(USUARIOS_PHONE_HEADER);
+      SpreadsheetApp.flush();
+      return { added: false, col: idx + 1, reason: 'ya existía (encabezado normalizado)' };
+    }
+    return { added: false, col: idx + 1, reason: 'ya existe' };
+  }
+  var col = lastCol + 1;
+  if (lastCol > 0 && sheet.getMaxColumns() < col) {
+    sheet.insertColumnsAfter(lastCol, 1);
+  }
+  sheet.getRange(1, col).setValue(USUARIOS_PHONE_HEADER)
+    .setFontWeight('bold').setBackground('#1f2937').setFontColor('white');
+  sheet.setColumnWidth(col, 110);
+  sheet.getRange(1, col).setNote(
+    'Celular de contacto (10 dígitos, sin espacios). Lo ve el área de viajes en el detalle de la solicitud ' +
+    'para contactar al pasajero. Se llena con Equitel Viajes → 8. Cargar celulares (lista RR. HH.), el sidebar, el panel móvil o el formulario de solicitudes.'
+  );
+  // Formato texto: evita que Sheets lo muestre como número (3,00E+09) o le quite dígitos.
+  var maxRows = sheet.getMaxRows();
+  if (maxRows > 1) sheet.getRange(2, col, maxRows - 1, 1).setNumberFormat('@');
+  SpreadsheetApp.flush();
+  return { added: true, col: col };
+}
+
+// ---------------------------------------------------------------------
+// CARGA MASIVA DE CELULARES DESDE LA LISTA DE RR. HH. (#A74)
+// ---------------------------------------------------------------------
+// Mismas reglas que la carga de fechas (#A72): solo usuarios YA registrados,
+// llena celdas vacías o con texto que no es celular, NUNCA sobrescribe un
+// celular válido distinto (lo reporta), vista previa y confirmación antes de
+// escribir, detalle en la pestaña PHONES_REPORT_SHEET, y el enlace de la lista
+// se pide al ejecutar (no se guarda en el código).
+// Se usa el celular CORPORATIVO; si no hay uno válido, el PERSONAL.
+// ---------------------------------------------------------------------
+
+/**
+ * Lee la lista externa. Busca en cada pestaña (primeras 5 filas) la columna de
+ * cédula y al menos una de celular (corporativo o personal).
+ * @return {{ok: boolean, error?: string, sheetName?: string, rows?: number,
+ *   byCedula?: Object<string, {phone: string, origen: string, nombre: string}>,
+ *   invalid?: Array<{cedula, nombre, detalle}>, duplicates?: Array<{cedula, nombre, detalle}>}}
+ */
+function _readPhonesSource_(spreadsheetId) {
+  var file;
+  try {
+    file = SpreadsheetApp.openById(spreadsheetId);
+  } catch (e) {
+    return { ok: false, error: 'No se pudo abrir la hoja (ID ' + spreadsheetId + '). Verifique el enlace y que la cuenta con la que ejecuta el menú tenga acceso a esa hoja. Detalle: ' + (e && e.message ? e.message : e) };
+  }
+  var sheets = file.getSheets();
+  for (var s = 0; s < sheets.length; s++) {
+    var sh = sheets[s];
+    var lastRow = sh.getLastRow();
+    var lastCol = sh.getLastColumn();
+    if (lastRow < 2 || lastCol < 2) continue;
+    var values = sh.getRange(1, 1, lastRow, lastCol).getValues();
+    for (var h = 0; h < Math.min(5, values.length); h++) {
+      var idxCed = _findHeaderIndex_(values[h], BULK_CEDULA_HEADERS);
+      var idxCorp = _findHeaderIndex_(values[h], BULK_PHONE_CORPORATE_HEADERS);
+      var idxPers = _findHeaderIndex_(values[h], BULK_PHONE_PERSONAL_HEADERS);
+      if (idxCed < 0 || (idxCorp < 0 && idxPers < 0)) continue;
+      var idxName = _findHeaderIndex_(values[h], BULK_NAME_HEADERS);
+      var out = { ok: true, sheetName: sh.getName(), rows: 0, byCedula: {}, invalid: [], duplicates: [] };
+      var conflicted = {};
+      for (var r = h + 1; r < values.length; r++) {
+        var row = values[r];
+        var ced = _sanitizeCedula_(row[idxCed]);
+        if (!ced) continue;
+        out.rows++;
+        var nombre = idxName >= 0 ? String(row[idxName] || '').trim() : '';
+        var rawCorp = idxCorp >= 0 ? row[idxCorp] : '';
+        var rawPers = idxPers >= 0 ? row[idxPers] : '';
+        var corp = _normalizePhone_(rawCorp);
+        var phone = corp || _normalizePhone_(rawPers);
+        if (!phone) {
+          // '#N/A', 'qa' y similares cuentan como "sin celular"; con dígitos, como inválido.
+          var shown = [rawCorp, rawPers]
+            .map(function(v) { return String(v === null || v === undefined ? '' : v).trim(); })
+            .filter(function(v) { return /\d/.test(v) && !/^0+$/.test(v); });
+          out.invalid.push({ cedula: ced, nombre: nombre, detalle: shown.length ? 'Celular no válido en la lista: "' + shown.join('" / "') + '".' : 'Sin celular en la lista.' });
+          continue;
+        }
+        if (conflicted[ced]) continue;
+        var prev = out.byCedula[ced];
+        if (prev && prev.phone !== phone) {
+          conflicted[ced] = true;
+          delete out.byCedula[ced];
+          out.duplicates.push({ cedula: ced, nombre: nombre, detalle: 'Aparece varias veces en la lista con celulares distintos (' + prev.phone + ' y ' + phone + ').' });
+          continue;
+        }
+        out.byCedula[ced] = { phone: phone, origen: corp ? 'Corporativo' : 'Personal', nombre: nombre };
+      }
+      return out;
+    }
+  }
+  return { ok: false, error: 'No se encontró una pestaña con la columna de cédula ("cc") y alguna de celular ("cel corporativo" o "cel personal") en sus primeras 5 filas.' };
+}
+
+/** Clasifica cada fila de USUARIOS frente a la lista. No escribe nada. col = -1 si la columna aún no existe. */
+function _planPhonesBulkLoad_(usuarios, col, source) {
+  var plan = { total: 0, toFill: [], same: [], conflicts: [], invalidInList: [], notInList: [] };
+  var lastRow = usuarios.getLastRow();
+  if (lastRow < 2) return plan;
+  var ids = usuarios.getRange(2, 1, lastRow - 1, 2).getValues();
+  var phones = col > 0 ? usuarios.getRange(2, col, lastRow - 1, 1).getValues() : null;
+  var problemByCed = {};
+  source.invalid.concat(source.duplicates).forEach(function(x) { problemByCed[x.cedula] = x.detalle; });
+  for (var i = 0; i < ids.length; i++) {
+    var ced = _sanitizeCedula_(ids[i][0]);
+    if (!ced) continue;
+    plan.total++;
+    var item = { row: i + 2, cedula: ced, nombre: String(ids[i][1] || '').trim(), phone: '', origen: '', detalle: '' };
+    var rawCurrent = phones ? phones[i][0] : '';
+    var current = _normalizePhone_(rawCurrent);
+    var fromList = source.byCedula[ced];
+    if (!fromList) {
+      if (problemByCed[ced]) { item.detalle = problemByCed[ced]; plan.invalidInList.push(item); }
+      else plan.notInList.push(item);
+      continue;
+    }
+    item.phone = fromList.phone;
+    item.origen = fromList.origen;
+    if (!current) {
+      var rawText = String(rawCurrent === null || rawCurrent === undefined ? '' : rawCurrent).trim();
+      if (rawText) item.detalle = 'Reemplaza un valor que no era celular: "' + rawText + '".';
+      plan.toFill.push(item);
+    } else if (current === fromList.phone) {
+      plan.same.push(item);
+    } else {
+      item.detalle = 'Ya tenía ' + current + ' y la lista dice ' + fromList.phone + '. No se modificó.';
+      plan.conflicts.push(item);
+    }
+  }
+  return plan;
+}
+
+/** Detalle fila por fila en la pestaña de reporte (se reescribe en cada carga). */
+function _writePhonesReport_(plan) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(PHONES_REPORT_SHEET) || ss.insertSheet(PHONES_REPORT_SHEET);
+  sh.clear();
+  var rows = [['Cédula', 'Nombre (USUARIOS)', 'Resultado', 'Celular', 'Origen', 'Detalle']];
+  var add = function(list, label) {
+    list.forEach(function(x) { rows.push([x.cedula, x.nombre, label, x.phone || '', x.origen || '', x.detalle || '']); });
+  };
+  add(plan.toFill, 'Cargado');
+  add(plan.conflicts, 'Conflicto: no se modificó');
+  add(plan.invalidInList, 'Sin celular válido en la lista');
+  add(plan.notInList, 'No está en la lista');
+  add(plan.same, 'Ya lo tenía (igual)');
+  sh.getRange(1, 1, rows.length, 6).setNumberFormat('@').setValues(rows);
+  sh.getRange(1, 1, 1, 6).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  return rows.length - 1;
+}
+
+function _summarizePhonesLoad_(plan, source) {
+  var sample = function(list) {
+    return list.slice(0, 5).map(function(x) { return x.nombre + ' (CC ' + x.cedula + '): ' + x.detalle; });
+  };
+  var corporate = plan.toFill.filter(function(x) { return x.origen === 'Corporativo'; }).length;
+  return {
+    sheetName: source.sheetName,
+    listRows: source.rows,
+    listValid: Object.keys(source.byCedula).length,
+    usuarios: plan.total,
+    toFill: plan.toFill.length,
+    toFillCorporate: corporate,
+    toFillPersonal: plan.toFill.length - corporate,
+    same: plan.same.length,
+    conflicts: plan.conflicts.length,
+    invalidInList: plan.invalidInList.length,
+    notInList: plan.notInList.length,
+    conflictExamples: sample(plan.conflicts),
+    invalidExamples: sample(plan.invalidInList)
+  };
+}
+
+/**
+ * Núcleo sin interfaz (también se puede correr desde el editor).
+ * apply=false → solo vista previa, no escribe nada (ni crea la columna).
+ * apply=true  → bajo LockService crea las columnas si faltan (USUARIOS y la de
+ *               celulares de externos en solicitudes), escribe y deja el reporte.
+ */
+function cargarCelularesDesdeHoja(linkOrId, apply) {
+  var id = _extractSpreadsheetId_(linkOrId);
+  if (!id) throw new Error('El enlace no parece de una hoja de Google Sheets.');
+  var usuarios = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (!usuarios) throw new Error('Hoja USUARIOS no encontrada.');
+  var source = _readPhonesSource_(id);
+  if (!source.ok) throw new Error(source.error);
+
+  if (!apply) {
+    var col = _getUsuarioPhoneCol_(usuarios);
+    var preview = _summarizePhonesLoad_(_planPhonesBulkLoad_(usuarios, col, source), source);
+    preview.applied = false;
+    preview.columnMissing = col < 0;
+    return preview;
+  }
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) throw new Error('Sistema ocupado. Intente de nuevo en unos segundos.');
+  try {
+    var migration = agregarColumnaCelular();
+    if (!migration.col) throw new Error('No se pudo crear la columna "Celular" en USUARIOS: ' + (migration.reason || 'motivo desconocido'));
+    // Deja lista también la columna de celulares de externos en la hoja de
+    // solicitudes (#A75), para que ninguna solicitud tenga que crearla. Si falla
+    // no detiene la carga: createNewRequest la sabe crear sola.
+    var requestsColumn = null;
+    try {
+      requestsColumn = agregarColumnaCelularesSolicitudes();
+    } catch (e) {
+      console.warn('cargarCelularesDesdeHoja: no se pudo crear "' + REQUEST_PHONES_HEADER + '": ' + e);
+    }
+    // Se recalcula dentro del lock: las filas pudieron cambiar desde la vista previa.
+    var plan = _planPhonesBulkLoad_(usuarios, migration.col, source);
+    var written = _writeTextColumnInBlocks_(usuarios, migration.col, plan.toFill, 'phone');
+    SpreadsheetApp.flush();
+    _writePhonesReport_(plan);
+    var result = _summarizePhonesLoad_(plan, source);
+    result.applied = true;
+    result.written = written;
+    result.column = migration.col;
+    result.columnCreated = migration.added;
+    result.requestsColumn = requestsColumn && requestsColumn.col ? requestsColumn.col : 0;
+    return result;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function menuCargarCelulares() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    var resp = ui.prompt('Cargar celulares',
+      'Pegue el enlace de la hoja de RR. HH. Debe tener la columna "cc" y "cel corporativo" y/o "cel personal".\n\n' +
+      'Se usa el corporativo; si no hay, el personal. Solo se completan usuarios ya registrados. No se crean usuarios ni se sobrescriben celulares válidos.',
+      ui.ButtonSet.OK_CANCEL);
+    if (resp.getSelectedButton() !== ui.Button.OK) return;
+    var link = resp.getResponseText();
+
+    var p = cargarCelularesDesdeHoja(link, false);
+    var resumen =
+      'Lista: pestaña "' + p.sheetName + '", ' + p.listRows + ' integrantes (' + p.listValid + ' con celular válido).\n\n' +
+      'Usuarios registrados: ' + p.usuarios + '\n' +
+      '• Se cargará el celular a: ' + p.toFill + ' (' + p.toFillCorporate + ' corporativos, ' + p.toFillPersonal + ' personales)\n' +
+      '• Ya lo tienen igual: ' + p.same + '\n' +
+      '• Conflictos (tienen otro celular, NO se tocan): ' + p.conflicts + '\n' +
+      '• Sin celular válido en la lista: ' + p.invalidInList + '\n' +
+      '• No aparecen en la lista: ' + p.notInList;
+    if (p.conflictExamples.length) resumen += '\n\nConflictos (primeros):\n' + p.conflictExamples.join('\n');
+    if (p.invalidExamples.length) resumen += '\n\nSin celular válido (primeros):\n' + p.invalidExamples.join('\n');
+
+    if (p.toFill === 0) {
+      ui.alert('No hay celulares para cargar', resumen, ui.ButtonSet.OK);
+      return;
+    }
+    if (p.columnMissing) resumen += '\n\nSe creará la columna "Celular" al final de USUARIOS.';
+    var ok = ui.alert('Confirmar carga', resumen + '\n\n¿Cargar ahora? El detalle quedará en la pestaña "' + PHONES_REPORT_SHEET + '".', ui.ButtonSet.YES_NO);
+    if (ok !== ui.Button.YES) return;
+
+    var r = cargarCelularesDesdeHoja(link, true);
+    ui.alert('Carga completada',
+      'Celulares cargados: ' + r.written + ' (columna ' + r.column + (r.columnCreated ? ', creada ahora' : '') + ')\n' +
+      (r.requestsColumn ? 'Columna "' + REQUEST_PHONES_HEADER + '" lista en ' + SHEET_NAME_REQUESTS + ' (columna ' + r.requestsColumn + ').\n' : '') +
+      'Conflictos sin modificar: ' + r.conflicts + '\n' +
+      'Sin celular válido en la lista: ' + r.invalidInList + '\n' +
+      'No aparecen en la lista: ' + r.notInList + '\n\n' +
+      'Detalle fila por fila en la pestaña "' + PHONES_REPORT_SHEET + '".', ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
   }
@@ -10010,6 +10579,7 @@ function onOpen() {
     .addItem('5. Agregar columnas Pasaporte (K, L)', 'agregarColumnasPasaporte')
     .addItem('6. Agregar columnas Fecha de Nacimiento', 'menuAgregarColumnaFechaNacimiento')
     .addItem('7. Cargar fechas de nacimiento (lista RR. HH.)', 'menuCargarFechasNacimiento')
+    .addItem('8. Cargar celulares (lista RR. HH.)', 'menuCargarCelulares')
     .addToUi();
 }
 
@@ -10714,6 +11284,10 @@ function _writeUsuarioRow_(sheet, rowNumber, data, lookup) {
   if (data.fechaNacimiento !== undefined) {
     _writeUsuarioBirthdate_(sheet, rowNumber, data.fechaNacimiento);
   }
+  // Celular (#A75): igual que la fecha, solo si la clave viene y por nombre.
+  if (data.celular !== undefined) {
+    _writeUsuarioPhone_(sheet, rowNumber, data.celular);
+  }
 }
 
 /**
@@ -10831,7 +11405,8 @@ function usuarios_listAll() {
   const idxPasaporteFecha = headers.indexOf('Pasaporte Fecha');
   const idxPasaporteFile = headers.indexOf('Pasaporte File ID');
   const idxFechaNac = headers.map(_normalizeHeader_).indexOf(USUARIOS_BIRTHDATE_HEADER);
-  const maxCol = Math.max(10, idxPasaporteFecha + 1, idxPasaporteFile + 1, idxFechaNac + 1, 1);
+  const idxCelular = headers.map(_normalizeHeader_).indexOf(USUARIOS_PHONE_HEADER);
+  const maxCol = Math.max(10, idxPasaporteFecha + 1, idxPasaporteFile + 1, idxFechaNac + 1, idxCelular + 1, 1);
   const data = sheet.getRange(2, 1, lastRow - 1, maxCol).getValues();
   return data.filter(function(r) { return r[0]; }).map(function(r) {
     var passportDate = idxPasaporteFecha >= 0 ? String(r[idxPasaporteFecha] || '').trim() : '';
@@ -10854,7 +11429,10 @@ function usuarios_listAll() {
       passportDate: passportDate,
       // Solo contextos de administración (sidebar). mobileAdmin_getBootstrap la
       // quita: el panel móvil solo crea usuarios y no necesita fechas ajenas.
-      fechaNacimiento: idxFechaNac >= 0 ? _birthdateCellToIso_(r[idxFechaNac]) : ''
+      fechaNacimiento: idxFechaNac >= 0 ? _birthdateCellToIso_(r[idxFechaNac]) : '',
+      // Igual que la fecha (#A75). Texto tal cual: si alguien lo escribió mal a
+      // mano, el sidebar lo muestra para corregirlo.
+      celular: idxCelular >= 0 ? _phoneCellToText_(r[idxCelular]) : ''
     };
   });
 }
@@ -11002,6 +11580,12 @@ function usuarios_create(data) {
     if (!birth.ok) throw new Error(birth.error);
     if (_getUsuarioBirthdateCol_(sheet) < 0) throw new Error(BIRTHDATE_COLUMN_MISSING_MSG);
 
+    // Celular: OPCIONAL (#A75). Si viene, se valida y se asegura la columna
+    // ANTES de escribir la fila, por la misma razón que la fecha.
+    const phone = _validateOptionalPhone_(data.celular);
+    if (!phone.ok) throw new Error(phone.error);
+    if (phone.value && _getUsuarioPhoneCol_(sheet) < 0) agregarColumnaCelular();
+
     // Pre-construir lookup con el nuevo usuario inyectado para que cols H/I
     // se resuelvan correctamente cuando es su propio aprobador (su cédula
     // aparece en cedulasAprobadores antes de existir en la hoja).
@@ -11020,7 +11604,8 @@ function usuarios_create(data) {
       sede: data.sede,
       centroCosto: data.centroCosto,
       cedulasAprobadores: data.cedulasAprobadores,
-      fechaNacimiento: birth.value
+      fechaNacimiento: birth.value,
+      celular: phone.value || undefined
     }, lookup);
     SpreadsheetApp.flush();
     return { success: true, cedula: cedula };
@@ -11066,6 +11651,21 @@ function usuarios_update(originalCedula, data) {
     }
   }
 
+  // Celular (#A75): opcional. Clave ausente = no tocar; vacía = sin celular;
+  // con valor = se valida. Todo se resuelve antes de escribir.
+  var phoneUpdate;
+  if (data.celular !== undefined) {
+    var phoneU = _validateOptionalPhone_(data.celular);
+    if (!phoneU.ok) throw new Error(phoneU.error);
+    var phoneCol = _getUsuarioPhoneCol_(sheet);
+    if (phoneU.value) {
+      if (phoneCol < 0) agregarColumnaCelular();
+      phoneUpdate = phoneU.value;
+    } else if (phoneCol > 0) {
+      phoneUpdate = '';
+    }
+  }
+
   // Preservar el hash de PIN existente
   const existingPin = String(sheet.getRange(row, 10).getValue() || '').trim();
 
@@ -11091,7 +11691,8 @@ function usuarios_update(originalCedula, data) {
     centroCosto: data.centroCosto,
     cedulasAprobadores: data.cedulasAprobadores,
     pinHash: existingPin,
-    fechaNacimiento: birthUpdate
+    fechaNacimiento: birthUpdate,
+    celular: phoneUpdate
   }, lookup);
   SpreadsheetApp.flush();
   return { success: true };
@@ -13140,11 +13741,11 @@ function _requireMobileAdminAuth_(email, token) {
 function mobileAdmin_getBootstrap(email, token) {
   _requireMobileAdminAuth_(email, token);
   return {
-    // Se quita fechaNacimiento: el panel móvil solo usa el listado para detectar
-    // duplicados y elegir aprobadores; no necesita datos personales ajenos.
+    // Se quitan fechaNacimiento y celular: el panel móvil solo usa el listado para
+    // detectar duplicados y elegir aprobadores; no necesita datos personales ajenos.
     users: usuarios_listAll().map(function(u) {
       var copy = {};
-      Object.keys(u).forEach(function(k) { if (k !== 'fechaNacimiento') copy[k] = u[k]; });
+      Object.keys(u).forEach(function(k) { if (k !== 'fechaNacimiento' && k !== 'celular') copy[k] = u[k]; });
       return copy;
     }),
     empresas: usuarios_getEmpresas(),

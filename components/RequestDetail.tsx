@@ -1,11 +1,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { TravelRequest, RequestStatus, Integrant, SupportFile, PassportStatus, PassengerBirthdate, APPROVER_ROLE_LABELS } from '../types';
+import { TravelRequest, RequestStatus, Integrant, SupportFile, PassportStatus, PassengerAdminInfo, APPROVER_ROLE_LABELS } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { getDaysDiff, formatToDDMMYYYY, formatLongDateTime } from '../utils/dateUtils';
 import { PassportUploadModal } from './PassportUploadModal';
 import { ageOnDate, todayIsoLocal } from '../utils/birthdate';
+import { formatPhone } from '../utils/phone';
 
 interface RequestDetailProps {
     request: TravelRequest;
@@ -111,20 +112,14 @@ interface PassportsPanelProps {
 const sanitizeCedula = (raw: string) => String(raw || '').replace(/\D+/g, '').substring(0, 30);
 
 // ============================================================
-// FECHA DE NACIMIENTO por pasajero (mejora C2, reunión 2026-09-10).
-// Solo se muestra a administradores: el área de viajes la necesita para emitir
-// el tiquete. El solicitante no la ve: en una solicitud se pueden escribir
-// cédulas de otras personas.
+// FECHA DE NACIMIENTO Y CELULAR por pasajero (C2 y #A74, 2026-09-10).
+// Solo se muestran a administradores: el área de viajes necesita la fecha para
+// emitir el tiquete y el celular para contactar al pasajero. El solicitante no
+// los ve: en una solicitud se pueden escribir cédulas de otras personas.
 // ============================================================
 type BirthdatesLoadState = 'idle' | 'loading' | 'ready' | 'error';
 
-const PassengerBirthdateLine: React.FC<{ state: BirthdatesLoadState; entry?: PassengerBirthdate }> = ({ state, entry }) => {
-    if (state === 'loading' || state === 'idle') {
-        return <span className="text-[11px] text-gray-400 animate-pulse">Fecha de nacimiento…</span>;
-    }
-    if (state === 'error') {
-        return <span className="text-[11px] text-gray-400">No se pudo cargar la fecha de nacimiento.</span>;
-    }
+const PassengerBirthdatePart: React.FC<{ entry?: PassengerAdminInfo }> = ({ entry }) => {
     if (!entry || !entry.birthdate) {
         return <span className="text-[11px] font-semibold text-amber-700">⚠️ Sin fecha de nacimiento</span>;
     }
@@ -138,6 +133,43 @@ const PassengerBirthdateLine: React.FC<{ state: BirthdatesLoadState; entry?: Pas
             {entry.source === 'SOLICITUD' && (
                 <span className="text-[10px] text-gray-400"> · registrada en esta solicitud</span>
             )}
+        </span>
+    );
+};
+
+const PassengerPhonePart: React.FC<{ entry?: PassengerAdminInfo }> = ({ entry }) => {
+    // Sin `phone` = backend anterior a #A74: no se muestra nada.
+    if (!entry || entry.phone === undefined) return null;
+    if (!entry.phone) {
+        return <span className="text-[11px] text-gray-400">📱 Sin celular registrado</span>;
+    }
+    return (
+        <span className="text-xs text-gray-600">
+            📱 <a href={`tel:+57${entry.phone}`} className="font-mono hover:underline">{formatPhone(entry.phone)}</a>
+            {' · '}
+            <a
+                href={`https://wa.me/57${entry.phone}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-green-700 hover:underline"
+            >
+                WhatsApp
+            </a>
+        </span>
+    );
+};
+
+const PassengerAdminInfoLine: React.FC<{ state: BirthdatesLoadState; entry?: PassengerAdminInfo }> = ({ state, entry }) => {
+    if (state === 'loading' || state === 'idle') {
+        return <span className="text-[11px] text-gray-400 animate-pulse">Fecha de nacimiento y celular…</span>;
+    }
+    if (state === 'error') {
+        return <span className="text-[11px] text-gray-400">No se pudo cargar la fecha de nacimiento ni el celular.</span>;
+    }
+    return (
+        <span className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+            <PassengerBirthdatePart entry={entry} />
+            <PassengerPhonePart entry={entry} />
         </span>
     );
 };
@@ -284,28 +316,33 @@ const PassportsPanel: React.FC<PassportsPanelProps> = ({ passengers, requestId }
 };
 
 export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModify, isAdmin = false, isSuperAdmin = false }: RequestDetailProps) => {
-    // Fecha de nacimiento por pasajero (C2): solo se consulta para administradores.
-    const [birthdates, setBirthdates] = useState<Record<string, PassengerBirthdate>>({});
-    const [birthdatesState, setBirthdatesState] = useState<BirthdatesLoadState>('idle');
+    // Fecha de nacimiento y celular por pasajero (C2, #A74): solo administradores.
+    // Con el backend actual llegan dentro de getRequestById, así que se muestran
+    // al abrir el detalle sin otra llamada. Si no vienen (backend anterior, o
+    // esa lectura falló en el servidor) se consultan aparte, como antes.
+    const embeddedAdminInfo = isAdmin && Array.isArray(request.passengerAdminInfo) ? request.passengerAdminInfo : null;
+    const [fetchedAdminInfo, setFetchedAdminInfo] = useState<PassengerAdminInfo[] | null>(null);
+    const [adminInfoFetchState, setAdminInfoFetchState] = useState<BirthdatesLoadState>('idle');
     useEffect(() => {
-        if (!isAdmin || !request.requestId) {
-            setBirthdates({});
-            setBirthdatesState('idle');
+        setFetchedAdminInfo(null);
+        if (!isAdmin || !request.requestId || embeddedAdminInfo) {
+            setAdminInfoFetchState('idle');
             return;
         }
         let cancelled = false;
-        setBirthdatesState('loading');
+        setAdminInfoFetchState('loading');
         gasService.getPassengerBirthdates(request.requestId)
             .then(rows => {
                 if (cancelled) return;
-                const map: Record<string, PassengerBirthdate> = {};
-                rows.forEach(r => { map[r.cedula] = r; });
-                setBirthdates(map);
-                setBirthdatesState('ready');
+                setFetchedAdminInfo(rows);
+                setAdminInfoFetchState('ready');
             })
-            .catch(() => { if (!cancelled) setBirthdatesState('error'); });
+            .catch(() => { if (!cancelled) setAdminInfoFetchState('error'); });
         return () => { cancelled = true; };
-    }, [isAdmin, request.requestId]);
+    }, [isAdmin, request.requestId, embeddedAdminInfo]);
+    const passengerInfoState: BirthdatesLoadState = embeddedAdminInfo ? 'ready' : adminInfoFetchState;
+    const passengerInfoByCedula: Record<string, PassengerAdminInfo> = {};
+    (embeddedAdminInfo || fetchedAdminInfo || []).forEach(r => { passengerInfoByCedula[r.cedula] = r; });
 
     const [loading, setLoading] = useState(false);
     const [userSelectionText, setUserSelectionText] = useState('');
@@ -784,13 +821,13 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                         <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 border-b border-gray-100 pb-2">
                                             Pasajeros ({request.passengers.length})
                                         </h4>
-                                        <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                        <div className={`space-y-2 ${isAdmin ? 'max-h-64' : 'max-h-40'} overflow-y-auto pr-1`}>
                                             {request.passengers.map((p, idx) => (
                                                 <div key={idx} className="flex flex-col bg-gray-50 p-2 rounded border border-gray-100">
                                                     <span className="font-bold text-gray-800 text-sm">{p.name}</span>
                                                     <span className="text-xs text-gray-500 font-mono">CC: {p.idNumber}</span>
                                                     {isAdmin && (
-                                                        <PassengerBirthdateLine state={birthdatesState} entry={birthdates[sanitizeCedula(p.idNumber)]} />
+                                                        <PassengerAdminInfoLine state={passengerInfoState} entry={passengerInfoByCedula[sanitizeCedula(p.idNumber)]} />
                                                     )}
                                                 </div>
                                             ))}

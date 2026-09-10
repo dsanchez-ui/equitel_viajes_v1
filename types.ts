@@ -95,15 +95,17 @@ export interface BirthdateStatus {
   cedula: string;
   registered: boolean;
   hasBirthdate: boolean;
+  hasPhone?: boolean; // #A75: si ya tiene celular válido; ausente con un backend anterior
 }
 
-// Fecha de nacimiento de un pasajero para el detalle de la solicitud. SOLO la
-// reciben los administradores (el backend lo exige). source: 'USUARIOS' = del
-// perfil; 'SOLICITUD' = de un externo, guardada en la solicitud; 'NONE' = falta.
-export interface PassengerBirthdate {
+// Fecha de nacimiento y celular de un pasajero para el detalle de la solicitud.
+// SOLO los reciben los administradores (el backend lo exige). source: 'USUARIOS'
+// = del perfil; 'SOLICITUD' = de un externo, guardada en la solicitud; 'NONE' = falta.
+export interface PassengerAdminInfo {
   cedula: string;
   birthdate: string; // 'AAAA-MM-DD' o '' si falta
   source: 'USUARIOS' | 'SOLICITUD' | 'NONE';
+  phone?: string; // celular de 10 dígitos o '' si no hay (#A74); ausente con un backend anterior
 }
 
 export interface TravelRequest {
@@ -224,6 +226,15 @@ export interface TravelRequest {
   // presencia le indica al backend que el formulario ya pide la fecha. No se
   // devuelve en las lecturas de solicitudes.
   passengerBirthdates?: Record<string, string>;
+
+  // CELULAR (#A75): solo en el payload de creación. { cédula: '3001234567' } con
+  // los celulares OPCIONALES que se escribieron en el formulario.
+  passengerPhones?: Record<string, string>;
+
+  // SOLO ADMINISTRADORES (#A74): fecha de nacimiento y celular por pasajero.
+  // Llega dentro de getRequestById cuando quien consulta es administrador; no
+  // viene para el solicitante, en las filas lite ni con un backend anterior.
+  passengerAdminInfo?: PassengerAdminInfo[];
 }
 
 // Comentario opcional dejado por un aprobador al aprobar (ver Code.gs

@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A73) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A75) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -26,7 +26,7 @@ archivos; Gmail para notificaciones.
    producción** (ver Mapa de despliegue).
 2. **Verificar siempre antes de proponer un push:** `npm run verify` (typecheck +
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
-   nacimiento + build). Debe salir en verde.
+   nacimiento y de celular + build). Debe salir en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -38,7 +38,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + build  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + build  ← antes de cualquier push
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -136,9 +136,21 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   sobrescribe una fecha válida); si es externo se guarda **solo en la solicitud**.
   Solo hospedaje no la pide. Si la consulta falla, el formulario pide la fecha a
   todos en vez de bloquear.
-- **La fecha de nacimiento por pasajero en el detalle de la solicitud solo la ven
-  los administradores** (#A71). El solicitante no: en una solicitud se pueden
-  escribir cédulas ajenas. Hacia el navegador del solicitante nunca sale una fecha.
+- **La fecha de nacimiento y el celular por pasajero en el detalle de la solicitud
+  solo los ven los administradores** (#A71, #A74). El solicitante no: en una
+  solicitud se pueden escribir cédulas ajenas. Llegan dentro de `getRequestById`
+  únicamente cuando consulta un administrador (sin segunda llamada). Hacia el
+  navegador del solicitante nunca sale una fecha ni un celular.
+- **Celular del pasajero** (#A74, #A75): el de un registrado vive solo en `USUARIOS`
+  (no se copia a las solicitudes, para que una corrección se vea de inmediato); el de
+  un externo, solo en su solicitud. Se carga desde la lista de RR. HH. con el menú
+  *8. Cargar celulares* (el **corporativo** si hay uno válido, si no el **personal**;
+  solo registrados, no sobrescribe, enlace pedido al ejecutar). Además es un campo
+  **opcional** (decisión de David) en el formulario de solicitudes (vuelos y solo
+  hospedaje, a quien no lo tenga: sirve para avisar cambios o novedades), en el
+  sidebar y en el panel móvil: vacío está bien, pero si se escribe debe ser un
+  celular válido (10 dígitos que empiezan por 3). Nunca bloquea por estar vacío ni
+  hace esperar en solo hospedaje.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -174,8 +186,8 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). |
-| **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. Nunca viaja al directorio que recibe cada usuario. |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). |
+| **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
 | **CDS vs UDEN** | Relación centro de costo ↔ unidad de negocio. |
@@ -244,6 +256,7 @@ utils/dateUtils.ts         Parseo/formato de fechas (zona America/Bogota)
 utils/EmailGenerator.ts    Generación de correos HTML (carga diferida)
 utils/workOrder.ts         Validación de OT (gemelo de Code.gs, #A66)
 utils/birthdate.ts         Validación de fecha de nacimiento (gemelo de Code.gs, #A70)
+utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #A75)
 server/
   Code.gs                  Backend completo (~14.400 líneas)
   AdminSidebar.html        Sidebar de administración del Sheets
@@ -253,6 +266,7 @@ server/
 tools/check-gas-syntax.cjs Verifica sintaxis de Code.gs y del JS de los HTML
 tools/check-workorder-parity.cjs  Frontend y backend validan la OT igual (#A66)
 tools/check-birthdate-rules.cjs   Reglas de fecha de nacimiento; frontend y backend coinciden (#A68/#A70)
+tools/check-phone-rules.cjs       Reglas de celular; frontend y backend coinciden (#A75)
 scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)
 docs/                      Guías de administrador, hoja de cálculo y planes
 ```
@@ -274,7 +288,7 @@ docs/                      Guías de administrador, hoja de cálculo y planes
 - **Rate limits:** PIN admin 5 intentos/15 min por correo; regeneración de PIN
   3/hora; creación de solicitudes 10/día.
 - **Validadores gemelos.** Las reglas que se aplican en el formulario y en el
-  backend (OT, fecha de nacimiento) viven en `utils/*.ts` **y** en `Code.gs`,
+  backend (OT, fecha de nacimiento, celular) viven en `utils/*.ts` **y** en `Code.gs`,
   porque no se puede compartir código. `npm run verify` compara ambos lados:
   cambiar uno sin el otro lo hace fallar.
 - **Campos nuevos en payloads de creación: la clave presente activa la regla.**
@@ -311,10 +325,14 @@ autorización) y verificar antes de crear una versión nueva del web app.
   Etapa 1 completada; el resto documentado con riesgo y beneficio.
 - **#A50** — limpiar el cableado legacy de `INTEGRANTES`.
 - **Plan de la reunión del 2026-09-10** —
-  [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md). Implementados
-  **Todo desplegado en producción** (#A68–#A73): fecha de nacimiento en usuarios,
-  formulario y detalle; recordatorio; carga masiva (ejecutada: 636 fechas). Mejoras
-  C1 y C3 descartadas por David.
+  [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md). **Desplegado
+  en producción** (#A68–#A73): fecha de nacimiento en usuarios, formulario y
+  detalle; recordatorio; carga masiva (ejecutada: 636 fechas). Mejoras C1 y C3
+  descartadas por David.
+- **#A74 y #A75** (detalle sin segunda llamada; celular del pasajero desde la lista
+  de RR. HH. y como campo opcional en los formularios): implementados, pendientes de
+  push, de desplegar Apps Script (`Code.gs`, `AdminSidebar.html`, `AdminMobile.html`)
+  y de correr el menú 8 con la lista.
 - **Seguimiento sin código de la carga de fechas (#A72):** corregir con RR. HH. las
   4 fechas inválidas; revisar los 115 usuarios que no aparecen en la lista de
   integrantes (¿siguen en la empresa?); borrar los usuarios de prueba `PRUEBA1` y
