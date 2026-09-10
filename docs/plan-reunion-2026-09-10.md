@@ -1,9 +1,9 @@
 # Plan — Ajustes de la reunión "Tiquetes / Aviatur" (2026-09-10)
 
-> **Estado (2026-09-10):** A (#A68), A2 (#A70), B1 (#A69) y C2 (#A71) publicados
-> en `main` (`72b825e`); **falta desplegar Apps Script**. Carga masiva implementada
-> (#A72, menú 7). C1 y C3 descartadas por David. P0 descartado por decisión de
-> David.
+> **Estado (2026-09-10): CERRADO.** Todo lo pedido está desplegado en producción:
+> A (#A68), B1 (#A69), A2 (#A70), C2 (#A71), carga masiva (#A72, ejecutada: 636
+> fechas) y ajuste visual del formulario (#A73). C1 y C3 descartadas por David. P0
+> descartado por decisión de David. Queda solo seguimiento sin código (ver al final).
 >
 > **Asistentes:** Diego Fernando Caballero Vargas, Yurani Astrid Prieto Forero,
 > Laura Cristina Molina Ortiz, David Santiago Sánchez Rocha.
@@ -252,9 +252,9 @@ Actualizado en el Anexo. Además de agregar la fecha de nacimiento:
 |---|---|---|---|
 | 1 | David | ✅ JSON del dashboard pegado y mensaje de preregistro enviado. Borrar `Temporal` si falta. | No |
 | 2 | Claude | ✅ A (#A68), A2 (#A70) y B1 (#A69) implementados y verificados. | Sí |
-| 3 | David | ✅ Push autorizado y hecho (`72b825e`). **Falta desplegar Apps Script:** pegar `Code.gs`, `AdminSidebar.html`, `AdminMobile.html` → menú 6 → versión nueva. | — |
-| 4 | David | ✅ Lista de Karen recibida (842 integrantes). Ejecutar el menú 7 tras pegar el `Code.gs` final. | — |
-| 5 | Claude | ✅ Carga masiva implementada y verificada con los datos reales (#A72). | Sí |
+| 3 | David | ✅ Push (`72b825e`, `4747c4b`, `e9f6f89`) y despliegue de Apps Script hechos. | — |
+| 4 | David | ✅ Lista de Karen recibida y cargada con el menú 7. | — |
+| 5 | Claude | ✅ Carga masiva implementada (#A72); resultado en producción: 636 cargadas, 4 inválidas, 123 no están. | Sí |
 | 6 | Claude | ✅ C2 (#A71) implementado. C1 y C3 descartadas por David. | Sí |
 
 ## Decisiones pendientes de David
@@ -263,6 +263,16 @@ Actualizado en el Anexo. Además de agregar la fecha de nacimiento:
 2. ✅ **A2:** obligatoria en vuelos; externos también, guardada en la solicitud — decidido (2026-09-10).
 3. ✅ C2 implementada (#A71); C1 y C3 descartadas por David.
 4. ✅ Lista de Karen recibida; carga masiva implementada (#A72).
+
+## Seguimiento pendiente (sin código)
+
+1. Pedir a RR. HH. las 4 fechas de nacimiento mal digitadas (Yasmín Muñoz, Santiago
+   Galeano, Álvaro Zubieta, Cristian Gutiérrez). Se pueden poner a mano en el sidebar
+   o volver a correr el menú 7 (no toca fechas ya cargadas).
+2. Revisar con RR. HH. los 115 usuarios que no aparecen en la lista de integrantes de
+   septiembre: si ya no están en la empresa, siguen pudiendo entrar al portal.
+3. Limpiezas menores en la hoja: borrar `PRUEBA1` y `PRUEBA2` de `USUARIOS`, el valor
+   suelto `ADMIN` en `N233`, y el archivo `Temporal` del editor de Apps Script.
 
 ---
 

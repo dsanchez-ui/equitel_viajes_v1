@@ -312,7 +312,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A50** — limpiar el cableado legacy de `INTEGRANTES`.
 - **Plan de la reunión del 2026-09-10** —
   [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md). Implementados
-  #A68–#A71 (fecha de nacimiento en usuarios, formulario y detalle; recordatorio)
-  están en `main` (`72b825e`); falta desplegar Apps Script. #A72 (carga masiva
-  desde la lista de RR. HH., menú 7) implementado. Mejoras C1 y C3 descartadas por
-  David.
+  **Todo desplegado en producción** (#A68–#A73): fecha de nacimiento en usuarios,
+  formulario y detalle; recordatorio; carga masiva (ejecutada: 636 fechas). Mejoras
+  C1 y C3 descartadas por David.
+- **Seguimiento sin código de la carga de fechas (#A72):** corregir con RR. HH. las
+  4 fechas inválidas; revisar los 115 usuarios que no aparecen en la lista de
+  integrantes (¿siguen en la empresa?); borrar los usuarios de prueba `PRUEBA1` y
+  `PRUEBA2` y el valor suelto `ADMIN` en `USUARIOS!N233`.

@@ -812,7 +812,7 @@ Se revisaron también los otros candidatos que arrojó el barrido: `utils/EmailG
 **Solo frontend**: push a `main` → Cloud Run. El cambio del `Dockerfile` solo aplica si el trigger de Cloud Build está configurado con Dockerfile en vez de buildpacks; en ambos caminos la versión de `serve` queda en 14.2.6. Sin pasos de Apps Script.
 
 ## **#A68 — Fecha de nacimiento en la creación y edición de usuarios**
-**Fecha:** 2026-09-10 · **Solicitado en:** reunión Tiquetes/Aviatur (Diego Caballero, Yurani Prieto, Laura Molina, David) · **Estado:** Implementado, pendiente de despliegue
+**Fecha:** 2026-09-10 · **Solicitado en:** reunión Tiquetes/Aviatur (Diego Caballero, Yurani Prieto, Laura Molina, David) · **Estado:** Desplegado en producción (2026-09-10, `72b825e`)
 
 **Necesidad:** las aerolíneas y agencias de viaje exigen la fecha de nacimiento para emitir tiquetes, y `USUARIOS` no la tenía. En la reunión se acordó que sea **obligatoria al crear usuarios nuevos**. Plan completo: [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md), sección A.
 
@@ -853,7 +853,7 @@ Se despliega junto con #A70 (mismo `Code.gs`); ver el orden recomendado allí. N
 **Posición en producción (2026-09-10):** la migración ubicó la columna en la **O**, no en la M, porque la celda **N233** tenía un valor suelto (`ADMIN`). La migración se ubica a propósito después de la última columna con datos, para no rotular datos ajenos como fecha de nacimiento. Todo el código la localiza por **nombre de encabezado**, así que funciona en la O o movida a cualquier posición desde la M (verificado: 15 escenarios con la columna en O y movida a M, incluida la consulta del formulario, el guardado desde solicitudes, la migración repetida y un encabezado con espacios de más; la prueba detecta un código que asuma posición fija). Si se mueve, arrastrar la **columna completa** y no ubicarla entre A y L.
 
 ## **#A69 — Recordatorio de unidad de negocio y centro de costos en el formulario de solicitud**
-**Fecha:** 2026-09-10 · **Solicitado en:** reunión Tiquetes/Aviatur · **Estado:** Implementado, pendiente de despliegue
+**Fecha:** 2026-09-10 · **Solicitado en:** reunión Tiquetes/Aviatur · **Estado:** Desplegado en producción (2026-09-10, `72b825e`)
 
 **Necesidad:** los solicitantes registraban mal la unidad de negocio o el centro de costos, y algunos pedían cambiar de aprobador por viajar a cargo de otra unidad. En la reunión se acordó un recordatorio en el formulario y **mantener fijos los aprobadores**.
 
@@ -864,7 +864,7 @@ Se despliega junto con #A70 (mismo `Code.gs`); ver el orden recomendado allí. N
 **Despliegue:** solo frontend, push a `main` → Cloud Run. Rollback = revert del commit.
 
 ## **#A70 — Fecha de nacimiento obligatoria en el formulario de solicitudes de vuelo**
-**Fecha:** 2026-09-10 · **Solicitado por:** David · **Estado:** Implementado, pendiente de despliegue
+**Fecha:** 2026-09-10 · **Solicitado por:** David · **Estado:** Desplegado en producción (2026-09-10, `72b825e`)
 
 **Necesidad:** ir completando la fecha de nacimiento sin esperar la base de integrantes que se pidió a Karen: pedirla al crear una solicitud a los pasajeros que aún no la tengan, explicando para qué se usa. Plan: [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md), sección A2.
 
@@ -914,7 +914,7 @@ El orden inverso también es seguro (nunca bloquea), pero mientras tanto la cons
 **Rollback:** versión anterior del web app + revert del commit. Las columnas nuevas pueden quedarse.
 
 ## **#A71 — Fecha de nacimiento visible por pasajero en el detalle de la solicitud (solo administradores)**
-**Fecha:** 2026-09-10 · **Solicitado por:** David (mejora C2 del plan) · **Estado:** Implementado, pendiente de despliegue
+**Fecha:** 2026-09-10 · **Solicitado por:** David (mejora C2 del plan) · **Estado:** Desplegado en producción (2026-09-10, `72b825e`)
 
 **Necesidad:** que el área de viajes vea la fecha de nacimiento de cada pasajero en el detalle de la solicitud, junto al nombre y la cédula, para registrarla en la aerolínea o agencia sin abrir la hoja.
 
@@ -960,7 +960,7 @@ Con el orden inverso, entre el push y la versión nueva la consulta no existe: l
 **Rollback:** versión anterior del web app + revert del commit.
 
 ## **#A72 — Carga masiva de fechas de nacimiento desde la lista de RR. HH.**
-**Fecha:** 2026-09-10 · **Solicitado por:** David · **Estado:** Implementado, pendiente de despliegue
+**Fecha:** 2026-09-10 · **Solicitado por:** David · **Estado:** Desplegado en producción (2026-09-10, `4747c4b`)
 
 **Necesidad:** Karen (RR. HH.) envió la lista de integrantes de septiembre 2026: 842 personas con su fecha de nacimiento, en una hoja de Google Sheets con la misma estructura del maestro de RR. HH. (`cc`, `nombre`, `fecha de nacimiento`, `correo corporativo`…). Hay que cargar la fecha **por cédula** a los usuarios ya registrados. **No se crean usuarios**: la lista no trae aprobador, y los nuevos se siguen creando por el sidebar o el panel móvil (decisión de David).
 
@@ -1006,8 +1006,13 @@ Análisis independiente en Python y simulación del backend coinciden: de **763 
 
 **Rollback:** los valores escritos son solo fechas en celdas que estaban vacías o sin fecha válida; el reporte lista exactamente qué filas se cargaron.
 
+### Resultado en producción (2026-09-10)
+Ejecutada por David desde el menú 7: **636 fechas cargadas, 4 inválidas en la lista y 123 usuarios que no aparecen**, exactamente lo esperado. El reporte exportado confirmó 763 filas, fechas `AAAA-MM-DD`, cédulas como texto, años 1962–2008 y ningún valor previo reemplazado.
+
+**Seguimiento (sin código):** las 4 fechas inválidas (fecha de nacimiento igual a la de ingreso, o del 2018) deben corregirse con RR. HH.; de los 123 sin fecha, 6 son externos y 2 son usuarios de prueba (`PRUEBA1`, `PRUEBA2`); los otros 115 no están en la lista de integrantes de septiembre y conviene revisar si siguen en la empresa.
+
 ## **#A73 — El formulario no mostraba nada mientras verificaba la fecha de nacimiento, ni cuando ya estaba registrada**
-**Fecha:** 2026-09-10 · **Reportado por:** David · **Estado:** Corregido, pendiente de push
+**Fecha:** 2026-09-10 · **Reportado por:** David · **Estado:** Desplegado en producción (2026-09-10, `e9f6f89`)
 
 **Síntoma:** en el formulario de solicitudes (#A70), bajo cada pasajero solo aparecía algo cuando **faltaba** la fecha de nacimiento. Mientras se consultaba, y cuando la persona ya la tenía registrada, quedaba un espacio en blanco: no se sabía si el sistema estaba cargando, había fallado o ya estaba todo bien.
 
