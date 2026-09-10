@@ -1491,7 +1491,12 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               const firstPassengerMissing = idx === 0 && p.idNumber && !inDb;
               // Fecha de nacimiento: solo en vuelos y cuando le falta al pasajero.
               const birthKey = sanitizeCedulaClient(p.idNumber);
-              const showBirthdate = !firstPassengerMissing && birthdateNeeded(birthKey) === true;
+              const birthNeed = firstPassengerMissing ? false : birthdateNeeded(birthKey);
+              const showBirthdate = birthNeed === true;
+              // Consultando por primera vez para esta cédula.
+              const birthChecking = birthNeed === null;
+              // Ya tiene fecha: se confirma sin mostrarla (el backend no la envía).
+              const birthOnFile = birthNeed === false && !isHotelOnly && !!birthKey && !!birthdateStatuses[birthKey]?.hasBirthdate;
               const birthValue = passengerBirthdates[birthKey] || '';
               const birthCheck = birthValue ? validateBirthdate(birthValue, todayIsoLocal()) : null;
               const birthRegistered = !!birthdateStatuses[birthKey]?.registered;
@@ -1527,6 +1532,17 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                         Esta cédula no está en el directorio. Escriba manualmente el nombre y correo (si aplica) del pasajero externo.
                       </p>
                     </div>
+                  </div>
+                )}
+                {birthChecking && (
+                  <div data-birthdate-checking={birthKey} className="bg-gray-50 border border-gray-200 rounded px-3 py-2 text-xs text-gray-600 animate-pulse">
+                    Verificando fecha de nacimiento de <strong>{(p.name || '').trim() || `pasajero ${idx + 1}`}</strong>…
+                  </div>
+                )}
+                {birthOnFile && (
+                  <div data-birthdate-onfile={birthKey} className="bg-green-50 border border-green-200 rounded px-3 py-2 text-xs text-green-800">
+                    <span className="font-bold">✓ Fecha de nacimiento registrada</span>
+                    <span className="text-green-700"> — no es necesario ingresarla.</span>
                   </div>
                 )}
                 {showBirthdate && (

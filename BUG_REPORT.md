@@ -1005,3 +1005,25 @@ Análisis independiente en Python y simulación del backend coinciden: de **763 
 4. Revisar la pestaña "Reporte fechas nacimiento".
 
 **Rollback:** los valores escritos son solo fechas en celdas que estaban vacías o sin fecha válida; el reporte lista exactamente qué filas se cargaron.
+
+## **#A73 — El formulario no mostraba nada mientras verificaba la fecha de nacimiento, ni cuando ya estaba registrada**
+**Fecha:** 2026-09-10 · **Reportado por:** David · **Estado:** Corregido, pendiente de push
+
+**Síntoma:** en el formulario de solicitudes (#A70), bajo cada pasajero solo aparecía algo cuando **faltaba** la fecha de nacimiento. Mientras se consultaba, y cuando la persona ya la tenía registrada, quedaba un espacio en blanco: no se sabía si el sistema estaba cargando, había fallado o ya estaba todo bien.
+
+**Cambio (solo frontend, `RequestForm`):** mismo estilo que el bloque de pasaportes.
+- Mientras consulta: línea gris con "Verificando fecha de nacimiento de {nombre}…".
+- Si ya la tiene: línea verde "✓ Fecha de nacimiento registrada — no es necesario ingresarla". **No muestra la fecha**: el backend nunca la envía al formulario.
+- Si falta, o si la consulta falla: el campo, igual que antes.
+- Solo hospedaje: nada, porque no aplica.
+
+**Verificado:** `npm run verify`. Formulario en Chrome headless con servidor simulado, 11 pasos:
+- el aviso de carga aparece y nombra al pasajero; al terminar da paso al campo o al "✓"
+- el "✓" no muestra la fecha
+- al agregar otro pasajero, el primero conserva su "✓" sin volver a "Verificando…"
+- el externo sigue mostrando su texto de siempre
+- el envío completo sigue mandando solo las fechas faltantes
+- solo hospedaje no consulta nada
+- con la consulta caída pide la fecha, sin quedarse en "Verificando…"
+
+**Despliegue:** solo frontend, push a `main`. Sin cambios en Apps Script.
