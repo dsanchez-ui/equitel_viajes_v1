@@ -62,6 +62,12 @@ const writeIntegrantesCache = (cache: IntegrantesCache) => {
 
 type StoredRole = 'REQUESTER' | 'ANALYST' | 'SUPERADMIN';
 
+// #A77: permiso para saltar la etapa de aprobación, según bootstrap. Con un
+// backend anterior (sin el campo) se mantiene la regla vieja: superadmin. El
+// backend siempre revalida al ejecutar la acción.
+const resolveCanSkipApproval = (data: { role?: string; canSkipApproval?: boolean }): boolean =>
+  data.canSkipApproval === undefined ? data.role === 'SUPERADMIN' : data.canSkipApproval === true;
+
 interface StoredSession {
   email: string;
   token: string;
@@ -150,6 +156,8 @@ const App: React.FC = () => {
   // solicitudes propias). true = ver como usuario, false = ver como admin.
   // Solo aplica cuando role === ANALYST; si role es REQUESTER, se ignora.
   const [viewAsRequester, setViewAsRequester] = useState(false);
+  // #A77: "Saltar aprobación" solo para quien el backend autoriza (Yurani y David).
+  const [canSkipApprovalFlag, setCanSkipApprovalFlag] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [loginEmailInput, setLoginEmailInput] = useState('');
   const [showPinModal, setShowPinModal] = useState(false);
@@ -175,6 +183,7 @@ const App: React.FC = () => {
       gasService.clearSession();
       setRequests([]);
       setRole(UserRole.REQUESTER);
+      setCanSkipApprovalFlag(false);
       setView('LIST');
       setLoading(false);
       alert('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
@@ -234,6 +243,8 @@ const App: React.FC = () => {
           setRequests(data.requestsLite);
         }
 
+        setCanSkipApprovalFlag(resolveCanSkipApproval(data));
+
         await handleLoginSuccess(stored.email, (data.role as StoredRole) || 'REQUESTER', resolvedIntegrantes, /*skipFetch=*/true);
       } catch (err: any) {
         console.error("Init failed", err);
@@ -260,8 +271,8 @@ const App: React.FC = () => {
   // ambos roles tienen acceso al dashboard de admin.
   const isAdminRole = role === UserRole.ANALYST || role === UserRole.SUPERADMIN;
   const isEffectiveAdmin = isAdminRole && !viewAsRequester;
-  // Solo los superadmin tienen capacidades extra (saltar selección, etc.).
-  const isEffectiveSuperAdmin = role === UserRole.SUPERADMIN && !viewAsRequester;
+  // Saltar la etapa de aprobación: permiso aparte del rol, decidido por el backend (#A77).
+  const isEffectiveSkipApprover = canSkipApprovalFlag && isEffectiveAdmin;
 
   useEffect(() => {
     if (!userEmail) return;
@@ -372,6 +383,7 @@ const App: React.FC = () => {
       setUserEmail('');
       setRequests([]);
       setRole(UserRole.REQUESTER);
+      setCanSkipApprovalFlag(false);
       setViewAsRequester(false);
       alert('No se pudo completar el inicio de sesión. Por favor intenta de nuevo.');
     } finally {
@@ -475,6 +487,7 @@ const App: React.FC = () => {
         setPendingPinEmail('');
         setPinFlowMessage('');
         // bootstrap ya retornó rol verificado server-side y los requests.
+        setCanSkipApprovalFlag(resolveCanSkipApproval(data));
         await handleLoginSuccess(pendingPinEmail, (data.role as StoredRole) || session.role, resolvedIntegrantes, /*skipFetch=*/true);
         return true;
       } catch (bootstrapErr) {
@@ -589,6 +602,7 @@ const App: React.FC = () => {
         }
 
         setShowPinModal(false);
+        setCanSkipApprovalFlag(resolveCanSkipApproval(data));
         await handleLoginSuccess(pendingAdminEmail, (data.role as StoredRole) || sessionRole, loadedIntegrantes, /*skipFetch=*/true);
         return true;
       } catch (bootstrapErr) {
@@ -616,6 +630,7 @@ const App: React.FC = () => {
     gasService.clearSession();
     setRequests([]);
     setRole(UserRole.REQUESTER);
+    setCanSkipApprovalFlag(false);
     setViewAsRequester(false);
     setLoginEmailInput('');
 
@@ -997,7 +1012,7 @@ const App: React.FC = () => {
       )}
 
       {isEffectiveAdmin && view === 'LIST' && (
-        <AdminDashboard requests={requests} integrantes={integrantes} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={handleViewRequest} isSuperAdmin={isEffectiveSuperAdmin} />
+        <AdminDashboard requests={requests} integrantes={integrantes} onRefresh={handleManualRefresh} isLoading={fetchingData} onViewRequest={handleViewRequest} canSkipApproval={isEffectiveSkipApprover} />
       )}
 
       {selectedRequest && (
@@ -1008,7 +1023,7 @@ const App: React.FC = () => {
           onRefresh={handleManualRefresh}
           onModify={handleRequestModification}
           isAdmin={isEffectiveAdmin}
-          isSuperAdmin={isEffectiveSuperAdmin}
+          canSkipApproval={isEffectiveSkipApprover}
         />
       )}
       {hydratingDetail && !selectedRequest && (

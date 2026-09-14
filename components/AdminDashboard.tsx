@@ -20,7 +20,7 @@ interface AdminDashboardProps {
   onRefresh: () => void;
   isLoading: boolean;
   onViewRequest: (req: TravelRequest) => void;
-  isSuperAdmin?: boolean;
+  canSkipApproval?: boolean;
 }
 
 /**
@@ -77,7 +77,7 @@ const _normalizeForSearch = (s: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
-const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrantes, onRefresh, isLoading, onViewRequest, isSuperAdmin }) => {
+const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrantes, onRefresh, isLoading, onViewRequest, canSkipApproval }) => {
   const [filter, setFilter] = useState<string>('ALL');
   const [showOnlyPriority, setShowOnlyPriority] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
@@ -858,7 +858,7 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
             setSelectedRequestForCosts(null);
             onRefresh();
           }}
-          isSuperAdmin={isSuperAdmin}
+          canSkipApproval={canSkipApproval}
         />
       )}
 

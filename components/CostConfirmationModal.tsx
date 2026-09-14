@@ -8,10 +8,10 @@ interface CostConfirmationModalProps {
   request: TravelRequest;
   onClose: () => void;
   onSuccess: () => void;
-  isSuperAdmin?: boolean;
+  canSkipApproval?: boolean;
 }
 
-export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ request, onClose, onSuccess, isSuperAdmin }) => {
+export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ request, onClose, onSuccess, canSkipApproval }) => {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
@@ -23,7 +23,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
   // executeSubmission. Si el dialog se cierra rápido y el usuario clickea
   // dos veces, podrían dispararse 2 updateRequestStatus en paralelo.
   const submittingRef = useRef(false);
-  // #R4.b: SUPERADMIN puede saltar etapa de aprobación (viaje ya autorizado fuera del sistema).
+  // #R4.b: saltar la etapa de aprobación (viaje ya autorizado fuera del sistema). Solo quien
+  // el backend autoriza (#A77: Yurani y David); el backend lo revalida.
   const [skipApproval, setSkipApproval] = useState<boolean>(false);
   const [skipJustification, setSkipJustification] = useState<string>('');
   const [costTickets, setCostTickets] = useState<number>(0);
@@ -73,10 +74,10 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
           ? `Se registrará el costo del hospedaje:\n\nHotel: $${costHotel.toLocaleString()}\nTotal: $${total.toLocaleString()}\n\n`
           : `Se registrarán los siguientes costos:\n\nTiquetes: $${costTickets.toLocaleString()}\nHotel: $${costHotel.toLocaleString()}\nTotal: $${total.toLocaleString()}\n\n`;
 
-      // SUPERADMIN: saltar aprobación requiere justificación válida.
+      // Saltar aprobación requiere el permiso (#A77) y una justificación válida.
       if (skipApproval) {
-          if (!isSuperAdmin) {
-              setDialog({ isOpen: true, title: 'Validación', message: 'Solo un superadmin puede saltar la etapa de aprobación.', type: 'ALERT', onConfirm: closeDialog });
+          if (!canSkipApproval) {
+              setDialog({ isOpen: true, title: 'Validación', message: 'No tienes permiso para saltar la etapa de aprobación.', type: 'ALERT', onConfirm: closeDialog });
               return;
           }
           if (skipJustification.trim().length < 10) {
@@ -209,7 +210,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
                       <span className="text-xl font-bold text-brand-red">$ {(costTickets + costHotel).toLocaleString()}</span>
                   </div>
 
-                  {isSuperAdmin && (
+                  {canSkipApproval && (
                     <div className="mt-3 p-3 border border-amber-200 bg-amber-50 rounded">
                       <label className="flex items-start gap-2 text-sm">
                         <input

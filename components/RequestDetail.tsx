@@ -15,7 +15,7 @@ interface RequestDetailProps {
     onRefresh?: () => void;
     onModify: (req: TravelRequest) => void;
     isAdmin?: boolean;
-    isSuperAdmin?: boolean;
+    canSkipApproval?: boolean;
 }
 
 // Drive image URL: uc?export=view serves raw content for public files (works cross-origin in browsers)
@@ -315,7 +315,7 @@ const PassportsPanel: React.FC<PassportsPanelProps> = ({ passengers, requestId }
     );
 };
 
-export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModify, isAdmin = false, isSuperAdmin = false }: RequestDetailProps) => {
+export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModify, isAdmin = false, canSkipApproval = false }: RequestDetailProps) => {
     // Fecha de nacimiento y celular por pasajero (C2, #A74): solo administradores.
     // Con el backend actual llegan dentro de getRequestById, así que se muestran
     // al abrir el detalle sin otra llamada. Si no vienen (backend anterior, o
@@ -1083,12 +1083,12 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                     </div>
                                 )}
 
-                                {/* --- SECTION 3C: SUPERADMIN — SALTAR APROBACIÓN (PENDIENTE_APROBACION) --- */}
-                                {request.status === 'PENDIENTE_APROBACION' && isSuperAdmin && (
+                                {/* --- SECTION 3C: SALTAR APROBACIÓN (PENDIENTE_APROBACION) — solo con permiso (#A77) --- */}
+                                {request.status === 'PENDIENTE_APROBACION' && canSkipApproval && (
                                     <div className="bg-amber-50 border-2 border-amber-400 rounded-lg p-4 mt-6 shadow-sm">
                                         <div className="flex items-start justify-between gap-4">
                                             <div className="flex-1">
-                                                <h4 className="text-sm font-bold text-amber-900 mb-1">⏩ Saltar etapa de aprobación (SUPERADMIN)</h4>
+                                                <h4 className="text-sm font-bold text-amber-900 mb-1">⏩ Saltar etapa de aprobación (permiso especial)</h4>
                                                 <p className="text-xs text-amber-800 leading-relaxed">
                                                     Pasa la solicitud directamente a <strong>APROBADA</strong> sin enviar correos a CEO/CDS/área. Úsalo solo cuando el viaje ya fue autorizado por fuera del sistema (verbal, WhatsApp, correo). Queda registrada la justificación con tu correo y timestamp.
                                                 </p>

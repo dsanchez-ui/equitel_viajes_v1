@@ -79,11 +79,24 @@ Listado de ciudades con país. Se usa para el autocompletar de origen/destino en
 
 ### MISC
 
-Hoja con dos catálogos pequeños:
+Hoja con dos catálogos pequeños y una tabla de permisos:
 - Tarjetas de crédito disponibles (las que aparecen en el dropdown cuando registras una reserva)
 - Sedes (para el formulario de nueva solicitud)
+- Accesos al dashboard de costos: quién puede verlo y de qué unidad de negocio (ver abajo)
 
 **Lo que SÍ puedes hacer:** agregar sedes o tarjetas nuevas al final.
+
+#### Accesos al dashboard de costos
+
+Dos columnas con los encabezados `DASHBOARD COSTOS · CORREO` y `DASHBOARD COSTOS · UNIDAD DE NEGOCIO` en la fila 2; los datos van desde la fila 3.
+
+- **Analistas y superadmins** ven todas las unidades sin estar en la tabla.
+- **Cada fila da acceso a una persona a una unidad:** el correo con el que entra al portal y la unidad elegida de la lista desplegable. Para varias unidades, una fila por unidad. `TODAS` da acceso a todas.
+- **Quien no esté en la tabla no puede entrar al dashboard**, aunque sea aprobador.
+- La tabla se crea y se revisa con **Equitel Viajes → 9. Accesos al dashboard de costos**. La primera vez agrega los encabezados y la lista desplegable. Las siguientes, muestra quién ve qué y avisa de errores: correo no registrado en USUARIOS, unidad mal escrita, filas repetidas o incompletas.
+- Los cambios aplican la próxima vez que la persona abra el dashboard. No hay que desplegar nada.
+
+**Lo que NO debes hacer:** cambiar los encabezados de esas dos columnas ni escribir las unidades a mano sin revisarlas con el menú 9 (una unidad mal escrita no muestra datos).
 
 ### REGLAS_COAPROBADOR
 

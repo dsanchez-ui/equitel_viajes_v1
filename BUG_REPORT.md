@@ -1114,3 +1114,140 @@ Pasos en Apps Script: pegar `Code.gs` → Guardar → **nueva versión** del web
 - Backend nuevo + frontend viejo: el formulario sigue igual que hoy.
 
 Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` → Guardar → **nueva versión** del web app (el panel móvil se sirve desde ahí) → recargar la hoja → menú 8 con el enlace de la lista (crea también la columna de celulares de externos en `Nueva Base Solicitudes`).
+
+## **#A76 — Dashboard de costos: cada líder ve solo su unidad de negocio**
+**Fecha:** 2026-09-14 · **Reportado por:** Yurani (vía David) · **Estado:** Implementado, pendiente de push y despliegue
+
+**Pedido:** que ciertos líderes entren al dashboard de costos viendo **solo** su unidad de negocio (p. ej. Simón García: Potencia, GDM y P&M), sin ver valores de las demás, y que quien no tenga un permiso asignado no pueda entrar.
+
+**Cómo estaba:**
+- Entraban analistas, superadmins y **cualquier aprobador** (regla del 2026-05-11), y todos veían todas las unidades.
+- La página recibía los datos de todas las unidades y filtraba en el navegador: el filtro de unidad era solo visual.
+- Simón, por ser su propio aprobador, ya veía todo.
+
+**Cambio:**
+- **Tabla de accesos en MISC:** encabezados `DASHBOARD COSTOS · CORREO` y `DASHBOARD COSTOS · UNIDAD DE NEGOCIO` en la fila 2, buscados por nombre. Una fila por persona y unidad; `TODAS` da acceso a todas.
+- **Reglas:**
+  - Analistas y superadmins ven todo.
+  - Los de la tabla ven solo sus unidades.
+  - Nadie más entra: los aprobadores que no estén en la tabla pierden el acceso.
+  - Si la tabla no existe o no se puede leer, solo entran los administradores.
+- **Filtro en el servidor**, dentro de `_csBuildData_` y **antes** de cualquier suma o conteo. A un líder no le llegan montos, nombres de unidades, IDs de solicitudes, contadores de exclusión ni estadísticas del caché de otras unidades, y pedir otra unidad en los filtros devuelve vacío.
+- `getCostsDashboardConfig` queda solo para analistas y superadmins. El reporte de variación sigue igual (solo administradores).
+- **Página:**
+  - la pantalla de ingreso explica la regla nueva
+  - el mensaje de "sin acceso" dice cómo pedirlo
+  - al líder se le muestra "Acceso limitado a …" y el filtro de unidad dice "Todas las asignadas"
+- **Menú 9. Accesos al dashboard de costos:**
+  - crea la tabla al final de MISC, con una lista desplegable de las unidades conocidas más `TODAS`, que se refresca en cada corrida
+  - muestra quién ve qué
+  - avisa de correos no registrados en USUARIOS, unidades que no coinciden, filas repetidas o incompletas, y administradores que no necesitan fila
+- Se retiraron `_csGetApproverEmails_` y `_csIsApprover_`, que quedaron sin uso.
+
+**Verificado:**
+- `npm run verify`.
+- Simulación del `Code.gs` completo con la copia de la base (542 solicitudes, 764 usuarios), comparada con la versión anterior del código, 25 escenarios:
+  - **administradores:** resultado idéntico al de antes (2026: 311 solicitudes y 17 unidades; también 2025 y con filtros de meses y empresa)
+  - **Simón con POTENCIA:**
+    - recibe solo su unidad, igual a la que ve el analista (114 solicitudes), con totales y meses calculados solo con ella
+    - los contadores de exclusión cuadran exactamente con sus solicitudes
+    - en su respuesta no aparece ninguna otra unidad ni IDs de solicitudes ajenas
+    - pedir otra unidad devuelve vacío
+  - **variantes:** dos unidades con el correo en mayúsculas y la unidad en minúsculas; `TODAS`; unidad escrita con espacio duro
+  - **sin acceso:**
+    - un aprobador fuera de la tabla, que antes veía todo
+    - fila sin unidad, correo inválido, un usuario cualquiera
+    - tabla inexistente (falla cerrado)
+    - la tabla se encuentra aunque se mueva de columna o los encabezados se escriban distinto
+  - **otros:**
+    - configuración y reporte de variación
+    - el camino real de la página (`costsDashboard_getData` → `dispatch`)
+    - sedes y tarjetas de MISC idénticas con o sin la tabla nueva
+  - **menú 9:**
+    - crea la tabla en H–I sin tocar A–F, con la lista desplegable
+    - es idempotente y da un error claro si queda un solo encabezado
+    - la revisión da sus 7 tipos de aviso y la pantalla resume quién ve qué
+- 7 defectos introducidos a propósito, todos detectados.
+- Página en Chrome headless con los datos que devuelve el backend simulado, 13 pasos:
+  - **líder:**
+    - la pantalla de ingreso explica la regla nueva
+    - entra y ve "Acceso limitado a POTENCIA (GDM - P&M)"; el filtro de unidad solo ofrece la suya
+    - ningún nombre de otras unidades en el dashboard, ni visible ni oculto
+    - sin reporte de variación, sin configuración y sin estadísticas del caché
+  - **sin acceso:** vuelve al ingreso con el mensaje nuevo
+  - **analista:** sin aviso de acceso limitado y con sus 17 unidades
+  - una verificación falló la primera vez por un error del propio test, que buscaba los nombres en todo el texto de la página, incluido su propio script; se diagnosticó y se corrigió el test, no el código
+
+**Despliegue:** solo Apps Script (`Code.gs` y `CostsDashboard.html`); la app React no cambia. Orden para no dejar a nadie sin acceso entre medio:
+1. Pegar ambos archivos y guardar. El menú de la hoja usa el código guardado; el dashboard sigue con la versión publicada.
+2. Recargar la hoja → menú 9 (crea la tabla) → llenarla con la lista de Yurani → menú 9 otra vez para revisar.
+3. Recién entonces, nueva versión del web app: desde ese momento aplica la regla nueva.
+
+**Nota:** la documentación en `docs/guia-hoja-calculo.md` quedó actualizada; los `.html` y `.pdf` de las guías no se regeneraron (`npm run build:guia`).
+
+## **#A77 — Saltar la aprobación: solo Yurani y David; nadie puede aprobar por la API**
+**Fecha:** 2026-09-14 · **Reportado por:** Yurani (vía David) · **Estado:** Implementado, pendiente de push y despliegue
+
+**Pedido:**
+- Que saltar la etapa de aprobación lo tenga solo Yurani.
+- David conserva el permiso como administrador del sistema (no lo usa, pero debe poder) y necesita comprobar que nadie más lo tiene.
+- Bajar a Diego (`directorcompras`) de superadmin a administrador normal, como Laura.
+
+**Cómo estaba:**
+- Saltar la aprobación lo podía hacer **cualquier superadmin** (`SUPER_ADMIN_EMAILS`, una propiedad del script): agregar a alguien como superadmin le daba ese poder.
+- La casilla del modal de costos manda una bandera para **no enviar el correo a los aprobadores**, y el backend la aceptaba de cualquier usuario.
+- **Hueco de la API:**
+  - `updateRequest` guardaba el estado que le enviaran, sin validar quién llamaba: cualquier usuario con sesión, incluso un solicitante, podía poner una solicitud en APROBADO (o RESERVADO, ANULADO…) llamándola directamente.
+  - `createRequest` guardaba el estado que mandara el cliente: se podía crear una solicitud ya aprobada.
+  - La app no ofrecía esas opciones, pero la API las aceptaba.
+
+**Cambio:**
+- **Regla fija en el código** (`SKIP_APPROVAL_ALLOWED`): pueden saltar la aprobación Yurani Prieto y David Sánchez, y además deben ser administradores.
+  - No depende del rol superadmin: dar superadmin a otra persona no le da el permiso.
+  - Cambiar la lista exige modificar `Code.gs`, así que queda en git.
+- **Dónde se aplica:**
+  - en `dispatch` para `skipApprovalStage`, y otra vez dentro de la función (defensa en profundidad)
+  - en la bandera de "no avisar a aprobadores": a cualquier otro se le ignora y los correos salen normalmente
+  - en `bootstrap` (`canSkipApproval`): la app muestra el botón del detalle y la casilla del modal de costos solo a quien tiene el permiso; con un backend anterior, sigue la regla vieja (superadmin)
+- **`updateRequest` solo acepta los cambios que usa la app:**
+  - administrador: `PENDIENTE_SELECCION`, `PENDIENTE_CONFIRMACION_COSTO` y `PENDIENTE_APROBACION`
+  - solicitante: `PENDIENTE_CONFIRMACION_COSTO` con su selección, solo sobre su solicitud y solo si está en `PENDIENTE_SELECCION`; cualquier otro dato que mande (opciones, costos) se ignora
+  - `APROBADO`, `DENEGADO`, `RESERVADO`, `PROCESADO` y `ANULADO` nunca entran por esa vía; tienen su propio flujo
+- **`createRequest`:** toda solicitud nueva nace en `PENDIENTE_OPCIONES`. Las solicitudes de cambio siguen por `requestModification`.
+- **Menú 10. Ver administradores y quién salta aprobación** (solo lectura): quién puede saltar la aprobación y la lista de superadmins y analistas, con nombre.
+- **Diego:** script temporal que no queda en el código. Lo agrega a `ANALYST_EMAILS` y **después** lo quita de `SUPER_ADMIN_EMAILS` (nunca queda sin acceso), y deja en el registro quién puede saltar la aprobación. **Ejecutado por David el 2026-09-14**: el menú 10 confirma superadmins David y Yurani, analistas apcompras, Laura y Diego, y que solo Yurani y David pueden saltar la aprobación.
+
+**Alcance de la garantía:** la app y su API. Quien tenga acceso de edición a la hoja o al proyecto de Apps Script puede cambiar celdas o código directamente; eso queda por fuera del sistema y en el historial de versiones de Google.
+
+**Verificado:**
+- `npm run verify`.
+- Simulación del `Code.gs` completo, 29 escenarios:
+  - **quién puede:**
+    - con Yurani, Diego y David como superadmins: solo Yurani y David
+    - David solo como analista: puede; David sin rol de administrador: no
+    - un superadmin nuevo no puede
+  - **saltar por la API:**
+    - Diego (superadmin), Laura y un solicitante son rechazados, sin cambios en la solicitud
+    - la función directa también rechaza a Diego
+    - Yurani y David sí pueden, con trazabilidad
+  - **ninguno de los cinco** (solicitante dueño, Laura, Diego, Yurani, David) puede poner `APROBADO` con `updateRequest`, ni `DENEGADO`, `RESERVADO`, `PROCESADO`, `ANULADO` o un estado vacío
+  - **flujos normales intactos:**
+    - publicar opciones y enviar la selección del solicitante siguen igual
+    - si el solicitante manda opciones o costos, se ignoran
+    - no puede reenviar la selección fuera de etapa ni sobre una solicitud ajena, ni confirmar costos o publicar opciones
+    - confirmar costos envía el correo a los aprobadores
+  - **bandera de no avisar:** Laura la manda y se ignora (el correo sale); con Yurani funciona como antes
+  - **crear:** con `status: APROBADO` nace en `PENDIENTE_OPCIONES`; una creación normal sigue igual
+  - **`bootstrap`:** `canSkipApproval` solo para Yurani y David
+  - **menú 10:** con y sin David como administrador
+  - **script de Diego:** resultado exacto; repetido no duplica ni cambia a nadie más; Diego, ya analista, sigue sin poder saltar; con la propiedad dañada no cambia nada
+- 10 defectos introducidos a propósito, todos detectados. Un escenario falló la primera vez por un error del propio test (esperaba tres espacios en el registro y hay dos); se diagnosticó y se corrigió el test.
+- Chrome headless, 4 pasos: con permiso aparecen el botón del detalle y la casilla del modal de costos; sin permiso no aparecen y el resto se ve igual.
+- **Regresión con #A76 y #A77 aplicados:** las simulaciones de #A68–#A75 pasan con los mismos conteos que al crearlas: usuarios 19, posición de columna 15, A2 20, C2 11, carga masiva 20, #A74 33 y #A75 31. Se habían borrado de la carpeta temporal entre sesiones y se reconstruyeron desde el historial, reaplicando solo los bloques que escriben en esa carpeta y abortando si alguno mencionaba archivos del repo.
+
+**Despliegue:**
+1. Apps Script: pegar `Code.gs` y guardar → nueva versión del web app.
+   - Con el frontend actual, un superadmin sigue viendo el botón, pero el backend rechaza a quien no sea Yurani o David, con un mensaje claro.
+   - Los flujos normales no cambian.
+2. Ejecutar el script temporal de Diego y borrarlo; comprobar con el menú 10.
+3. Push a `main` (frontend). Si el frontend llega primero, el botón y la casilla se muestran a los superadmins (regla vieja) hasta que el backend nuevo esté publicado.

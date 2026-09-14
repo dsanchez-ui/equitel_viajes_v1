@@ -385,7 +385,7 @@ function _resetPerExecutionCaches_() {
   _REQUEST_ROW_CACHE = null;
   _REQUESTER_CEDULA_CACHE = null;
   _CACHED_GMAIL_ALIASES = null;
-  _CS_APPROVERS_CACHE = null;
+  _CS_ACCESS_CACHE = null;
   _CS_CONFIG_CACHE = null;
   _PASSPORT_FOLDER_CACHE = null;
 }
@@ -626,11 +626,14 @@ function dispatch(action, payload) {
     // superadmin desaparece al siguiente intento sin invalidar su sesión.
     // (skipSelectionStage se movió a adminOnlyActions: Wendy ANALYST también
     // necesita saltarse selección cuando gestiona compra por fuera.)
-    // skipApprovalStage SÍ es superadmin: saltarse una aprobación ejecutiva
-    // es decisión que solo David/Yurani pueden tomar.
-    const superAdminOnlyActions = ['skipApprovalStage', 'setCostsDashboardConfig', 'resetCostsDashboardConfig'];
+    const superAdminOnlyActions = ['setCostsDashboardConfig', 'resetCostsDashboardConfig'];
     if (superAdminOnlyActions.includes(action) && !isSuperAdmin(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de superadmin.' };
+    }
+    // Saltar la etapa de aprobación (#A77): lista fija en el código
+    // (SKIP_APPROVAL_ALLOWED), NO el rol superadmin. Se revalida en cada request.
+    if (action === 'skipApprovalStage' && !_canSkipApproval_(currentUserEmail)) {
+      return { success: false, error: _skipApprovalDeniedMsg_() };
     }
 
     // LOCKING STRATEGY: Block execution until lock is acquired to prevent race conditions.
@@ -713,10 +716,20 @@ function dispatch(action, payload) {
         Object.keys(reqData).forEach(function(k) {
           if (k !== 'sessionToken' && k !== 'userEmail' && k !== 'action') cleanData[k] = reqData[k];
         });
+        // #A77: una solicitud nueva SIEMPRE nace en PENDIENTE_OPCIONES (es lo que
+        // envía la app). Antes se guardaba el estado que mandara el cliente, así
+        // que alguien podía crearla ya APROBADA llamando a la API. Las solicitudes
+        // de cambio no pasan por aquí (requestModification fija su estado).
+        cleanData.status = 'PENDIENTE_OPCIONES';
         result = createNewRequest(cleanData, payload.emailHtml);
         break;
       }
-      case 'updateRequest': result = updateRequestStatus(payload.id, payload.status, payload.payload); break;
+      case 'updateRequest': {
+        // #A77: solo los cambios de estado que usa la app, por quien corresponde.
+        var _upd = _authorizeStatusUpdate_(currentUserEmail, payload);
+        result = updateRequestStatus(_upd.id, _upd.status, _upd.payload);
+        break;
+      }
       case 'uploadSupportFile': result = uploadSupportFile(payload.requestId, payload.fileData, payload.fileName, payload.mimeType, payload.correctionNote); break;
       
       // NEW: UPLOAD OPTION IMAGE (UPDATED v2.7)
@@ -4803,6 +4816,8 @@ function bootstrap(integrantesHash, sessionEmail, sessionToken) {
   var result = {
     valid: true,
     role: role,
+    // #A77: la app muestra "Saltar aprobación" solo si el backend lo permite.
+    canSkipApproval: _canSkipApproval_(sessionEmail),
     integrantesHash: currentHash,
     requestsLite: requestsLite
   };
@@ -6914,6 +6929,134 @@ function isSuperAdmin(email) {
   return getSuperAdminWhitelist_().indexOf(normalized) !== -1;
 }
 
+// =====================================================================
+// SALTAR LA ETAPA DE APROBACIÓN — QUIÉN PUEDE (#A77, 2026-09-14)
+// =====================================================================
+// Decisión de Yurani: solo ella puede saltar la aprobación; David conserva el
+// permiso como administrador del sistema. La lista vive en el CÓDIGO a
+// propósito: no depende de SUPER_ADMIN_EMAILS, así que dar superadmin a otra
+// persona NO le da este poder, y cambiarla exige modificar Code.gs (queda en
+// git). Además hay que ser administrador (analista o superadmin).
+// Se aplica en skipApprovalStage (botón del detalle y casilla del modal de
+// costos), en la bandera skipApprovalNotification al confirmar costos y en los
+// estados que acepta la API: nadie puede poner APROBADO con updateRequest ni
+// crear una solicitud ya aprobada.
+// =====================================================================
+var SKIP_APPROVAL_ALLOWED = [
+  { email: 'yprieto@equitel.com.co', name: 'Yurani Prieto' },
+  { email: 'dsanchez@equitel.com.co', name: 'David Sánchez' }
+];
+
+function _canSkipApproval_(email) {
+  var e = String(email || '').toLowerCase().trim();
+  if (!e) return false;
+  var listed = SKIP_APPROVAL_ALLOWED.some(function(p) { return p.email === e; });
+  return listed && isUserAnalyst(e);
+}
+
+function _skipApprovalDeniedMsg_() {
+  return 'Saltar la etapa de aprobación está reservado a ' +
+    SKIP_APPROVAL_ALLOWED.map(function(p) { return p.name; }).join(' y ') + '.';
+}
+
+/**
+ * Autoriza un cambio de estado pedido por la API `updateRequest` (#A77). Solo
+ * acepta los cambios que usa la app:
+ *   - Administrador: PENDIENTE_SELECCION (publicar opciones),
+ *     PENDIENTE_CONFIRMACION_COSTO (selección por trazabilidad) y
+ *     PENDIENTE_APROBACION (confirmar costos). La bandera
+ *     skipApprovalNotification (no avisar a aprobadores) solo vale para quien
+ *     puede saltar la aprobación; a cualquier otro se le ignora y los correos
+ *     salen normalmente.
+ *   - Solicitante: PENDIENTE_CONFIRMACION_COSTO con su selección, solo sobre SU
+ *     solicitud y solo si está en PENDIENTE_SELECCION. Se ignora cualquier otro
+ *     dato que mande (opciones, costos).
+ * APROBADO, DENEGADO, RESERVADO, PROCESADO y ANULADO nunca entran por aquí:
+ * tienen su propio flujo (enlaces de aprobadores, saltar aprobación, reserva,
+ * anulación). Antes esta API guardaba cualquier estado que se le enviara.
+ * @return {{id: string, status: string, payload: Object}}
+ */
+function _authorizeStatusUpdate_(currentUserEmail, payload) {
+  payload = payload || {};
+  var id = payload.id;
+  var status = String(payload.status || '').trim();
+  var inner = (payload.payload && typeof payload.payload === 'object') ? payload.payload : {};
+  var allowed = ['PENDIENTE_SELECCION', 'PENDIENTE_CONFIRMACION_COSTO', 'PENDIENTE_APROBACION'];
+  if (allowed.indexOf(status) === -1) {
+    throw new Error('Cambio de estado no permitido por esta vía: ' + (status || '(vacío)') + '.');
+  }
+  if (isUserAnalyst(currentUserEmail)) {
+    if (inner.skipApprovalNotification === true && !_canSkipApproval_(currentUserEmail)) {
+      var copy = {};
+      Object.keys(inner).forEach(function(k) { if (k !== 'skipApprovalNotification') copy[k] = inner[k]; });
+      inner = copy;
+      console.warn('updateRequest: skipApprovalNotification ignorado para ' + currentUserEmail + ' en ' + id + ' (no puede saltar la aprobación).');
+    }
+    return { id: id, status: status, payload: inner };
+  }
+  if (status !== 'PENDIENTE_CONFIRMACION_COSTO') {
+    throw new Error('Esta acción requiere permisos de administrador.');
+  }
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = _getRowByRequestId_(id);
+  if (!sheet || rowNumber === -1) throw new Error('ID no encontrado');
+  var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var owner = String(row[H('CORREO ENCUESTADO')] || '').toLowerCase().trim();
+  var me = String(currentUserEmail || '').toLowerCase().trim();
+  if (!owner || owner !== me) {
+    throw new Error('Solo el solicitante puede enviar la selección de su solicitud.');
+  }
+  var current = String(row[H('STATUS')] || '').trim();
+  if (current !== 'PENDIENTE_SELECCION') {
+    throw new Error('La selección solo se puede enviar cuando la solicitud está en PENDIENTE_SELECCION (estado actual: ' + current + ').');
+  }
+  return { id: id, status: status, payload: { selectionDetails: inner.selectionDetails } };
+}
+
+/** Datos del menú 10 (solo lectura): administradores y quién puede saltar la aprobación. */
+function _revisarPermisosAdministradores_() {
+  var names = {};
+  var usuarios = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (usuarios && usuarios.getLastRow() > 1) {
+    usuarios.getRange(2, 2, usuarios.getLastRow() - 1, 2).getValues().forEach(function(r) {
+      var em = String(r[1] || '').toLowerCase().trim();
+      if (em && !names[em]) names[em] = String(r[0] || '').trim();
+    });
+  }
+  var supers = getSuperAdminWhitelist_();
+  var analysts = getAnalystWhitelist_().filter(function(e) { return supers.indexOf(e) === -1; });
+  var person = function(e) { return { email: e, name: names[e] || '' }; };
+  return {
+    superAdmins: supers.map(person),
+    analysts: analysts.map(person),
+    skipApproval: SKIP_APPROVAL_ALLOWED.map(function(p) { return { email: p.email, name: p.name, active: _canSkipApproval_(p.email) }; })
+  };
+}
+
+function menuVerPermisosAdministradores() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    var r = _revisarPermisosAdministradores_();
+    var line = function(p) { return '• ' + (p.name ? p.name + ' (' + p.email + ')' : p.email); };
+    var lines = ['Pueden SALTAR LA ETAPA DE APROBACIÓN (regla fija en el código):'];
+    r.skipApproval.forEach(function(p) {
+      lines.push('• ' + p.name + ' (' + p.email + ')' + (p.active ? '' : ' — hoy NO puede: no está como administrador'));
+    });
+    lines.push('Nadie más puede, aunque sea superadmin o analista.');
+    lines.push('');
+    lines.push('Superadmins (' + r.superAdmins.length + '):');
+    if (!r.superAdmins.length) lines.push('• (ninguno)');
+    r.superAdmins.forEach(function(p) { lines.push(line(p)); });
+    lines.push('');
+    lines.push('Analistas (' + r.analysts.length + '):');
+    r.analysts.forEach(function(p) { lines.push(line(p)); });
+    ui.alert('Administradores y permisos', lines.join('\n'), ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
+}
+
 function getAnalystWhitelist_() {
   // EMERGENCY FALLBACK: incluso si TODO lo demás (ADMIN_EMAIL, ANALYST_EMAILS)
   // está corrupto o vacío, este set hardcoded garantiza que los admins
@@ -8979,7 +9122,7 @@ function revertToSelectionStage(requestId, reason, notifyUser, currentUserEmail)
 }
 
 // =====================================================================
-// SUPERADMIN: saltar etapa de aprobación (R4.b — solo viaje autorizado fuera)
+// SALTAR ETAPA DE APROBACIÓN (R4.b — solo viaje autorizado fuera). Quién puede: SKIP_APPROVAL_ALLOWED (#A77)
 // =====================================================================
 /**
  * Salta la etapa de aprobación cuando un ejecutivo ya autorizó el viaje por
@@ -9000,6 +9143,8 @@ function revertToSelectionStage(requestId, reason, notifyUser, currentUserEmail)
  *   - SÍ envía correo al usuario informando que fue aprobada (decisionNotification)
  */
 function skipApprovalStage(requestId, justification, currentUserEmail) {
+  // Defensa en profundidad: dispatch ya lo valida (#A77).
+  if (!_canSkipApproval_(currentUserEmail)) throw new Error(_skipApprovalDeniedMsg_());
   if (!requestId) throw new Error('requestId requerido.');
   var just = String(justification || '').trim();
   if (just.length < 10) throw new Error('La justificación es obligatoria y debe tener al menos 10 caracteres.');
@@ -10580,6 +10725,8 @@ function onOpen() {
     .addItem('6. Agregar columnas Fecha de Nacimiento', 'menuAgregarColumnaFechaNacimiento')
     .addItem('7. Cargar fechas de nacimiento (lista RR. HH.)', 'menuCargarFechasNacimiento')
     .addItem('8. Cargar celulares (lista RR. HH.)', 'menuCargarCelulares')
+    .addItem('9. Accesos al dashboard de costos', 'menuAccesosDashboardCostos')
+    .addItem('10. Ver administradores y quién salta aprobación', 'menuVerPermisosAdministradores')
     .addToUi();
 }
 
@@ -13998,9 +14145,10 @@ function toggleUsuariosMode() {
 //     dispatch en la Fase 2 del plan).
 //   - Config persistida en Script Property `COSTS_DASHBOARD_CONFIG` con
 //     default hard-coded como fallback si está vacía o malformada.
-//   - Acceso: cualquier sesión válida puede leer; solo SUPERADMIN puede
-//     guardar config. Auth se valida fuera (en dispatch) ANTES de llegar
-//     a estas funciones.
+//   - Acceso (#A76): analistas y superadmins ven todas las unidades; los
+//     líderes de la tabla de accesos de MISC, solo las suyas; nadie más
+//     entra. Solo SUPERADMIN guarda config. La sesión se valida en dispatch
+//     ANTES de llegar a estas funciones; el acceso se revalida aquí.
 //
 // Fuentes de datos:
 //   - Hoja `Nueva Base Solicitudes`: cols AK..AS = facturas, AT = ppto
@@ -14563,7 +14711,12 @@ function _csResolveMonthYear_(v) {
  *   includeNoPresupuesto: boolean (default: true)
  * }
  */
-function _csBuildData_(filters) {
+/**
+ * @param {Object} filters
+ * @param {string[]|null} allowedUnits unidades NORMALIZADAS visibles para un líder
+ *   (#A76); null = todas. Las demás se descartan antes de cualquier suma o conteo.
+ */
+function _csBuildData_(filters, allowedUnits) {
   filters = filters || {};
   var config = _csLoadConfig_();
   var configHash = _csComputeConfigHash_(config);
@@ -14679,6 +14832,11 @@ function _csBuildData_(filters) {
       cacheChanged = true;
       cacheMisses++;
     }
+
+    // ACCESO POR UNIDAD (#A76): primero que todo, para que ni los montos, ni
+    // los contadores de exclusión, ni los nombres de otras unidades lleguen a
+    // la respuesta de un líder.
+    if (allowedUnits && allowedUnits.indexOf(_csNormalize_(perRow.unidadRaw)) === -1) continue;
 
     // Aplicar filtros usando los valores del cache (filtros NO se cachean,
     // se aplican post-fetch — un mismo cómputo sirve para múltiples filtros).
@@ -15382,76 +15540,273 @@ function invalidateBudgetUsageCache_(unidad) {
   }
 }
 
+// ---------------------------------------------------------------------
+// ACCESO AL DASHBOARD DE COSTOS POR UNIDAD DE NEGOCIO (#A76, 2026-09-14)
+// ---------------------------------------------------------------------
+// Pedido de Yurani: ciertos líderes ven el dashboard SOLO de su(s) unidad(es).
+//   - ANALYST y SUPERADMIN: todas las unidades (administran el sistema).
+//   - Personas de la tabla de accesos de MISC: solo las unidades asignadas;
+//     "TODAS" da acceso completo.
+//   - Cualquier otro usuario, incluidos los aprobadores que no estén en la
+//     tabla: sin acceso. Reemplaza la regla anterior "todo aprobador entra"
+//     (2026-05-11), que dejaba ver las cifras de todas las unidades.
+// La tabla vive en MISC con dos encabezados en la fila COSTS_ACCESS_HEADER_ROW,
+// que se buscan por nombre en cualquier columna. Una fila por persona y unidad.
+// El menú "9. Accesos al dashboard de costos" la crea (con lista desplegable
+// de unidades) y la revisa.
+// El filtro se aplica en el SERVIDOR, dentro de _csBuildData_ y antes de sumar
+// o contar: al navegador de un líder no llega ningún monto, nombre ni conteo
+// de otras unidades.
+// ---------------------------------------------------------------------
+var COSTS_ACCESS_SHEET = 'MISC';
+var COSTS_ACCESS_HEADER_ROW = 2;
+var COSTS_ACCESS_EMAIL_HEADER = 'DASHBOARD COSTOS · CORREO';
+var COSTS_ACCESS_UNIT_HEADER = 'DASHBOARD COSTOS · UNIDAD DE NEGOCIO';
+var COSTS_ACCESS_ALL_UNITS = 'TODAS';
+var COSTS_ACCESS_DENIED_MSG = 'Acceso no autorizado al dashboard de costos. Si lo necesitas, pídele al área de viajes que te asigne tu unidad de negocio.';
+
+/** Columnas (0-based) de la tabla de accesos en la fila de encabezados; -1 si no están. */
+function _csFindAccessColumns_(headerRow) {
+  var emailCol = -1;
+  var unitCol = -1;
+  for (var i = 0; i < headerRow.length; i++) {
+    var h = _csNormalize_(headerRow[i]);
+    if (h.indexOf('dashboard') === -1 || h.indexOf('costo') === -1) continue;
+    if (emailCol === -1 && h.indexOf('correo') !== -1) emailCol = i;
+    else if (unitCol === -1 && h.indexOf('unidad') !== -1) unitCol = i;
+  }
+  return { emailCol: emailCol, unitCol: unitCol };
+}
+
 /**
- * Construye un Set con todos los emails que figuran como aprobador de al
- * menos un usuario en USUARIOS (col H "Correos Aprobadores (auto)"). Se
- * cachea por ejecución (perfectamente seguro: la hoja se actualiza poco y
- * cada dispatch resetea el cache via _resetPerExecutionCaches_ si fuera
- * necesario).
+ * Lee la tabla de accesos (una vez por ejecución). Si no se puede leer, no da
+ * acceso a nadie fuera de los administradores (falla cerrado).
+ * @return {{found: boolean, emailCol: number, unitCol: number,
+ *   byEmail: Object<string, {all: boolean, units: Object<string, string>}>,
+ *   entries: Array<{row: number, email: string, unit: string}>}}
  */
-var _CS_APPROVERS_CACHE = null;
-function _csGetApproverEmails_() {
-  if (_CS_APPROVERS_CACHE) return _CS_APPROVERS_CACHE;
-  var set = {};
+var _CS_ACCESS_CACHE = null;
+function _csLoadAccessTable_() {
+  if (_CS_ACCESS_CACHE) return _CS_ACCESS_CACHE;
+  var out = { found: false, emailCol: -1, unitCol: -1, byEmail: {}, entries: [] };
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName(SHEET_NAME_USUARIOS);
-    if (sheet && sheet.getLastRow() > 1) {
-      // Col H = "Correos Aprobadores (auto)" — separados por coma
-      var col = sheet.getRange(2, 8, sheet.getLastRow() - 1, 1).getValues();
-      for (var i = 0; i < col.length; i++) {
-        var raw = String(col[i][0] || '').toLowerCase();
-        if (!raw) continue;
-        var parts = raw.split(',');
-        for (var j = 0; j < parts.length; j++) {
-          var em = parts[j].trim();
-          // Filtrar entradas placeholder "(no resuelto)" etc.
-          if (em && em.indexOf('@') > -1 && em.indexOf('(') === -1) {
-            set[em] = true;
-          }
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(COSTS_ACCESS_SHEET);
+    var lastCol = sheet ? sheet.getLastColumn() : 0;
+    var lastRow = sheet ? sheet.getLastRow() : 0;
+    if (sheet && lastCol > 0 && lastRow >= COSTS_ACCESS_HEADER_ROW) {
+      var cols = _csFindAccessColumns_(sheet.getRange(COSTS_ACCESS_HEADER_ROW, 1, 1, lastCol).getValues()[0]);
+      if (cols.emailCol >= 0 && cols.unitCol >= 0) {
+        out.found = true;
+        out.emailCol = cols.emailCol + 1;
+        out.unitCol = cols.unitCol + 1;
+        var allNorm = _csNormalize_(COSTS_ACCESS_ALL_UNITS);
+        var n = lastRow - COSTS_ACCESS_HEADER_ROW;
+        var data = n > 0 ? sheet.getRange(COSTS_ACCESS_HEADER_ROW + 1, 1, n, lastCol).getValues() : [];
+        for (var r = 0; r < data.length; r++) {
+          var email = String(data[r][cols.emailCol] || '').toLowerCase().trim();
+          var unit = String(data[r][cols.unitCol] || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+          if (!email && !unit) continue;
+          out.entries.push({ row: COSTS_ACCESS_HEADER_ROW + 1 + r, email: email, unit: unit });
+          if (!unit || email.indexOf('@') === -1) continue;
+          var acc = out.byEmail[email] || (out.byEmail[email] = { all: false, units: {} });
+          var norm = _csNormalize_(unit);
+          if (norm === allNorm) acc.all = true;
+          else if (!acc.units[norm]) acc.units[norm] = unit;
         }
       }
     }
   } catch (e) {
-    console.warn('CostsDashboard: error leyendo USUARIOS para aprobadores: ' + e);
+    console.error('CostsDashboard: no se pudo leer la tabla de accesos de ' + COSTS_ACCESS_SHEET + ': ' + e);
+    out = { found: false, emailCol: -1, unitCol: -1, byEmail: {}, entries: [] };
   }
-  _CS_APPROVERS_CACHE = set;
-  return set;
-}
-
-function _csIsApprover_(email) {
-  if (!email) return false;
-  var set = _csGetApproverEmails_();
-  return !!set[String(email).toLowerCase().trim()];
+  _CS_ACCESS_CACHE = out;
+  return out;
 }
 
 /**
  * Resuelve permisos del usuario actual para el dashboard de costos.
- *
- * Acceso de lectura (canView): solo
- *   - analyst (incluye superadmin por herencia), o
- *   - aprobador (alguien que figura como aprobador en USUARIOS col H)
- * Cualquier otro usuario registrado pero sin ese rol → canView = false
- * y el endpoint retorna error de autorización.
- *
- * Acceso de configuración (canConfig): solo SUPERADMIN.
- *
- * Decisión (2026-05-11): no se permite acceso "abierto a cualquier
- * sesión válida" porque expone información financiera de unidades de
- * negocio a usuarios que no la necesitan. Los aprobadores tienen el
- * legítimo interés operativo + jerárquico para verlo.
+ *   canView   — puede ver el dashboard.
+ *   allUnits  — ve todas las unidades (administradores, o "TODAS" en la tabla).
+ *   units     — unidades normalizadas que puede ver cuando allUnits es false.
+ *   canConfig — solo SUPERADMIN.
  */
 function _csResolveAccess_(currentUserEmail) {
   var email = String(currentUserEmail || '').toLowerCase().trim();
-  if (!email) return { canView: false, canConfig: false, email: '' };
-  var isAdmin = isUserAnalyst(email); // incluye superadmin por herencia
-  var isAppr = !isAdmin && _csIsApprover_(email);
+  var none = { canView: false, canConfig: false, email: email, role: 'NONE', allUnits: false, units: [], unitLabels: [] };
+  if (!email) return none;
+  if (isUserAnalyst(email)) { // incluye superadmin por herencia
+    var superAdmin = isSuperAdmin(email);
+    return { canView: true, canConfig: superAdmin, email: email, role: superAdmin ? 'SUPERADMIN' : 'ANALYST', allUnits: true, units: [], unitLabels: [] };
+  }
+  var acc = _csLoadAccessTable_().byEmail[email];
+  if (!acc || (!acc.all && Object.keys(acc.units).length === 0)) return none;
+  var norms = acc.all ? [] : Object.keys(acc.units);
   return {
-    canView: isAdmin || isAppr,
-    canConfig: isSuperAdmin(email),
+    canView: true,
+    canConfig: false,
     email: email,
-    role: isAdmin ? (isSuperAdmin(email) ? 'SUPERADMIN' : 'ANALYST') : (isAppr ? 'APPROVER' : 'NONE')
+    role: 'VIEWER',
+    allUnits: acc.all,
+    units: norms,
+    unitLabels: norms.map(function(k) { return acc.units[k]; })
   };
+}
+
+/** Unidades de negocio conocidas {normalizada: etiqueta}: CDS vs UDEN, PPTOS y solicitudes. */
+function _csKnownUnits_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var byNorm = {};
+  var add = function(v) {
+    var label = String(v === null || v === undefined ? '' : v).replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+    var norm = _csNormalize_(label);
+    if (!norm || norm === '-' || norm === 'na') return;
+    if (!byNorm[norm]) byNorm[norm] = label;
+  };
+  var readCol = function(sheet, col) {
+    if (!sheet || col < 1 || sheet.getLastRow() < 2) return;
+    sheet.getRange(2, col, sheet.getLastRow() - 1, 1).getValues().forEach(function(r) { add(r[0]); });
+  };
+  readCol(ss.getSheetByName('CDS vs UDEN'), 3);
+  readCol(ss.getSheetByName(SHEET_NAME_PPTOS), 3);
+  readCol(ss.getSheetByName(SHEET_NAME_REQUESTS), H(_csLoadConfig_().unitHeader || 'UNIDAD DE NEGOCIO') + 1);
+  return byNorm;
+}
+
+/** Letra de columna (1 → A, 27 → AA). */
+function _csColumnLetter_(n) {
+  var s = '';
+  while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); }
+  return s;
+}
+
+/**
+ * Crea (si falta) la tabla de accesos en MISC y refresca la lista desplegable
+ * de unidades (toma unidades nuevas en cada corrida). Idempotente. No toca
+ * ninguna otra columna de MISC.
+ * @return {{created: boolean, emailCol: number, unitCol: number, unitsInList: number}}
+ */
+function prepararTablaAccesosDashboardCostos() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(COSTS_ACCESS_SHEET);
+  if (!sheet) throw new Error('No existe la hoja "' + COSTS_ACCESS_SHEET + '".');
+  var row = COSTS_ACCESS_HEADER_ROW;
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var cols = _csFindAccessColumns_(sheet.getRange(row, 1, 1, lastCol).getValues()[0]);
+  if ((cols.emailCol >= 0) !== (cols.unitCol >= 0)) {
+    throw new Error('En ' + COSTS_ACCESS_SHEET + ' (fila ' + row + ') está solo uno de los dos encabezados de la tabla de accesos. ' +
+      'Deje ambos ("' + COSTS_ACCESS_EMAIL_HEADER + '" y "' + COSTS_ACCESS_UNIT_HEADER + '") o borre el que quedó para que el menú los cree.');
+  }
+  var created = false;
+  var emailCol, unitCol;
+  if (cols.emailCol < 0) {
+    // Al final de lo usado, dejando una columna vacía de separación como el resto de MISC.
+    emailCol = sheet.getLastColumn() + 2;
+    unitCol = emailCol + 1;
+    if (sheet.getMaxColumns() < unitCol) sheet.insertColumnsAfter(sheet.getMaxColumns(), unitCol - sheet.getMaxColumns());
+    sheet.getRange(row, emailCol, 1, 2).setValues([[COSTS_ACCESS_EMAIL_HEADER, COSTS_ACCESS_UNIT_HEADER]]).setFontWeight('bold');
+    sheet.getRange(row, emailCol).setNote(
+      'Quién puede ver el dashboard de costos y de qué unidad. Una fila por persona y unidad: el correo con el que entra al portal ' +
+      'y la unidad de negocio elegida de la lista (o TODAS). Analistas y superadmins ven todo sin estar aquí; cualquier otra persona, nada.');
+    sheet.setColumnWidth(emailCol, 240);
+    sheet.setColumnWidth(unitCol, 280);
+    created = true;
+  } else {
+    emailCol = cols.emailCol + 1;
+    unitCol = cols.unitCol + 1;
+  }
+  var known = _csKnownUnits_();
+  var labels = Object.keys(known).map(function(k) { return known[k]; }).sort(function(a, b) { return a.localeCompare(b, 'es'); });
+  var ruleRows = 200;
+  if (sheet.getMaxRows() < row + ruleRows) sheet.insertRowsAfter(sheet.getMaxRows(), row + ruleRows - sheet.getMaxRows());
+  var rule = SpreadsheetApp.newDataValidation()
+    .requireValueInList([COSTS_ACCESS_ALL_UNITS].concat(labels), true)
+    .setAllowInvalid(true)
+    .setHelpText('Unidad de negocio que esta persona puede ver, o TODAS. Una fila por persona y unidad.')
+    .build();
+  sheet.getRange(row + 1, unitCol, ruleRows, 1).setDataValidation(rule);
+  SpreadsheetApp.flush();
+  _CS_ACCESS_CACHE = null;
+  return { created: created, emailCol: emailCol, unitCol: unitCol, unitsInList: labels.length };
+}
+
+/**
+ * Revisa la tabla de accesos: quién ve qué y posibles errores. No escribe nada.
+ * @return {{found: boolean, emailCol: number, unitCol: number,
+ *   people: Array<{email: string, name: string, all: boolean, units: string[], isAdmin: boolean}>, warnings: string[]}}
+ */
+function revisarAccesosDashboardCostos() {
+  _CS_ACCESS_CACHE = null;
+  var table = _csLoadAccessTable_();
+  var res = { found: table.found, emailCol: table.emailCol, unitCol: table.unitCol, people: [], warnings: [] };
+  if (!table.found) return res;
+  var known = _csKnownUnits_();
+  var allNorm = _csNormalize_(COSTS_ACCESS_ALL_UNITS);
+  var names = {};
+  var usuarios = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (usuarios && usuarios.getLastRow() > 1) {
+    usuarios.getRange(2, 2, usuarios.getLastRow() - 1, 2).getValues().forEach(function(r) {
+      var em = String(r[1] || '').toLowerCase().trim();
+      if (em && !names[em]) names[em] = String(r[0] || '').trim();
+    });
+  }
+  var seen = {};
+  table.entries.forEach(function(e) {
+    var where = 'Fila ' + e.row + ': ';
+    if (!e.email) { res.warnings.push(where + 'falta el correo (unidad "' + e.unit + '").'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.email)) { res.warnings.push(where + '"' + e.email + '" no es un correo válido.'); return; }
+    if (!e.unit) { res.warnings.push(where + 'falta la unidad de ' + e.email + '.'); return; }
+    var norm = _csNormalize_(e.unit);
+    if (seen[e.email + '|' + norm]) { res.warnings.push(where + 'fila repetida (' + e.email + ' · ' + e.unit + ').'); return; }
+    seen[e.email + '|' + norm] = true;
+    if (norm !== allNorm && !known[norm]) {
+      res.warnings.push(where + 'la unidad "' + e.unit + '" no coincide con ninguna unidad de negocio; ' + e.email + ' no verá datos de ella. Elíjala de la lista.');
+    }
+  });
+  Object.keys(table.byEmail).sort().forEach(function(email) {
+    var acc = table.byEmail[email];
+    var isAdmin = isUserAnalyst(email);
+    res.people.push({
+      email: email,
+      name: names[email] || '',
+      all: acc.all,
+      units: Object.keys(acc.units).map(function(k) { return acc.units[k]; }),
+      isAdmin: isAdmin
+    });
+    if (!names[email]) res.warnings.push(email + ' no está registrado en USUARIOS: no podrá iniciar sesión en el dashboard.');
+    if (isAdmin) res.warnings.push(email + ' es analista o superadmin: ya ve todas las unidades, su fila no cambia nada.');
+  });
+  return res;
+}
+
+function menuAccesosDashboardCostos() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    var prep = prepararTablaAccesosDashboardCostos();
+    var rev = revisarAccesosDashboardCostos();
+    var where = COSTS_ACCESS_SHEET + ', columnas ' + _csColumnLetter_(prep.emailCol) + ' y ' + _csColumnLetter_(prep.unitCol) +
+      ' (encabezados en la fila ' + COSTS_ACCESS_HEADER_ROW + ')';
+    var lines = [];
+    lines.push((prep.created ? 'Tabla creada en ' : 'Tabla en ') + where + '.');
+    lines.push('Una fila por persona y unidad: el correo con el que entra al portal y la unidad elegida de la lista (o TODAS).');
+    lines.push('');
+    lines.push('Quién puede ver el dashboard de costos:');
+    lines.push('• Analistas y superadmins: todas las unidades.');
+    var viewers = rev.people.filter(function(pp) { return !pp.isAdmin; });
+    if (viewers.length === 0) lines.push('• Nadie más por ahora.');
+    viewers.forEach(function(pp) {
+      lines.push('• ' + (pp.name ? pp.name + ' (' + pp.email + ')' : pp.email) + ': ' + (pp.all ? 'TODAS' : pp.units.join(', ')));
+    });
+    lines.push('• Cualquier otra persona: sin acceso.');
+    if (rev.warnings.length) {
+      lines.push('');
+      lines.push('Revisar (' + rev.warnings.length + '):');
+      rev.warnings.slice(0, 12).forEach(function(w) { lines.push('• ' + w); });
+      if (rev.warnings.length > 12) lines.push('• … y ' + (rev.warnings.length - 12) + ' más.');
+    }
+    ui.alert('Accesos al dashboard de costos', lines.join('\n'), ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
 }
 
 // ---------- ENDPOINTS PÚBLICOS (se exponen en dispatch en Fase 2) ----------
@@ -15463,9 +15818,17 @@ function _csResolveAccess_(currentUserEmail) {
  */
 function getCostsDashboard(filters, currentUserEmail) {
   var access = _csResolveAccess_(currentUserEmail);
-  if (!access.canView) throw new Error('Acceso no autorizado al dashboard de costos.');
-  var data = _csBuildData_(filters);
-  data.meta.access = { canView: access.canView, canConfig: access.canConfig };
+  if (!access.canView) throw new Error(COSTS_ACCESS_DENIED_MSG);
+  // Un líder solo recibe sus unidades: el filtro va DENTRO del cálculo (#A76).
+  var data = _csBuildData_(filters, access.allUnits ? null : access.units);
+  data.meta.access = {
+    canView: access.canView,
+    canConfig: access.canConfig,
+    scope: access.allUnits ? 'ALL' : 'UNITS',
+    units: access.allUnits ? [] : access.unitLabels
+  };
+  // Las estadísticas del caché cuentan todas las filas de la hoja: no son para un líder.
+  if (!access.allUnits) delete data.meta.cache;
   // Exponer budgetPeriodMonths al cliente para que la sección "Periodo
   // Actual" del dashboard sepa cómo agrupar meses (1=mensual, 2=bimestral,
   // 3=trimestral, 6=semestral, 12=anual). El frontend lo usa solo para
@@ -15481,14 +15844,13 @@ function getCostsDashboard(filters, currentUserEmail) {
 }
 
 /**
- * Endpoint público (config): retorna la config actual. Cualquier sesión
- * puede leerla; solo SUPERADMIN puede editar. La separación de get/set
- * permite al frontend mostrar la sección "Configuración" en read-only
- * para no-superadmins.
+ * Endpoint público (config): retorna la config actual. Solo la leen
+ * analistas y superadmins (#A76: un líder con acceso por unidad no la
+ * necesita); solo SUPERADMIN puede editarla.
  */
 function getCostsDashboardConfig(currentUserEmail) {
   var access = _csResolveAccess_(currentUserEmail);
-  if (!access.canView) throw new Error('Acceso no autorizado.');
+  if (access.role !== 'ANALYST' && access.role !== 'SUPERADMIN') throw new Error('Acceso no autorizado.');
   return {
     config: _csLoadConfig_(),
     canEdit: access.canConfig,

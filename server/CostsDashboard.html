@@ -679,7 +679,7 @@
       </div>
       <button id="btnLogin" class="btn-primary">Ingresar</button>
       <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 14px;">¿No tienes PIN? Ve al portal principal y solicítalo.</p>
-      <p style="font-size: 10px; color: var(--muted); text-align: center; margin-top: 8px; line-height: 1.5;">Acceso restringido a aprobadores, analistas y administradores.</p>
+      <p style="font-size: 10px; color: var(--muted); text-align: center; margin-top: 8px; line-height: 1.5;">Acceso restringido: cada líder ve solo las unidades de negocio que tiene asignadas.</p>
     </div>
   </div>
 
@@ -727,6 +727,7 @@
         <span id="fsYear"></span>
         <span id="fsCompany"></span>
         <span id="fsUnit"></span>
+        <span id="fsScope"></span>
       </div>
     </div>
 
@@ -1245,7 +1246,7 @@ function loadDashboard() {
         if (errMsg.indexOf('no autorizado') !== -1 || errMsg.indexOf('Acceso no autorizado') !== -1) {
           clearSession();
           showLogin();
-          showStatus('loginStatus', 'Tu cuenta no tiene permiso para ver este dashboard. Solo aprobadores, analistas y administradores pueden acceder.', 'error');
+          showStatus('loginStatus', 'Tu cuenta no tiene acceso al dashboard de costos. Si lo necesitas, pídele al área de viajes que te asigne tu unidad de negocio.', 'error');
           return;
         }
         showStatus('dashStatus', errMsg, 'error');
@@ -1330,6 +1331,14 @@ function renderFilterSummary() {
   var cs = document.createElement('strong'); cs.textContent = company; cEl.appendChild(cs);
   uEl.appendChild(document.createTextNode('· Unidad '));
   var us = document.createElement('strong'); us.textContent = unit; uEl.appendChild(us);
+  // Acceso limitado (#A76): a un líder se le recuerda qué unidades tiene asignadas.
+  var sEl = document.getElementById('fsScope');
+  sEl.innerHTML = '';
+  var access = fullYearData.meta.access || {};
+  if (access.scope === 'UNITS') {
+    sEl.appendChild(document.createTextNode('· Acceso limitado a '));
+    var ss = document.createElement('strong'); ss.textContent = (access.units || []).join(', ') || '—'; sEl.appendChild(ss);
+  }
 }
 
 /**
@@ -1452,7 +1461,9 @@ function populateCompanyUnitDropdowns() {
   var currentC = cSel.value;
   var currentU = uSel.value;
   cSel.innerHTML = '<option value="">— Todas —</option>';
-  uSel.innerHTML = '<option value="">— Todas —</option>';
+  // Un líder con acceso por unidad (#A76): "todas" son solo las suyas.
+  var limited = fullYearData.meta.access && fullYearData.meta.access.scope === 'UNITS';
+  uSel.innerHTML = limited ? '<option value="">— Todas las asignadas —</option>' : '<option value="">— Todas —</option>';
   (fullYearData.meta.companies || []).slice().sort(function(a, b) { return a.label.localeCompare(b.label); }).forEach(function(c) {
     var o = document.createElement('option');
     o.value = c.label; o.textContent = c.label;

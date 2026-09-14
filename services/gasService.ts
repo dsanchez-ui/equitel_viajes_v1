@@ -349,6 +349,8 @@ class GasService {
     valid: boolean;
     reason?: string;
     role?: 'REQUESTER' | 'ANALYST' | 'SUPERADMIN';
+    // #A77: si puede saltar la etapa de aprobación (solo Yurani y David). Ausente con un backend anterior.
+    canSkipApproval?: boolean;
     integrantesHash?: string;
     integrantes?: Integrant[];
     requestsLite?: TravelRequest[];

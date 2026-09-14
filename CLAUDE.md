@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A75) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A77) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -151,6 +151,24 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   sidebar y en el panel móvil: vacío está bien, pero si se escribe debe ser un
   celular válido (10 dígitos que empiezan por 3). Nunca bloquea por estar vacío ni
   hace esperar en solo hospedaje.
+- **Saltar la etapa de aprobación: solo Yurani Prieto y David Sánchez** (#A77, pedido de
+  Yurani, 2026-09-14). Es una lista fija en el código (`SKIP_APPROVAL_ALLOWED`) y además
+  deben ser administradores. **No depende del rol superadmin**: dar superadmin a alguien
+  más no le da este poder. Diego (`directorcompras`) quedó como analista. El menú
+  *10. Ver administradores y quién salta aprobación* lo muestra.
+- **La API no acepta estados arbitrarios** (#A77): `updateRequest` solo permite los
+  cambios que usa la app (analista: opciones, selección por trazabilidad, confirmar
+  costos; solicitante: su selección, en su solicitud y en `PENDIENTE_SELECCION`), y
+  `createRequest` siempre crea en `PENDIENTE_OPCIONES`. `APROBADO`, `DENEGADO`,
+  `RESERVADO`, `PROCESADO` y `ANULADO` solo llegan por su propio flujo. Nunca confiar en
+  el estado que manda el cliente.
+- **Dashboard de costos por unidad de negocio** (#A76, pedido de Yurani, 2026-09-14):
+  analistas y superadmins ven todas las unidades; cada líder ve **solo** las unidades
+  que tiene asignadas en la tabla de accesos de MISC (`TODAS` = todas); **nadie más
+  entra**, ni siquiera los aprobadores (reemplaza la regla del 2026-05-11). El filtro
+  se aplica en el servidor antes de sumar o contar, nunca en el navegador. Si la
+  tabla falta o no se puede leer, solo entran los administradores. Se administra con
+  el menú *9. Accesos al dashboard de costos*.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -192,7 +210,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 | **MAESTROS** | Centros de costo. |
 | **CDS vs UDEN** | Relación centro de costo ↔ unidad de negocio. |
 | **CIUDADES DEL MUNDO** | Ciudad/país para el autocompletado. |
-| **MISC** | Sedes, tarjetas de crédito y varios (ojo: los datos empiezan en la fila 2). |
+| **MISC** | Tarjetas de crédito (A:B), sedes (D) y la tabla de accesos al dashboard de costos (#A76). Los encabezados están en la fila 2 y los datos empiezan en la fila 3. Los encabezados de la tabla de accesos (`DASHBOARD COSTOS · CORREO` / `· UNIDAD DE NEGOCIO`) se buscan por nombre, así que puede moverse de columna. |
 | **REGLAS_COAPROBADOR** | Reglas de co-aprobación. |
 | **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
 
@@ -330,9 +348,16 @@ autorización) y verificar antes de crear una versión nueva del web app.
   detalle; recordatorio; carga masiva (ejecutada: 636 fechas). Mejoras C1 y C3
   descartadas por David.
 - **#A74 y #A75** (detalle sin segunda llamada; celular del pasajero desde la lista
-  de RR. HH. y como campo opcional en los formularios): implementados, pendientes de
-  push, de desplegar Apps Script (`Code.gs`, `AdminSidebar.html`, `AdminMobile.html`)
-  y de correr el menú 8 con la lista.
+  de RR. HH. y como campo opcional en los formularios): en `main` (`c3c0b8d`) y
+  Apps Script desplegado (el menú 8 ya se usó). Pendiente sin código: completar con
+  RR. HH. los 7 celulares inválidos o faltantes de la lista (p. ej. uno de 9 dígitos).
+- **#A76** (dashboard de costos por unidad) y **#A77** (saltar aprobación solo Yurani y
+  David; la API ya no acepta estados arbitrarios): implementados, pendientes de push y de
+  desplegar Apps Script (`Code.gs` y `CostsDashboard.html`). Orden de #A76: pegar y
+  guardar, crear y llenar la tabla con el menú 9 con la lista de Yurani, y **después**
+  crear la versión nueva del web app. #A77: Diego ya quedó como analista (script
+  temporal ejecutado y verificado con el menú 10 el 2026-09-14: superadmins David y
+  Yurani; saltan aprobación solo ellos dos).
 - **Seguimiento sin código de la carga de fechas (#A72):** corregir con RR. HH. las
   4 fechas inválidas; revisar los 115 usuarios que no aparecen en la lista de
   integrantes (¿siguen en la empresa?); borrar los usuarios de prueba `PRUEBA1` y

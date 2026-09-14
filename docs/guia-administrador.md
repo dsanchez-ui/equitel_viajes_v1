@@ -19,7 +19,7 @@ Una plataforma web donde los empleados piden viajes y hospedajes corporativos, s
 | **Solicitante** | Crea solicitudes de viaje/hospedaje, selecciona opciones, sube soportes post-viaje. | Botón rojo **INGRESAR** con su correo corporativo + PIN personal. |
 | **Aprobador** | Recibe correo de aprobación, click en APROBAR o DENEGAR. NO necesita iniciar sesión en la app. | Botones firmados HMAC en el correo. |
 | **Analista / Admin (ANALYST)** | Cotiza opciones, confirma costos, registra reservas, gestiona usuarios, consulta métricas. Puede saltar la etapa de selección cuando el viaje se gestionó fuera del sistema. Puede omitir el correo automático al registrar una reserva. | Botón negro **ADMINISTRADOR** con PIN admin compartido, o botón rojo **INGRESAR** con su PIN personal si tiene fila en USUARIOS. |
-| **Superadmin (SUPERADMIN)** | Todo lo del analista **más**: saltar la etapa de aprobación, recibir escalamientos cuando los aprobadores no responden, alternar entre vista admin y vista usuario con el botón **VER USUARIO / VER ADMIN**, y modificar cualquier solicitud (no solo las propias). | Igual que analista. El rol se asigna en `SUPER_ADMIN_EMAILS` (Script Property). |
+| **Superadmin (SUPERADMIN)** | Todo lo del analista **más**: recibir escalamientos cuando los aprobadores no responden, alternar entre vista admin y vista usuario con el botón **VER USUARIO / VER ADMIN**, y modificar cualquier solicitud (no solo las propias). | Igual que analista. El rol se asigna en `SUPER_ADMIN_EMAILS` (Script Property). |
 
 > **Jerarquía:** SUPERADMIN hereda todo lo de ANALYST; ANALYST hereda todo lo de SOLICITANTE. Quien está en `SUPER_ADMIN_EMAILS` NO necesita estar también en `ANALYST_EMAILS` — la herencia es automática.
 
@@ -208,14 +208,16 @@ Cuando los tiquetes ya se compraron por fuera del sistema y no tiene sentido ped
 
 Queda registrado en OBSERVACIONES con tu correo, timestamp y justificación. No se envía correo al solicitante.
 
-### 5.9 Saltar la etapa de APROBACIÓN (solo SUPERADMIN)
+### 5.9 Saltar la etapa de APROBACIÓN (solo Yurani Prieto y David Sánchez)
+
+**Quién puede:** solo Yurani Prieto y David Sánchez (decisión de Yurani, 2026-09-14). Es una lista fija en el código (`SKIP_APPROVAL_ALLOWED` en `Code.gs`), **no un rol**: ningún otro superadmin ni analista puede, aunque tenga acceso de administrador, y para cambiarla hay que modificar el código. Para comprobar quién puede: **Equitel Viajes → 10. Ver administradores y quién salta aprobación**. A los demás no les aparecen ni el botón ni la casilla, y el sistema rechaza el intento si llegara por otra vía.
 
 Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin mandar correos a los aprobadores:
 
 1. Fila con status `PENDIENTE_APROBACION` → abre el detalle.
-2. Aparece un banner ámbar **"⏩ Saltar etapa de aprobación (SUPERADMIN)"** con un botón **"SALTAR APROBACIÓN"**.
+2. Aparece un banner ámbar **"⏩ Saltar etapa de aprobación (permiso especial)"** con un botón **"SALTAR APROBACIÓN"**.
 3. Click → justificación (≥10 caracteres) → confirma.
-4. La solicitud pasa directamente a `APROBADO`. Las columnas `APROBADO POR ÁREA?`, `APROBADO CDS` y `APROBADO CEO` se marcan con `Sí (ETAPA SALTADA por tu.correo)`. El usuario sí recibe el correo "Solicitud Aprobada"; los aprobadores no reciben nada.
+4. La solicitud pasa directamente a `APROBADO`. Las columnas `APROBADO POR ÁREA?`, `APROBADO CDS`, `APROBADO CEO` y `APROBADO PRESUPUESTO` se marcan con `Sí (ETAPA SALTADA por tu.correo)` y la justificación queda en OBSERVACIONES. No se envía correo ni a los aprobadores ni al solicitante; el solicitante recibe el de "Tiquetes Comprados" cuando se registra la reserva.
 
 **Alternativa equivalente durante confirmación de costos:** en el modal **"Confirmar costos"** aparece un checkbox "Saltar etapa de aprobación" con el mismo efecto, útil cuando sabes desde antes que no quieres pasar por aprobadores.
 
@@ -250,15 +252,13 @@ Relacionado: si el login del admin falla por un error de red (no por PIN incorre
 
 ## 5.bis. Capacidades exclusivas de SUPERADMIN
 
-Los **superadmins** (configurados en `SUPER_ADMIN_EMAILS` — actualmente David y Yurani) tienen capacidades adicionales que un analista normal no tiene:
+Los **superadmins** (configurados en `SUPER_ADMIN_EMAILS`) tienen capacidades adicionales que un analista normal no tiene. **Saltar la etapa de aprobación ya no es una de ellas** (#A77): solo Yurani Prieto y David Sánchez, ver 5.9.
 
 | Capacidad | Disponible desde |
 |---|---|
-| **Saltar etapa de aprobación** | Detalle de solicitud en `PENDIENTE_APROBACION`, o checkbox en confirmar costos. |
 | **Botón VER USUARIO / VER ADMIN** | Header del panel de analista — alternar vistas. |
 | **Recibir escalamientos** | Correos automáticos cuando una solicitud lleva 30h laborales sin aprobación (≈3 días hábiles). |
 | **Ejecutar helpers de Script Properties** | `setScriptProperty`, `deleteScriptProperty`, `listScriptProperties` desde el editor GAS. |
-| **Ejecutar skip de aprobación vía backend** | `skipApprovalStage(requestId, justification)` — solo vía frontend; el endpoint está protegido y valida superadmin en cada request. |
 | **Modificar cualquier solicitud** | El endpoint `requestModification` valida que el solicitante sea el dueño de la solicitud, pero el bypass permite que cualquier analista o superadmin gestione modificaciones a nombre del usuario (caso típico: el área de viajes ajusta la solicitud por pedido verbal). Cualquier otro usuario autenticado solo puede modificar las suyas. |
 
 **Configurar o quitar un superadmin:**
