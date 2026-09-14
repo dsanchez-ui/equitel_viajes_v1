@@ -15550,16 +15550,17 @@ function invalidateBudgetUsageCache_(unidad) {
 //   - Cualquier otro usuario, incluidos los aprobadores que no estén en la
 //     tabla: sin acceso. Reemplaza la regla anterior "todo aprobador entra"
 //     (2026-05-11), que dejaba ver las cifras de todas las unidades.
-// La tabla vive en MISC con dos encabezados en la fila COSTS_ACCESS_HEADER_ROW,
-// que se buscan por nombre en cualquier columna. Una fila por persona y unidad.
-// El menú "9. Accesos al dashboard de costos" la crea (con lista desplegable
-// de unidades) y la revisa.
+// La tabla vive en MISC: dos encabezados que el menú "9. Accesos al dashboard de
+// costos" escribe en la fila 1 (celdas normales, sin tablas de Google ni listas
+// desplegables) y que se buscan por nombre en las filas 1 a 3 y en cualquier
+// columna. Debajo, una fila por persona y unidad. El mismo menú revisa la tabla.
 // El filtro se aplica en el SERVIDOR, dentro de _csBuildData_ y antes de sumar
 // o contar: al navegador de un líder no llega ningún monto, nombre ni conteo
 // de otras unidades.
 // ---------------------------------------------------------------------
 var COSTS_ACCESS_SHEET = 'MISC';
-var COSTS_ACCESS_HEADER_ROW = 2;
+var COSTS_ACCESS_HEADER_ROW = 1;          // donde el menú 9 crea los encabezados
+var COSTS_ACCESS_HEADER_SEARCH_ROWS = 3;  // se buscan en las filas 1 a 3
 var COSTS_ACCESS_EMAIL_HEADER = 'DASHBOARD COSTOS · CORREO';
 var COSTS_ACCESS_UNIT_HEADER = 'DASHBOARD COSTOS · UNIDAD DE NEGOCIO';
 var COSTS_ACCESS_ALL_UNITS = 'TODAS';
@@ -15579,45 +15580,64 @@ function _csFindAccessColumns_(headerRow) {
 }
 
 /**
+ * Ubica la tabla de accesos: busca los dos encabezados en las primeras
+ * COSTS_ACCESS_HEADER_SEARCH_ROWS filas de la hoja, en cualquier columna.
+ * @return {{found: boolean, partial: boolean, headerRow?: number, emailCol?: number, unitCol?: number}} (1-based)
+ */
+function _csLocateAccessTable_(sheet) {
+  var lastCol = sheet.getLastColumn();
+  var lastRow = sheet.getLastRow();
+  if (lastCol < 1 || lastRow < 1) return { found: false, partial: false };
+  var rows = Math.min(COSTS_ACCESS_HEADER_SEARCH_ROWS, lastRow);
+  var values = sheet.getRange(1, 1, rows, lastCol).getValues();
+  var partial = false;
+  for (var r = 0; r < values.length; r++) {
+    var cols = _csFindAccessColumns_(values[r]);
+    if (cols.emailCol >= 0 && cols.unitCol >= 0) {
+      return { found: true, partial: false, headerRow: r + 1, emailCol: cols.emailCol + 1, unitCol: cols.unitCol + 1 };
+    }
+    if (cols.emailCol >= 0 || cols.unitCol >= 0) partial = true;
+  }
+  return { found: false, partial: partial };
+}
+
+/**
  * Lee la tabla de accesos (una vez por ejecución). Si no se puede leer, no da
  * acceso a nadie fuera de los administradores (falla cerrado).
- * @return {{found: boolean, emailCol: number, unitCol: number,
+ * @return {{found: boolean, headerRow: number, emailCol: number, unitCol: number,
  *   byEmail: Object<string, {all: boolean, units: Object<string, string>}>,
  *   entries: Array<{row: number, email: string, unit: string}>}}
  */
 var _CS_ACCESS_CACHE = null;
 function _csLoadAccessTable_() {
   if (_CS_ACCESS_CACHE) return _CS_ACCESS_CACHE;
-  var out = { found: false, emailCol: -1, unitCol: -1, byEmail: {}, entries: [] };
+  var out = { found: false, headerRow: -1, emailCol: -1, unitCol: -1, byEmail: {}, entries: [] };
   try {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(COSTS_ACCESS_SHEET);
-    var lastCol = sheet ? sheet.getLastColumn() : 0;
-    var lastRow = sheet ? sheet.getLastRow() : 0;
-    if (sheet && lastCol > 0 && lastRow >= COSTS_ACCESS_HEADER_ROW) {
-      var cols = _csFindAccessColumns_(sheet.getRange(COSTS_ACCESS_HEADER_ROW, 1, 1, lastCol).getValues()[0]);
-      if (cols.emailCol >= 0 && cols.unitCol >= 0) {
-        out.found = true;
-        out.emailCol = cols.emailCol + 1;
-        out.unitCol = cols.unitCol + 1;
-        var allNorm = _csNormalize_(COSTS_ACCESS_ALL_UNITS);
-        var n = lastRow - COSTS_ACCESS_HEADER_ROW;
-        var data = n > 0 ? sheet.getRange(COSTS_ACCESS_HEADER_ROW + 1, 1, n, lastCol).getValues() : [];
-        for (var r = 0; r < data.length; r++) {
-          var email = String(data[r][cols.emailCol] || '').toLowerCase().trim();
-          var unit = String(data[r][cols.unitCol] || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
-          if (!email && !unit) continue;
-          out.entries.push({ row: COSTS_ACCESS_HEADER_ROW + 1 + r, email: email, unit: unit });
-          if (!unit || email.indexOf('@') === -1) continue;
-          var acc = out.byEmail[email] || (out.byEmail[email] = { all: false, units: {} });
-          var norm = _csNormalize_(unit);
-          if (norm === allNorm) acc.all = true;
-          else if (!acc.units[norm]) acc.units[norm] = unit;
-        }
+    var loc = sheet ? _csLocateAccessTable_(sheet) : { found: false };
+    if (loc.found) {
+      out.found = true;
+      out.headerRow = loc.headerRow;
+      out.emailCol = loc.emailCol;
+      out.unitCol = loc.unitCol;
+      var allNorm = _csNormalize_(COSTS_ACCESS_ALL_UNITS);
+      var n = sheet.getLastRow() - loc.headerRow;
+      var data = n > 0 ? sheet.getRange(loc.headerRow + 1, 1, n, sheet.getLastColumn()).getValues() : [];
+      for (var r = 0; r < data.length; r++) {
+        var email = String(data[r][loc.emailCol - 1] || '').toLowerCase().trim();
+        var unit = String(data[r][loc.unitCol - 1] || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+        if (!email && !unit) continue;
+        out.entries.push({ row: loc.headerRow + 1 + r, email: email, unit: unit });
+        if (!unit || email.indexOf('@') === -1) continue;
+        var acc = out.byEmail[email] || (out.byEmail[email] = { all: false, units: {} });
+        var norm = _csNormalize_(unit);
+        if (norm === allNorm) acc.all = true;
+        else if (!acc.units[norm]) acc.units[norm] = unit;
       }
     }
   } catch (e) {
     console.error('CostsDashboard: no se pudo leer la tabla de accesos de ' + COSTS_ACCESS_SHEET + ': ' + e);
-    out = { found: false, emailCol: -1, unitCol: -1, byEmail: {}, entries: [] };
+    out = { found: false, headerRow: -1, emailCol: -1, unitCol: -1, byEmail: {}, entries: [] };
   }
   _CS_ACCESS_CACHE = out;
   return out;
@@ -15680,52 +15700,31 @@ function _csColumnLetter_(n) {
 }
 
 /**
- * Crea (si falta) la tabla de accesos en MISC y refresca la lista desplegable
- * de unidades (toma unidades nuevas en cada corrida). Idempotente. No toca
- * ninguna otra columna de MISC.
- * @return {{created: boolean, emailCol: number, unitCol: number, unitsInList: number}}
+ * Crea (si faltan) los dos encabezados de la tabla de accesos en la fila 1 de
+ * MISC, al final de lo usado y dejando una columna libre de separación. Solo
+ * escribe esas dos celdas: no crea tablas de Google, listas desplegables, filas
+ * ni columnas nuevas (salvo que la hoja no tenga columnas suficientes).
+ * Idempotente: si ya existen (en las filas 1 a 3), no toca nada.
+ * @return {{created: boolean, headerRow: number, emailCol: number, unitCol: number}}
  */
 function prepararTablaAccesosDashboardCostos() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(COSTS_ACCESS_SHEET);
   if (!sheet) throw new Error('No existe la hoja "' + COSTS_ACCESS_SHEET + '".');
-  var row = COSTS_ACCESS_HEADER_ROW;
-  var lastCol = Math.max(sheet.getLastColumn(), 1);
-  var cols = _csFindAccessColumns_(sheet.getRange(row, 1, 1, lastCol).getValues()[0]);
-  if ((cols.emailCol >= 0) !== (cols.unitCol >= 0)) {
-    throw new Error('En ' + COSTS_ACCESS_SHEET + ' (fila ' + row + ') está solo uno de los dos encabezados de la tabla de accesos. ' +
+  var loc = _csLocateAccessTable_(sheet);
+  if (loc.found) return { created: false, headerRow: loc.headerRow, emailCol: loc.emailCol, unitCol: loc.unitCol };
+  if (loc.partial) {
+    throw new Error('En ' + COSTS_ACCESS_SHEET + ' (filas 1 a ' + COSTS_ACCESS_HEADER_SEARCH_ROWS + ') está solo uno de los dos encabezados de la tabla de accesos. ' +
       'Deje ambos ("' + COSTS_ACCESS_EMAIL_HEADER + '" y "' + COSTS_ACCESS_UNIT_HEADER + '") o borre el que quedó para que el menú los cree.');
   }
-  var created = false;
-  var emailCol, unitCol;
-  if (cols.emailCol < 0) {
-    // Al final de lo usado, dejando una columna vacía de separación como el resto de MISC.
-    emailCol = sheet.getLastColumn() + 2;
-    unitCol = emailCol + 1;
-    if (sheet.getMaxColumns() < unitCol) sheet.insertColumnsAfter(sheet.getMaxColumns(), unitCol - sheet.getMaxColumns());
-    sheet.getRange(row, emailCol, 1, 2).setValues([[COSTS_ACCESS_EMAIL_HEADER, COSTS_ACCESS_UNIT_HEADER]]).setFontWeight('bold');
-    sheet.getRange(row, emailCol).setNote(
-      'Quién puede ver el dashboard de costos y de qué unidad. Una fila por persona y unidad: el correo con el que entra al portal ' +
-      'y la unidad de negocio elegida de la lista (o TODAS). Analistas y superadmins ven todo sin estar aquí; cualquier otra persona, nada.');
-    sheet.setColumnWidth(emailCol, 240);
-    sheet.setColumnWidth(unitCol, 280);
-    created = true;
-  } else {
-    emailCol = cols.emailCol + 1;
-    unitCol = cols.unitCol + 1;
-  }
-  var known = _csKnownUnits_();
-  var labels = Object.keys(known).map(function(k) { return known[k]; }).sort(function(a, b) { return a.localeCompare(b, 'es'); });
-  var ruleRows = 200;
-  if (sheet.getMaxRows() < row + ruleRows) sheet.insertRowsAfter(sheet.getMaxRows(), row + ruleRows - sheet.getMaxRows());
-  var rule = SpreadsheetApp.newDataValidation()
-    .requireValueInList([COSTS_ACCESS_ALL_UNITS].concat(labels), true)
-    .setAllowInvalid(true)
-    .setHelpText('Unidad de negocio que esta persona puede ver, o TODAS. Una fila por persona y unidad.')
-    .build();
-  sheet.getRange(row + 1, unitCol, ruleRows, 1).setDataValidation(rule);
+  var emailCol = sheet.getLastColumn() + 2;
+  var unitCol = emailCol + 1;
+  if (sheet.getMaxColumns() < unitCol) sheet.insertColumnsAfter(sheet.getMaxColumns(), unitCol - sheet.getMaxColumns());
+  sheet.getRange(COSTS_ACCESS_HEADER_ROW, emailCol, 1, 2)
+    .setValues([[COSTS_ACCESS_EMAIL_HEADER, COSTS_ACCESS_UNIT_HEADER]])
+    .setFontWeight('bold');
   SpreadsheetApp.flush();
   _CS_ACCESS_CACHE = null;
-  return { created: created, emailCol: emailCol, unitCol: unitCol, unitsInList: labels.length };
+  return { created: true, headerRow: COSTS_ACCESS_HEADER_ROW, emailCol: emailCol, unitCol: unitCol };
 }
 
 /**
@@ -15736,9 +15735,10 @@ function prepararTablaAccesosDashboardCostos() {
 function revisarAccesosDashboardCostos() {
   _CS_ACCESS_CACHE = null;
   var table = _csLoadAccessTable_();
-  var res = { found: table.found, emailCol: table.emailCol, unitCol: table.unitCol, people: [], warnings: [] };
+  var res = { found: table.found, headerRow: table.headerRow, emailCol: table.emailCol, unitCol: table.unitCol, people: [], warnings: [], knownUnits: [] };
   if (!table.found) return res;
   var known = _csKnownUnits_();
+  res.knownUnits = Object.keys(known).map(function(k) { return known[k]; }).sort(function(a, b) { return a.localeCompare(b, 'es'); });
   var allNorm = _csNormalize_(COSTS_ACCESS_ALL_UNITS);
   var names = {};
   var usuarios = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
@@ -15780,14 +15780,15 @@ function revisarAccesosDashboardCostos() {
 function menuAccesosDashboardCostos() {
   var ui = SpreadsheetApp.getUi();
   try {
+    console.log('menuAccesosDashboardCostos: inicio');
     _requireAnalyst_();
     var prep = prepararTablaAccesosDashboardCostos();
     var rev = revisarAccesosDashboardCostos();
     var where = COSTS_ACCESS_SHEET + ', columnas ' + _csColumnLetter_(prep.emailCol) + ' y ' + _csColumnLetter_(prep.unitCol) +
-      ' (encabezados en la fila ' + COSTS_ACCESS_HEADER_ROW + ')';
+      ' (encabezados en la fila ' + prep.headerRow + ')';
     var lines = [];
-    lines.push((prep.created ? 'Tabla creada en ' : 'Tabla en ') + where + '.');
-    lines.push('Una fila por persona y unidad: el correo con el que entra al portal y la unidad elegida de la lista (o TODAS).');
+    lines.push((prep.created ? 'Encabezados creados en ' : 'Tabla en ') + where + '.');
+    lines.push('Debajo, una fila por persona y unidad: el correo con el que entra al portal y la unidad de negocio escrita igual que en la lista del final (o TODAS).');
     lines.push('');
     lines.push('Quién puede ver el dashboard de costos:');
     lines.push('• Analistas y superadmins: todas las unidades.');
@@ -15803,8 +15804,11 @@ function menuAccesosDashboardCostos() {
       rev.warnings.slice(0, 12).forEach(function(w) { lines.push('• ' + w); });
       if (rev.warnings.length > 12) lines.push('• … y ' + (rev.warnings.length - 12) + ' más.');
     }
+    lines.push('');
+    lines.push('Unidades de negocio válidas: ' + [COSTS_ACCESS_ALL_UNITS].concat(rev.knownUnits).join(' · '));
     ui.alert('Accesos al dashboard de costos', lines.join('\n'), ui.ButtonSet.OK);
   } catch (e) {
+    console.error('menuAccesosDashboardCostos: ' + (e && e.stack ? e.stack : e));
     ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
   }
 }

@@ -210,7 +210,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 | **MAESTROS** | Centros de costo. |
 | **CDS vs UDEN** | Relación centro de costo ↔ unidad de negocio. |
 | **CIUDADES DEL MUNDO** | Ciudad/país para el autocompletado. |
-| **MISC** | Tarjetas de crédito (A:B), sedes (D) y la tabla de accesos al dashboard de costos (#A76). Los encabezados están en la fila 2 y los datos empiezan en la fila 3. Los encabezados de la tabla de accesos (`DASHBOARD COSTOS · CORREO` / `· UNIDAD DE NEGOCIO`) se buscan por nombre, así que puede moverse de columna. |
+| **MISC** | Tarjetas de crédito (A:B), sedes (D) y la tabla de accesos al dashboard de costos (#A76). Los encabezados están en la fila 2 y los datos empiezan en la fila 3. Los encabezados de la tabla de accesos (`DASHBOARD COSTOS · CORREO` / `· UNIDAD DE NEGOCIO`) los crea el menú 9 en la **fila 1** (celdas normales, sin tablas de Google ni listas desplegables) y se buscan por nombre en las filas 1 a 3, así que pueden moverse de columna. |
 | **REGLAS_COAPROBADOR** | Reglas de co-aprobación. |
 | **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
 

@@ -88,12 +88,12 @@ Hoja con dos catálogos pequeños y una tabla de permisos:
 
 #### Accesos al dashboard de costos
 
-Dos columnas con los encabezados `DASHBOARD COSTOS · CORREO` y `DASHBOARD COSTOS · UNIDAD DE NEGOCIO` en la fila 2; los datos van desde la fila 3.
+Dos columnas normales con los encabezados `DASHBOARD COSTOS · CORREO` y `DASHBOARD COSTOS · UNIDAD DE NEGOCIO` en la **fila 1**, que crea el menú 9 para no tener que escribirlos a mano. Los datos van debajo.
 
 - **Analistas y superadmins** ven todas las unidades sin estar en la tabla.
-- **Cada fila da acceso a una persona a una unidad:** el correo con el que entra al portal y la unidad elegida de la lista desplegable. Para varias unidades, una fila por unidad. `TODAS` da acceso a todas.
+- **Cada fila da acceso a una persona a una unidad:** el correo con el que entra al portal y la unidad de negocio escrita igual que en las solicitudes. El menú 9 muestra la lista de unidades válidas. Para varias unidades, una fila por unidad; `TODAS` da acceso a todas.
 - **Quien no esté en la tabla no puede entrar al dashboard**, aunque sea aprobador.
-- La tabla se crea y se revisa con **Equitel Viajes → 9. Accesos al dashboard de costos**. La primera vez agrega los encabezados y la lista desplegable. Las siguientes, muestra quién ve qué y avisa de errores: correo no registrado en USUARIOS, unidad mal escrita, filas repetidas o incompletas.
+- La tabla se crea y se revisa con **Equitel Viajes → 9. Accesos al dashboard de costos**. La primera vez escribe solo los dos encabezados, al final de MISC y dejando una columna libre. Cada vez que se usa muestra quién ve qué y las unidades válidas, y avisa de errores: correo no registrado en USUARIOS, unidad mal escrita, filas repetidas o incompletas.
 - Los cambios aplican la próxima vez que la persona abra el dashboard. No hay que desplegar nada.
 
 **Lo que NO debes hacer:** cambiar los encabezados de esas dos columnas ni escribir las unidades a mano sin revisarlas con el menú 9 (una unidad mal escrita no muestra datos).

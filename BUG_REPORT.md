@@ -1178,6 +1178,21 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
   - **analista:** sin aviso de acceso limitado y con sus 17 unidades
   - una verificación falló la primera vez por un error del propio test, que buscaba los nombres en todo el texto de la página, incluido su propio script; se diagnosticó y se corrigió el test, no el código
 
+**Ajuste antes de publicar la versión (2026-09-14):**
+- **Qué pasó:** en la hoja real, el menú 9 falló con "Se ha producido un error en el script" (0 s, sin registros). MISC usa las tablas nuevas de Google Sheets, que las simulaciones no reproducen, y el menú hacía más que escribir celdas: insertaba filas y ponía una lista desplegable.
+- **Qué pidió David:** encabezados en la fila 1, sin tablas ni listas; él escribe los valores debajo.
+- **Cambio:**
+  - el menú 9 solo escribe los dos encabezados en la fila 1, al final de lo usado y con una columna libre de separación; nada más
+  - el lector busca los encabezados en las filas 1 a 3, así que funciona también si alguien los puso en la fila 2
+  - el menú lista las unidades válidas, porque ya no hay lista desplegable
+  - el menú deja registro al empezar y ante un error, para que un fallo futuro se pueda diagnosticar
+- **Verificado:** la simulación se actualizó a 26 escenarios:
+  - crea solo H1:I1 sin tocar A–F, sin lista desplegable y sin filas nuevas; con una sola escritura
+  - repetido, no escribe nada
+  - con los encabezados en la fila 1 y Simón debajo, ve solo POTENCIA
+  - la tabla con encabezados en la fila 2 sigue funcionando
+  - 8 defectos introducidos a propósito, todos detectados (incluido "buscar solo en la fila 1")
+
 **Despliegue:** solo Apps Script (`Code.gs` y `CostsDashboard.html`); la app React no cambia. Orden para no dejar a nadie sin acceso entre medio:
 1. Pegar ambos archivos y guardar. El menú de la hoja usa el código guardado; el dashboard sigue con la versión publicada.
 2. Recargar la hoja → menú 9 (crea la tabla) → llenarla con la lista de Yurani → menú 9 otra vez para revisar.
