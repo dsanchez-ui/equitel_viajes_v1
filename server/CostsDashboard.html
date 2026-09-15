@@ -258,6 +258,10 @@
       text-transform: uppercase;
     }
 
+    /* ===== TOP 10 VIAJEROS (#A78) ===== */
+    table.units.top-travelers td.rank { width: 32px; color: var(--muted); font-weight: 700; }
+    .top-note { font-size: 11px; color: var(--muted); margin-top: 8px; }
+
     /* ===== DETALLE EXPANDIBLE ===== */
     .detail-row { display: none; background: #f9fafb; }
     .detail-row.show { display: table-row; }
@@ -795,6 +799,28 @@
         </div>
         <div id="annualEmptyState" class="empty-state" style="display: none;">No hay datos para los filtros seleccionados.</div>
       </div>
+
+      <!-- Top 10 viajeros (#A78) -->
+      <div class="card">
+        <h2>Top 10 viajeros por costo — anual <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="annualTopCount"></span></h2>
+        <div class="table-wrap">
+          <table class="units top-travelers">
+            <thead>
+              <tr>
+                <th class="num">#</th>
+                <th>Viajero</th>
+                <th>Unidad</th>
+                <th class="num">Viajes</th>
+                <th class="num">Costo</th>
+                <th class="num">% del ejecutado</th>
+              </tr>
+            </thead>
+            <tbody id="annualTopBody"></tbody>
+          </table>
+        </div>
+        <div id="annualTopEmpty" class="empty-state" style="display: none;">No hay viajes con costo para los filtros seleccionados.</div>
+        <p class="top-note">El costo de cada viaje se reparte en partes iguales entre sus pasajeros. Respeta los filtros de arriba.</p>
+      </div>
     </div>
 
     <!-- ============================================================== -->
@@ -845,6 +871,28 @@
           </table>
         </div>
         <div id="periodEmptyState" class="empty-state" style="display: none;">No hay movimientos en este periodo con los filtros seleccionados.</div>
+      </div>
+
+      <!-- Top 10 viajeros (#A78) -->
+      <div class="card">
+        <h2>Top 10 viajeros por costo — periodo <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="periodTopCount"></span></h2>
+        <div class="table-wrap">
+          <table class="units top-travelers">
+            <thead>
+              <tr>
+                <th class="num">#</th>
+                <th>Viajero</th>
+                <th>Unidad</th>
+                <th class="num">Viajes</th>
+                <th class="num">Costo</th>
+                <th class="num">% del ejecutado</th>
+              </tr>
+            </thead>
+            <tbody id="periodTopBody"></tbody>
+          </table>
+        </div>
+        <div id="periodTopEmpty" class="empty-state" style="display: none;">No hay viajes con costo en este periodo con los filtros seleccionados.</div>
+        <p class="top-note">El costo de cada viaje se reparte en partes iguales entre sus pasajeros. Respeta los filtros de arriba.</p>
       </div>
     </div>
 
@@ -898,15 +946,37 @@
         </div>
         <div id="monthlyEmptyState" class="empty-state" style="display: none;">No hay movimientos en este mes con los filtros seleccionados.</div>
       </div>
+
+      <!-- Top 10 viajeros (#A78) -->
+      <div class="card">
+        <h2>Top 10 viajeros por costo — mes <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="monthlyTopCount"></span></h2>
+        <div class="table-wrap">
+          <table class="units top-travelers">
+            <thead>
+              <tr>
+                <th class="num">#</th>
+                <th>Viajero</th>
+                <th>Unidad</th>
+                <th class="num">Viajes</th>
+                <th class="num">Costo</th>
+                <th class="num">% del ejecutado</th>
+              </tr>
+            </thead>
+            <tbody id="monthlyTopBody"></tbody>
+          </table>
+        </div>
+        <div id="monthlyTopEmpty" class="empty-state" style="display: none;">No hay viajes con costo en este mes con los filtros seleccionados.</div>
+        <p class="top-note">El costo de cada viaje se reparte en partes iguales entre sus pasajeros. Respeta los filtros de arriba.</p>
+      </div>
     </div>
 
     <!-- ============================================================== -->
-    <!-- VARIANCE REPORT (cotizado vs facturado) — solo ANALYST/SUPERADMIN -->
+    <!-- VARIANCE REPORT (cotizado vs facturado) — acceso restringido (#A78) -->
     <!-- ============================================================== -->
     <div id="varianceSection" class="view-section">
       <div class="view-title">
         📊 Variación Cotizado vs Facturado
-        <span class="badge-admin">Solo admin</span>
+        <span class="badge-admin">Acceso restringido</span>
         <span class="view-subtitle">diferencia entre el costo cotizado al confirmar y la facturación real</span>
       </div>
 
@@ -1261,11 +1331,12 @@ function loadDashboard() {
       document.getElementById('btnConfig').style.display = canEditConfig ? '' : 'none';
       populateCompanyUnitDropdowns();
       refreshView();
-      // Variance report: solo se carga para ANALYST/SUPERADMIN. El backend
-      // re-valida acceso por defense-in-depth; aquí gateamos por UX.
-      if (session && (session.role === 'ANALYST' || session.role === 'SUPERADMIN')) {
+      // Variación cotizado vs facturado (#A78): solo si el backend lo autoriza
+      // (lista fija en Code.gs, no el rol). El backend lo revalida al pedirla.
+      if (fullYearData.meta && fullYearData.meta.access && fullYearData.meta.access.canViewVariance === true) {
         loadVarianceReport();
       } else {
+        varianceData = null;
         document.getElementById('varianceSection').style.display = 'none';
       }
     })
@@ -1487,6 +1558,7 @@ function renderAnnualView(data) {
   renderAnnualDonutDist(data);
   renderMonthlyBarsChart(data);
   renderUnitsTable('annualUnitsBody', 'annualUnitCount', 'annualEmptyState', data.rows, 'annual');
+  renderTopTravelers('annual', data.rows);
 }
 
 /**
@@ -1708,6 +1780,7 @@ function renderMonthlyView(data, month) {
   renderKpis('monthlyKpis', monthData, label);
   renderMonthlyDonut(monthData);
   renderUnitsTable('monthlyUnitsBody', 'monthlyUnitCount', 'monthlyEmptyState', monthData.rows, 'monthly');
+  renderTopTravelers('monthly', monthData.rows);
 }
 
 /**
@@ -2000,6 +2073,7 @@ function renderPeriodView(data) {
   renderKpis('periodKpis', pData, bounds.label + ' ' + year);
   renderPeriodDonut(pData);
   renderUnitsTable('periodUnitsBody', 'periodUnitCount', 'periodEmptyState', pData.rows, 'period');
+  renderTopTravelers('period', pData.rows);
 }
 
 function renderPeriodDonut(pData) {
@@ -2186,8 +2260,98 @@ function buildDetailContent(bucket) {
 }
 
 // =====================================================================
-// VARIANCE REPORT (cotizado vs facturado) — solo ANALYST/SUPERADMIN
+// TOP 10 VIAJEROS POR COSTO (#A78) — compartido por anual, periodo y mensual
 // =====================================================================
+// Cada solicitud trae sus pasajeros como ids ('v1', 'v2'…) y meta.travelerNames
+// el nombre de cada id (la cédula no llega al navegador). El ejecutado de cada
+// viaje se reparte en partes iguales entre sus pasajeros, así el top nunca suma
+// más que lo ejecutado de la vista. Usa las mismas solicitudes que las tablas de
+// la vista: respeta empresa, unidad, estimado y el mes o periodo.
+function computeTopTravelers(rows, travelerNames, limit) {
+  var byId = {};
+  var total = 0;
+  (rows || []).forEach(function(b) {
+    (b.requests || []).forEach(function(r) {
+      var executed = Number(r.executed) || 0;
+      total += executed;
+      var ids = r.travelers || [];
+      if (!ids.length) return;
+      var share = executed / ids.length;
+      ids.forEach(function(id) {
+        var t = byId[id];
+        if (!t) {
+          t = byId[id] = { id: id, name: (travelerNames && travelerNames[id]) || 'Pasajero sin nombre', cost: 0, estimated: 0, trips: 0, units: {} };
+        }
+        t.cost += share;
+        t.trips++;
+        if (r.isEstimated) t.estimated += share;
+        t.units[b.unit] = (t.units[b.unit] || 0) + share;
+      });
+    });
+  });
+  var list = Object.keys(byId).map(function(k) { return byId[k]; })
+    .filter(function(t) { return t.cost > 0; })
+    .sort(function(a, b) { return (b.cost - a.cost) || a.name.localeCompare(b.name, 'es'); });
+  list.forEach(function(t) {
+    t.unitList = Object.keys(t.units).sort(function(a, b) { return t.units[b] - t.units[a]; });
+    t.pct = total > 0 ? (t.cost / total) * 100 : null;
+  });
+  return { top: list.slice(0, limit || 10), travelerCount: list.length, total: total };
+}
+
+function renderTopTravelers(prefix, rows) {
+  var body = document.getElementById(prefix + 'TopBody');
+  if (!body) return;
+  var names = (fullYearData && fullYearData.meta && fullYearData.meta.travelerNames) || {};
+  var res = computeTopTravelers(rows, names, 10);
+  body.innerHTML = '';
+  document.getElementById(prefix + 'TopCount').textContent = res.travelerCount
+    ? '(' + res.travelerCount + ' viajero' + (res.travelerCount === 1 ? '' : 's') + ' con costo en esta vista)'
+    : '';
+  document.getElementById(prefix + 'TopEmpty').style.display = res.top.length ? 'none' : '';
+  res.top.forEach(function(t, i) {
+    var tr = document.createElement('tr');
+    var rankTd = document.createElement('td'); rankTd.className = 'num rank'; rankTd.textContent = i + 1; tr.appendChild(rankTd);
+    var nameTd = document.createElement('td'); nameTd.textContent = t.name;
+    if (t.estimated > 0) {
+      var est = document.createElement('span');
+      est.className = 'badge-est';
+      est.textContent = 'incl. estimado';
+      est.title = fmtMoney(t.estimated) + ' de este costo es ejecutado estimado (RESERVADO sin factura).';
+      nameTd.appendChild(est);
+    }
+    tr.appendChild(nameTd);
+    var unitTd = document.createElement('td');
+    unitTd.textContent = (t.unitList[0] || '—') + (t.unitList.length > 1 ? ' +' + (t.unitList.length - 1) : '');
+    if (t.unitList.length > 1) unitTd.title = t.unitList.join(', ');
+    tr.appendChild(unitTd);
+    var tripsTd = document.createElement('td'); tripsTd.className = 'num'; tripsTd.textContent = t.trips; tr.appendChild(tripsTd);
+    var costTd = document.createElement('td'); costTd.className = 'num'; costTd.textContent = fmtMoney(t.cost); tr.appendChild(costTd);
+    var pctTd = document.createElement('td'); pctTd.className = 'num'; pctTd.textContent = fmtPct(t.pct); tr.appendChild(pctTd);
+    body.appendChild(tr);
+  });
+}
+
+/** Líneas CSV del top 10 de una vista (mismo cálculo que la tabla en pantalla). */
+function csvTopTravelersLines(title, rows) {
+  var names = (fullYearData && fullYearData.meta && fullYearData.meta.travelerNames) || {};
+  var res = computeTopTravelers(rows, names, 10);
+  var lines = ['', [title].map(csvSafe).join(',')];
+  lines.push(['Posición', 'Viajero', 'Unidad principal', 'Otras unidades', 'Viajes', 'Costo asignado', 'Incluye estimado', '% del ejecutado'].map(csvSafe).join(','));
+  res.top.forEach(function(t, i) {
+    lines.push([
+      i + 1, t.name, t.unitList[0] || '', t.unitList.slice(1).join(' | '), t.trips,
+      Math.round(t.cost), t.estimated > 0 ? 'Sí' : 'No', t.pct === null ? '' : t.pct.toFixed(1)
+    ].map(csvSafe).join(','));
+  });
+  return lines;
+}
+
+// =====================================================================
+// VARIANCE REPORT (cotizado vs facturado) — acceso restringido (#A78)
+// =====================================================================
+// Solo lo carga quien el backend autoriza (meta.access.canViewVariance: la
+// lista fija COSTS_VARIANCE_ALLOWED de Code.gs). El backend lo revalida.
 
 function loadVarianceReport() {
   // BUGFIX (2026-06-02): usar 'block' explícito, no ''. La regla CSS
@@ -2591,6 +2755,8 @@ function exportCSV() {
     ].map(csvSafe).join(','));
   });
 
+  Array.prototype.push.apply(rows, csvTopTravelersLines('TOP 10 VIAJEROS POR COSTO — ANUAL', filteredData.rows));
+
   // SECCIÓN 2: Vista mensual (mes seleccionado actualmente)
   var monthData = computeMonthlyData(filteredData, selectedMonth);
   rows.push('');
@@ -2609,6 +2775,8 @@ function exportCSV() {
       b.requestCount
     ].map(csvSafe).join(','));
   });
+
+  Array.prototype.push.apply(rows, csvTopTravelersLines('TOP 10 VIAJEROS POR COSTO — ' + MONTHS_FULL[selectedMonth - 1] + ' ' + year, monthData.rows));
 
   // SECCIÓN 3: detalle de solicitudes (todas las del año filtradas)
   rows.push('');

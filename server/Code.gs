@@ -635,6 +635,11 @@ function dispatch(action, payload) {
     if (action === 'skipApprovalStage' && !_canSkipApproval_(currentUserEmail)) {
       return { success: false, error: _skipApprovalDeniedMsg_() };
     }
+    // Variación cotizado vs facturado del dashboard de costos (#A78): lista fija
+    // en el código (COSTS_VARIANCE_ALLOWED), no el rol. Se revalida en cada request.
+    if (action === 'getCostsVarianceReport' && !_canViewCostsVariance_(currentUserEmail)) {
+      return { success: false, error: _costsVarianceDeniedMsg_() };
+    }
 
     // LOCKING STRATEGY: Block execution until lock is acquired to prevent race conditions.
     if (isWriteAction) {
@@ -6959,6 +6964,38 @@ function _skipApprovalDeniedMsg_() {
     SKIP_APPROVAL_ALLOWED.map(function(p) { return p.name; }).join(' y ') + '.';
 }
 
+// =====================================================================
+// VARIACIÓN COTIZADO VS FACTURADO — QUIÉN LA VE (#A78, 2026-09-14)
+// =====================================================================
+// Pedido de Yurani: esa vista del dashboard de costos solo la ven ella y Diego
+// Caballero; David la conserva como administrador del sistema. Igual que
+// SKIP_APPROVAL_ALLOWED: lista fija en el código (dar superadmin o analista a
+// otra persona no le da esta vista) y además hay que ser administrador. El resto
+// del dashboard no cambia: cada quien sigue viendo sus unidades.
+// =====================================================================
+var COSTS_VARIANCE_ALLOWED = [
+  { email: 'yprieto@equitel.com.co', name: 'Yurani Prieto' },
+  { email: 'directorcompras@equitel.com.co', name: 'Diego Caballero' },
+  { email: 'dsanchez@equitel.com.co', name: 'David Sánchez' }
+];
+
+function _canViewCostsVariance_(email) {
+  var e = String(email || '').toLowerCase().trim();
+  if (!e) return false;
+  var listed = COSTS_VARIANCE_ALLOWED.some(function(p) { return p.email === e; });
+  return listed && isUserAnalyst(e);
+}
+
+/** "Yurani Prieto, Diego Caballero y David Sánchez". */
+function _costsVarianceViewersLabel_() {
+  var names = COSTS_VARIANCE_ALLOWED.map(function(p) { return p.name; });
+  return names.length > 1 ? names.slice(0, -1).join(', ') + ' y ' + names[names.length - 1] : names.join('');
+}
+
+function _costsVarianceDeniedMsg_() {
+  return 'La variación cotizado vs facturado está restringida a ' + _costsVarianceViewersLabel_() + '.';
+}
+
 /**
  * Autoriza un cambio de estado pedido por la API `updateRequest` (#A77). Solo
  * acepta los cambios que usa la app:
@@ -7013,7 +7050,7 @@ function _authorizeStatusUpdate_(currentUserEmail, payload) {
   return { id: id, status: status, payload: { selectionDetails: inner.selectionDetails } };
 }
 
-/** Datos del menú 10 (solo lectura): administradores y quién puede saltar la aprobación. */
+/** Datos del menú 10 (solo lectura): administradores y permisos especiales (saltar la aprobación, variación de costos). */
 function _revisarPermisosAdministradores_() {
   var names = {};
   var usuarios = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
@@ -7029,7 +7066,8 @@ function _revisarPermisosAdministradores_() {
   return {
     superAdmins: supers.map(person),
     analysts: analysts.map(person),
-    skipApproval: SKIP_APPROVAL_ALLOWED.map(function(p) { return { email: p.email, name: p.name, active: _canSkipApproval_(p.email) }; })
+    skipApproval: SKIP_APPROVAL_ALLOWED.map(function(p) { return { email: p.email, name: p.name, active: _canSkipApproval_(p.email) }; }),
+    costsVariance: COSTS_VARIANCE_ALLOWED.map(function(p) { return { email: p.email, name: p.name, active: _canViewCostsVariance_(p.email) }; })
   };
 }
 
@@ -7044,6 +7082,12 @@ function menuVerPermisosAdministradores() {
       lines.push('• ' + p.name + ' (' + p.email + ')' + (p.active ? '' : ' — hoy NO puede: no está como administrador'));
     });
     lines.push('Nadie más puede, aunque sea superadmin o analista.');
+    lines.push('');
+    lines.push('Ven la VARIACIÓN COTIZADO VS FACTURADO del dashboard de costos (regla fija en el código):');
+    r.costsVariance.forEach(function(p) {
+      lines.push('• ' + p.name + ' (' + p.email + ')' + (p.active ? '' : ' — hoy NO la ve: no está como administrador'));
+    });
+    lines.push('Nadie más la ve, aunque sea superadmin o analista.');
     lines.push('');
     lines.push('Superadmins (' + r.superAdmins.length + '):');
     if (!r.superAdmins.length) lines.push('• (ninguno)');
@@ -10726,7 +10770,7 @@ function onOpen() {
     .addItem('7. Cargar fechas de nacimiento (lista RR. HH.)', 'menuCargarFechasNacimiento')
     .addItem('8. Cargar celulares (lista RR. HH.)', 'menuCargarCelulares')
     .addItem('9. Accesos al dashboard de costos', 'menuAccesosDashboardCostos')
-    .addItem('10. Ver administradores y quién salta aprobación', 'menuVerPermisosAdministradores')
+    .addItem('10. Ver administradores y permisos especiales', 'menuVerPermisosAdministradores')
     .addToUi();
 }
 
@@ -14697,6 +14741,29 @@ function _csResolveMonthYear_(v) {
 }
 
 /**
+ * Pasajeros de una fila para el top de viajeros del dashboard (#A78). Devuelve
+ * ids opacos por persona ('v1', 'v2'…): el mismo documento da el mismo id (sin
+ * documento, el mismo nombre). El nombre queda en state.names, el de la fila más
+ * reciente de la hoja. El documento solo sirve para agrupar y no sale de aquí.
+ */
+function _csRowTravelers_(row, headerMap, state) {
+  var out = [];
+  for (var i = 1; i <= 5; i++) {
+    var name = String(_csReadCell_(row, headerMap, 'NOMBRE PERSONA ' + i) || '').replace(/\s+/g, ' ').trim();
+    var doc = String(_csReadCell_(row, headerMap, 'CÉDULA PERSONA ' + i) || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+    if (!name && !doc) continue;
+    var key = doc ? 'd:' + doc : 'n:' + _csNormalize_(name);
+    var id = state.ids[key];
+    if (!id) { id = 'v' + (state.next++); state.ids[key] = id; }
+    if (out.indexOf(id) !== -1) continue;
+    out.push(id);
+    if (name) state.names[id] = name;
+    else if (!state.names[id]) state.names[id] = 'Pasajero sin nombre';
+  }
+  return out;
+}
+
+/**
  * AGREGADOR PRINCIPAL. Lee sheet completo 1 vez, cruza con PPTOS, retorna
  * estructura agregada por unidad. Es la función pesada — cachear su
  * resultado en el caller para reusar entre filtros.
@@ -14777,6 +14844,11 @@ function _csBuildData_(filters, allowedUnits) {
   // Catálogos de empresas/unidades observados (para filtros UI)
   var observedCompanies = {};
   var observedUnits = {};
+
+  // Top de viajeros (#A78): cada solicitud lleva sus pasajeros como ids opacos
+  // ('v1', 'v2'…) que solo valen dentro de esta respuesta; meta.travelerNames da
+  // el nombre de cada id. La cédula nunca sale hacia el navegador.
+  var travelers = { ids: {}, names: {}, next: 1 };
 
   var requestsCounted = 0;
   var requestsExcluded = { byStatus: 0, byMonthYear: 0, byUnitFilter: 0, byCompanyFilter: 0, noPurchaseDate: 0, byOT: 0 };
@@ -14917,7 +14989,9 @@ function _csBuildData_(filters, allowedUnits) {
       executed: perRow.isEstimated ? perRow.estimated : perRow.real,
       isEstimated: perRow.isEstimated,
       breakdown: perRow.breakdown,
-      status: perRow.status
+      status: perRow.status,
+      // Después de todos los filtros: solo se nombran pasajeros de filas visibles.
+      travelers: _csRowTravelers_(row, headerMap, travelers)
     });
     requestsCounted++;
   }
@@ -14984,6 +15058,7 @@ function _csBuildData_(filters, allowedUnits) {
       includeNoPresupuesto: includeNoPresupuesto,
       companies: Object.keys(observedCompanies).map(function(k) { return { norm: k, label: observedCompanies[k] }; }),
       units: Object.keys(observedUnits).map(function(k) { return { norm: k, label: observedUnits[k] }; }),
+      travelerNames: travelers.names,
       requestsCounted: requestsCounted,
       requestsExcluded: requestsExcluded,
       cache: { hits: cacheHits, misses: cacheMisses, savedToDrive: cacheChanged },
@@ -15798,6 +15873,7 @@ function menuAccesosDashboardCostos() {
       lines.push('• ' + (pp.name ? pp.name + ' (' + pp.email + ')' : pp.email) + ': ' + (pp.all ? 'TODAS' : pp.units.join(', ')));
     });
     lines.push('• Cualquier otra persona: sin acceso.');
+    lines.push('La vista "Variación cotizado vs facturado" solo la ven ' + _costsVarianceViewersLabel_() + '.');
     if (rev.warnings.length) {
       lines.push('');
       lines.push('Revisar (' + rev.warnings.length + '):');
@@ -15828,6 +15904,8 @@ function getCostsDashboard(filters, currentUserEmail) {
   data.meta.access = {
     canView: access.canView,
     canConfig: access.canConfig,
+    // Variación cotizado vs facturado (#A78): solo la lista fija de Code.gs.
+    canViewVariance: _canViewCostsVariance_(access.email),
     scope: access.allUnits ? 'ALL' : 'UNITS',
     units: access.allUnits ? [] : access.unitLabels
   };
@@ -15895,11 +15973,9 @@ function resetCostsDashboardConfig(currentUserEmail) {
  * viajes al confirmar costos en el modal) y el costo facturado real
  * (suma de TOTAL FACTURA, TOTAL FACTURA 2 y 3 vía `_csComputeRowExecuted_`).
  *
- * Solo accesible a roles ANALYST y SUPERADMIN (ya gateado en el dispatch
- * por `adminOnlyActions`, que valida con `isUserAnalyst` — incluye
- * superadmin por herencia. Aprobadores NO entran). Re-validamos aquí por
- * defense-in-depth: si alguien llamara directo a la función desde el editor
- * GAS, también se rechaza si no es admin.
+ * Solo la ven las personas de COSTS_VARIANCE_ALLOWED (Yurani, Diego y David)
+ * que además sean administradores (#A78). Se valida en dispatch y aquí otra
+ * vez, por si alguien la llama directo desde el editor GAS.
  *
  * Filtros aceptados (mismos que el dashboard principal):
  *   year, fromMonth, toMonth, businessUnits, companies.
@@ -15915,12 +15991,11 @@ function resetCostsDashboardConfig(currentUserEmail) {
 function getCostsVarianceReport(filters, currentUserEmail) {
   filters = filters || {};
 
-  // Defense-in-depth: dispatch ya valida adminOnlyActions, pero re-chequeamos
-  // por si alguien llama desde el editor GAS o si se modifica el dispatch.
-  var access = _csResolveAccess_(currentUserEmail);
-  if (!access || (access.role !== 'ANALYST' && access.role !== 'SUPERADMIN')) {
-    throw new Error('Reporte restringido a administradores y superadministradores.');
+  // Defensa en profundidad: dispatch ya lo valida (#A78).
+  if (!_canViewCostsVariance_(currentUserEmail)) {
+    throw new Error(_costsVarianceDeniedMsg_());
   }
+  var access = _csResolveAccess_(currentUserEmail);
 
   var config = _csLoadConfig_();
   var now = new Date();

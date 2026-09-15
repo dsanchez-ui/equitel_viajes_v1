@@ -1116,7 +1116,7 @@ Pasos en Apps Script: pegar `Code.gs` → Guardar → **nueva versión** del web
 Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` → Guardar → **nueva versión** del web app (el panel móvil se sirve desde ahí) → recargar la hoja → menú 8 con el enlace de la lista (crea también la columna de celulares de externos en `Nueva Base Solicitudes`).
 
 ## **#A76 — Dashboard de costos: cada líder ve solo su unidad de negocio**
-**Fecha:** 2026-09-14 · **Reportado por:** Yurani (vía David) · **Estado:** Implementado, pendiente de push y despliegue
+**Fecha:** 2026-09-14 · **Reportado por:** Yurani (vía David) · **Estado:** En `main` (`edd641b`; ajuste del menú 9 en `85ed424`), pendiente de la versión nueva del web app
 
 **Pedido:** que ciertos líderes entren al dashboard de costos viendo **solo** su unidad de negocio (p. ej. Simón García: Potencia, GDM y P&M), sin ver valores de las demás, y que quien no tenga un permiso asignado no pueda entrar.
 
@@ -1201,7 +1201,7 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
 **Nota:** la documentación en `docs/guia-hoja-calculo.md` quedó actualizada; los `.html` y `.pdf` de las guías no se regeneraron (`npm run build:guia`).
 
 ## **#A77 — Saltar la aprobación: solo Yurani y David; nadie puede aprobar por la API**
-**Fecha:** 2026-09-14 · **Reportado por:** Yurani (vía David) · **Estado:** Implementado, pendiente de push y despliegue
+**Fecha:** 2026-09-14 · **Reportado por:** Yurani (vía David) · **Estado:** En `main` (`edd641b`), pendiente de la versión nueva del web app
 
 **Pedido:**
 - Que saltar la etapa de aprobación lo tenga solo Yurani.
@@ -1266,3 +1266,81 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
    - Los flujos normales no cambian.
 2. Ejecutar el script temporal de Diego y borrarlo; comprobar con el menú 10.
 3. Push a `main` (frontend). Si el frontend llega primero, el botón y la casilla se muestran a los superadmins (regla vieja) hasta que el backend nuevo esté publicado.
+
+## **#A78 — Dashboard de costos: top 10 de viajeros y variación solo para Yurani, Diego y David**
+**Fecha:** 2026-09-14 · **Reportado por:** Yurani (vía David, correo "Acceso a métricas de plataforma de viajes") · **Estado:** Implementado, pendiente de push y despliegue
+
+**Pedido:**
+- Acceso al dashboard para una lista de personas:
+  - Mauricio Isaza, Alejandro Gómez y Diego Caballero: todas las unidades
+  - Simón García: Potencia
+  - Hernando Casas: CPK
+  - Yesid Roncancio: Energía Postventa
+  - Ana Ochoa y Alexandra Olave: Energía Proyectos
+  - Ana Ochoa y Susana López: Ingenergía e Ingenergía Comap
+  - Pablo Piedrahita: LAP
+- La vista "Variación cotizado vs facturado" solo para ella y Diego.
+- En cada vista, el top 10 de viajeros por costo.
+
+**Decisiones de David:**
+- La línea "Alejandro Gómez - todo lo que diga ADM" sobra: Alejandro Gómez de Greiff ve todas las unidades y ningún otro Alejandro entra. Ana Ochoa es Ana Elvira Ochoa Pacheco.
+- La variación la ven Yurani, Diego y David (igual que saltar la aprobación, #A77).
+- En el top, el costo de un viaje con varios pasajeros se reparte en partes iguales entre ellos.
+
+**Cambio:**
+- **Accesos:** sin código. Son filas de la tabla de MISC (#A76). Mauricio y Alejandro llevan `TODAS`; Diego no necesita fila porque es analista.
+- **Variación, lista fija en el código** (`COSTS_VARIANCE_ALLOWED`: Yurani Prieto, Diego Caballero y David Sánchez), y además deben ser administradores. No depende del rol ni de la tabla de MISC: Laura y apcompras dejan de verla, y una fila con `TODAS` no la da.
+  - se valida en `dispatch` y otra vez dentro de `getCostsVarianceReport`
+  - `getCostsDashboard` devuelve `meta.access.canViewVariance`; la página solo pide y muestra la sección si es verdadero (antes decidía por el rol de la sesión); el distintivo dice "Acceso restringido"
+- **Top 10 de viajeros** en las vistas anual, periodo actual y mensual, y en el CSV (anual y del mes):
+  - cada solicitud del dashboard trae sus pasajeros como ids opacos (`v1`, `v2`…, válidos solo dentro de esa respuesta) y `meta.travelerNames` da el nombre; la cédula no sale del servidor. La misma cédula da el mismo id y el nombre es el de su solicitud más reciente.
+  - los pasajeros se leen **después** de todos los filtros, incluido el acceso por unidad: un líder solo recibe nombres de quienes viajaron en sus unidades
+  - la página calcula el top con las mismas solicitudes de cada vista, así que respeta empresa, unidad, "incluir estimado" y el mes o periodo
+  - columnas: viajero (con "incl. estimado" si parte de su costo es estimado), unidad principal (+N si viajó por varias), viajes, costo y % del ejecutado de la vista
+- **Menú 10** pasa a llamarse *Ver administradores y permisos especiales* y lista también quién ve la variación. **Menú 9** agrega una línea con quién la ve.
+
+**Verificado:**
+- `npm run verify`.
+- Simulación del `Code.gs` completo con la copia de la base, comparada con #A77, 28 escenarios:
+  - **cifras:** para los administradores, idénticas a #A77 salvo los pasajeros agregados (2026: 311 solicitudes; también 2025 y con filtros)
+  - **pasajeros:**
+    - ids opacos con nombre en todas las solicitudes (113 viajeros), con el mismo número de pasajeros que la hoja
+    - ningún número de documento en la respuesta
+    - la misma persona tiene el mismo id, con el nombre de su solicitud más reciente
+  - **lista de Yurani**, con la tabla como quedará en MISC (encabezados en H1:I1 y la lista de unidades de David en K):
+    - cada persona ve exactamente sus unidades, con las mismas cifras que un administrador
+    - Mauricio y Alejandro ven todo
+    - ningún líder recibe nombres de otras unidades
+    - el menú 9 no da avisos
+  - **top 10**, con la función real del HTML:
+    - un viaje de $3.000.000 con 3 pasajeros suma $1.000.000 a cada uno
+    - máximo 10 filas y, con el mismo costo, orden por nombre
+    - con datos reales, repartir no crea ni pierde plata
+    - el top de Simón es igual al de un administrador filtrado a POTENCIA (año y mes)
+  - **variación:**
+    - Yurani, Diego y David la reciben con los mismos datos que antes
+    - Laura y apcompras ya no (antes sí), con un mensaje claro; Simón y Mauricio tampoco
+    - la llamada directa a la función también rechaza
+    - `canViewVariance` es correcto para las siete personas
+    - Diego en la lista, pero sin rol de administrador, no la ve
+    - la página decide por lo que dice el backend
+  - **menús 9 y 10**
+- 12 defectos introducidos a propósito (8 en `Code.gs` y 4 en la página), todos detectados.
+- Chrome headless con la página real, 29 pasos con David, Laura y Simón:
+  - el top de cada vista coincide con el cálculo esperado
+  - la variación aparece solo a David; a los otros dos ni se les pide al servidor
+  - el filtro de unidad cambia el top; sin el estimado desaparece la marca
+  - el CSV trae los dos tops
+  - sin errores de JavaScript
+- **Regresión:** #A76 26 (ajustada para ignorar los pasajeros al comparar cifras entre usuarios), #A77 29, #A75 31, #A74 33, usuarios 19, posición 15, A2 20, C2 11, carga masiva 20.
+
+**Despliegue:** solo Apps Script (`Code.gs` y `CostsDashboard.html`, los dos), junto con #A76 y #A77; la app React no cambia.
+1. Pegar ambos archivos y guardar.
+2. Llenar la tabla de MISC con la lista de Yurani y revisarla con el menú 9.
+3. Crear la versión nueva del web app.
+
+**Hallazgo aparte (sin corregir, pendiente de decisión):**
+- El campo de costos del modal de confirmación es `type="number"`: escribir `889.518` con punto de miles guarda 889,518 pesos.
+- Hay 11 solicitudes así desde mayo (SOL-000178, 431, 440, 445, 467, 511, 512, 518, 522, 523, 533). En el top de Simón de septiembre aparecen viajeros con $890 y $604.
+- Afecta el dashboard y el chequeo de presupuesto, que suman 889 pesos en vez de 889.518. El umbral de alto costo ($1.200.000) no se vio afectado: los 11 costos son menores de $1.000.000.
+- Los correos no lo delatan porque muestran "$889.518".

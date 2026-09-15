@@ -210,7 +210,7 @@ Queda registrado en OBSERVACIONES con tu correo, timestamp y justificación. No 
 
 ### 5.9 Saltar la etapa de APROBACIÓN (solo Yurani Prieto y David Sánchez)
 
-**Quién puede:** solo Yurani Prieto y David Sánchez (decisión de Yurani, 2026-09-14). Es una lista fija en el código (`SKIP_APPROVAL_ALLOWED` en `Code.gs`), **no un rol**: ningún otro superadmin ni analista puede, aunque tenga acceso de administrador, y para cambiarla hay que modificar el código. Para comprobar quién puede: **Equitel Viajes → 10. Ver administradores y quién salta aprobación**. A los demás no les aparecen ni el botón ni la casilla, y el sistema rechaza el intento si llegara por otra vía.
+**Quién puede:** solo Yurani Prieto y David Sánchez (decisión de Yurani, 2026-09-14). Es una lista fija en el código (`SKIP_APPROVAL_ALLOWED` en `Code.gs`), **no un rol**: ningún otro superadmin ni analista puede, aunque tenga acceso de administrador, y para cambiarla hay que modificar el código. Para comprobar quién puede: **Equitel Viajes → 10. Ver administradores y permisos especiales**. A los demás no les aparecen ni el botón ni la casilla, y el sistema rechaza el intento si llegara por otra vía.
 
 Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin mandar correos a los aprobadores:
 

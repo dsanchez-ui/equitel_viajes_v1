@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A77) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A78) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -155,7 +155,7 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   Yurani, 2026-09-14). Es una lista fija en el código (`SKIP_APPROVAL_ALLOWED`) y además
   deben ser administradores. **No depende del rol superadmin**: dar superadmin a alguien
   más no le da este poder. Diego (`directorcompras`) quedó como analista. El menú
-  *10. Ver administradores y quién salta aprobación* lo muestra.
+  *10. Ver administradores y permisos especiales* lo muestra.
 - **La API no acepta estados arbitrarios** (#A77): `updateRequest` solo permite los
   cambios que usa la app (analista: opciones, selección por trazabilidad, confirmar
   costos; solicitante: su selección, en su solicitud y en `PENDIENTE_SELECCION`), y
@@ -169,6 +169,15 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   se aplica en el servidor antes de sumar o contar, nunca en el navegador. Si la
   tabla falta o no se puede leer, solo entran los administradores. Se administra con
   el menú *9. Accesos al dashboard de costos*.
+- **Variación cotizado vs facturado: solo Yurani Prieto, Diego Caballero y David Sánchez**
+  (#A78, pedido de Yurani, 2026-09-14). Lista fija en el código (`COSTS_VARIANCE_ALLOWED`)
+  y además deben ser administradores; no depende del rol ni de la tabla de MISC (`TODAS`
+  no la da). Laura y apcompras dejaron de verla. El menú *10* lo muestra.
+- **Top 10 de viajeros por costo** en las vistas anual, periodo y mensual del dashboard
+  (#A78): el costo de cada viaje se reparte **en partes iguales entre sus pasajeros**
+  (decisión de David). Los pasajeros llegan al navegador como ids opacos por respuesta
+  (`v1`, `v2`…) con su nombre, **nunca con la cédula**, y se leen después del filtro por
+  unidad: un líder solo recibe nombres de quienes viajaron en sus unidades.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -352,12 +361,21 @@ autorización) y verificar antes de crear una versión nueva del web app.
   Apps Script desplegado (el menú 8 ya se usó). Pendiente sin código: completar con
   RR. HH. los 7 celulares inválidos o faltantes de la lista (p. ej. uno de 9 dígitos).
 - **#A76** (dashboard de costos por unidad) y **#A77** (saltar aprobación solo Yurani y
-  David; la API ya no acepta estados arbitrarios): implementados, pendientes de push y de
-  desplegar Apps Script (`Code.gs` y `CostsDashboard.html`). Orden de #A76: pegar y
-  guardar, crear y llenar la tabla con el menú 9 con la lista de Yurani, y **después**
-  crear la versión nueva del web app. #A77: Diego ya quedó como analista (script
+  David; la API ya no acepta estados arbitrarios): en `main` (`edd641b`; ajuste del menú 9
+  en `85ed424`). En Apps Script ya se pegó `Code.gs` y el menú 9 creó los encabezados en
+  MISC (H1:I1, con Simón en la fila 2). #A77: Diego ya quedó como analista (script
   temporal ejecutado y verificado con el menú 10 el 2026-09-14: superadmins David y
   Yurani; saltan aprobación solo ellos dos).
+- **#A78** (top 10 de viajeros por costo en cada vista del dashboard; variación cotizado
+  vs facturado solo Yurani, Diego y David): implementado, pendiente de push. Se despliega
+  junto con #A76/#A77: pegar `Code.gs` y `CostsDashboard.html`, llenar la tabla de MISC
+  con la lista de Yurani (revisar con el menú 9) y **después** crear la versión nueva del
+  web app.
+- **Costos guardados con decimales (hallazgo de #A78, sin corregir):** el campo de costos
+  del modal de confirmación es numérico; escribir `889.518` con punto de miles guarda
+  889,518 pesos. 11 solicitudes desde mayo (p. ej. SOL-000511, 512, 518, 522, 523, 533).
+  Afecta el dashboard y el chequeo de presupuesto (los 11 son menores de $1.000.000, así
+  que el umbral de alto costo no se vio afectado). Pendiente de decisión de David.
 - **Seguimiento sin código de la carga de fechas (#A72):** corregir con RR. HH. las
   4 fechas inválidas; revisar los 115 usuarios que no aparecen en la lista de
   integrantes (¿siguen en la empresa?); borrar los usuarios de prueba `PRUEBA1` y
