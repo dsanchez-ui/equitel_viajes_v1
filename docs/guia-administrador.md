@@ -142,8 +142,10 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
 
 1. Fila con status `PENDIENTE_CONFIRMACION_COSTO`
 2. Abre el detalle → verás el texto libre que escribió el usuario ("Opción A, categoría Económica…")
-3. **"Confirmar costos"** → ingresa `finalCostTickets` y `finalCostHotel` (si aplica)
+3. **"Confirmar costos"** → escribe el costo de los tiquetes y, si aplica, el del hotel, en pesos, con o sin puntos de miles (`889.518` o `889518`). Bajo cada campo aparece cómo se va a registrar. Si no tiene costo (por ejemplo, un apartamento corporativo), escribe `0`; cualquier otro valor debe ser de al menos $10.000. La confirmación avisa si el total queda en $0.
 4. Al guardar, si el total ≤ $1.2M y no es internacional → pasa a `APROBADO` directo. Si no → pasa a `PENDIENTE_APROBACION` y se envía correo a CEO + CDS + aprobador de área.
+
+**Costos mal digitados antes del 2026-09-14:** con el campo anterior, `889.518` se guardaba como 889 pesos con decimales. **Equitel Viajes → 11. Corregir costos mal digitados** los corrige: muestra una vista previa, pide confirmación, deja una nota en OBSERVACIONES y el detalle en la pestaña "Reporte corrección costos". Los que no se pueden deducir (por ejemplo, costos de $1) solo los lista para revisarlos a mano.
 
 ### 5.3 Registrar reserva (APROBADO → RESERVADO)
 

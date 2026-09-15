@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { TravelRequest, RequestStatus } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
+import { validateCostAmount, formatCop } from '../utils/money';
 
 interface CostConfirmationModalProps {
   request: TravelRequest;
@@ -27,8 +28,10 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
   // el backend autoriza (#A77: Yurani y David); el backend lo revalida.
   const [skipApproval, setSkipApproval] = useState<boolean>(false);
   const [skipJustification, setSkipJustification] = useState<string>('');
-  const [costTickets, setCostTickets] = useState<number>(0);
-  const [costHotel, setCostHotel] = useState<number>(0);
+  // #A79: los costos se escriben como texto en pesos, con o sin puntos de miles.
+  // Con el campo numérico, "889.518" se guardaba como 889,518 pesos.
+  const [ticketsText, setTicketsText] = useState<string>('');
+  const [hotelText, setHotelText] = useState<string>('');
 
   const [dialog, setDialog] = useState<{
     isOpen: boolean;
@@ -43,36 +46,28 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
 
   const isHotelOnly = request.requestMode === 'HOTEL_ONLY';
 
+  // Vuelos: tiquetes obligatorio y hotel opcional. Solo hospedaje: hotel obligatorio.
+  const ticketsCheck = validateCostAmount(ticketsText, 'de los tiquetes', !isHotelOnly);
+  const hotelCheck = validateCostAmount(hotelText, 'del hotel', isHotelOnly);
+  const costTickets = !isHotelOnly && ticketsCheck.ok ? (ticketsCheck.value || 0) : 0;
+  const costHotel = hotelCheck.ok ? (hotelCheck.value || 0) : 0;
+  const total = costTickets + costHotel;
+
   const handleSubmit = async () => {
-      // Hotel-only: solo hotel es obligatorio. Vuelos: tiquetes obligatorio.
-      if (isHotelOnly) {
-          if (costHotel <= 0) {
-              setDialog({
-                isOpen: true,
-                title: 'Validación',
-                message: "El costo del hotel es obligatorio para solicitudes de solo hospedaje.",
-                type: 'ALERT',
-                onConfirm: closeDialog
-              });
-              return;
-          }
-      } else {
-          if (costTickets <= 0) {
-              setDialog({
-                isOpen: true,
-                title: 'Validación',
-                message: "El costo de los tiquetes es obligatorio.",
-                type: 'ALERT',
-                onConfirm: closeDialog
-              });
-              return;
-          }
+      const problems: string[] = [];
+      if (!isHotelOnly && !ticketsCheck.ok && ticketsCheck.error) problems.push(ticketsCheck.error);
+      if (!hotelCheck.ok && hotelCheck.error) problems.push(hotelCheck.error);
+      if (problems.length > 0) {
+          setDialog({ isOpen: true, title: 'Validación', message: problems.join('\n\n'), type: 'ALERT', onConfirm: closeDialog });
+          return;
       }
 
-      const total = costTickets + costHotel;
       let message = isHotelOnly
-          ? `Se registrará el costo del hospedaje:\n\nHotel: $${costHotel.toLocaleString()}\nTotal: $${total.toLocaleString()}\n\n`
-          : `Se registrarán los siguientes costos:\n\nTiquetes: $${costTickets.toLocaleString()}\nHotel: $${costHotel.toLocaleString()}\nTotal: $${total.toLocaleString()}\n\n`;
+          ? `Se registrará el costo del hospedaje:\n\nHotel: $${formatCop(costHotel)}\nTotal: $${formatCop(total)}\n\n`
+          : `Se registrarán los siguientes costos:\n\nTiquetes: $${formatCop(costTickets)}\nHotel: $${formatCop(costHotel)}\nTotal: $${formatCop(total)}\n\n`;
+      if (total === 0) {
+          message += "⚠️ Se registrará SIN COSTO (por ejemplo, un apartamento corporativo).\n\n";
+      }
 
       // Saltar aprobación requiere el permiso (#A77) y una justificación válida.
       if (skipApproval) {
@@ -86,13 +81,13 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
           }
           message += `⏭️ SE SALTARÁ LA ETAPA DE APROBACIÓN.\nLa solicitud pasará directamente a APROBADO.\n\nJustificación: "${skipJustification.trim()}"\n\n`;
       } else if (!request.isInternational && total > 1200000) {
-          message += "⚠️ ALERTA DE COSTO: El valor supera $1,200,000. Se solicitará aprobación adicional a Dirección de Cadena de Suministro y Aprobador de Área.\n\n";
+          message += "⚠️ ALERTA DE COSTO: El valor supera $1.200.000. Se solicitará aprobación adicional a Dirección de Cadena de Suministro y Aprobador de Área.\n\n";
       }
 
       message += skipApproval
         ? "Se registrará la decisión sin enviar correos de aprobación."
         : "Se enviará la solicitud para aprobación.";
-      
+
       setDialog({
           isOpen: true,
           title: 'Confirmar Costos',
@@ -112,7 +107,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
           await gasService.updateRequestStatus(request.requestId, RequestStatus.PENDING_APPROVAL, {
               finalCostTickets: costTickets,
               finalCostHotel: costHotel,
-              totalCost: costTickets + costHotel,
+              totalCost: total,
               // Si vamos a saltar aprobación inmediatamente, le decimos al
               // backend que NO envíe correo a los aprobadores en este paso
               // intermedio — nunca van a actuar sobre la solicitud.
@@ -153,14 +148,36 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
       }
   };
 
+  /** Campo de costo: acepta 889518 o 889.518 y al salir lo deja con puntos de miles. */
+  const renderCostInput = (kind: 'tickets' | 'hotel', label: string, text: string, setText: (v: string) => void, check: ReturnType<typeof validateCostAmount>) => (
+      <div>
+          <label className="block text-sm font-bold text-gray-700 mb-1">{label}</label>
+          <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              data-cost={kind}
+              placeholder="Ej: 889.518"
+              className={`w-full border rounded p-2 text-gray-900 font-bold bg-white focus:ring-purple-500 focus:border-purple-500 ${text.trim() && !check.ok ? 'border-red-400' : 'border-gray-300'}`}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onBlur={() => { if (text.trim() && check.ok && check.value !== null) setText(formatCop(check.value)); }}
+          />
+          {text.trim() !== '' && (check.ok
+              ? <p className="text-xs text-gray-500 mt-1" data-cost-preview={kind}>Se registrará: $ {formatCop(check.value || 0)}</p>
+              : <p className="text-xs text-red-600 mt-1" data-cost-error={kind}>{check.error}</p>
+          )}
+      </div>
+  );
+
   return (
     <>
-      <ConfirmationDialog 
-        isOpen={dialog.isOpen} 
-        title={dialog.title} 
-        message={dialog.message} 
-        onConfirm={dialog.onConfirm} 
-        onCancel={dialog.onCancel} 
+      <ConfirmationDialog
+        isOpen={dialog.isOpen}
+        title={dialog.title}
+        message={dialog.message}
+        onConfirm={dialog.onConfirm}
+        onCancel={dialog.onCancel}
         type={dialog.type}
       />
       <div className="fixed inset-0 z-[70] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
@@ -183,31 +200,14 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
             </div>
 
             <div className="space-y-4">
+                  <p className="text-xs text-gray-500">Valores en pesos, con o sin puntos de miles (889.518 o 889518). Si no tiene costo, escriba 0.</p>
                   {/* Tiquetes — solo para solicitudes de vuelo (no hotel-only) */}
-                  {request.requestMode !== 'HOTEL_ONLY' && (
-                  <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1">Costo Final Tiquetes *</label>
-                      <input
-                          type="number"
-                          className="w-full border border-gray-300 rounded p-2 text-gray-900 font-bold bg-white focus:ring-purple-500 focus:border-purple-500"
-                          value={costTickets}
-                          onChange={(e) => setCostTickets(Number(e.target.value))}
-                      />
-                  </div>
-                  )}
-                  <div>
-                      <label className="block text-sm font-bold text-gray-700 mb-1">{request.requestMode === 'HOTEL_ONLY' ? 'Costo Final Hotel *' : 'Costo Final Hotel'}</label>
-                      <input
-                          type="number"
-                          className="w-full border border-gray-300 rounded p-2 text-gray-900 font-bold bg-white focus:ring-purple-500 focus:border-purple-500"
-                          value={costHotel}
-                          onChange={(e) => setCostHotel(Number(e.target.value))}
-                      />
-                  </div>
+                  {!isHotelOnly && renderCostInput('tickets', 'Costo Final Tiquetes *', ticketsText, setTicketsText, ticketsCheck)}
+                  {renderCostInput('hotel', isHotelOnly ? 'Costo Final Hotel *' : 'Costo Final Hotel', hotelText, setHotelText, hotelCheck)}
 
                   <div className="flex justify-between items-center bg-gray-100 p-3 rounded mt-2">
                       <span className="font-bold text-gray-700">Total a Aprobar:</span>
-                      <span className="text-xl font-bold text-brand-red">$ {(costTickets + costHotel).toLocaleString()}</span>
+                      <span className="text-xl font-bold text-brand-red" data-cost-total>$ {formatCop(total)}</span>
                   </div>
 
                   {canSkipApproval && (

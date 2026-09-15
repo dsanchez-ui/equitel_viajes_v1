@@ -6996,6 +6996,105 @@ function _costsVarianceDeniedMsg_() {
   return 'La variación cotizado vs facturado está restringida a ' + _costsVarianceViewersLabel_() + '.';
 }
 
+// =====================================================================
+// COSTOS CONFIRMADOS EN PESOS (#A79, 2026-09-14)
+// =====================================================================
+// ⚠️ GEMELO DE `utils/money.ts` (frontend): `tools/check-cost-rules.cjs` compara
+// reglas y mensajes dentro de `npm run verify`.
+// El campo de costos del modal era numérico: "889.518" (con punto de miles) se
+// guardaba como 889,518 pesos, y el dashboard y el chequeo de presupuesto
+// contaban casi nada. Reglas (David): pesos enteros, con o sin puntos de miles;
+// los centavos se redondean; 0 es válido (por ejemplo, un apartamento
+// corporativo) y cualquier otro valor debe ser de al menos COST_MIN_PESOS:
+// ningún viaje cuesta menos.
+// =====================================================================
+var COST_MIN_PESOS = 10000;
+
+/** 889518 → '889.518'. */
+function _formatCop_(n) {
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+/**
+ * Lo escrito (o un número) a pesos enteros. Acepta 889518, 889.518, 889,518,
+ * "$ 1.234.567,50" (los centavos se redondean). Un número con decimales no se
+ * interpreta: es justo el error que se quiere evitar.
+ * @return {{empty: boolean, value: (number|null), decimals: (boolean|undefined)}}
+ */
+function _parseCopAmount_(raw) {
+  if (raw === null || raw === undefined) return { empty: true, value: null };
+  if (typeof raw === 'number') {
+    if (!isFinite(raw) || raw < 0) return { empty: false, value: null };
+    if (raw !== Math.floor(raw)) return { empty: false, value: null, decimals: true };
+    return { empty: false, value: raw };
+  }
+  var s = String(raw).replace(/[\s$]/g, '');
+  if (!s) return { empty: true, value: null };
+  if (!/^[\d.,]+$/.test(s)) return { empty: false, value: null };
+  var m = s.match(/^(.*\d)[.,](\d{1,2})$/);
+  var intPart = m ? m[1] : s;
+  var cents = m ? m[2] : '';
+  if (!/^\d+$/.test(intPart) && !/^\d{1,3}(\.\d{3})+$/.test(intPart) && !/^\d{1,3}(,\d{3})+$/.test(intPart)) {
+    return { empty: false, value: null };
+  }
+  var whole = Number(intPart.replace(/[.,]/g, ''));
+  var value = cents ? Math.round(whole + Number(cents) / Math.pow(10, cents.length)) : whole;
+  return { empty: false, value: value };
+}
+
+/**
+ * `label` completa la frase "El costo …": 'de los tiquetes', 'del hotel', 'total'.
+ * Vacío es error solo si el campo es obligatorio; 0 escrito siempre es válido.
+ * @return {{ok: boolean, value: (number|null), error: (string|undefined)}}
+ */
+function _validateCostAmount_(raw, label, required) {
+  var original = raw === null || raw === undefined ? '' : String(raw).trim();
+  var p = _parseCopAmount_(raw);
+  if (p.empty) {
+    return required
+      ? { ok: false, value: null, error: 'El costo ' + label + ' es obligatorio. Si no tiene costo (por ejemplo, un apartamento corporativo), escriba 0.' }
+      : { ok: true, value: 0 };
+  }
+  if (p.decimals) {
+    return { ok: false, value: null, error: 'El costo ' + label + ' llegó con decimales (' + original + '). Escriba el valor completo en pesos, por ejemplo 889.518; si vuelve a pasar, recargue la página.' };
+  }
+  if (p.value === null) {
+    return { ok: false, value: null, error: 'El costo ' + label + ' ("' + original + '") no es un valor en pesos. Escríbalo sin centavos, por ejemplo 889.518 o 889518.' };
+  }
+  if (p.value > 0 && p.value < COST_MIN_PESOS) {
+    return { ok: false, value: p.value, error: 'El costo ' + label + ' ($' + _formatCop_(p.value) + ') no es un valor real: revise que esté completo (mínimo $' + _formatCop_(COST_MIN_PESOS) + ') o escriba 0 si no tiene costo.' };
+  }
+  return { ok: true, value: p.value };
+}
+
+/**
+ * Costos que manda "Confirmar costos" (#A79). Solo aplica a las claves presentes.
+ * Rechaza decimales (una pestaña con el formulario anterior manda 889.518 si se
+ * escribió con punto de miles) y valores imposibles, y recalcula el total como la
+ * suma de tiquetes y hotel. No se escribe nada si algo no es válido.
+ */
+function _normalizeConfirmedCosts_(inner) {
+  var hasTickets = inner.finalCostTickets !== undefined;
+  var hasHotel = inner.finalCostHotel !== undefined;
+  if (!hasTickets && !hasHotel && inner.totalCost === undefined) return inner;
+  var copy = {};
+  Object.keys(inner).forEach(function(k) { copy[k] = inner[k]; });
+  if (hasTickets || hasHotel) {
+    var t = hasTickets ? _validateCostAmount_(inner.finalCostTickets, 'de los tiquetes', false) : { ok: true, value: 0 };
+    var h = hasHotel ? _validateCostAmount_(inner.finalCostHotel, 'del hotel', false) : { ok: true, value: 0 };
+    var problems = [t, h].filter(function(c) { return !c.ok; }).map(function(c) { return c.error; });
+    if (problems.length) throw new Error(problems.join(' '));
+    if (hasTickets) copy.finalCostTickets = t.value;
+    if (hasHotel) copy.finalCostHotel = h.value;
+    copy.totalCost = t.value + h.value;
+  } else {
+    var total = _validateCostAmount_(inner.totalCost, 'total', false);
+    if (!total.ok) throw new Error(total.error);
+    copy.totalCost = total.value;
+  }
+  return copy;
+}
+
 /**
  * Autoriza un cambio de estado pedido por la API `updateRequest` (#A77). Solo
  * acepta los cambios que usa la app:
@@ -7029,6 +7128,10 @@ function _authorizeStatusUpdate_(currentUserEmail, payload) {
       inner = copy;
       console.warn('updateRequest: skipApprovalNotification ignorado para ' + currentUserEmail + ' en ' + id + ' (no puede saltar la aprobación).');
     }
+    // #A79: si llegan costos (la app solo los manda al confirmarlos), solo pesos
+    // reales, sin decimales ni valores imposibles; el total se recalcula como la
+    // suma. Si algo falla, no se escribe nada.
+    inner = _normalizeConfirmedCosts_(inner);
     return { id: id, status: status, payload: inner };
   }
   if (status !== 'PENDIENTE_CONFIRMACION_COSTO') {
@@ -10525,6 +10628,172 @@ function menuCargarCelulares() {
   }
 }
 
+// ---------------------------------------------------------------------
+// CORRECCIÓN DE COSTOS MAL DIGITADOS (#A79, 2026-09-14)
+// ---------------------------------------------------------------------
+// Con el campo numérico del modal de costos, "889.518" (con punto de miles) se
+// guardó como 889,518 pesos en COSTO_FINAL_TIQUETES, COSTO_FINAL_HOTEL y COSTO
+// COTIZADO PARA VIAJE. El menú 11 corrige esas celdas multiplicando por mil solo
+// si el valor tiene hasta 3 decimales, el resultado es un costo real (al menos
+// COST_MIN_PESOS) y la fila queda cuadrada (cotizado = tiquetes + hotel). Todo lo
+// demás (p. ej. costos de $1 que se escribían para pasar la validación anterior)
+// se reporta para revisar a mano: no se adivina ningún valor.
+// Vista previa y confirmación antes de escribir; nota en OBSERVACIONES y detalle
+// en la pestaña COST_FIX_REPORT_SHEET. Repetirlo no cambia nada.
+// ---------------------------------------------------------------------
+var COST_FIX_COLUMNS = ['COSTO_FINAL_TIQUETES', 'COSTO_FINAL_HOTEL', 'COSTO COTIZADO PARA VIAJE'];
+var COST_FIX_REPORT_SHEET = 'Reporte corrección costos';
+
+/**
+ * Clasifica las celdas de costo de la hoja de solicitudes. No escribe nada.
+ * @return {{fixes: Array<{row: number, requestId: string, status: string, unit: string, cells: Array<{header: string, col: number, from: number, to: number}>}>,
+ *   manual: Array<{row: number, requestId: string, status: string, header: string, value: *, reason: string}>}}
+ */
+function _planCostCorrections_(sheet) {
+  var plan = { fixes: [], manual: [] };
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return plan;
+  var idIdx = H('ID RESPUESTA'), statusIdx = H('STATUS'), unitIdx = H('UNIDAD DE NEGOCIO');
+  var idxs = COST_FIX_COLUMNS.map(function(h) { return H(h); });
+  var missing = COST_FIX_COLUMNS.filter(function(h, k) { return idxs[k] < 0; });
+  if (idIdx < 0) missing.push('ID RESPUESTA');
+  if (missing.length) throw new Error('Faltan columnas en ' + SHEET_NAME_REQUESTS + ': ' + missing.join(', '));
+  var data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+  for (var r = 0; r < data.length; r++) {
+    var row = data[r];
+    var requestId = String(row[idIdx] || '').trim();
+    if (!requestId) continue;
+    var status = statusIdx >= 0 ? String(row[statusIdx] || '').trim() : '';
+    var proposed = [], manual = [], corrected = [];
+    for (var k = 0; k < COST_FIX_COLUMNS.length; k++) {
+      var v = row[idxs[k]];
+      corrected.push(typeof v === 'number' && isFinite(v) ? v : 0);
+      if (typeof v !== 'number' || !isFinite(v) || v <= 0) continue;
+      if (v !== Math.floor(v)) {
+        var scaled = Math.round(v * 1000);
+        if (Math.abs(v * 1000 - scaled) < 1e-6 && scaled >= COST_MIN_PESOS) {
+          proposed.push({ header: COST_FIX_COLUMNS[k], col: idxs[k] + 1, from: v, to: scaled });
+          corrected[k] = scaled;
+        } else {
+          manual.push({ header: COST_FIX_COLUMNS[k], value: v, reason: 'Tiene decimales que no corresponden a un punto de miles.' });
+        }
+      } else if (v < COST_MIN_PESOS) {
+        manual.push({ header: COST_FIX_COLUMNS[k], value: v, reason: 'Es menor de $' + _formatCop_(COST_MIN_PESOS) + ': no es un costo real y no se puede saber el valor (si no tuvo costo, déjelo en 0).' });
+      }
+    }
+    if (proposed.length) {
+      // corrected = [tiquetes, hotel, cotizado], ya con las correcciones propuestas.
+      if (corrected[2] === corrected[0] + corrected[1]) {
+        plan.fixes.push({ row: r + 2, requestId: requestId, status: status, unit: unitIdx >= 0 ? String(row[unitIdx] || '') : '', cells: proposed });
+      } else {
+        proposed.forEach(function(p) {
+          manual.push({ header: p.header, value: p.from, reason: 'Multiplicado por mil daría $' + _formatCop_(p.to) + ', pero el cotizado no cuadraría con tiquetes + hotel ($' +
+            _formatCop_(corrected[2]) + ' frente a $' + _formatCop_(corrected[0] + corrected[1]) + ').' });
+        });
+      }
+    }
+    manual.forEach(function(m) { plan.manual.push({ row: r + 2, requestId: requestId, status: status, header: m.header, value: m.value, reason: m.reason }); });
+  }
+  return plan;
+}
+
+function _summarizeCostCorrections_(plan, applied) {
+  var cells = 0;
+  plan.fixes.forEach(function(f) { cells += f.cells.length; });
+  return {
+    applied: applied,
+    requests: plan.fixes.length,
+    cells: cells,
+    manual: plan.manual.length,
+    fixExamples: plan.fixes.slice(0, 15).map(function(f) {
+      return f.requestId + ' (' + f.status + '): ' + f.cells.map(function(c) { return c.header + ' ' + c.from + ' → $' + _formatCop_(c.to); }).join(', ');
+    }),
+    manualExamples: plan.manual.slice(0, 10).map(function(m) { return m.requestId + ' (' + m.status + ') ' + m.header + ' = ' + m.value + ': ' + m.reason; })
+  };
+}
+
+/** Detalle celda por celda en la pestaña de reporte (se reescribe en cada corrección). */
+function _writeCostCorrectionsReport_(plan) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sh = ss.getSheetByName(COST_FIX_REPORT_SHEET) || ss.insertSheet(COST_FIX_REPORT_SHEET);
+  sh.clear();
+  var rows = [['Solicitud', 'Estado', 'Columna', 'Valor guardado', 'Valor corregido', 'Resultado']];
+  plan.fixes.forEach(function(f) {
+    f.cells.forEach(function(c) { rows.push([f.requestId, f.status, c.header, String(c.from), String(c.to), 'Corregido']); });
+  });
+  plan.manual.forEach(function(m) { rows.push([m.requestId, m.status, m.header, String(m.value), '', 'Revisar a mano: ' + m.reason]); });
+  sh.getRange(1, 1, rows.length, 6).setNumberFormat('@').setValues(rows);
+  sh.getRange(1, 1, 1, 6).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  return rows.length - 1;
+}
+
+/**
+ * Núcleo sin interfaz (también se puede correr desde el editor).
+ * apply=false → solo vista previa, no escribe nada.
+ * apply=true  → recalcula bajo LockService, corrige, deja nota y reporte.
+ */
+function corregirCostosMalDigitados(apply) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error('Hoja "' + SHEET_NAME_REQUESTS + '" no encontrada.');
+  if (!apply) return _summarizeCostCorrections_(_planCostCorrections_(sheet), false);
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) throw new Error('Sistema ocupado. Intente de nuevo en unos segundos.');
+  try {
+    // Se recalcula dentro del lock: las filas pudieron cambiar desde la vista previa.
+    _clearReqHeadersCache_();
+    var plan = _planCostCorrections_(sheet);
+    var obsIdx = H('OBSERVACIONES');
+    var stamp = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyy-MM-dd HH:mm');
+    var units = {};
+    plan.fixes.forEach(function(f) {
+      f.cells.forEach(function(c) { sheet.getRange(f.row, c.col).setValue(c.to); });
+      if (obsIdx >= 0) {
+        var current = String(sheet.getRange(f.row, obsIdx + 1).getValue() || '');
+        var note = '[CORRECCIÓN DE COSTOS ' + stamp + ']: ' +
+          f.cells.map(function(c) { return c.header + ' ' + c.from + ' → ' + c.to; }).join('; ') +
+          ' (se había guardado el punto de miles como decimal).';
+        sheet.getRange(f.row, obsIdx + 1).setValue((current ? current + '\n' : '') + note);
+      }
+      if (f.unit) units[f.unit] = true;
+    });
+    SpreadsheetApp.flush();
+    Object.keys(units).forEach(function(u) { invalidateBudgetUsageCache_(u); });
+    _writeCostCorrectionsReport_(plan);
+    return _summarizeCostCorrections_(plan, true);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function menuCorregirCostos() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    var p = corregirCostosMalDigitados(false);
+    var resumen =
+      'Costos guardados con el punto de miles como decimal (889.518 en vez de 889518):\n' +
+      '• Solicitudes a corregir: ' + p.requests + ' (' + p.cells + ' celdas)\n' +
+      (p.fixExamples.length ? p.fixExamples.join('\n') + '\n' : '') +
+      '\nPara revisar a mano (no se cambian): ' + p.manual +
+      (p.manualExamples.length ? '\n' + p.manualExamples.join('\n') : '');
+    if (p.requests === 0) {
+      ui.alert('No hay costos para corregir', resumen, ui.ButtonSet.OK);
+      return;
+    }
+    var ok = ui.alert('Confirmar corrección', resumen + '\n\n¿Corregir ahora? Cada solicitud corregida queda con una nota en OBSERVACIONES y el detalle en la pestaña "' + COST_FIX_REPORT_SHEET + '".', ui.ButtonSet.YES_NO);
+    if (ok !== ui.Button.YES) return;
+    var r = corregirCostosMalDigitados(true);
+    ui.alert('Corrección completada',
+      'Solicitudes corregidas: ' + r.requests + ' (' + r.cells + ' celdas).\n' +
+      'Para revisar a mano: ' + r.manual + '.\n\n' +
+      'Detalle en la pestaña "' + COST_FIX_REPORT_SHEET + '". El dashboard de costos toma los valores nuevos la próxima vez que se abra.', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
+}
+
 // Maestro RH (Recursos Humanos) — Sheet externo con la lista completa de
 // empleados. Se usa durante la migración para "rellenar" aprobadores que no
 // existen en INTEGRANTES (huérfanos) creando filas stub en USUARIOS.
@@ -10771,6 +11040,7 @@ function onOpen() {
     .addItem('8. Cargar celulares (lista RR. HH.)', 'menuCargarCelulares')
     .addItem('9. Accesos al dashboard de costos', 'menuAccesosDashboardCostos')
     .addItem('10. Ver administradores y permisos especiales', 'menuVerPermisosAdministradores')
+    .addItem('11. Corregir costos mal digitados', 'menuCorregirCostos')
     .addToUi();
 }
 

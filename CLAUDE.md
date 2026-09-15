@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A78) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A79) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -26,7 +26,7 @@ archivos; Gmail para notificaciones.
    producción** (ver Mapa de despliegue).
 2. **Verificar siempre antes de proponer un push:** `npm run verify` (typecheck +
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
-   nacimiento y de celular + build). Debe salir en verde.
+   nacimiento, de celular y de costos + build). Debe salir en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -38,7 +38,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + build  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + build  ← antes de cualquier push
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -178,6 +178,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   (decisión de David). Los pasajeros llegan al navegador como ids opacos por respuesta
   (`v1`, `v2`…) con su nombre, **nunca con la cédula**, y se leen después del filtro por
   unidad: un líder solo recibe nombres de quienes viajaron en sus unidades.
+- **Costos confirmados en pesos reales** (#A79, decisión de David, 2026-09-14): el modal
+  "Confirmar costos" acepta pesos con o sin puntos de miles; 0 es válido (p. ej. un
+  apartamento corporativo) y cualquier otro valor debe ser de al menos $10.000
+  (`COST_MIN_PESOS`). El backend rechaza decimales y valores imposibles en `updateRequest`
+  y recalcula el cotizado como tiquetes + hotel. **Nunca volver a un
+  `<input type="number">` para dinero**: con él, `889.518` se guardaba como 889,518 pesos.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -284,6 +290,7 @@ utils/EmailGenerator.ts    Generación de correos HTML (carga diferida)
 utils/workOrder.ts         Validación de OT (gemelo de Code.gs, #A66)
 utils/birthdate.ts         Validación de fecha de nacimiento (gemelo de Code.gs, #A70)
 utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #A75)
+utils/money.ts             Costos en pesos: formato y mínimo (gemelo de Code.gs, #A79)
 server/
   Code.gs                  Backend completo (~14.400 líneas)
   AdminSidebar.html        Sidebar de administración del Sheets
@@ -294,6 +301,7 @@ tools/check-gas-syntax.cjs Verifica sintaxis de Code.gs y del JS de los HTML
 tools/check-workorder-parity.cjs  Frontend y backend validan la OT igual (#A66)
 tools/check-birthdate-rules.cjs   Reglas de fecha de nacimiento; frontend y backend coinciden (#A68/#A70)
 tools/check-phone-rules.cjs       Reglas de celular; frontend y backend coinciden (#A75)
+tools/check-cost-rules.cjs        Reglas de costos en pesos; frontend y backend coinciden (#A79)
 scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)
 docs/                      Guías de administrador, hoja de cálculo y planes
 ```
@@ -315,7 +323,7 @@ docs/                      Guías de administrador, hoja de cálculo y planes
 - **Rate limits:** PIN admin 5 intentos/15 min por correo; regeneración de PIN
   3/hora; creación de solicitudes 10/día.
 - **Validadores gemelos.** Las reglas que se aplican en el formulario y en el
-  backend (OT, fecha de nacimiento, celular) viven en `utils/*.ts` **y** en `Code.gs`,
+  backend (OT, fecha de nacimiento, celular, costos) viven en `utils/*.ts` **y** en `Code.gs`,
   porque no se puede compartir código. `npm run verify` compara ambos lados:
   cambiar uno sin el otro lo hace fallar.
 - **Campos nuevos en payloads de creación: la clave presente activa la regla.**
@@ -367,15 +375,16 @@ autorización) y verificar antes de crear una versión nueva del web app.
   temporal ejecutado y verificado con el menú 10 el 2026-09-14: superadmins David y
   Yurani; saltan aprobación solo ellos dos).
 - **#A78** (top 10 de viajeros por costo en cada vista del dashboard; variación cotizado
-  vs facturado solo Yurani, Diego y David): implementado, pendiente de push. Se despliega
-  junto con #A76/#A77: pegar `Code.gs` y `CostsDashboard.html`, llenar la tabla de MISC
-  con la lista de Yurani (revisar con el menú 9) y **después** crear la versión nueva del
+  vs facturado solo Yurani, Diego y David) y **#A79** (costos en pesos reales; el menú 11
+  corrige los 11 costos guardados con decimales): en `main` (#A78 en `b52778d`).
+  Pendiente en Apps Script, todo junto con #A76/#A77: pegar `Code.gs` y
+  `CostsDashboard.html` y guardar → llenar la tabla de MISC con la lista de Yurani
+  (revisar con el menú 9) → correr el **menú 11** → **después** crear la versión nueva del
   web app.
-- **Costos guardados con decimales (hallazgo de #A78, sin corregir):** el campo de costos
-  del modal de confirmación es numérico; escribir `889.518` con punto de miles guarda
-  889,518 pesos. 11 solicitudes desde mayo (p. ej. SOL-000511, 512, 518, 522, 523, 533).
-  Afecta el dashboard y el chequeo de presupuesto (los 11 son menores de $1.000.000, así
-  que el umbral de alto costo no se vio afectado). Pendiente de decisión de David.
+- **Costos para revisar a mano (#A79, el menú 11 no los toca):** SOL-000310 y 378
+  (apartamento corporativo, $1 que debería ser 0), SOL-000379 (tiquetes en $1 con
+  facturas), SOL-000035 ($1 en tiquetes de solo hospedaje); SOL-000002 y 109 están
+  anuladas. Hoy no afectan el dashboard.
 - **Seguimiento sin código de la carga de fechas (#A72):** corregir con RR. HH. las
   4 fechas inválidas; revisar los 115 usuarios que no aparecen en la lista de
   integrantes (¿siguen en la empresa?); borrar los usuarios de prueba `PRUEBA1` y

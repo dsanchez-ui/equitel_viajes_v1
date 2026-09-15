@@ -1268,7 +1268,7 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
 3. Push a `main` (frontend). Si el frontend llega primero, el botón y la casilla se muestran a los superadmins (regla vieja) hasta que el backend nuevo esté publicado.
 
 ## **#A78 — Dashboard de costos: top 10 de viajeros y variación solo para Yurani, Diego y David**
-**Fecha:** 2026-09-14 · **Reportado por:** Yurani (vía David, correo "Acceso a métricas de plataforma de viajes") · **Estado:** Implementado, pendiente de push y despliegue
+**Fecha:** 2026-09-14 · **Reportado por:** Yurani (vía David, correo "Acceso a métricas de plataforma de viajes") · **Estado:** En `main` (`b52778d`), pendiente de la versión nueva del web app
 
 **Pedido:**
 - Acceso al dashboard para una lista de personas:
@@ -1339,8 +1339,84 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
 2. Llenar la tabla de MISC con la lista de Yurani y revisarla con el menú 9.
 3. Crear la versión nueva del web app.
 
-**Hallazgo aparte (sin corregir, pendiente de decisión):**
+**Hallazgo aparte (corregido en #A79):**
 - El campo de costos del modal de confirmación es `type="number"`: escribir `889.518` con punto de miles guarda 889,518 pesos.
 - Hay 11 solicitudes así desde mayo (SOL-000178, 431, 440, 445, 467, 511, 512, 518, 522, 523, 533). En el top de Simón de septiembre aparecen viajeros con $890 y $604.
 - Afecta el dashboard y el chequeo de presupuesto, que suman 889 pesos en vez de 889.518. El umbral de alto costo ($1.200.000) no se vio afectado: los 11 costos son menores de $1.000.000.
 - Los correos no lo delatan porque muestran "$889.518".
+
+## **#A79 — Costos escritos con punto de miles se guardaban con decimales (889.518 → 889,518 pesos)**
+**Fecha:** 2026-09-14 · **Reportado por:** hallazgo de la verificación de #A78; David pidió corregirlo de inmediato ("ningún viaje puede costar 800 pesos") · **Estado:** Implementado, pendiente de desplegar Apps Script y correr el menú 11
+
+**Síntoma:**
+- En el top de viajeros de septiembre aparecían viajes de $890 y $604.
+- La variación cotizado vs facturado de 2026 mostraba a SOL-000467 como "mayor sobrecosto", con +101.160 %.
+
+**Causa raíz:**
+- El modal "Confirmar costos" usaba `<input type="number">` y `Number(value)`. Escribir `889.518`, con el punto de miles que se usa en Colombia, guardaba 889,518 pesos.
+- El backend guardaba cualquier número que le llegara.
+- **Afectados desde mayo:** 11 solicitudes (SOL-000178, 431, 440, 445, 467, 511, 512, 518, 522, 523 y 533), 21 celdas en `COSTO_FINAL_TIQUETES`, `COSTO_FINAL_HOTEL` y `COSTO COTIZADO PARA VIAJE`.
+- **Consecuencias:**
+  - el dashboard y el chequeo de presupuesto contaban casi nada por esos viajes, y la variación se disparaba
+  - los correos no lo delataban, porque mostraban "$889.518"
+  - el umbral de $1.200.000 no se afectó: los 11 son menores de $1.000.000
+- Además, el modal exigía un costo mayor que 0. Para un apartamento corporativo se escribía $1 (SOL-000310 y 378).
+
+**Decisión de David:** ningún viaje cuesta unos cientos de pesos. Mínimo $10.000 por costo; 0 es válido cuando no hay costo.
+
+**Cambio:**
+- **Regla gemela** en `utils/money.ts` y `Code.gs`, comparada por `tools/check-cost-rules.cjs` dentro de `npm run verify`:
+  - pesos enteros, con o sin puntos de miles (`889.518`, `889518`, `889,518`, `$ 1.234.567,50`); los centavos se redondean
+  - un número con decimales se rechaza
+  - 0 es válido; cualquier otro valor debe ser de al menos $10.000
+- **Modal "Confirmar costos":**
+  - campos de texto con el formato colombiano; bajo cada uno, "Se registrará: $ 889.518" o el error, y al salir el valor queda con puntos de miles
+  - no deja confirmar un valor imposible; vacío pide el costo y explica que 0 es válido
+  - la confirmación advierte "SIN COSTO" si el total es 0 y muestra las cifras con punto de miles
+- **Backend:** `_authorizeStatusUpdate_` valida los costos que lleguen por `updateRequest`, en cualquier cambio de estado, y recalcula el cotizado como tiquetes + hotel. Si algo no es válido, no escribe nada y el mensaje explica cómo escribirlo.
+- **Menú 11. Corregir costos mal digitados:**
+  - multiplica por mil las celdas con hasta 3 decimales, solo si el resultado es un costo real y la fila cuadra (cotizado = tiquetes + hotel)
+  - lo demás lo lista para revisar a mano, sin adivinar valores
+  - vista previa y confirmación; nota en OBSERVACIONES de cada solicitud corregida; detalle en la pestaña "Reporte corrección costos"; repetirlo no cambia nada
+
+**Para revisar a mano** (el menú no los toca): 8 celdas de 6 solicitudes con $1 u $11.
+- SOL-000310 y 378: apartamento corporativo; el costo real es 0.
+- SOL-000379: tiquetes en $1, con facturas por $1.800.590 y $1.698.492.
+- SOL-000035: $1 en tiquetes en una solicitud de solo hospedaje.
+- SOL-000002 y 109: anuladas; la 109 era de prueba.
+- Hoy ninguna afecta el dashboard ni la variación.
+
+**Verificado:**
+- `npm run verify`, con el chequeo nuevo de costos: 38 casos, frontend y backend coinciden.
+- Simulación del `Code.gs` completo, 20 escenarios:
+  - **API:**
+    - 889518 con un total que no cuadra se guarda y el cotizado es la suma
+    - 889.518 desde una pestaña vieja se rechaza sin cambiar estado ni costos y sin correo
+    - $889, $1 y un hotel de $5.000 se rechazan
+    - un apartamento corporativo con 0 se acepta
+    - el texto "1.234.567,50" se guarda bien
+    - solo el total también se valida
+    - un costo colado al publicar opciones se rechaza
+    - saltar la aprobación con costos válidos sigue igual
+  - **corrección con la copia real de la base:**
+    - la vista previa encuentra exactamente las 11 solicitudes (21 celdas) y las 8 celdas para revisar, sin escribir
+    - al corregir, todas cuadran (SOL-000512: 889518) y solo cambian esas 21 celdas y las OBSERVACIONES de esas 11
+    - notas y reporte de 29 filas; repetirlo no cambia nada
+    - en el dashboard de 2026 no queda ningún viaje entre $1 y $9.999; solo cambian los 4 corregidos de septiembre, multiplicados por mil
+    - en la variación ya no hay cotizados irreales: SOL-000467 pasa de +101.160 % a +1,3 %
+    - una fila que no cuadraría y un valor con decimales raros quedan sin tocar
+    - menú 11 con "No", con "Sí" y ya corregido
+- 9 defectos introducidos a propósito, todos detectados.
+- Chrome headless con el modal real, 15 pasos:
+  - "889.518" se lee como $889.518 y se envía 889518; "889518" queda "889.518" al salir del campo
+  - "800" y "12a" muestran el error y no dejan confirmar; vacío pide el costo
+  - $1.200.000 + $350.000,00 muestra la alerta de costo y envía los enteros
+  - solo hospedaje en 0 advierte "SIN COSTO" y envía 0; con el hotel vacío pide el costo
+- **Regresión:** #A78 28, #A77 29, #A76 26, #A75 31, #A74 33, usuarios 19, posición 15, A2 20, C2 11, carga masiva 20.
+
+**Despliegue:**
+1. **Push a `main`:** el modal nuevo sale con el frontend.
+   - Con el backend anterior, los valores enteros se guardan igual que siempre.
+   - Una pestaña con el modal viejo sigue funcionando con valores sin puntos; cuando el backend nuevo esté publicado, un valor con punto de miles se rechaza y el mensaje pide recargar.
+2. **Apps Script:** pegar `Code.gs` (va junto con #A76–#A78) y guardar → recargar la hoja → **menú 11** (vista previa y confirmar) → crear la versión nueva del web app.
+3. Las decisiones ya tomadas con los valores errados (aprobaciones, chequeo de presupuesto al confirmar) no se recalculan.
