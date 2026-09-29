@@ -1422,7 +1422,7 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
 3. Las decisiones ya tomadas con los valores errados (aprobaciones, chequeo de presupuesto al confirmar) no se recalculan.
 
 ## **#A80 — Estadísticas de compra de tiquetes y hospedaje (reporte en Excel y pestaña en Métricas)**
-**Fecha:** 2026-09-29 · **Reportado por:** David (pedido de su jefe: evaluar si otra agencia de viajes saldría más barata) · **Estado:** Implementado, pendiente de push y de la versión nueva del web app
+**Fecha:** 2026-09-29 · **Reportado por:** David (pedido de su jefe: evaluar si otra agencia de viajes saldría más barata) · **Estado:** Desplegado el 2026-09-29: frontend en `main` (`9adfddf`) y versión nueva del web app publicada por David
 
 **Pedido:**
 - Con los datos de la base: cuántos tiquetes se compran al día y al mes y cuánto cuesta en promedio un tiquete, contando 2 tiquetes por ida y regreso y uno por pasajero. Lo mismo para el hospedaje.

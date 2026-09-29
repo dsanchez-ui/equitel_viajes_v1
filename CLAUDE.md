@@ -399,12 +399,11 @@ autorización) y verificar antes de crear una versión nueva del web app.
   `CostsDashboard.html` y guardar → llenar la tabla de MISC con la lista de Yurani
   (revisar con el menú 9) → correr el **menú 11** → **después** crear la versión nueva del
   web app. El export del 29-sep ya muestra el menú 11 aplicado: ningún costo con decimales
-  y existe la pestaña «Reporte corrección costos». No hay constancia de la versión nueva
-  del web app.
+  y existe la pestaña «Reporte corrección costos». El 2026-09-29 David publicó una versión
+  nueva del web app con el `Code.gs` de `main` (incluye #A76–#A80).
 - **#A80** (estadísticas de compra en Métricas → *Compras y costos*; reporte en Excel del
-  29-sep entregado aparte): pendiente push a `main` y, en Apps Script, pegar `Code.gs` y
-  crear la versión nueva del web app. Los dos lados son independientes: con el backend
-  anterior la pestaña avisa que falta publicar el servidor.
+  29-sep entregado aparte): **desplegado** el 2026-09-29. Frontend en `main` (`9adfddf`) y
+  versión nueva del web app publicada.
 - **Costos para revisar a mano (#A79, el menú 11 no los toca):** SOL-000310 y 378
   (apartamento corporativo, $1 que debería ser 0), SOL-000379 (tiquetes en $1 con
   facturas), SOL-000035 ($1 en tiquetes de solo hospedaje); SOL-000002 y 109 están
