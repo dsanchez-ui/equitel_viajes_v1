@@ -15,7 +15,8 @@
     "check:birthdate": "node tools/check-birthdate-rules.cjs",
     "check:phone": "node tools/check-phone-rules.cjs",
     "check:cost": "node tools/check-cost-rules.cjs",
-    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run build"
+    "check:purchase": "node tools/check-purchase-stats.cjs",
+    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run build"
   },
   "dependencies": {
     "react": "^19.2.4",

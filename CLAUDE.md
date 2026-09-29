@@ -26,7 +26,8 @@ archivos; Gmail para notificaciones.
    producción** (ver Mapa de despliegue).
 2. **Verificar siempre antes de proponer un push:** `npm run verify` (typecheck +
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
-   nacimiento, de celular y de costos + build). Debe salir en verde.
+   nacimiento, de celular y de costos + estadísticas de compra + build). Debe salir
+   en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -38,7 +39,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + build  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + build  ← antes de cualquier push
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -184,6 +185,21 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   (`COST_MIN_PESOS`). El backend rechaza decimales y valores imposibles en `updateRequest`
   y recalcula el cotizado como tiquetes + hotel. **Nunca volver a un
   `<input type="number">` para dinero**: con él, `889.518` se guardaba como 889,518 pesos.
+- **Estadísticas de compra de tiquetes y hospedaje** (#A80, pedido de David para comparar
+  agencias, 2026-09-29): pestaña *Compras y costos* del panel de Métricas, **solo
+  administradores** (`getPurchaseStats` en `adminOnlyActions`), solo agregados (sin nombres,
+  cédulas ni correos). Reglas, iguales a las del reporte en Excel del 29-sep:
+  - solo RESERVADO y PROCESADO
+  - tiquetes = pasajeros × 2 con regreso (× 1 sin él)
+  - noches-habitación = noches × pasajeros
+  - costos menores a $10.000 fuera de los promedios
+  - fecha = fecha de compra (o de la solicitud)
+  - anticipación = ida − compra
+  - festivos de Colombia calculados para cualquier año
+
+  El costo por noche se muestra **separado para estadías de 1 a 6 noches y de 7 o más**:
+  las largas tienen tarifas mucho menores y un promedio único engaña al comparar
+  cotizaciones.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -278,7 +294,8 @@ components/
   SupportUploadModal.tsx   Soportes post-aprobación
   PassportUploadModal.tsx  Pasaportes (viajes internacionales)
   ChangeRequestModal.tsx   Decisión sobre solicitudes de cambio
-  MetricsPanel.tsx         Panel de métricas (admin)
+  MetricsPanel.tsx         Panel de métricas (admin): tiempos del flujo y compras y costos
+  PurchaseStatsPanel.tsx   Pestaña «Compras y costos»: tiquetes, noches, costos, CSV (#A80)
   BudgetUsageBar.tsx       Barra de presupuesto en el formulario
   PinEntryModal.tsx        Login por PIN
   CancellationModal.tsx    Anulaciones
@@ -302,6 +319,7 @@ tools/check-workorder-parity.cjs  Frontend y backend validan la OT igual (#A66)
 tools/check-birthdate-rules.cjs   Reglas de fecha de nacimiento; frontend y backend coinciden (#A68/#A70)
 tools/check-phone-rules.cjs       Reglas de celular; frontend y backend coinciden (#A75)
 tools/check-cost-rules.cjs        Reglas de costos en pesos; frontend y backend coinciden (#A79)
+tools/check-purchase-stats.cjs    Estadísticas de compra con una hoja sintética, festivos y permiso (#A80)
 scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)
 docs/                      Guías de administrador, hoja de cálculo y planes
 ```
@@ -380,7 +398,13 @@ autorización) y verificar antes de crear una versión nueva del web app.
   Pendiente en Apps Script, todo junto con #A76/#A77: pegar `Code.gs` y
   `CostsDashboard.html` y guardar → llenar la tabla de MISC con la lista de Yurani
   (revisar con el menú 9) → correr el **menú 11** → **después** crear la versión nueva del
-  web app.
+  web app. El export del 29-sep ya muestra el menú 11 aplicado: ningún costo con decimales
+  y existe la pestaña «Reporte corrección costos». No hay constancia de la versión nueva
+  del web app.
+- **#A80** (estadísticas de compra en Métricas → *Compras y costos*; reporte en Excel del
+  29-sep entregado aparte): pendiente push a `main` y, en Apps Script, pegar `Code.gs` y
+  crear la versión nueva del web app. Los dos lados son independientes: con el backend
+  anterior la pestaña avisa que falta publicar el servidor.
 - **Costos para revisar a mano (#A79, el menú 11 no los toca):** SOL-000310 y 378
   (apartamento corporativo, $1 que debería ser 0), SOL-000379 (tiquetes en $1 con
   facturas), SOL-000035 ($1 en tiquetes de solo hospedaje); SOL-000002 y 109 están

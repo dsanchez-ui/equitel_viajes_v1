@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MetricsResponse, MetricsFilters, RequestMetrics } from '../types';
 import { gasService } from '../services/gasService';
+import { PurchaseStatsPanel } from './PurchaseStatsPanel';
 
 interface MetricsPanelProps {
   onClose: () => void;
@@ -74,6 +75,14 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
   const [excludeAnulado, setExcludeAnulado] = useState(true);
   const [excludeDenegado, setExcludeDenegado] = useState(true);
   const [hideNoEvents, setHideNoEvents] = useState(true);
+  // Pestañas: tiempos del flujo (original) y compras y costos (#A80). La de
+  // compras se monta al abrirla por primera vez y luego se conserva.
+  const [tab, setTab] = useState<'times' | 'purchases'>('times');
+  const [purchasesOpened, setPurchasesOpened] = useState(false);
+  const openTab = (next: 'times' | 'purchases') => {
+    setTab(next);
+    if (next === 'purchases') setPurchasesOpened(true);
+  };
 
   const fetchMetrics = async () => {
     setLoading(true);
@@ -120,13 +129,39 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
             <button onClick={onClose} className="bg-white rounded-md text-gray-400 hover:text-gray-500 text-2xl font-bold leading-none px-2 focus:outline-none">&times;</button>
           </div>
 
-          <h3 className="text-lg font-bold text-gray-900 mb-1 border-b pb-2 flex items-center gap-2">
-            <span>📊</span> Métricas de tiempos
+          <h3 className="text-lg font-bold text-gray-900 mb-2 flex items-center gap-2">
+            <span>📊</span> Métricas
           </h3>
+          <div className="flex gap-1 border-b border-gray-200 mb-3" role="tablist">
+            {([
+              { v: 'times', l: '⏱️ Tiempos del flujo' },
+              { v: 'purchases', l: '💰 Compras y costos' },
+            ] as { v: 'times' | 'purchases'; l: string }[]).map(t => (
+              <button
+                key={t.v}
+                role="tab"
+                aria-selected={tab === t.v}
+                data-metrics-tab={t.v}
+                onClick={() => openTab(t.v)}
+                className={`px-3 py-1.5 text-xs font-bold border-b-2 -mb-px ${tab === t.v ? 'border-brand-red text-brand-red' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+              >
+                {t.l}
+              </button>
+            ))}
+          </div>
           <p className="text-xs text-gray-500 mb-4">
-            Diagnóstico de cuánto tiempo toma cada etapa del flujo. Tiempos calculados en horario laboral (L-V 7-17, Sáb 8-12).
+            {tab === 'times'
+              ? 'Diagnóstico de cuánto tiempo toma cada etapa del flujo. Tiempos calculados en horario laboral (L-V 7-17, Sáb 8-12).'
+              : 'Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta anticipación. Base para comparar precios con otras agencias.'}
           </p>
 
+          {purchasesOpened && (
+            <div hidden={tab !== 'purchases'}>
+              <PurchaseStatsPanel />
+            </div>
+          )}
+
+          {tab === 'times' && (<>
           {/* Filtros */}
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
             <div className="flex flex-wrap items-end gap-3">
@@ -314,6 +349,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
               )}
             </>
           )}
+          </>)}
         </div>
       </div>
     </div>

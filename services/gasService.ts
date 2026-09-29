@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PassportStatus, BirthdateStatus, PassengerAdminInfo } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, PassportStatus, BirthdateStatus, PassengerAdminInfo } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -441,6 +441,13 @@ class GasService {
 
   async getMetrics(filters: MetricsFilters = {}): Promise<MetricsResponse> {
     const response = await this.runGas('getMetrics', { filters });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
+  /** Estadísticas de compra de tiquetes y hospedaje (#A80). Solo administradores. */
+  async getPurchaseStats(filters: PurchaseStatsFilters = {}): Promise<PurchaseStats> {
+    const response = await this.runGas('getPurchaseStats', { filters });
     if (!response.success) throw new Error(response.error);
     return response.data;
   }

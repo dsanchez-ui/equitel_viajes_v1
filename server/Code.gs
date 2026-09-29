@@ -615,7 +615,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -676,6 +676,8 @@ function dispatch(action, payload) {
         payload && payload.sessionToken
       ); break;
       case 'getMetrics': result = getMetrics(payload.filters || {}); break;
+      // Estadísticas de compra de tiquetes y hospedaje (#A80). Solo administradores (adminOnlyActions).
+      case 'getPurchaseStats': result = getPurchaseStats(payload.filters || {}); break;
       // SECURITY: Server-side analyst check
       case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
       case 'getMyRequests': result = getRequestsByEmail(currentUserEmail); break;
@@ -13681,6 +13683,336 @@ function getMetrics(filters) {
     perRequest: perRequest,
     aggregates: _aggregateMetrics_(perRequest),
     analystPerformance: _buildAnalystPerformance_(perRequest)
+  };
+}
+
+// =====================================================================
+// ESTADÍSTICAS DE COMPRAS: TIQUETES Y HOSPEDAJE (#A80)
+// =====================================================================
+// Panel de Métricas → pestaña «Compras y costos» (solo administradores).
+// Mismas reglas que el reporte en Excel del 29-sep-2026:
+//   - Solo cuentan las solicitudes compradas: RESERVADO o PROCESADO.
+//   - Tiquetes = pasajeros × 2 si hay fecha de regreso (si no, × 1). Solo
+//     hospedaje = 0. Cada tramo de un multidestino es su propia solicitud.
+//   - Noches-habitación = noches × pasajeros (una habitación por persona), solo
+//     con hotel pagado. Hotel pagado con 0 noches → noches según las fechas.
+//   - Costos confirmados (COSTO_FINAL_TIQUETES / _HOTEL). Los menores a
+//     COST_MIN_PESOS (marcadores de $1) no entran en los promedios.
+//   - Fecha de cada compra: FECHA DE COMPRA DE TIQUETE o, si falta, la de la
+//     solicitud. Anticipación = fecha de ida − fecha de compra.
+//   - Días hábiles: lunes a viernes sin festivos de Colombia (Ley Emiliani).
+// Devuelve solo agregados: ni nombres, ni cédulas, ni correos.
+
+var PS_COUNTABLE_STATUSES = ['RESERVADO', 'PROCESADO'];
+var PS_LATE_MAX_DAYS = 7;       // comprar «tarde» = 7 días o menos antes de la ida
+var PS_SHORT_STAY_NIGHTS = 6;   // estadías de 1 a 6 noches: la cifra para comparar tarifas
+var PS_TOP = 10;
+var PS_MAX_DAYS = 3660;        // tope del periodo (10 años): evita recorrer siglos de días hábiles
+var PS_LEAD_BUCKETS = [
+  { label: '0 a 3 días', min: 0, max: 3 },
+  { label: '4 a 7 días', min: 4, max: 7 },
+  { label: '8 a 14 días', min: 8, max: 14 },
+  { label: '15 a 30 días', min: 15, max: 30 },
+  { label: '31 días o más', min: 31, max: 100000 }
+];
+
+/** Fecha de una celda como 'AAAA-MM-DD' en Bogotá. Acepta Date, 'AAAA-MM-DD…' o 'DD-MM-AAAA'/'DD/MM/AAAA'. */
+function _psDateKey_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, 'America/Bogota', 'yyyy-MM-dd');
+  }
+  var s = String(v).trim();
+  var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) {
+    var d = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+    if (d) m = [null, d[3], ('0' + d[2]).slice(-2), ('0' + d[1]).slice(-2)];
+  }
+  if (!m || +m[2] < 1 || +m[2] > 12 || +m[3] < 1 || +m[3] > 31) return '';
+  return m[1] + '-' + m[2] + '-' + m[3];
+}
+
+/** Número de día (días desde 1970-01-01) de una clave 'AAAA-MM-DD'; sirve para restar fechas sin zona horaria. */
+function _psDayNumber_(key) {
+  var p = key.split('-');
+  return Math.round(Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000);
+}
+
+function _psKeyFromDayNumber_(n) {
+  var d = new Date(n * 86400000);
+  return d.getUTCFullYear() + '-' + ('0' + (d.getUTCMonth() + 1)).slice(-2) + '-' + ('0' + d.getUTCDate()).slice(-2);
+}
+
+/** Festivos de Colombia de un año como { númeroDeDía: true } (Ley 51 de 1983: los trasladables pasan al lunes). */
+function _psHolidaysCO_(year) {
+  var a = year % 19, b = Math.floor(year / 100), c = year % 100, d = Math.floor(b / 4), e = b % 4;
+  var f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3), h = (19 * a + b - d - g + 15) % 30;
+  var i = Math.floor(c / 4), k = c % 4, l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+  var easterMonth = Math.floor((h + l - 7 * m + 114) / 31), easterDay = ((h + l - 7 * m + 114) % 31) + 1;
+  var day = function(month, dd) { return Math.round(Date.UTC(year, month - 1, dd) / 86400000); };
+  var monday = function(n) { var w = new Date(n * 86400000).getUTCDay(); return w === 1 ? n : n + ((8 - w) % 7); };
+  var easter = day(easterMonth, easterDay);
+  var list = [
+    day(1, 1), day(5, 1), day(7, 20), day(8, 7), day(12, 8), day(12, 25),
+    monday(day(1, 6)), monday(day(3, 19)), monday(day(6, 29)), monday(day(8, 15)),
+    monday(day(10, 12)), monday(day(11, 1)), monday(day(11, 11)),
+    easter - 3, easter - 2,                                          // Jueves y Viernes Santo
+    monday(easter + 39), monday(easter + 60), monday(easter + 68)    // Ascensión, Corpus Christi, Sagrado Corazón
+  ];
+  var set = {};
+  list.forEach(function(n) { set[n] = true; });
+  return set;
+}
+
+/** Días hábiles entre dos números de día (inclusive). */
+function _psBusinessDays_(fromN, toN) {
+  var holidays = {}, count = 0;
+  for (var n = fromN; n <= toN; n++) {
+    var d = new Date(n * 86400000), y = d.getUTCFullYear(), w = d.getUTCDay();
+    if (!holidays[y]) holidays[y] = _psHolidaysCO_(y);
+    if (w !== 0 && w !== 6 && !holidays[y][n]) count++;
+  }
+  return count;
+}
+
+/** 'BOGOTA, COLOMBIA' → 'BOGOTA'; 'QUITO, ECUADOR' → 'QUITO (ECUADOR)'. Sin tildes, en mayúsculas. */
+function _psCity_(s) {
+  var t = String(s || '').trim().toUpperCase();
+  if (!t) return '';
+  t = t.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  var parts = t.split(',').map(function(p) { return p.replace(/\s+/g, ' ').trim(); });
+  var country = parts.length > 1 ? parts[parts.length - 1] : 'COLOMBIA';
+  return country === 'COLOMBIA' ? parts[0] : parts[0] + ' (' + country + ')';
+}
+
+function _psMedian_(values) {
+  if (!values.length) return null;
+  var v = values.slice().sort(function(x, y) { return x - y; });
+  var mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+}
+
+function _psMean_(values) {
+  if (!values.length) return null;
+  var s = 0;
+  values.forEach(function(x) { s += x; });
+  return s / values.length;
+}
+
+function _psSum_(rows, field) {
+  var s = 0;
+  rows.forEach(function(r) { s += r[field] || 0; });
+  return s;
+}
+
+/** Costo promedio por tiquete: gasto ÷ tiquetes, solo tiquetes con costo válido. */
+function _psAvgTicket_(rows) {
+  var withCost = rows.filter(function(r) { return r.ticketsWithCost > 0; });
+  var n = _psSum_(withCost, 'ticketsWithCost');
+  return n > 0 ? _psSum_(withCost, 'costTickets') / n : null;
+}
+
+/** Costo promedio por noche-habitación, solo noches con costo válido. */
+function _psAvgNight_(rows) {
+  var withCost = rows.filter(function(r) { return r.roomNights > 0; });
+  var n = _psSum_(withCost, 'roomNights');
+  return n > 0 ? _psSum_(withCost, 'costHotel') / n : null;
+}
+
+/** Una fila de la hoja → registro con los campos que usan las estadísticas. */
+function _psRecord_(row) {
+  var cell = function(name) { var i = H(name); return i < 0 ? '' : row[i]; };
+  var status = String(cell('STATUS') || '').trim();
+  var flight = String(cell('MODO_SOLICITUD') || '').trim() !== 'SOLO_HOSPEDAJE';
+  var international = String(cell('ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI';
+  var origin = _psCity_(cell('CIUDAD ORIGEN')), destination = _psCity_(cell('CIUDAD DESTINO'));
+  var route = flight ? [origin || '(SIN ORIGEN)', destination || '(SIN DESTINO)'].sort().join(' ↔ ') : '';
+  var requestKey = _psDateKey_(cell('FECHA SOLICITUD')), purchaseKey = _psDateKey_(cell('FECHA DE COMPRA DE TIQUETE'));
+  var departKey = _psDateKey_(cell('FECHA IDA')), returnKey = _psDateKey_(cell('FECHA VUELTA'));
+  var pax = Math.round(_csToNumber_(cell('# PERSONAS QUE VIAJAN'))) || 1;
+  var costTickets = _csToNumber_(cell('COSTO_FINAL_TIQUETES')), costHotel = _csToNumber_(cell('COSTO_FINAL_HOTEL'));
+  var nightsRegistered = Math.round(_csToNumber_(cell('# NOCHES (AUTOMÁTICO)'))) || 0;
+  var hotelPaid = costHotel >= COST_MIN_PESOS;
+  var nights = (nightsRegistered === 0 && hotelPaid && returnKey && departKey)
+    ? _psDayNumber_(returnKey) - _psDayNumber_(departKey) : nightsRegistered;
+  var tickets = flight ? pax * (returnKey ? 2 : 1) : 0;
+  var lead = (purchaseKey && departKey) ? _psDayNumber_(departKey) - _psDayNumber_(purchaseKey) : null;
+  var requestLeadRaw = cell('DIAS DE ANTELACION TKT');
+  var invoiced = 0;
+  ['TOTAL FACTURA', 'TOTAL FACTURA 2', 'TOTAL FACTURA 3', 'TOTAL FACTURA 4'].forEach(function(h) { invoiced += _csToNumber_(cell(h)); });
+  return {
+    counted: PS_COUNTABLE_STATUSES.indexOf(status) !== -1,
+    flight: flight, international: international, route: route, destination: destination,
+    requestKey: requestKey, purchaseKey: purchaseKey, baseKey: purchaseKey || requestKey || departKey,
+    pax: pax, roundTrip: !!returnKey, tickets: tickets, nights: nights,
+    costTickets: costTickets, costHotel: costHotel, hotelPaid: hotelPaid,
+    ticketsWithCost: costTickets >= COST_MIN_PESOS ? tickets : 0,
+    roomNights: hotelPaid ? nights * pax : 0,
+    lead: lead,
+    requestLead: (requestLeadRaw === '' || requestLeadRaw === null || requestLeadRaw === undefined) ? null : _csToNumber_(requestLeadRaw),
+    requestToPurchase: (purchaseKey && requestKey) ? _psDayNumber_(purchaseKey) - _psDayNumber_(requestKey) : null,
+    policyViolation: String(cell('VIOLACION POLITICA') || '').trim().toUpperCase() === 'SI',
+    invoiced: invoiced,
+    invoice1Base: _csToNumber_(cell('VALOR PAGADO A AEROLINEA Y/O HOTEL')),
+    invoice1Charges: _csToNumber_(cell('VALOR PAGADO A AVIATUR Y/O IVA')),
+    symbolicCost: (costTickets > 0 && costTickets < COST_MIN_PESOS) || (costHotel > 0 && costHotel < COST_MIN_PESOS)
+  };
+}
+
+/**
+ * Estadísticas de compra de tiquetes y hospedaje para el periodo pedido.
+ * @param {{dateFrom?: string, dateTo?: string}} filters  'AAAA-MM-DD'. Sin fechas → toda la historia.
+ */
+function getPurchaseStats(filters) {
+  filters = filters || {};
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var lastRow = sheet ? sheet.getLastRow() : 0;
+  var values = lastRow >= 2 ? sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues() : [];
+  var idIdx = H('ID RESPUESTA');
+  var bought = [];
+  values.forEach(function(row) {
+    if (idIdx >= 0 && !String(row[idIdx] || '').trim()) return;
+    var r = _psRecord_(row);
+    if (r.counted && r.baseKey) bought.push(r);
+  });
+  if (!bought.length) return { empty: true };
+
+  var keys = bought.map(function(r) { return r.baseKey; }).sort();
+  var firstKey = keys[0], lastKey = keys[keys.length - 1];
+  var fromKey = _psDateKey_(filters.dateFrom) || firstKey;
+  var toKey = _psDateKey_(filters.dateTo) || lastKey;
+  if (fromKey > toKey) throw new Error('La fecha inicial es posterior a la fecha final.');
+  var fromN = _psDayNumber_(fromKey), toN = _psDayNumber_(toKey);
+  if (toN - fromN > PS_MAX_DAYS) throw new Error('El periodo no puede superar 10 años.');
+  var days = toN - fromN + 1, businessDays = _psBusinessDays_(fromN, toN), months = days / 30.4375, annual = 365 / days;
+
+  var V = bought.filter(function(r) { return r.baseKey >= fromKey && r.baseKey <= toKey; });
+  var F = V.filter(function(r) { return r.flight; });
+  var N = F.filter(function(r) { return !r.international; });
+  var H_ = V.filter(function(r) { return r.hotelPaid; });
+  var ratio = function(a, b) { return b > 0 ? a / b : null; };
+  var count = function(rows, fn) { return rows.filter(fn).length; };
+
+  var tickets = _psSum_(V, 'tickets'), roomNights = _psSum_(V, 'roomNights');
+  var spendTickets = _psSum_(V, 'costTickets'), spendHotel = _psSum_(V, 'costHotel'), spend = spendTickets + spendHotel;
+  var withLead = V.filter(function(r) { return r.lead !== null && r.lead >= 0; });
+  var invoicedRows = V.filter(function(r) { return r.invoiced > 0; });
+  var inv1 = V.filter(function(r) { return r.invoice1Base > 0; });
+  var gaps = F.filter(function(r) { return r.requestToPurchase !== null && r.requestToPurchase >= 0; }).map(function(r) { return r.requestToPurchase; });
+  var shortStays = V.filter(function(r) { return r.roomNights > 0 && r.nights <= PS_SHORT_STAY_NIGHTS; });
+  var longStays = V.filter(function(r) { return r.roomNights > 0 && r.nights > PS_SHORT_STAY_NIGHTS; });
+
+  // ¿Cuánto cuesta comprar tarde? (tiquetes nacionales)
+  var inBucket = function(b) { return function(r) { return r.lead !== null && r.lead >= b.min && r.lead <= b.max; }; };
+  var buckets = PS_LEAD_BUCKETS.map(function(b) {
+    var rows = N.filter(inBucket(b));
+    return { label: b.label, requests: rows.length, tickets: _psSum_(rows, 'tickets'), ticketsWithCost: _psSum_(rows, 'ticketsWithCost'), avgTicket: _psAvgTicket_(rows) };
+  });
+  var lateRows = N.filter(function(r) { return r.lead !== null && r.lead >= 0 && r.lead <= PS_LATE_MAX_DAYS; });
+  var earlyRows = N.filter(function(r) { return r.lead !== null && r.lead > PS_LATE_MAX_DAYS; });
+  var noLead = N.filter(function(r) { return r.lead === null || r.lead < 0; });
+  var avgEarly = _psAvgTicket_(earlyRows);
+  var overcost = 0;
+  if (avgEarly !== null) {
+    buckets.slice(0, 2).forEach(function(b) { if (b.avgTicket !== null) overcost += (b.avgTicket - avgEarly) * b.ticketsWithCost; });
+  }
+
+  // Por mes (dentro del periodo)
+  var monthKeys = {};
+  V.forEach(function(r) { monthKeys[r.baseKey.slice(0, 7)] = true; });
+  var byMonth = Object.keys(monthKeys).sort().map(function(mk) {
+    var rows = V.filter(function(r) { return r.baseKey.slice(0, 7) === mk; });
+    var lead = rows.filter(function(r) { return r.lead !== null && r.lead >= 0; });
+    var y = +mk.slice(0, 4), mo = +mk.slice(5, 7);
+    var mFrom = Math.max(fromN, _psDayNumber_(mk + '-01')), mTo = Math.min(toN, Math.round(Date.UTC(y, mo, 0) / 86400000));
+    return {
+      month: mk,
+      partial: mFrom > _psDayNumber_(mk + '-01') || mTo < Math.round(Date.UTC(y, mo, 0) / 86400000),
+      requests: rows.length, tickets: _psSum_(rows, 'tickets'), roomNights: _psSum_(rows, 'roomNights'),
+      spendTickets: _psSum_(rows, 'costTickets'), spendHotel: _psSum_(rows, 'costHotel'),
+      avgTicket: _psAvgTicket_(rows),
+      avgNightShort: _psAvgNight_(rows.filter(function(r) { return r.nights <= PS_SHORT_STAY_NIGHTS; })),
+      businessDays: _psBusinessDays_(mFrom, mTo),
+      pctLate: ratio(_psSum_(lead.filter(function(r) { return r.lead <= PS_LATE_MAX_DAYS; }), 'tickets'), _psSum_(lead, 'tickets'))
+    };
+  });
+
+  // Rutas principales (ida y regreso cuentan como la misma ruta)
+  var routes = {};
+  F.forEach(function(r) { (routes[r.route] = routes[r.route] || []).push(r); });
+  var topRoutes = Object.keys(routes).map(function(k) {
+    var rows = routes[k];
+    return {
+      route: k, international: rows.some(function(r) { return r.international; }),
+      requests: rows.length, tickets: _psSum_(rows, 'tickets'),
+      avgTicket: _psAvgTicket_(rows),
+      avgLate: _psAvgTicket_(rows.filter(function(r) { return r.lead !== null && r.lead >= 0 && r.lead <= PS_LATE_MAX_DAYS; })),
+      avgEarly: _psAvgTicket_(rows.filter(function(r) { return r.lead !== null && r.lead > PS_LATE_MAX_DAYS; }))
+    };
+  }).sort(function(a, b) { return b.tickets - a.tickets || (a.route < b.route ? -1 : a.route > b.route ? 1 : 0); });
+  topRoutes.forEach(function(x) { x.share = ratio(x.tickets, tickets); });
+
+  // Hospedaje por ciudad (ordenado por solicitudes con hotel pagado)
+  var cities = {};
+  H_.forEach(function(r) { (cities[r.destination] = cities[r.destination] || []).push(r); });
+  var topCities = Object.keys(cities).map(function(k) {
+    var rows = cities[k];
+    return {
+      city: k, requests: rows.length, roomNights: _psSum_(rows, 'roomNights'),
+      avgNight: _psAvgNight_(rows),
+      avgNightShort: _psAvgNight_(rows.filter(function(r) { return r.nights <= PS_SHORT_STAY_NIGHTS; })),
+      avgStay: ratio(_psSum_(rows, 'nights'), rows.length)
+    };
+  }).sort(function(a, b) { return b.requests - a.requests || b.roomNights - a.roomNights || (a.city < b.city ? -1 : a.city > b.city ? 1 : 0); });
+
+  var byWeekday = [1, 2, 3, 4, 5, 6, 7].map(function(wd) {
+    var rows = V.filter(function(r) { var w = new Date(_psDayNumber_(r.baseKey) * 86400000).getUTCDay(); return (w === 0 ? 7 : w) === wd; });
+    return { day: wd, requests: rows.length, tickets: _psSum_(rows, 'tickets') };
+  });
+
+  return {
+    period: { from: fromKey, to: toKey, days: days, businessDays: businessDays, months: months, firstDataDate: firstKey, lastDataDate: lastKey },
+    totals: {
+      requests: V.length, flightRequests: F.length, hotelOnlyRequests: V.length - F.length,
+      tickets: tickets, ticketsNational: _psSum_(N, 'tickets'), ticketsInternational: tickets - _psSum_(N, 'tickets'),
+      ticketsPerBusinessDay: ratio(tickets, businessDays), ticketsPerMonth: tickets / months, requestsPerMonth: V.length / months,
+      roomNights: roomNights, hotelRequests: H_.length, roomNightsPerMonth: roomNights / months,
+      spend: spend, spendTickets: spendTickets, spendHotel: spendHotel, spendPerMonth: spend / months, annualProjection: spend * annual,
+      avgPerRequest: ratio(spend, V.length),
+      avgTicket: _psAvgTicket_(V), avgTicketNational: _psAvgTicket_(N), avgTicketInternational: _psAvgTicket_(F.filter(function(r) { return r.international; })),
+      medianTicketNational: _psMedian_(N.filter(function(r) { return r.ticketsWithCost > 0; }).map(function(r) { return r.costTickets / r.ticketsWithCost; })),
+      avgNight: _psAvgNight_(V), avgNightShort: _psAvgNight_(shortStays), avgNightLong: _psAvgNight_(longStays),
+      shortStayShare: ratio(shortStays.length, shortStays.length + longStays.length), longStays: longStays.length,
+      avgStayNights: ratio(_psSum_(H_, 'nights'), H_.length),
+      avgPassengers: ratio(_psSum_(F, 'pax'), F.length),
+      pctSinglePassenger: ratio(count(F, function(r) { return r.pax === 1; }), F.length),
+      pctRoundTrip: ratio(count(F, function(r) { return r.roundTrip; }), F.length),
+      pctInternational: ratio(count(F, function(r) { return r.international; }), F.length),
+      avgPurchaseLeadDays: _psMean_(F.filter(function(r) { return r.lead !== null && r.lead >= 0; }).map(function(r) { return r.lead; })),
+      avgRequestLeadDays: _psMean_(F.filter(function(r) { return r.requestLead !== null; }).map(function(r) { return r.requestLead; })),
+      avgDaysRequestToPurchase: _psMean_(gaps), medianDaysRequestToPurchase: _psMedian_(gaps),
+      pctTicketsLate: ratio(_psSum_(withLead.filter(function(r) { return r.lead <= PS_LATE_MAX_DAYS; }), 'tickets'), _psSum_(withLead, 'tickets')),
+      pctPolicyViolation: ratio(count(V, function(r) { return r.policyViolation; }), V.length),
+      pctWeekend: ratio(byWeekday[5].requests + byWeekday[6].requests, V.length),
+      invoicedVsConfirmed: invoicedRows.length ? _psSum_(invoicedRows, 'invoiced') / (_psSum_(invoicedRows, 'costTickets') + _psSum_(invoicedRows, 'costHotel')) - 1 : null,
+      invoice1Requests: inv1.length, invoice1ChargesPct: ratio(_psSum_(inv1, 'invoice1Charges'), _psSum_(inv1, 'invoice1Base'))
+    },
+    late: {
+      buckets: buckets,
+      noLead: { requests: noLead.length, tickets: _psSum_(noLead, 'tickets') },
+      avgLate: _psAvgTicket_(lateRows), avgEarly: avgEarly,
+      ticketsLate: _psSum_(lateRows, 'tickets'), ticketsEarly: _psSum_(earlyRows, 'tickets'),
+      overcost: overcost, annualSavingsIfHalfPlanned: overcost * 0.5 * annual
+    },
+    byMonth: byMonth,
+    topRoutes: topRoutes.slice(0, PS_TOP), routeCount: topRoutes.length,
+    topCities: topCities.slice(0, PS_TOP), cityCount: topCities.length,
+    byWeekday: byWeekday,
+    dataNotes: {
+      symbolicCosts: count(V, function(r) { return r.symbolicCost; }),
+      withoutPurchaseDate: count(V, function(r) { return !r.purchaseKey; }),
+      purchaseAfterDeparture: count(V, function(r) { return r.lead !== null && r.lead < 0; })
+    }
   };
 }
 

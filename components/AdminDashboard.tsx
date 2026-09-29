@@ -420,7 +420,7 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
             onClick={() => setShowMetricsPanel(true)}
             disabled={isLoading}
             className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 gap-2"
-            title="Ver métricas de tiempos por etapa"
+            title="Ver métricas de tiempos por etapa y de compras de tiquetes y hospedaje"
           >
             <span>📊</span>
             Métricas

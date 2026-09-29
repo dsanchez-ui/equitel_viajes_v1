@@ -349,3 +349,121 @@ export interface MetricsResponse {
   aggregates: MetricsAggregates;
   analystPerformance: AnalystStagePerformance[];
 }
+
+// ===== Estadísticas de compra de tiquetes y hospedaje (#A80) =====
+// Solo agregados: el backend no envía nombres, cédulas ni correos.
+
+export interface PurchaseStatsFilters {
+  dateFrom?: string; // 'AAAA-MM-DD' (fecha de compra; sin fecha = toda la historia)
+  dateTo?: string;
+}
+
+export interface PurchaseStatsBucket {
+  label: string;
+  requests: number;
+  tickets: number;
+  ticketsWithCost: number;
+  avgTicket: number | null;
+}
+
+export interface PurchaseStatsMonth {
+  month: string; // 'AAAA-MM'
+  partial: boolean;
+  requests: number;
+  tickets: number;
+  roomNights: number;
+  spendTickets: number;
+  spendHotel: number;
+  avgTicket: number | null;
+  avgNightShort: number | null;
+  businessDays: number;
+  pctLate: number | null;
+}
+
+export interface PurchaseStatsRoute {
+  route: string;
+  international: boolean;
+  requests: number;
+  tickets: number;
+  share: number | null;
+  avgTicket: number | null;
+  avgLate: number | null;
+  avgEarly: number | null;
+}
+
+export interface PurchaseStatsCity {
+  city: string;
+  requests: number;
+  roomNights: number;
+  avgNight: number | null;
+  avgNightShort: number | null;
+  avgStay: number | null;
+}
+
+export interface PurchaseStatsTotals {
+  requests: number;
+  flightRequests: number;
+  hotelOnlyRequests: number;
+  tickets: number;
+  ticketsNational: number;
+  ticketsInternational: number;
+  ticketsPerBusinessDay: number | null;
+  ticketsPerMonth: number;
+  requestsPerMonth: number;
+  roomNights: number;
+  hotelRequests: number;
+  roomNightsPerMonth: number;
+  spend: number;
+  spendTickets: number;
+  spendHotel: number;
+  spendPerMonth: number;
+  annualProjection: number;
+  avgPerRequest: number | null;
+  avgTicket: number | null;
+  avgTicketNational: number | null;
+  avgTicketInternational: number | null;
+  medianTicketNational: number | null;
+  avgNight: number | null;
+  avgNightShort: number | null;
+  avgNightLong: number | null;
+  shortStayShare: number | null;
+  longStays: number;
+  avgStayNights: number | null;
+  avgPassengers: number | null;
+  pctSinglePassenger: number | null;
+  pctRoundTrip: number | null;
+  pctInternational: number | null;
+  avgPurchaseLeadDays: number | null;
+  avgRequestLeadDays: number | null;
+  avgDaysRequestToPurchase: number | null;
+  medianDaysRequestToPurchase: number | null;
+  pctTicketsLate: number | null;
+  pctPolicyViolation: number | null;
+  pctWeekend: number | null;
+  invoicedVsConfirmed: number | null;
+  invoice1Requests: number;
+  invoice1ChargesPct: number | null;
+}
+
+export interface PurchaseStats {
+  empty?: boolean;
+  period: { from: string; to: string; days: number; businessDays: number; months: number; firstDataDate: string; lastDataDate: string };
+  totals: PurchaseStatsTotals;
+  late: {
+    buckets: PurchaseStatsBucket[];
+    noLead: { requests: number; tickets: number };
+    avgLate: number | null;
+    avgEarly: number | null;
+    ticketsLate: number;
+    ticketsEarly: number;
+    overcost: number;
+    annualSavingsIfHalfPlanned: number;
+  };
+  byMonth: PurchaseStatsMonth[];
+  topRoutes: PurchaseStatsRoute[];
+  routeCount: number;
+  topCities: PurchaseStatsCity[];
+  cityCount: number;
+  byWeekday: { day: number; requests: number; tickets: number }[];
+  dataNotes: { symbolicCosts: number; withoutPurchaseDate: number; purchaseAfterDeparture: number };
+}

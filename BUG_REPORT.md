@@ -1420,3 +1420,64 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
    - Una pestaña con el modal viejo sigue funcionando con valores sin puntos; cuando el backend nuevo esté publicado, un valor con punto de miles se rechaza y el mensaje pide recargar.
 2. **Apps Script:** pegar `Code.gs` (va junto con #A76–#A78) y guardar → recargar la hoja → **menú 11** (vista previa y confirmar) → crear la versión nueva del web app.
 3. Las decisiones ya tomadas con los valores errados (aprobaciones, chequeo de presupuesto al confirmar) no se recalculan.
+
+## **#A80 — Estadísticas de compra de tiquetes y hospedaje (reporte en Excel y pestaña en Métricas)**
+**Fecha:** 2026-09-29 · **Reportado por:** David (pedido de su jefe: evaluar si otra agencia de viajes saldría más barata) · **Estado:** Implementado, pendiente de push y de la versión nueva del web app
+
+**Pedido:**
+- Con los datos de la base: cuántos tiquetes se compran al día y al mes y cuánto cuesta en promedio un tiquete, contando 2 tiquetes por ida y regreso y uno por pasajero. Lo mismo para el hospedaje.
+- Sin datos de cada pasajero: totales, estadísticas y costo por solicitud, con gráficas y conclusiones, como base para calcular el ahorro de comprar con otra agencia.
+- Primero un Excel para enviar; después, dejar las métricas útiles en la aplicación, visibles solo para los administradores, para no tener que armarlo a mano otra vez.
+
+**Reporte en Excel** (export del 29-sep-2026, fuera del repo): `Reporte viajes - tiquetes y hospedaje (corte 28-sep-2026).xlsx`.
+- 10 hojas: Resumen con conclusiones, Ahorro (escenarios), Por mes, Por día, Rutas, Hospedaje, Anticipación, Perfil de viajes, Datos (una fila por solicitud, sin nombres, cédulas, correos ni teléfonos) y Notas y método.
+- Todo con fórmulas sobre la hoja Datos (10.855; 0 errores al recalcular). El periodo se puede cambiar. En Rutas y Hospedaje hay columnas amarillas para escribir los precios que cotice otra agencia y ver el ahorro anual.
+- 147 cifras de las fórmulas comparadas con un cálculo independiente en Python: todas iguales.
+
+**Reglas** (las mismas en el Excel y en la aplicación):
+- Solo cuentan las solicitudes compradas: RESERVADO o PROCESADO. Una modificación aprobada anula la original, así que un viaje no se cuenta dos veces.
+- **Tiquetes** = pasajeros × 2 si hay regreso (× 1 si no). Solo hospedaje = 0. Cada tramo de un multidestino es su propia solicitud. Coincide con la columna `Q TKT` en las 339 solicitudes que la tienen.
+- **Noches-habitación** = noches × pasajeros (supuesto: una habitación por persona), solo con hotel pagado. Hotel pagado con 0 noches → noches según las fechas.
+- **Costos** confirmados por el área de viajes. Los menores a $10.000 (marcadores de $1, #A79) no entran en los promedios.
+- **Fecha de cada compra:** la fecha de compra del tiquete; si falta, la de la solicitud. **Anticipación** = ida − compra; negativa cuenta como sin dato.
+- **Días hábiles:** lunes a viernes sin festivos de Colombia. En el backend se calculan para cualquier año (Pascua y Ley Emiliani), no con una lista fija.
+- **Hotel en dos grupos:** estadías de 1 a 6 noches (88 % de los casos, $250.111 por noche) y de 7 o más (26 estadías, 57 % de las noches, $87.280 por noche). Un promedio único ($157.455) haría ver cara cualquier cotización.
+
+**Cifras al 28-sep** (27-mar a 28-sep, 186 días, 122 hábiles):
+- **Volumen:** 736 tiquetes (6,0 por día hábil, 120 al mes) en 398 viajes con vuelo, más 48 de solo hospedaje; 1.072 noches-habitación.
+- **Precios:** tiquete nacional $391.056 (mediana $374.579); internacional $1.274.007.
+- **Gasto:** $521,5 millones, unos $1.023 millones al año; cada 1 % de descuento vale cerca de $10,2 millones al año.
+- **Comprar tarde:** un tiquete nacional comprado con 0 a 3 días cuesta 24 % más que con 8 días o más (Bogotá–Medellín: 35 %). El 62 % se compra con 7 días o menos. El área de viajes compra en promedio 2,0 días después de la solicitud: la anticipación se pierde antes de solicitar. Planear la mitad de esas compras ahorraría unos $24 millones al año, con cualquier agencia.
+- **Cargos:** en la factura 1, lo pagado a Aviatur y/o IVA es el 34 % de lo pagado a la aerolínea u hotel. Mezcla IVA, tasas y la tarifa de servicio, así que hay que pedir el desglose.
+
+**Cambio en la aplicación:**
+- **Backend** (`Code.gs`): `getPurchaseStats(filters)`, solo administradores (`adminOnlyActions`).
+  - Recibe un periodo por fecha de compra; sin fechas, toda la historia.
+  - Devuelve solo agregados: totales, comprar tarde por rango de anticipación (tiquetes nacionales), por mes, 10 rutas, 10 ciudades de hotel, día de la semana y notas de calidad de datos.
+  - Ni nombres, ni cédulas, ni correos.
+- **Métricas** (`MetricsPanel.tsx`) pasa a tener dos pestañas: "Tiempos del flujo" (igual que antes) y **"Compras y costos"** (`PurchaseStatsPanel.tsx`):
+  - periodo (todo, 30 o 90 días, este año o personalizado) y 8 tarjetas
+  - tabla de comprar tarde con el sobrecosto y el ahorro estimado
+  - meses, rutas y ciudades, cómo se viaja y las reglas al pie
+  - botón **Descargar CSV** (separador `;`, coma decimal, BOM) con todas las tablas
+  - si falla la carga, muestra el error y "Reintentar" (#A49)
+- `tools/check-purchase-stats.cjs` en `npm run verify`: corre el `Code.gs` completo con una hoja sintética y compara con resultados calculados a mano, incluidos los festivos 2025-2027 y el permiso.
+
+**Verificado:**
+- `npm run verify`, con el chequeo nuevo.
+- Simulación del `Code.gs` completo con el export del 29-sep, 136 verificaciones:
+  - las cifras del endpoint son idénticas a las del Excel: totales, promedios, medianas, comprar tarde, 10 rutas, 10 ciudades, cada mes y cada día de la semana
+  - filtro de julio igual a la fila de julio (22 días hábiles por el 20-jul); fechas invertidas → error claro; periodo sin compras → ceros
+  - festivos 2025, 2026 y 2027 correctos, y las fechas se leen en la zona de Bogotá
+  - un no administrador es rechazado
+  - ningún nombre, cédula ni correo de la hoja en la respuesta
+- 12 defectos introducidos a propósito, todos detectados por la simulación y por el chequeo del repo.
+- Chrome headless con el panel real, 39 pasos en 4 escenarios:
+  - las tarjetas y tablas muestran las cifras del Excel; el CSV trae las tablas con BOM y coma decimal
+  - el filtro de 30 días envía las fechas; volver a la pestaña no recarga
+  - con el backend anterior aparece un mensaje claro y la pestaña de tiempos sigue funcionando
+  - un error de red se muestra y "Reintentar" carga los datos; sin compras aparece un aviso
+
+**Despliegue** (los dos lados son independientes):
+1. **Push a `main`:** aparece la pestaña. Mientras el backend no esté publicado dice "Esta sección estará disponible cuando se publique la nueva versión del servidor"; la de tiempos no cambia.
+2. **Apps Script:** pegar `Code.gs`, guardar y crear la versión nueva del web app. Con el frontend anterior nadie llama la acción nueva.

@@ -389,7 +389,9 @@ El único caso donde hay serialización es cuando **dos admins crean usuarios si
 
 ## 8. Métricas
 
-Panel accesible desde el dashboard admin → botón **Métricas**.
+Panel accesible desde el dashboard admin → botón **Métricas**. Tiene dos pestañas: **Tiempos del flujo** y **Compras y costos**.
+
+### 8.1 Tiempos del flujo
 
 **Qué muestra:**
 - Tiempos promedio por etapa (en minutos hábiles):
@@ -412,6 +414,33 @@ Panel accesible desde el dashboard admin → botón **Métricas**.
 - Usa un cache JSON en Drive (`metricas_cache.json`) — recalcula solo las solicitudes cuyos eventos cambiaron desde la última carga.
 - Solicitudes creadas antes del deploy de métricas no tienen `EVENTOS_JSON` y aparecen como "sin datos".
 - Horario hábil: L-V 07:00–17:00, Sáb 08:00–12:00. Fuera de horario se excluye.
+
+### 8.2 Compras y costos
+
+Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta anticipación (#A80). Sirve para comparar precios con otra agencia sin armar un Excel a mano. Solo la ven los administradores.
+
+**Qué muestra:**
+- Tarjetas:
+  - tiquetes comprados (nacionales e internacionales), por día hábil y por mes
+  - costo promedio del tiquete nacional (y su mediana) y del internacional
+  - costo por noche en estadías de 1 a 6 noches (las de 7 o más se muestran aparte porque tienen tarifas mucho menores)
+  - gasto del periodo, proyección anual y cuánto vale cada 1 % de descuento
+  - porcentaje de tiquetes comprados con 7 días o menos
+- **¿Cuánto cuesta comprar tarde?:** costo por tiquete nacional según la anticipación de la compra, el sobrecosto del periodo y el ahorro si la mitad de esas compras se planeara con 8 días o más.
+- Meses, las 10 rutas con más tiquetes (con el precio comprando con 0 a 7 días y con 8 o más) y las 10 ciudades con más solicitudes con hotel.
+- Cómo se viaja: pasajeros por viaje, ida y regreso, anticipación, compras en fin de semana, facturado frente a confirmado y cargos de Aviatur y/o IVA de la factura 1.
+- **Descargar CSV:** todas las tablas en un archivo que abre en Excel.
+
+**Filtro:** fecha de compra (todo, últimos 30 o 90 días, este año o personalizado).
+
+**Cómo se cuenta:**
+- Solo solicitudes reservadas o procesadas.
+- Tiquetes = pasajeros × trayectos: ida y regreso son 2 por persona. Cada tramo de un multidestino es su propia solicitud.
+- Noches-habitación = noches × pasajeros, solo con hotel pagado.
+- Costos confirmados; los menores a $10.000 no entran en los promedios.
+- La fecha de cada compra es la fecha de compra del tiquete, o la de la solicitud si falta.
+- Días hábiles: lunes a viernes sin festivos de Colombia.
+- El panel no muestra nombres, cédulas ni correos de los pasajeros.
 
 ---
 
