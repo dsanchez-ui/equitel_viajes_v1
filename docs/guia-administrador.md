@@ -183,19 +183,21 @@ Cuando los soportes post-viaje están listos:
 2. **"Finalizar solicitud"** → se genera automáticamente el reporte PDF de soporte
 3. Estado final: `PROCESADO`
 
-**Cierre automático por facturas (#A83).** Una solicitud `RESERVADO` se cierra sola cuando:
-- el viaje ya terminó (fecha de regreso o, si es solo ida, la de ida, anterior a hoy), y
+**Listas para cerrar y facturas por revisar (#A83).** En el panel del analista aparece una barra con dos cifras: **✅ Listas para cerrar** y **🧾 Facturas por revisar**. Al abrirla se ven las dos listas. **Ninguna solicitud se cierra sola:** tú las revisas y las cierras.
+
+**Listas para cerrar.** Solicitudes `RESERVADO` que cumplen las tres condiciones:
+- el viaje ya terminó (fecha de regreso o, si es solo ida, la de ida, anterior a hoy). Antes no aparecen, porque una solicitud `PROCESADO` ya no se puede modificar.
 - lo facturado es **igual o mayor** que lo cotizado. Una diferencia menor a $1.000 cuenta como igual (redondeo). Facturar de más es normal y no es error.
 - hay **al menos un PDF de factura subido por el sistema por cada factura escrita** (los de la reserva no cuentan). Es la misma regla con que avisa el cierre manual, y es necesaria porque con la solicitud `PROCESADO` ya no se pueden subir soportes desde la app.
 
-Lo facturado se suma igual que en el dashboard de costos, con las facturas 1 a 6. Cada cierre deja una nota `[CIERRE AUTOMÁTICO …]` en OBSERVACIONES y genera el reporte PDF, como el cierre manual. No envía correos. Antes de que termine el viaje nunca se cierra, porque una solicitud `PROCESADO` ya no se puede modificar.
+Lo facturado se suma igual que en el dashboard de costos, con las facturas 1 a 6. Cada fila muestra cotizado, facturado y cuántos PDF hay. El botón **Cerrar** es el cierre manual de siempre: pide confirmación (con el resumen "Facturado $X de $Y cotizado; N PDF de M facturas") y genera el reporte PDF.
 
-Se activa una vez, **con la cuenta dueña del script** (el disparador queda a nombre de quien lo activa), con **Equitel Viajes → 12. Cierre automático por facturas**: muestra cuántas se cerrarían y cuántas quedan por revisar, cierra las que ya cuadran y deja un disparador que repite el cierre cada hora. **13. Desactivar cierre automático por facturas** lo apaga.
-
-**Facturas por revisar.** En el panel del analista aparece una barra **🧾 Facturas por revisar** con los viajes terminados hace 7 días o más cuyas facturas suman menos de lo cotizado, no tienen ninguna o no tienen sus PDF subidos. Cada fila muestra cotizado, facturado y lo que falta: el monto, o "Faltan PDF (1 de 2)". Botones:
-- **Subir PDF:** abre los soportes de la solicitud. Al subir el que falta, se cierra sola en la hora siguiente.
+**Facturas por revisar.** Viajes terminados hace 7 días o más cuyas facturas suman menos de lo cotizado, no tienen ninguna o no tienen sus PDF subidos. Cada fila muestra cotizado, facturado y lo que falta: el monto, o "Faltan PDF (1 de 2)". Botones:
+- **Subir PDF:** abre los soportes de la solicitud. Al subir el que falta y pulsar **↻ Actualizar**, pasa a "Listas para cerrar".
 - **Cerrar:** el cierre manual de siempre, aunque falten facturas.
-- **Omitir aviso:** deja de mostrarla y anota quién y cuándo en la columna `AVISO FACTURAS OMITIDO`. Si después llegan las facturas que faltan, se cierra sola igual. Para volver a ver el aviso, borra esa celda.
+- **Omitir aviso:** deja de mostrarla y anota quién y cuándo en la columna `AVISO FACTURAS OMITIDO`. Si después se completan las facturas y sus PDF, pasa a "Listas para cerrar". Para volver a ver el aviso, borra esa celda.
+
+Las listas se consultan al abrir el panel y con **↻ Actualizar**. No envían correos ni cambian nada en la hoja.
 
 ### 5.6 Gestionar solicitudes de cambio
 
@@ -470,8 +472,6 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 | `sendPendingSelectionReminders` | Recordatorio al usuario que no ha descrito su selección. Mismo asunto = mismo hilo en Gmail. |
 | `processAdminReminders` | Resumen diario/periódico al admin de pendientes (cotizar, confirmar costos, reservar, cambios). |
 | `sendPendingConsultReminders` | Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio). |
-
-**Cierre automático por facturas (#A83):** `cierreAutomaticoPorFacturas` cada hora. Lo instala el menú *12* y lo quita el *13* (ver 5.5).
 
 **Trigger de mantenimiento (ya configurado):**
 - `cleanupExpiredSessions` (diario, 1–2 AM) — limpia sesiones `SESSION_*` expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en `cleanupExpiredPropsWeekly`, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.

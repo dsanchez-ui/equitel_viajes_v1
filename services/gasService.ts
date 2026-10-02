@@ -446,7 +446,7 @@ class GasService {
     return response.data;
   }
 
-  /** Facturas por revisar y estado del cierre automático (#A83). Solo administradores. */
+  /** Facturas listas para cerrar y por revisar (#A83). Solo administradores. */
   async getInvoiceReview(): Promise<InvoiceReview> {
     const response = await this.runGas('getInvoiceReview', {});
     if (!response.success) throw new Error(response.error);

@@ -261,11 +261,12 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
     }
   };
 
-  const confirmFinalize = (req: TravelRequest) => {
+  // `detail`: resumen de facturas cuando se cierra desde «Listas para cerrar» (#A83).
+  const confirmFinalize = (req: TravelRequest, detail?: string) => {
     setDialog({
       isOpen: true,
       title: 'Finalizar Solicitud',
-      message: `¿Está seguro de cerrar la solicitud ${req.requestId}?\n\nEsto indicará que el proceso ha concluido (facturas cargadas).`,
+      message: `¿Está seguro de cerrar la solicitud ${req.requestId}?\n\n${detail ? detail + '\n\n' : ''}Esto indicará que el proceso ha concluido (facturas cargadas).`,
       type: 'CONFIRM',
       onConfirm: () => executeFinalize(req),
       onCancel: closeDialog

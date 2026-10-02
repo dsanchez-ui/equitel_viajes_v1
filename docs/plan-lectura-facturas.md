@@ -12,8 +12,8 @@ Leer los PDF de las facturas que ya se guardan en la carpeta de Drive de cada so
 llenar sus valores en la hoja: número, fecha, valor, IVA y total de cada factura. Hoy
 Laura los escribe a mano, una por una (Diego: *"Laura tiene 150 facturas por cerrar"*).
 
-Encaja con lo que ya está construido. Cuando las facturas quedan escritas, el cierre
-automático (#A83) cierra sola la solicitud si suman lo cotizado.
+Encaja con lo que ya está construido. Cuando las facturas quedan escritas y suman lo
+cotizado, la solicitud pasa a la bandeja "Listas para cerrar" (#A83) y Laura la cierra.
 
 ## 2. ¿Apps Script puede hacerlo?
 
@@ -24,7 +24,7 @@ pedirle nada distinto a Alejandro.
 Lo único que falta es un **permiso**. El proyecto de producción no tiene autorizado salir
 a internet (`script.external_request`), y por eso se retiró el botón de IA en agosto
 (#A62). Dárselo exige que el dueño vuelva a autorizar el proyecto. Mientras no lo haga,
-dejan de correr los disparadores: recordatorios, copia diaria y ahora el cierre automático.
+dejan de correr los disparadores: recordatorios y copia diaria.
 
 ### ¿Archivo aparte en el mismo proyecto, o proyecto aparte?
 

@@ -473,7 +473,7 @@ export interface PurchaseStats {
   dataNotes: { symbolicCosts: number; withoutPurchaseDate: number; purchaseAfterDeparture: number };
 }
 
-// ===== Facturas por revisar y cierre automático (#A83) =====
+// ===== Facturas listas para cerrar y por revisar (#A83) =====
 
 export interface InvoiceReviewItem {
   requestId: string;
@@ -495,11 +495,9 @@ export interface InvoiceReviewItem {
 export interface InvoiceReview {
   /** Viaje terminado hace graceDays o más y facturado menor que lo cotizado (sin aviso omitido). */
   alerts: InvoiceReviewItem[];
-  /** Ya cuadran: el cierre automático las pasa a PROCESADO en su próxima ejecución. */
+  /** Listas para cerrar: viaje terminado, facturas que suman lo cotizado y sus PDF. El área de viajes las cierra; no se cierran solas. */
   pendingClose: InvoiceReviewItem[];
   dismissedCount: number;
   waitingCount: number;
-  /** null si el servidor no pudo consultar los disparadores. */
-  autoCloseActive: boolean | null;
   graceDays: number;
 }

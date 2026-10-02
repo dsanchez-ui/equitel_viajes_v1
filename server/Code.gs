@@ -3348,35 +3348,32 @@ function setPurchaseInfo(requestId, airline, channel) {
 }
 
 // =====================================================================
-// CIERRE AUTOMÁTICO POR FACTURAS (#A83)
+// FACTURAS: LISTAS PARA CERRAR Y POR REVISAR (#A83)
 // =====================================================================
 // Acordado con Laura el 1-oct-2026; reglas de David del 2-oct
-// (docs/plan-reuniones-2026-09-24-al-10-01.md, V4):
-//   - Una solicitud RESERVADO se cierra sola (PROCESADO) cuando el viaje ya
-//     terminó, lo facturado es IGUAL O MAYOR que lo cotizado y hay al menos un PDF
-//     subido por cada factura escrita (la misma regla con que avisa el cierre
-//     manual). Facturar de más es lo normal y no es error. Una diferencia menor a
-//     AUTO_CLOSE_ROUNDING_PESOS es redondeo y cuenta como igual. Los PDF importan
-//     porque con la solicitud PROCESADO ya no se pueden subir soportes desde la app.
-//   - Nunca antes de que termine el viaje: una solicitud PROCESADO ya no se puede
-//     modificar.
-//   - Si lo facturado es menor (o no hay facturas) o faltan PDF, y el viaje terminó
-//     hace INVOICE_ALERT_GRACE_DAYS días o más, aparece en "Facturas por revisar"
-//     del panel del analista con el motivo, que puede omitir el aviso (columna
-//     INVOICE_ALERT_DISMISSED_HEADER). Omitir no impide que se cierre sola si
-//     después llegan las facturas.
+// (docs/plan-reuniones-2026-09-24-al-10-01.md, V4). El sistema NO cierra solo:
+// muestra en el panel del analista cuáles cumplen la condición y el área de
+// viajes las cierra con el cierre manual de siempre (decisión de David, 2-oct:
+// "es más seguro").
+//   - "Listas para cerrar": RESERVADO, el viaje ya terminó, lo facturado es IGUAL
+//     O MAYOR que lo cotizado y hay al menos un PDF subido por cada factura escrita
+//     (la misma regla con que avisa el cierre manual). Facturar de más es lo normal
+//     y no es error. Una diferencia menor a INVOICE_ROUNDING_PESOS es redondeo y
+//     cuenta como igual. Los PDF importan porque con la solicitud PROCESADO ya no se
+//     pueden subir soportes desde la app. Antes de que termine el viaje no aparece:
+//     una solicitud PROCESADO ya no se puede modificar.
+//   - "Facturas por revisar": lo facturado es menor (o no hay facturas) o faltan
+//     PDF, y el viaje terminó hace INVOICE_ALERT_GRACE_DAYS días o más. El área de
+//     viajes puede omitir el aviso (columna INVOICE_ALERT_DISMISSED_HEADER); si
+//     después se completa, pasa a "Listas para cerrar" igual.
 //   - Lo facturado se suma con las reglas del dashboard de costos
 //     (_csComputeRowExecuted_) más las facturas 2 a 6 que la configuración del
 //     dashboard no incluya. Lo cotizado es COSTO COTIZADO PARA VIAJE (o tiquetes
 //     + hotel si está vacío).
-//   - Un disparador cada hora (menú 12). No envía correos. Deja nota en
-//     OBSERVACIONES y genera el reporte de soportes, como el cierre manual.
 
 var INVOICE_ALERT_DISMISSED_HEADER = 'AVISO FACTURAS OMITIDO';
-var AUTO_CLOSE_ROUNDING_PESOS = 1000;
+var INVOICE_ROUNDING_PESOS = 1000;
 var INVOICE_ALERT_GRACE_DAYS = 7;
-var AUTO_CLOSE_HANDLER = 'cierreAutomaticoPorFacturas';
-var AUTO_CLOSE_TIME_BUDGET_MS = 270000;
 
 function _quotedForClose_(row, headerMap) {
   var q = _csToNumber_(_csReadCell_(row, headerMap, 'COSTO COTIZADO PARA VIAJE'));
@@ -3419,12 +3416,12 @@ function _uploadedInvoicePdfs_(row, headerMap) {
 
 /** ¿Lo facturado cubre lo cotizado? (0 y 0 = sin costo, p. ej. apartamento corporativo). */
 function _invoicesCoverQuote_(invoiced, quoted) {
-  return invoiced >= quoted - AUTO_CLOSE_ROUNDING_PESOS && (invoiced > 0 || quoted === 0);
+  return invoiced >= quoted - INVOICE_ROUNDING_PESOS && (invoiced > 0 || quoted === 0);
 }
 
 /**
  * Estado de facturas de una fila: cotizado, facturado, facturas escritas, PDF
- * subidos y si se puede cerrar. reason: '' (cierra), 'FALTAN_FACTURAS' o 'FALTAN_PDF'.
+ * subidos y si está lista para cerrar. reason: '' (lista), 'FALTAN_FACTURAS' o 'FALTAN_PDF'.
  */
 function _invoiceStateForClose_(row, headerMap, config) {
   var quoted = _quotedForClose_(row, headerMap);
@@ -3435,7 +3432,7 @@ function _invoiceStateForClose_(row, headerMap, config) {
 }
 
 /**
- * Revisa las solicitudes RESERVADO: cuáles se pueden cerrar, cuáles tienen
+ * Revisa las solicitudes RESERVADO: cuáles están listas para cerrar, cuáles tienen
  * facturas por revisar y cuáles esperan (viaje sin terminar o dentro del plazo).
  */
 function _invoiceReviewScan_() {
@@ -3490,158 +3487,54 @@ function _invoiceReviewScan_() {
 function _pesosText_(n) { return '$' + _formatCop_(Math.round(n || 0)); }
 
 /**
- * Cierra las solicitudes que ya cuadran, una por una bajo el bloqueo del script
- * (re-verifica cada fila antes de cerrarla). Se detiene al agotar el tiempo; lo
- * que falte se cierra en la siguiente ejecución.
- * @param {{budgetMs?: number, report?: boolean}} [opts]
+ * La primera versión de #A83 cerraba sola cada hora con este disparador. Se
+ * retiró el 2-oct-2026, antes de publicarla, por decisión de David. Si alguien
+ * alcanzó a activarlo (menú 12 de esa versión), se borra en su siguiente
+ * ejecución sin cerrar nada.
  */
-function _autoCloseInvoiced_(opts) {
-  opts = opts || {};
-  var budget = opts.budgetMs || AUTO_CLOSE_TIME_BUDGET_MS;
-  var t0 = Date.now();
-  var scan = _invoiceReviewScan_();
-  var res = { closed: [], skipped: [], pending: 0, alerts: scan.alerts.length, dismissed: scan.dismissed.length, waiting: scan.waiting };
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
-  for (var i = 0; i < scan.closable.length; i++) {
-    var it = scan.closable[i];
-    if (Date.now() - t0 > budget) { res.pending = scan.closable.length - i; break; }
-    var lock = LockService.getScriptLock();
-    if (!lock.tryLock(LOCK_WAIT_MS)) { res.pending = scan.closable.length - i; break; }
-    var done = false;
-    try {
-      _clearReqHeadersCache_();
-      var rowNumber = _getRowByRequestId_(it.requestId);
-      if (rowNumber === -1) { res.skipped.push({ requestId: it.requestId, reason: 'no encontrada' }); continue; }
-      var lastCol = sheet.getLastColumn();
-      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-      var headerMap = {};
-      headers.forEach(function(h, k) { var nm = String(h == null ? '' : h).trim(); if (nm && headerMap[nm] === undefined) headerMap[nm] = k; });
-      var row = sheet.getRange(rowNumber, 1, 1, lastCol).getValues()[0];
-      var status = String(_csReadCell_(row, headerMap, 'STATUS') || '').trim();
-      var st = _invoiceStateForClose_(row, headerMap, _csLoadConfig_());
-      var quoted = st.quoted;
-      var invoiced = st.invoiced;
-      if (status !== 'RESERVADO' || st.reason) {
-        res.skipped.push({ requestId: it.requestId, reason: 'cambió (' + status + ')' });
-        continue;
-      }
-      updateRequestStatus(it.requestId, 'PROCESADO');
-      var obsIdx = headerMap['OBSERVACIONES'];
-      if (obsIdx !== undefined) {
-        var curr = String(row[obsIdx] || '');
-        var note = '[CIERRE AUTOMÁTICO ' + Utilities.formatDate(new Date(), 'America/Bogota', 'dd/MM/yyyy HH:mm') + ']: facturado ' +
-          _pesosText_(invoiced) + ', cotizado ' + _pesosText_(quoted) + ', ' + st.uploadedPdfs + ' PDF de ' + st.invoiceCount +
-          ' factura' + (st.invoiceCount === 1 ? '' : 's') + '. Viaje terminado el ' + it.tripEnd + '.';
-        sheet.getRange(rowNumber, obsIdx + 1).setValue((curr ? curr + '\n' : '') + note);
-      }
-      SpreadsheetApp.flush();
-      done = true;
-      res.closed.push({ requestId: it.requestId, invoiced: invoiced, quoted: quoted });
-    } catch (e) {
-      res.skipped.push({ requestId: it.requestId, reason: String(e && e.message ? e.message : e) });
-    } finally {
-      lock.releaseLock();
-    }
-    if (done && opts.report !== false) {
-      try { generateSupportReport(it.requestId); } catch (e) { console.error('Cierre automático: reporte de ' + it.requestId + ' falló: ' + e); }
-    }
-  }
-  return res;
-}
-
-/** Disparador cada hora (lo instala el menú 12). */
 function cierreAutomaticoPorFacturas() {
-  _resetPerExecutionCaches_();
-  var r = _autoCloseInvoiced_({});
-  console.log('cierreAutomaticoPorFacturas: cerradas ' + r.closed.length +
-    (r.closed.length ? ' (' + r.closed.map(function(c) { return c.requestId; }).join(', ') + ')' : '') +
-    ', pendientes ' + r.pending + ', omitidas ' + r.skipped.length + ', por revisar ' + r.alerts + '.');
-  return r;
-}
-
-function _autoCloseTriggerInstalled_() {
-  try {
-    return ScriptApp.getProjectTriggers().some(function(t) { return t.getHandlerFunction() === AUTO_CLOSE_HANDLER; });
-  } catch (e) {
-    return null;
-  }
-}
-
-function activarCierreAutomatico() {
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === AUTO_CLOSE_HANDLER) ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger(AUTO_CLOSE_HANDLER).timeBased().everyHours(1).create();
-  return { installed: true };
-}
-
-function desactivarCierreAutomatico() {
   var removed = 0;
   ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === AUTO_CLOSE_HANDLER) { ScriptApp.deleteTrigger(t); removed++; }
+    if (t.getHandlerFunction() === 'cierreAutomaticoPorFacturas') { ScriptApp.deleteTrigger(t); removed++; }
   });
+  console.log('cierreAutomaticoPorFacturas: retirado; disparadores borrados: ' + removed + '. No se cerró ninguna solicitud.');
   return { removed: removed };
 }
 
-/** Crea las columnas nuevas de #A82 y #A83 (idempotente). */
+/** Crea las columnas nuevas de #A82 y #A83 (idempotente). Devuelve la columna de cada una. */
 function _ensureA82A83Columns_() {
-  _ensureRequestColumn_(PURCHASE_AIRLINE_HEADER,
-    'Aerolínea del tiquete (#A82). La registra el área de viajes al confirmar costos y al registrar la reserva.');
-  _ensureRequestColumn_(PURCHASE_CHANNEL_HEADER,
-    'Canal de compra (#A82): Aviatur, Directo (aerolínea u hotel) u Otra agencia. Se registra al confirmar costos y al registrar la reserva.');
-  _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
-    'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.');
+  return [
+    { header: PURCHASE_AIRLINE_HEADER, col: _ensureRequestColumn_(PURCHASE_AIRLINE_HEADER,
+      'Aerolínea del tiquete (#A82). La registra el área de viajes al confirmar costos y al registrar la reserva.') },
+    { header: PURCHASE_CHANNEL_HEADER, col: _ensureRequestColumn_(PURCHASE_CHANNEL_HEADER,
+      'Canal de compra (#A82): Aviatur, Directo (aerolínea u hotel) u Otra agencia. Se registra al confirmar costos y al registrar la reserva.') },
+    { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
+      'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
+  ];
 }
 
-/** Menú 12: vista previa, cierre inmediato y activación del disparador. */
-function menuCierreAutomaticoFacturas() {
+/** Menú 12: crea las columnas de #A82 y #A83 y muestra cuántas solicitudes hay en cada lista. No cierra nada. */
+function menuColumnasCompraFacturas() {
   var ui = SpreadsheetApp.getUi();
   try {
     _requireAnalyst_();
-    _ensureA82A83Columns_();
+    var cols = _ensureA82A83Columns_();
     var scan = _invoiceReviewScan_();
-    var active = _autoCloseTriggerInstalled_();
-    var ejemplo = function(it) { return '  ' + it.requestId + ': facturado ' + _pesosText_(it.invoiced) + ' / cotizado ' + _pesosText_(it.quoted) + ' (viaje hasta ' + it.tripEnd + ')'; };
-    var msg =
-      'Solicitudes RESERVADO con el viaje terminado:\n' +
-      '• Facturas que suman lo cotizado, con sus PDF (se cierran): ' + scan.closable.length + '\n' +
-      scan.closable.slice(0, 8).map(ejemplo).join('\n') + (scan.closable.length > 8 ? '\n  …' : '') + '\n' +
-      '• Por revisar (salen en el panel de la app): ' + scan.alerts.length +
-      ' (faltan facturas: ' + scan.alerts.filter(function(a) { return a.reason === 'FALTAN_FACTURAS'; }).length +
-      '; facturas completas pero faltan PDF: ' + scan.alerts.filter(function(a) { return a.reason === 'FALTAN_PDF'; }).length + ')\n' +
+    ui.alert('Columnas de compra y facturas',
+      'Columnas listas en ' + SHEET_NAME_REQUESTS + ':\n' +
+      cols.map(function(c) { return '• ' + c.header + ' (columna ' + _csColumnLetter_(c.col) + ')'; }).join('\n') + '\n\n' +
+      'Solicitudes RESERVADO hoy:\n' +
+      '• Listas para cerrar (viaje terminado, facturas que suman lo cotizado y sus PDF): ' + scan.closable.length + '\n' +
+      '• Facturas por revisar: ' + scan.alerts.length + '\n' +
       '• Avisos omitidos: ' + scan.dismissed.length + '\n' +
       '• Viaje sin terminar o con menos de ' + INVOICE_ALERT_GRACE_DAYS + ' días: ' + scan.waiting + '\n\n' +
-      'Cierre automático cada hora: ' + (active ? 'ACTIVO' : 'INACTIVO') + '.\n' +
-      'El disparador queda a nombre de quien lo activa: hágalo con la cuenta dueña del script.';
-    var ok = ui.alert('Cierre automático por facturas', msg + '\n\n¿Cerrar ahora las ' + scan.closable.length +
-      ' que cuadran y ' + (active ? 'mantener' : 'activar') + ' el cierre automático cada hora?', ui.ButtonSet.YES_NO);
-    if (ok !== ui.Button.YES) return;
-    activarCierreAutomatico();
-    var r = _autoCloseInvoiced_({ budgetMs: 240000 });
-    ui.alert('Cierre automático activado',
-      'Cerradas ahora: ' + r.closed.length + '.\n' +
-      (r.pending ? 'Quedan ' + r.pending + ' por cerrar; se cierran solas en la próxima hora.\n' : '') +
-      (r.skipped.length ? 'No se cerraron (cambiaron mientras tanto): ' + r.skipped.map(function(s) { return s.requestId; }).join(', ') + '.\n' : '') +
-      '\nCada cierre deja una nota en OBSERVACIONES. Para desactivarlo: menú 13.', ui.ButtonSet.OK);
+      'Ninguna se cierra sola: el área de viajes las cierra desde el panel de la app.', ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
   }
 }
 
-function menuDesactivarCierreAutomatico() {
-  var ui = SpreadsheetApp.getUi();
-  try {
-    _requireAnalyst_();
-    if (!_autoCloseTriggerInstalled_()) { ui.alert('El cierre automático por facturas no está activo.'); return; }
-    if (ui.alert('Desactivar cierre automático', 'Las solicitudes dejarán de cerrarse solas. ¿Desactivar?', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
-    var r = desactivarCierreAutomatico();
-    ui.alert('Cierre automático desactivado (' + r.removed + ' disparador eliminado).');
-  } catch (e) {
-    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
-  }
-}
-
-/** Panel "Facturas por revisar" (solo administradores). */
+/** Panel "Listas para cerrar" y "Facturas por revisar" (solo administradores). */
 function getInvoiceReview() {
   var scan = _invoiceReviewScan_();
   var pick = function(it) {
@@ -3657,7 +3550,6 @@ function getInvoiceReview() {
     pendingClose: scan.closable.map(pick),
     dismissedCount: scan.dismissed.length,
     waitingCount: scan.waiting,
-    autoCloseActive: _autoCloseTriggerInstalled_(),
     graceDays: INVOICE_ALERT_GRACE_DAYS
   };
 }
@@ -11538,8 +11430,7 @@ function onOpen() {
     .addItem('9. Accesos al dashboard de costos', 'menuAccesosDashboardCostos')
     .addItem('10. Ver administradores y permisos especiales', 'menuVerPermisosAdministradores')
     .addItem('11. Corregir costos mal digitados', 'menuCorregirCostos')
-    .addItem('12. Cierre automático por facturas', 'menuCierreAutomaticoFacturas')
-    .addItem('13. Desactivar cierre automático por facturas', 'menuDesactivarCierreAutomatico')
+    .addItem('12. Columnas de compra y resumen de facturas', 'menuColumnasCompraFacturas')
     .addToUi();
 }
 

@@ -329,13 +329,16 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 - `AEROLINEA` y `CANAL DE COMPRA` (#A82): con qué aerolínea y por qué canal (*Aviatur*, *Directo* u *Otra agencia*) se compró. Las llenan "Confirmar costos" y "Registrar reserva".
 - `AVISO FACTURAS OMITIDO` (#A83): quién omitió el aviso de facturas incompletas y cuándo. Borrar la celda vuelve a mostrar el aviso en el panel.
 
-Las tres las crea el menú *12* (o el sistema, la primera vez que las necesita).
+Las tres las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
 
-### 12. Cierre automático por facturas / 13. Desactivar
+### 12. Columnas de compra y resumen de facturas
 
-Cierra solas (pasan a `PROCESADO`) las solicitudes `RESERVADO` cuyo viaje ya terminó, cuyas facturas suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y que tienen subido un PDF por cada factura escrita. La *12* muestra primero cuántas se cerrarían y cuántas quedan por revisar, cierra las que cuadran y deja un disparador que repite el cierre cada hora. Cada cierre deja una nota `[CIERRE AUTOMÁTICO …]` en OBSERVACIONES y no envía correos. La *13* apaga el disparador.
+Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
+- **listas para cerrar:** viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita
+- **facturas por revisar:** les faltan facturas o PDF, a partir del día 7 después del viaje
+- avisos omitidos y solicitudes en espera
 
-Las que no cuadran aparecen en el panel del analista como **🧾 Facturas por revisar**, a partir del día 7 después del viaje.
+**No cierra nada.** Las dos listas aparecen en el panel del analista, que es donde se cierran (ver la guía de administrador, 5.5).
 
 ### Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)
 

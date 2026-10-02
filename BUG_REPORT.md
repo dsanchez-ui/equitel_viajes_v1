@@ -1548,64 +1548,68 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
 **Despliegue** (los dos lados son independientes):
 - **Frontend nuevo con backend anterior:** confirmar costos funciona; el backend ignora los campos nuevos. En la reserva aparece la nota "falta publicar la nueva versión del servidor".
 - **Backend nuevo con frontend anterior:** nada cambia.
-- Pegar `Code.gs`, correr el **menú 12** (crea las columnas) y crear la versión nueva del web app.
+- Pegar `Code.gs`, correr el **menú 12** (*Columnas de compra y resumen de facturas*: crea las columnas) y crear la versión nueva del web app.
 
-## **#A83 — Cierre automático por facturas y "Facturas por revisar"**
-**Fecha:** 2026-10-02 · **Reportado por:** Laura (1-oct, decisión acordada); reglas de David del 2-oct · **Estado:** Implementado, pendiente de push, de la versión nueva del web app y de activar el menú 12
+## **#A83 — Facturas "Listas para cerrar" y "Facturas por revisar"**
+**Fecha:** 2026-10-02 · **Reportado por:** Laura (1-oct, decisión acordada); reglas de David del 2-oct · **Estado:** Implementado, pendiente de pegar `Code.gs` y de la versión nueva del web app
 
 **Pedido:**
-- Cerrar sola una solicitud cuando sus facturas suman lo cotizado.
+- Saber qué solicitudes ya tienen facturas que suman lo cotizado, para cerrarlas.
 - Avisar cuando no alcanzan, con la opción de omitir el aviso.
 - Que facturar de más no genere error.
 
+**No se cierran solas** (decisión de David, 2-oct: *"es más seguro"*). La primera versión de este cambio (commit `e5a01d5`) las cerraba con un disparador cada hora. Se cambió el mismo día, antes de pegar el backend: el sistema las muestra en una bandeja y el área de viajes las cierra con el cierre manual de siempre.
+
 **Reglas** (decisiones de David y lo que se encontró en los datos):
 - **Solo `RESERVADO` y solo con el viaje terminado.** Una solicitud `PROCESADO` ya no se puede modificar; cerrarla antes del viaje impediría pedir un cambio. En la base del 29-sep, 4 solicitudes ya cuadraban con el viaje sin terminar.
-- **Cierra si facturado ≥ cotizado.** Facturar de más es lo normal (en la base, la mediana es 100 % y el percentil 90 es 125 %). Diferencias menores a **$1.000** cuentan como redondeo: había casos de $1, $360, $422 y $481.
+- **Lista para cerrar si facturado ≥ cotizado.** Facturar de más es lo normal (en la base, la mediana es 100 % y el percentil 90 es 125 %). Diferencias menores a **$1.000** cuentan como redondeo: había casos de $1, $360, $422 y $481.
   - David mencionó primero un 10 % de tolerancia y luego precisó: "si es menor a lo cotizado debería saltar una alerta". Se aplicó esa precisión.
-- **Facturado** = la suma del dashboard de costos (`_csComputeRowExecuted_`) más las facturas 2 a 6 que la configuración no incluya (la de fábrica solo tiene 1 a 3). **Cotizado** = `COSTO COTIZADO PARA VIAJE`, o tiquetes + hotel si está vacío. Costo 0 sin facturas (apartamento corporativo) también cierra.
+- **Facturado** = la suma del dashboard de costos (`_csComputeRowExecuted_`) más las facturas 2 a 6 que la configuración no incluya (la de fábrica solo tiene 1 a 3). **Cotizado** = `COSTO COTIZADO PARA VIAJE`, o tiquetes + hotel si está vacío. Costo 0 sin facturas (apartamento corporativo) también queda lista.
 - **También exige los PDF** (decisión de David del 2-oct, tras revisar los datos): al menos un PDF de factura subido por el sistema por cada factura escrita. Los de la reserva no cuentan. Es la misma regla con que avisa el cierre manual, y es necesaria porque con la solicitud `PROCESADO` la ventana de soportes queda solo para ver: si se cerrara sin el PDF, ya no se podría subir desde la app. En la base del 29-sep, 33 de las 48 solicitudes que cuadraban en montos tenían menos PDF que facturas escritas.
 - **Por revisar:** facturado menor, sin facturas o sin sus PDF, con el viaje terminado hace **7 días o más**. Antes, las facturas pueden estar en camino. Cada fila dice el motivo: "faltan facturas" (con el monto que falta) o "Faltan PDF (1 de 2)".
-- **Omitir aviso** escribe quién, cuándo y cuánto faltaba en la columna nueva `AVISO FACTURAS OMITIDO`. No impide que se cierre sola si después llegan las facturas. Borrar la celda vuelve a mostrar el aviso.
+- **Omitir aviso** escribe quién, cuándo y cuánto faltaba en la columna nueva `AVISO FACTURAS OMITIDO`. Si después se completan las facturas y sus PDF, la solicitud pasa a "Listas para cerrar". Borrar la celda vuelve a mostrar el aviso.
 
 **Cambio:**
 - **Backend:**
-  - `_invoiceReviewScan_` (lee la hoja una vez)
-  - `_autoCloseInvoiced_`: por cada solicitud toma el bloqueo del script, **re-lee la fila** y la cierra solo si sigue `RESERVADO` y cuadrando. Usa `updateRequestStatus`, deja nota `[CIERRE AUTOMÁTICO …]` en OBSERVACIONES y genera el reporte PDF fuera del bloqueo. Se detiene a los 4,5 minutos; lo demás queda para la siguiente hora.
-  - disparador `cierreAutomaticoPorFacturas` cada hora
+  - `_invoiceReviewScan_` (lee la hoja una vez, no escribe nada)
   - acciones `getInvoiceReview` y `dismissInvoiceAlert` (solo administradores)
+  - no hay disparador ni función que cierre. `cierreAutomaticoPorFacturas` quedó solo para borrar el disparador de la primera versión si alguien alcanzó a activarlo: se borra en su siguiente ejecución sin cerrar nada.
   - no envía correos
-- **Menús:**
-  - *12. Cierre automático por facturas*: crea las tres columnas nuevas de #A82 y #A83, muestra la vista previa, cierra las que cuadran y activa el disparador.
-  - *13. Desactivar cierre automático por facturas*.
-- **Panel del analista:** barra "🧾 Facturas por revisar (N)" (`InvoiceReviewPanel.tsx`) con cotizado, facturado, lo que falta (monto o PDF) y los botones *Subir PDF* (abre los soportes), *Cerrar* (cierre manual de siempre) y *Omitir aviso*. Indica cuántas ya cuadran y si el cierre automático está inactivo.
-  - Se consulta al abrir el panel y con "Actualizar", no con el sondeo de 30 s. Si una solicitud se cierra, sale de la lista sin otra consulta.
+- **Menú 12. Columnas de compra y resumen de facturas:** crea las tres columnas nuevas de #A82 y #A83 y muestra cuántas solicitudes hay en cada lista. No cierra nada.
+- **Panel del analista** (`InvoiceReviewPanel.tsx`): barra "✅ Listas para cerrar: N · 🧾 Facturas por revisar: M".
+  - **Listas para cerrar:** cotizado, facturado, PDF subidos y el botón *Cerrar*. Usa el cierre manual de siempre (`closeRequest`, con su confirmación y el reporte de soportes); la confirmación agrega el resumen "Facturado $X de $Y cotizado; N PDF de M facturas".
+  - **Por revisar:** cotizado, facturado, lo que falta (monto o PDF) y los botones *Subir PDF* (abre los soportes), *Cerrar* (aunque falten) y *Omitir aviso*.
+  - Se consulta al abrir el panel y con "Actualizar", no con el sondeo de 30 s. Si una solicitud se cierra, sale de su lista sin otra consulta.
   - Con el servidor anterior no se muestra; si falla, muestra el error con "Reintentar" (#A49).
-- `tools/check-invoice-autoclose.cjs` en `npm run verify`: hoja sintética con los casos límite.
+- `tools/check-invoice-review.cjs` en `npm run verify`: hoja sintética con los casos límite.
 
-**Con la base del 29-sep:** se cerrarían **15** solicitudes; **85** quedan por revisar (54 por facturas faltantes y 31 solo por PDF faltantes) y **45** esperan (viaje sin terminar o menos de 7 días).
+**Con la base del 29-sep:** **15** listas para cerrar; **85** por revisar (54 por facturas faltantes y 31 solo por PDF faltantes) y **45** en espera (viaje sin terminar o menos de 7 días).
 
 **Verificado:**
 - `npm run verify`.
-- Simulación del `Code.gs` completo con la base del 29-sep, 63 verificaciones:
+- Simulación del `Code.gs` completo con la base del 29-sep, 62 verificaciones:
   - las listas, los motivos y el conteo de facturas y PDF coinciden con un cálculo independiente en Python: 15 / 85 (31 por PDF) / 45
-  - cierra exactamente las 15, con la nota (incluye "N PDF de M facturas") y sin tocar ninguna otra celda; las 4 con viaje sin terminar siguen `RESERVADO`
-  - subir el PDF que faltaba deja la solicitud lista para cerrar; los PDF de la reserva no cuentan; un `SOPORTES (JSON)` ilegible cuenta 0 PDF
-  - una segunda pasada no cierra nada; sin correos; un tomar/soltar de bloqueo por cierre
-  - sin tiempo o con el bloqueo ocupado, no cierra y deja todo pendiente
-  - una fila que cambia entre la revisión y el cierre se salta
+  - **nada se cierra solo:** revisar, el panel y el menú 12 no cambian ningún estado, no toman el bloqueo ni envían correos
+  - las 15 se cierran con el botón (cierre manual) **sin** la advertencia de facturas incompletas; el cierre solo cambia el estado y genera un reporte por solicitud; sin correos; un tomar/soltar de bloqueo por cierre; después la bandeja queda vacía
+  - las 4 que cuadran con el viaje sin terminar siguen `RESERVADO`
+  - el disparador de la primera versión se borra solo, deja los demás disparadores y no cierra nada
+  - subir el PDF que faltaba pasa la solicitud a "Listas para cerrar" y sigue `RESERVADO`; los PDF de la reserva no cuentan; un `SOPORTES (JSON)` ilegible cuenta 0 PDF
   - la factura 4 completa un total
-  - omitir aviso: nota correcta, sale de la lista y se cierra igual si llegan las facturas
-  - permisos; el disparador no se duplica
-  - el menú 12 deja sin faltantes la verificación de estructura de la hoja
-- 16 defectos introducidos a propósito, todos detectados por la simulación; los 13 del cierre también por el chequeo del repo.
-- Chrome headless con el panel real, 5 escenarios:
-  - conteo, aviso del menú 12, fechas, montos y "Faltan PDF (1 de 2)"
-  - omitir llama al servidor y quita la fila; *Subir PDF*, abrir y cerrar usan lo existente
-  - un cierre por sondeo quita la fila sin otra consulta
-  - con el servidor anterior o sin pendientes no se muestra
+  - omitir aviso: nota correcta, sale de la lista y pasa a "Listas para cerrar" si después se completa
+  - permisos; ninguna acción crea disparadores
+  - el menú 12 crea las 3 columnas una sola vez y muestra las cifras
+- 18 defectos introducidos a propósito (entre ellos "revisar cierra solo", "el menú 12 cierra", "acepta un PDF de menos" y "el disparador viejo borra todos"), todos detectados por la simulación; los 15 de la revisión también por el chequeo del repo.
+- Chrome headless con el panel real, 6 escenarios:
+  - las dos cifras en la barra; no menciona cierre automático
+  - *Cerrar* en una lista para cerrar usa el cierre normal con el resumen de facturas y no llama al servidor por su cuenta
+  - "Faltan PDF (1 de 2)", *Subir PDF*, omitir, abrir y cerrar una por revisar
+  - un cierre por sondeo quita la fila de su lista sin otra consulta
+  - con solo listas para cerrar se muestra; con el servidor anterior o sin pendientes no se muestra
+  - con un backend de la primera versión (trae el estado del disparador) se ve igual
   - un error se muestra con "Reintentar"
 
 **Despliegue:**
 1. Push a `main`: la barra aparece cuando el backend esté publicado; antes no se muestra.
-2. Apps Script: pegar `Code.gs`, guardar, recargar la hoja y correr el **menú 12** con la cuenta dueña del script (el disparador queda a nombre de quien lo activa). Con la base del 29-sep cerraría 15 solicitudes y dejaría el disparador cada hora. Después, crear la versión nueva del web app.
-3. Rollback: menú 13 (apaga el disparador) y versión anterior del web app. Las solicitudes ya cerradas quedan con su nota en OBSERVACIONES.
+2. Apps Script: pegar `Code.gs`, guardar, recargar la hoja, correr el **menú 12** (crea las columnas; no cierra nada) y crear la versión nueva del web app.
+3. Si alguien alcanzó a correr el menú 12 de la primera versión: las solicitudes que cerró quedan con la nota `[CIERRE AUTOMÁTICO …]` (cumplían la condición) y su disparador se borra solo en la hora siguiente.
+4. Rollback: versión anterior del web app.

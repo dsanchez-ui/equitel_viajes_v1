@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 /**
- * Verifica el cierre automático por facturas (#A83): corre `server/Code.gs`
- * completo con una hoja SINTÉTICA en memoria (sin datos reales) y comprueba:
+ * Verifica las facturas listas para cerrar y por revisar (#A83): corre
+ * `server/Code.gs` completo con una hoja SINTÉTICA en memoria (sin datos reales)
+ * y comprueba:
  *   - solo RESERVADO y solo con el viaje terminado (antes no: PROCESADO ya no se
  *     puede modificar);
  *   - facturado ≥ cotizado − $1.000 y al menos un PDF subido por factura escrita
- *     cierra (los PDF de la reserva no cuentan); si no, queda "por revisar" desde
- *     el día 7 después del viaje, con el motivo; antes, en espera;
+ *     = lista para cerrar (los PDF de la reserva no cuentan); si no, queda "por
+ *     revisar" desde el día 7 después del viaje, con el motivo; antes, en espera;
  *   - suma facturas 1 a 6 aunque la configuración del dashboard solo tenga 1 a 3;
- *   - cierra con nota en OBSERVACIONES, sin correos, y re-verifica cada fila;
- *   - omitir el aviso lo oculta, pero si llegan las facturas se cierra igual;
+ *   - NADA se cierra solo: revisar no escribe en la hoja, no hay disparador y el
+ *     de la primera versión se borra sin cerrar nada;
+ *   - el cierre manual de una lista para cerrar no pide confirmar facturas;
+ *   - omitir el aviso lo oculta, y si después se completa pasa a listas para cerrar;
  *   - acciones nuevas solo para administradores.
  */
 
@@ -44,7 +47,7 @@ const ROWS = [
 
 function load() {
   const table = [H.slice(), ...ROWS.map((r) => r.map((v, j) => (/^FECHA/.test(H[j]) && v ? new Date(v + 'T00:00:00-05:00') : v)))];
-  const log = { mails: 0, locks: 0, unlocks: 0, triggers: [] };
+  const log = { mails: 0, locks: 0, unlocks: 0, triggers: [], alerts: [] };
   const sheet = {
     getName: () => 'Nueva Base Solicitudes', getLastRow: () => table.length, getLastColumn: () => table[0].length, getMaxColumns: () => table[0].length,
     insertColumnsAfter() {}, setColumnWidth() {},
@@ -68,8 +71,11 @@ function load() {
     PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, getProperties: () => ({}), setProperty() {}, deleteProperty() {}, getKeys: () => [] }) },
     CacheService: { getScriptCache: () => ({ get: () => null, put() {}, remove() {} }) },
     LockService: { getScriptLock: () => ({ tryLock: () => { log.locks++; return true; }, waitLock() {}, releaseLock() { log.unlocks++; }, hasLock: () => true }) },
-    Session: { getActiveUser: () => ({ getEmail: () => '' }), getEffectiveUser: () => ({ getEmail: () => '' }) },
-    SpreadsheetApp: { getActiveSpreadsheet: () => ({ getSheetByName: (n) => (n === 'Nueva Base Solicitudes' ? sheet : null) }), flush() {} },
+    Session: { getActiveUser: () => ({ getEmail: () => 'admin@p.co' }), getEffectiveUser: () => ({ getEmail: () => 'admin@p.co' }) },
+    SpreadsheetApp: {
+      getActiveSpreadsheet: () => ({ getSheetByName: (n) => (n === 'Nueva Base Solicitudes' ? sheet : null) }), flush() {},
+      getUi: () => ({ alert: (...a) => { log.alerts.push(a.join(' | ')); return 'OK'; }, ButtonSet: { OK: 'OK', YES_NO: 'YES_NO' }, Button: { YES: 'YES' } }),
+    },
     MailApp: { sendEmail() { log.mails++; } }, GmailApp: { sendEmail() { log.mails++; } },
     ScriptApp: {
       getProjectTriggers: () => log.triggers.map((h) => ({ getHandlerFunction: () => h, _h: h })),
@@ -83,7 +89,7 @@ function load() {
   new vm.Script(fs.readFileSync(path.join(ROOT, 'server', 'Code.gs'), 'utf8'), { filename: 'Code.gs' }).runInContext(ctx);
   if (typeof ctx._invoiceReviewScan_ !== 'function') throw new Error('No se encontró _invoiceReviewScan_() en server/Code.gs');
   ctx._todayBogotaIso_ = () => '2026-09-29';
-  ctx.generateSupportReport = () => 'url';
+  ctx.generateSupportReport = (id) => { log.reports = (log.reports || []).concat(id); return 'url'; };
   ctx.isUserAnalyst = (e) => e === 'admin@p.co';
   ctx.validateUserSession_ = () => true;
   ctx.validateUserEmail_ = () => true;
@@ -92,7 +98,7 @@ function load() {
 
 function main() {
   let env;
-  try { env = load(); } catch (e) { console.error('✗ No se pudo cargar server/Code.gs para el cierre automático:\n  ' + e.message); process.exit(1); }
+  try { env = load(); } catch (e) { console.error('✗ No se pudo cargar server/Code.gs para las facturas por cerrar:\n  ' + e.message); process.exit(1); }
   const { ctx, table, log } = env;
   const failures = [];
   const eq = (name, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) failures.push(`${name}: da ${JSON.stringify(got)}, se esperaba ${JSON.stringify(want)}`); };
@@ -100,29 +106,35 @@ function main() {
   const row = (id) => table.find((r) => r[0] === id);
   const ids = (l) => l.map((x) => x.requestId);
 
+  const before = JSON.stringify(table);
   const s = ctx._invoiceReviewScan_();
-  eq('se cierran (facturado ≥ cotizado − $1.000, viaje terminado; factura 4 cuenta)', ids(s.closable).slice().sort(), ['SOL-1', 'SOL-2', 'SOL-7', 'SOL-8']);
+  eq('listas para cerrar (facturado ≥ cotizado − $1.000, viaje terminado; factura 4 cuenta)', ids(s.closable).slice().sort(), ['SOL-1', 'SOL-2', 'SOL-7', 'SOL-8']);
   eq('por revisar (menos de lo cotizado, sin facturas o sin sus PDF; 7+ días)', ids(s.alerts).slice().sort(), ['SOL-10', 'SOL-11', 'SOL-12', 'SOL-3', 'SOL-9']);
   eq('motivos', s.alerts.map((x) => x.requestId + ':' + x.reason + ':' + x.uploadedPdfs + '/' + x.invoiceCount).sort(),
     ['SOL-10:FALTAN_PDF:1/2', 'SOL-11:FALTAN_PDF:0/1', 'SOL-12:FALTAN_PDF:0/1', 'SOL-3:FALTAN_FACTURAS:1/1', 'SOL-9:FALTAN_FACTURAS:0/0']);
   eq('en espera (viaje sin terminar o menos de 7 días)', s.waiting, 2);
 
-  const r = ctx._autoCloseInvoiced_({ report: false });
-  eq('cerradas', r.closed.map((c) => c.requestId).sort(), ['SOL-1', 'SOL-2', 'SOL-7', 'SOL-8']);
-  eq('estados', ['SOL-1', 'SOL-2', 'SOL-3', 'SOL-4', 'SOL-5', 'SOL-7', 'SOL-8', 'SOL-9', 'SOL-10', 'SOL-11', 'SOL-12'].map((id) => row(id)[col('STATUS')]),
-    ['PROCESADO', 'PROCESADO', 'RESERVADO', 'RESERVADO', 'RESERVADO', 'PROCESADO', 'PROCESADO', 'RESERVADO', 'RESERVADO', 'RESERVADO', 'RESERVADO']);
-  const obs = String(row('SOL-1')[col('OBSERVACIONES')]);
-  eq('nota sin borrar lo anterior', obs.startsWith('nota previa\n[CIERRE AUTOMÁTICO ') && /facturado \$950\.000, cotizado \$900\.000, 1 PDF de 1 factura\. Viaje terminado el 2026-09-03\.$/.test(obs), true);
-  eq('sin correos', log.mails, 0);
-  eq('bloqueo tomado y soltado por cierre', [log.locks, log.unlocks], [4, 4]);
-  eq('segunda pasada no cierra nada', ctx._autoCloseInvoiced_({ report: false }).closed.length, 0);
+  // Nada se cierra solo
+  const g = ctx.getInvoiceReview();
+  eq('panel: listas para cerrar (ordenadas por fin de viaje) y por revisar', [ids(g.pendingClose), g.alerts.length, g.graceDays], [['SOL-8', 'SOL-1', 'SOL-2', 'SOL-7'], 5, 7]);
+  eq('panel: sin estado de disparador', 'autoCloseActive' in g, false);
+  eq('revisar no escribe en la hoja, no bloquea ni envía correos', [JSON.stringify(table) === before, log.locks, log.mails], [true, 0, 0]);
+  eq('no queda ninguna función que cierre sola', ['_autoCloseInvoiced_', 'activarCierreAutomatico', 'desactivarCierreAutomatico', 'menuCierreAutomaticoFacturas'].filter((f) => typeof ctx[f] === 'function'), []);
+  log.triggers.push('cierreAutomaticoPorFacturas', 'backupDiarioAutomatico');
+  ctx.cierreAutomaticoPorFacturas();
+  eq('disparador de la primera versión: se borra solo sin cerrar nada', [log.triggers, JSON.stringify(table) === before], [['backupDiarioAutomatico'], true]);
+  ctx.menuColumnasCompraFacturas();
+  eq('menú 12: crea las 3 columnas, no cierra nada ni crea disparadores',
+    [['AEROLINEA', 'CANAL DE COMPRA', 'AVISO FACTURAS OMITIDO'].every((h) => table[0].includes(h)), table.slice(1).filter((r) => r[col('STATUS')] === 'PROCESADO').length, log.triggers, /Listas para cerrar[^:]*: 4/.test(log.alerts.join('\n'))],
+    [true, 1, ['backupDiarioAutomatico'], true]);
 
-  // re-verificación: si la fila cambió entre la revisión y el cierre, se salta
-  const env2 = load();
-  const orig = env2.ctx._invoiceReviewScan_;
-  env2.ctx._invoiceReviewScan_ = () => { const x = orig(); env2.table.find((rr) => rr[0] === 'SOL-1')[env2.table[0].indexOf('STATUS')] = 'ANULADO'; return x; };
-  const r2 = env2.ctx._autoCloseInvoiced_({ report: false });
-  eq('fila que cambió: se salta', [r2.closed.length, r2.skipped.map((x) => x.requestId)], [3, ['SOL-1']]);
+  // El cierre manual (botón Cerrar de la bandeja) no pide confirmar facturas en las listas
+  for (const id of ['SOL-1', 'SOL-2', 'SOL-7', 'SOL-8']) {
+    const res = ctx.dispatch('closeRequest', { userEmail: 'admin@p.co', sessionToken: 'x', requestId: id, options: { invoiceCheck: true } });
+    eq(id + ' se cierra a mano sin aviso de facturas', [res.success, res.data && res.data.closed, res.data && res.data.needsInvoiceAck, row(id)[col('STATUS')]], [true, true, undefined, 'PROCESADO']);
+  }
+  eq('cerradas a mano: salen de la lista', ctx.getInvoiceReview().pendingClose.length, 0);
+  eq('cierre manual sin correos', log.mails, 0);
 
   // omitir aviso
   ctx.dismissInvoiceAlert('SOL-3', 'Laura@p.co');
@@ -131,26 +143,23 @@ function main() {
   row('SOL-3')[col('TOTAL FACTURA 2')] = 300000;
   eq('omitida y completa, sin el PDF nuevo: sigue omitida', ids(ctx._invoiceReviewScan_().dismissed), ['SOL-3']);
   row('SOL-3')[col('SOPORTES (JSON)')] = pdf(2);
-  eq('omitida, completa y con sus PDF: se cierra igual', ids(ctx._invoiceReviewScan_().closable), ['SOL-3']);
+  eq('omitida, completa y con sus PDF: pasa a listas para cerrar', ids(ctx._invoiceReviewScan_().closable), ['SOL-3']);
   row('SOL-10')[col('SOPORTES (JSON)')] = pdf(2);
-  eq('al subir el PDF que faltaba: se cierra', ids(ctx._invoiceReviewScan_().closable).includes('SOL-10'), true);
+  eq('al subir el PDF que faltaba: pasa a listas para cerrar', ids(ctx._invoiceReviewScan_().closable).includes('SOL-10'), true);
+  eq('y sigue RESERVADO hasta que la cierren', row('SOL-10')[col('STATUS')], 'RESERVADO');
 
   // permisos
   for (const a of ['getInvoiceReview', 'dismissInvoiceAlert', 'setPurchaseInfo']) {
     const res = ctx.dispatch(a, { userEmail: 'otro@p.co', sessionToken: 'x', requestId: 'SOL-9' });
     eq(a + ' solo administradores', res.success === false && /administrador/.test(res.error), true);
   }
-  // disparador
-  ctx.activarCierreAutomatico(); ctx.activarCierreAutomatico();
-  eq('un solo disparador', log.triggers, ['cierreAutomaticoPorFacturas']);
-  eq('desactivar', [ctx.desactivarCierreAutomatico().removed, ctx._autoCloseTriggerInstalled_()], [1, false]);
 
   if (failures.length) {
-    console.error(`\n✗ Cierre automático por facturas: ${failures.length} problema(s).\n`);
+    console.error(`\n✗ Facturas por cerrar y por revisar: ${failures.length} problema(s).\n`);
     failures.forEach((f) => console.error('  · ' + f));
     process.exit(1);
   }
-  console.log('Cierre automático por facturas: viaje terminado, redondeo, PDF por factura, plazo de aviso, facturas 1 a 6, nota, bloqueo, omitir y permisos OK.');
+  console.log('Facturas por cerrar y por revisar: viaje terminado, redondeo, PDF por factura, plazo de aviso, facturas 1 a 6, nada se cierra solo, cierre manual, omitir y permisos OK.');
 }
 
 main();

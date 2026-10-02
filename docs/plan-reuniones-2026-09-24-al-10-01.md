@@ -32,7 +32,7 @@ Alejandro, y al final lo más grande.
 | V1 | Mostrar el detalle de la solicitud en **Confirmar costos** | Laura (1-oct) | David: "Te lo quedo debiendo" | **Implementado (#A81)**, pendiente de push |
 | V2 | Comparador de precios y estudio de 2–3 semanas de sobrecosto | Alejandro (1–2 oct) | Plan y prueba para que David la ejecute | **Plan y prueba listos** ([plan](plan-comparador-precios.md)) |
 | V3 | Registrar con qué aerolínea y canal se compró (Aviatur o directo) | Se desprende de V2 y del 1-oct | Fase 1 del plan del comparador | **Implementado (#A82)**, pendiente de despliegue |
-| V4 | **Cierre automático** de solicitudes cuando las facturas suman lo cotizado, con alerta si falta algo | Laura (1-oct); "va de la mano" con lo hablado con Diego | Decisión **acordada**; David: "sí se puede" | **Implementado (#A83)**, pendiente de despliegue y menú 12 |
+| V4 | **Cierre automático** de solicitudes cuando las facturas suman lo cotizado, con alerta si falta algo | Laura (1-oct); "va de la mano" con lo hablado con Diego | Decisión **acordada**; David: "sí se puede" | **Implementado (#A83)** como bandeja "Listas para cerrar" (sin cierre automático, decisión del 2-oct); pendiente de despliegue |
 | V5 | **Leer las facturas PDF** del Drive y llenar costos y facturas en la hoja | Diego (30-sep) | David: "sobre el final del mes … del otro mes" (dicho el 30-sep: finales de octubre) | **Solo plan** (decisión del 2-oct): [plan-lectura-facturas.md](plan-lectura-facturas.md) |
 | V6 | Menos correos de recordatorio para el área de viajes | Laura (1-oct) | Resuelto con un filtro de Gmail en la reunión | Paliativo hecho; mejora por decidir |
 | V7 | "Tipo de compra" (TIPO 1/2/3): nadie lo encuentra en el manual | Diego y Laura (30-sep) | Diego pregunta a Yurani | Esperando respuesta |
@@ -179,22 +179,25 @@ los costos cotizados."*
 - El reporte del 29-sep mostró que lo facturado suele quedar un 2,6 % por encima de lo
   confirmado.
 
-**Lo que decidió David (2-oct):** si lo facturado es **igual o mayor** que lo cotizado, se
-cierra (facturar de más es normal y no debe dar error). Si es menor, aparece una alerta
-para cargar las facturas, y Laura puede **omitir el aviso**.
+**Lo que decidió David (2-oct):** si lo facturado es **igual o mayor** que lo cotizado, la
+solicitud está lista para cerrar (facturar de más es normal y no debe dar error). Si es
+menor, aparece una alerta para cargar las facturas, y Laura puede **omitir el aviso**.
 
-**Implementado en #A83:**
-- se cierra solo con el viaje terminado, porque una solicitud PROCESADO ya no se puede
-  modificar
-- menos de $1.000 de diferencia cuenta como redondeo
-- la alerta aparece desde el día 7 después del viaje
-- se suman las facturas 1 a 6
-- exige un PDF subido por cada factura escrita, porque con PROCESADO ya no se pueden subir
-  soportes desde la app (aprobado por David el 2-oct)
-- un disparador cada hora (menú 12)
+Después, ese mismo día, David cambió el cierre: *"mejor haz que no se cierren solas sino que
+se pongan en una bandeja o le indiquen a Laura que ya cumplen la condición y se pueden
+cerrar … es más seguro"*. El sistema no cierra ninguna; Laura las cierra desde la bandeja.
 
-Con la base del 29-sep se cerrarían 15 solicitudes y quedarían 85 por revisar: 54 por
-facturas faltantes y 31 solo por PDF faltantes.
+**Implementado en #A83:** en el panel del analista, una barra con dos listas.
+- **Listas para cerrar**, cada una con su botón *Cerrar* (el cierre manual de siempre):
+  - solo con el viaje terminado, porque una solicitud PROCESADO ya no se puede modificar
+  - menos de $1.000 de diferencia cuenta como redondeo
+  - se suman las facturas 1 a 6
+  - exige un PDF subido por cada factura escrita, porque con PROCESADO ya no se pueden subir
+    soportes desde la app (aprobado por David el 2-oct)
+- **Facturas por revisar**, desde el día 7 después del viaje, con el motivo.
+
+Con la base del 29-sep habría 15 listas para cerrar y 85 por revisar: 54 por facturas
+faltantes y 31 solo por PDF faltantes.
 
 ### V5. Leer las facturas PDF y llenar la hoja
 
@@ -367,9 +370,10 @@ Sin verificar el estado: solo se registra lo dicho.
 
 1. **Orden:** aprobado. V1, V3 y V4 hechos; V2 lo prueba David antes de integrarlo; V5
    queda como plan.
-2. **V4:** facturado igual o mayor que lo cotizado → se cierra. Menor → alerta, con la
-   opción de omitir el aviso. Mencionó primero un 10 % y luego precisó que lo menor debe
-   avisar; se aplicó esa precisión, más $1.000 de tolerancia por redondeo.
+2. **V4:** facturado igual o mayor que lo cotizado → lista para cerrar. Menor → alerta, con
+   la opción de omitir el aviso. Mencionó primero un 10 % y luego precisó que lo menor debe
+   avisar; se aplicó esa precisión, más $1.000 de tolerancia por redondeo. **No se cierran
+   solas:** van a una bandeja y Laura las cierra (*"es más seguro"*).
 3. **V5:** proyecto de Apps Script **completamente aparte**, que escriba directo en la
    hoja. Detalle en [plan-lectura-facturas.md](plan-lectura-facturas.md).
 4. **V6:** sin respuesta todavía (¿un solo correo de recordatorio por ronda?).

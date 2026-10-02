@@ -17,8 +17,8 @@
     "check:cost": "node tools/check-cost-rules.cjs",
     "check:purchase": "node tools/check-purchase-stats.cjs",
     "check:purchase-info": "node tools/check-purchase-info-rules.cjs",
-    "check:autoclose": "node tools/check-invoice-autoclose.cjs",
-    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:autoclose && npm run build"
+    "check:invoices": "node tools/check-invoice-review.cjs",
+    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:invoices && npm run build"
   },
   "dependencies": {
     "react": "^19.2.4",
