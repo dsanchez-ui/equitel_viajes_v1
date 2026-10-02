@@ -10,6 +10,9 @@
 | [guia-hoja-calculo.pdf](./guia-hoja-calculo.pdf) | PDF de la guía del Sheets (7 páginas). Recomendada para admins nuevos. |
 | [guia-reorganizar-base.md](./guia-reorganizar-base.md) | Guía específica del workflow de reorganización de columnas de la hoja principal. |
 | [plan-legalizaciones-gastos.md](./plan-legalizaciones-gastos.md) | **Plan de desarrollo aprobado (pendiente)** — Módulo completo de legalizaciones de gastos: upload + OCR + gate 3-pendientes + export CSV a Labroides + dashboard de KPIs para aprobadores. Spec V2 (reunión 1-jun) reemplaza V1 (reunión 28-may, ahora subset/histórico). Autocontenida con apéndices técnicos para implementar desde cualquier equipo. |
+| [plan-reuniones-2026-09-24-al-10-01.md](./plan-reuniones-2026-09-24-al-10-01.md) | **Plan de trabajo (borrador)** — lo pedido, comprometido y decidido en las reuniones del 24-sep, 30-sep y 1-oct, con citas textuales. Viajes en detalle; otros proyectos en un anexo. |
+| [plan-lectura-facturas.md](./plan-lectura-facturas.md) | **Plan (sin desarrollar)** — lectura automática de las facturas PDF con Gemini desde un proyecto de Apps Script aparte que escribe en la hoja (V5 de las reuniones). |
+| [plan-comparador-precios.md](./plan-comparador-precios.md) | **Propuesta + prueba** — comparador de precios de tiquetes (Google Flights vía SerpApi, sin IA) y estudio de 2–3 semanas de sobrecosto frente a Aviatur. Pedido de Alejandro Gómez. |
 | [presentacion-impacto.html](./presentacion-impacto.html) | Infografía ejecutiva del impacto del portal (HTML con CSS custom — no usa markdown). |
 | [presentacion-impacto.pdf](./presentacion-impacto.pdf) | PDF ejecutivo para presentar a gerencia (antes vs después, cifras reales, testimonios). |
 

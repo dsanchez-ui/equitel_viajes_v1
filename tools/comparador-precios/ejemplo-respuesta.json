@@ -1,0 +1,202 @@
+{
+ "_nota": "DATOS INVENTADOS PARA PROBAR EL FORMATO. No son precios reales ni vuelos reales.",
+ "search_metadata": {
+  "status": "Success"
+ },
+ "best_flights": [
+  {
+   "flights": [
+    {
+     "departure_airport": {
+      "name": "Aeropuerto Internacional El Dorado",
+      "id": "BOG",
+      "time": "2026-10-20 05:40"
+     },
+     "arrival_airport": {
+      "name": "Aeropuerto Internacional Alfonso Bonilla Aragón",
+      "id": "CLO",
+      "time": "2026-10-20 06:45"
+     },
+     "duration": 65,
+     "airplane": "Airbus A320",
+     "airline": "Wingo",
+     "travel_class": "Económica",
+     "flight_number": "P5 7120"
+    }
+   ],
+   "total_duration": 65,
+   "price": 389200,
+   "type": "Ida y vuelta"
+  },
+  {
+   "flights": [
+    {
+     "departure_airport": {
+      "name": "Aeropuerto Internacional El Dorado",
+      "id": "BOG",
+      "time": "2026-10-20 06:30"
+     },
+     "arrival_airport": {
+      "name": "Aeropuerto Internacional Alfonso Bonilla Aragón",
+      "id": "CLO",
+      "time": "2026-10-20 07:35"
+     },
+     "duration": 65,
+     "airplane": "Airbus A320",
+     "airline": "LATAM",
+     "travel_class": "Económica",
+     "flight_number": "LA 4061"
+    }
+   ],
+   "total_duration": 65,
+   "price": 455900,
+   "type": "Ida y vuelta"
+  },
+  {
+   "flights": [
+    {
+     "departure_airport": {
+      "name": "Aeropuerto Internacional El Dorado",
+      "id": "BOG",
+      "time": "2026-10-20 07:05"
+     },
+     "arrival_airport": {
+      "name": "Aeropuerto Internacional Alfonso Bonilla Aragón",
+      "id": "CLO",
+      "time": "2026-10-20 08:10"
+     },
+     "duration": 65,
+     "airplane": "Airbus A320",
+     "airline": "Avianca",
+     "travel_class": "Económica",
+     "flight_number": "AV 9361"
+    }
+   ],
+   "total_duration": 65,
+   "price": 498600,
+   "type": "Ida y vuelta"
+  }
+ ],
+ "other_flights": [
+  {
+   "flights": [
+    {
+     "departure_airport": {
+      "name": "Aeropuerto Internacional El Dorado",
+      "id": "BOG",
+      "time": "2026-10-20 05:00"
+     },
+     "arrival_airport": {
+      "name": "Aeropuerto Internacional Alfonso Bonilla Aragón",
+      "id": "CLO",
+      "time": "2026-10-20 06:05"
+     },
+     "duration": 65,
+     "airplane": "Airbus A320",
+     "airline": "Avianca",
+     "travel_class": "Económica",
+     "flight_number": "AV 9355"
+    }
+   ],
+   "total_duration": 65,
+   "price": 612400,
+   "type": "Ida y vuelta"
+  },
+  {
+   "flights": [
+    {
+     "departure_airport": {
+      "name": "Aeropuerto Internacional El Dorado",
+      "id": "BOG",
+      "time": "2026-10-20 13:20"
+     },
+     "arrival_airport": {
+      "name": "Aeropuerto Internacional Alfonso Bonilla Aragón",
+      "id": "CLO",
+      "time": "2026-10-20 14:25"
+     },
+     "duration": 65,
+     "airplane": "Airbus A320",
+     "airline": "JetSMART",
+     "travel_class": "Económica",
+     "flight_number": "JA 5242"
+    }
+   ],
+   "total_duration": 65,
+   "price": 351700,
+   "type": "Ida y vuelta"
+  },
+  {
+   "flights": [
+    {
+     "departure_airport": {
+      "name": "Aeropuerto Internacional El Dorado",
+      "id": "BOG",
+      "time": "2026-10-20 06:00"
+     },
+     "arrival_airport": {
+      "name": "Matecaña",
+      "id": "PEI",
+      "time": "2026-10-20 06:55"
+     },
+     "duration": 55,
+     "airplane": "Airbus A320",
+     "airline": "Avianca",
+     "travel_class": "Económica",
+     "flight_number": "AV 9290"
+    },
+    {
+     "departure_airport": {
+      "name": "Matecaña",
+      "id": "PEI",
+      "time": "2026-10-20 08:10"
+     },
+     "arrival_airport": {
+      "name": "Aeropuerto Internacional Alfonso Bonilla Aragón",
+      "id": "CLO",
+      "time": "2026-10-20 08:50"
+     },
+     "duration": 40,
+     "airplane": "Airbus A320",
+     "airline": "Avianca",
+     "travel_class": "Económica",
+     "flight_number": "AV 9902"
+    }
+   ],
+   "total_duration": 170,
+   "price": 540100,
+   "type": "Ida y vuelta"
+  },
+  {
+   "flights": [
+    {
+     "departure_airport": {
+      "name": "Aeropuerto Internacional El Dorado",
+      "id": "BOG",
+      "time": "2026-10-20 18:40"
+     },
+     "arrival_airport": {
+      "name": "Aeropuerto Internacional Alfonso Bonilla Aragón",
+      "id": "CLO",
+      "time": "2026-10-20 19:45"
+     },
+     "duration": 65,
+     "airplane": "Airbus A320",
+     "airline": "LATAM",
+     "travel_class": "Económica",
+     "flight_number": "LA 4069"
+    }
+   ],
+   "total_duration": 65,
+   "type": "Ida y vuelta"
+  }
+ ],
+ "price_insights": {
+  "lowest_price": 351700,
+  "price_level": "typical",
+  "typical_price_range": [
+   330000,
+   520000
+  ]
+ }
+}

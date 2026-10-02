@@ -36,3 +36,7 @@ dist-ssr
 
 # Project management docs (local only)
 CHECKLIST_PENDIENTES.md
+
+# Comparador de precios (prueba): clave de SerpApi y resultados locales
+tools/comparador-precios/.serpapi-key
+resultados-comparador/

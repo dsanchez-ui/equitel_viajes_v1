@@ -1,0 +1,28 @@
+{
+ "_nota": "DATOS INVENTADOS PARA PROBAR EL FORMATO. No son vendedores ni precios reales.",
+ "booking_options": [
+  {
+   "together": {
+    "book_with": "JetSMART",
+    "airline": true,
+    "price": 351700,
+    "option_title": "Light"
+   }
+  },
+  {
+   "together": {
+    "book_with": "Agencia de ejemplo",
+    "airline": false,
+    "price": 366900
+   }
+  },
+  {
+   "together": {
+    "book_with": "JetSMART",
+    "airline": true,
+    "price": 452300,
+    "option_title": "Con maleta"
+   }
+  }
+ ]
+}
