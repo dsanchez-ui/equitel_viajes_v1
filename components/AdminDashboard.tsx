@@ -10,6 +10,7 @@ import { ConfirmationDialog } from './ConfirmationDialog';
 import { PinEntryModal } from './PinEntryModal';
 import { CancellationModal } from './CancellationModal';
 import { MetricsPanel } from './MetricsPanel';
+import { InvoiceReviewPanel } from './InvoiceReviewPanel';
 import { ChangeRequestModal } from './ChangeRequestModal';
 import { gasService } from '../services/gasService';
 import { getDaysDiff, formatToDDMMYYYY, formatShortDateTime } from '../utils/dateUtils';
@@ -454,6 +455,9 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
           </button>
         </div>
       </div>
+
+      {/* #A83: viajes terminados con facturas incompletas */}
+      <InvoiceReviewPanel requests={requests} onViewRequest={onViewRequest} onFinalize={confirmFinalize} onOpenSupports={setSelectedRequestForSupports} />
 
       {/* Toggle persistente: ver solo prioritarias (autoaprobadores) */}
       <div className="flex items-center gap-3 pt-1">

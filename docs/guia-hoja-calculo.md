@@ -325,6 +325,18 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 
 ---
 
+**Columnas al final que agrega el sistema (2-oct-2026):**
+- `AEROLINEA` y `CANAL DE COMPRA` (#A82): con qué aerolínea y por qué canal (*Aviatur*, *Directo* u *Otra agencia*) se compró. Las llenan "Confirmar costos" y "Registrar reserva".
+- `AVISO FACTURAS OMITIDO` (#A83): quién omitió el aviso de facturas incompletas y cuándo. Borrar la celda vuelve a mostrar el aviso en el panel.
+
+Las tres las crea el menú *12* (o el sistema, la primera vez que las necesita).
+
+### 12. Cierre automático por facturas / 13. Desactivar
+
+Cierra solas (pasan a `PROCESADO`) las solicitudes `RESERVADO` cuyo viaje ya terminó, cuyas facturas suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y que tienen subido un PDF por cada factura escrita. La *12* muestra primero cuántas se cerrarían y cuántas quedan por revisar, cierra las que cuadran y deja un disparador que repite el cierre cada hora. Cada cierre deja una nota `[CIERRE AUTOMÁTICO …]` en OBSERVACIONES y no envía correos. La *13* apaga el disparador.
+
+Las que no cuadran aparecen en el panel del analista como **🧾 Facturas por revisar**, a partir del día 7 después del viaje.
+
 ### Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)
 
 Un item del menú que al hacer click te muestra un diálogo diciendo **qué hoja está leyendo el portal en este momento**. No cambia nada, solo te informa.

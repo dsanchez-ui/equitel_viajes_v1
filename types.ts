@@ -183,6 +183,11 @@ export interface TravelRequest {
   // Request mode: 'FLIGHT' (default, viaje normal) or 'HOTEL_ONLY' (solo hospedaje)
   requestMode?: 'FLIGHT' | 'HOTEL_ONLY';
 
+  // Aerolínea y canal de compra (#A82): 'Aviatur' | 'Directo' | 'Otra agencia'.
+  // Vacíos si aún no se registraron (o con un backend anterior).
+  purchaseAirline?: string;
+  purchaseChannel?: string;
+
   // EFFECTIVE approval status (computed by backend, mirrors the dedup rules
   // applied in sendApprovalRequestEmail / processApprovalFromEmail).
   // Possible values: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA'.
@@ -466,4 +471,35 @@ export interface PurchaseStats {
   cityCount: number;
   byWeekday: { day: number; requests: number; tickets: number }[];
   dataNotes: { symbolicCosts: number; withoutPurchaseDate: number; purchaseAfterDeparture: number };
+}
+
+// ===== Facturas por revisar y cierre automático (#A83) =====
+
+export interface InvoiceReviewItem {
+  requestId: string;
+  requesterEmail: string;
+  origin: string;
+  destination: string;
+  hotelOnly: boolean;
+  tripEnd: string; // 'AAAA-MM-DD'
+  daysSinceEnd: number | null;
+  quoted: number;
+  invoiced: number;
+  missing: number;
+  /** 'FALTAN_FACTURAS' (no suman lo cotizado) o 'FALTAN_PDF' (suman, pero hay menos PDF subidos que facturas). */
+  reason?: 'FALTAN_FACTURAS' | 'FALTAN_PDF' | '';
+  invoiceCount?: number;
+  uploadedPdfs?: number;
+}
+
+export interface InvoiceReview {
+  /** Viaje terminado hace graceDays o más y facturado menor que lo cotizado (sin aviso omitido). */
+  alerts: InvoiceReviewItem[];
+  /** Ya cuadran: el cierre automático las pasa a PROCESADO en su próxima ejecución. */
+  pendingClose: InvoiceReviewItem[];
+  dismissedCount: number;
+  waitingCount: number;
+  /** null si el servidor no pudo consultar los disparadores. */
+  autoCloseActive: boolean | null;
+  graceDays: number;
 }

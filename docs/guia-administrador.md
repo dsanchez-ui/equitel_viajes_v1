@@ -141,8 +141,9 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
 ### 5.2 Revisar selección y confirmar costos (PENDIENTE_CONFIRMACION_COSTO → PENDIENTE_APROBACION)
 
 1. Fila con status `PENDIENTE_CONFIRMACION_COSTO`
-2. Abre el detalle → verás el texto libre que escribió el usuario ("Opción A, categoría Económica…")
-3. **"Confirmar costos"** → escribe el costo de los tiquetes y, si aplica, el del hotel, en pesos, con o sin puntos de miles (`889.518` o `889518`). Bajo cada campo aparece cómo se va a registrar. Si no tiene costo (por ejemplo, un apartamento corporativo), escribe `0`; cualquier otro valor debe ser de al menos $10.000. La confirmación avisa si el total queda en $0.
+2. **"Confirmar costos"** abre un modal con todo el detalle de la solicitud a la izquierda (#A81): viaje, datos corporativos y OT, pasajeros con su fecha de nacimiento y celular, hospedaje, observaciones y las imágenes de las opciones. A la derecha, el texto que escribió el usuario ("Opción A, categoría Económica…") y el formulario. Ya no hace falta abrir la solicitud en otra pestaña.
+3. Escribe el costo de los tiquetes y, si aplica, el del hotel, en pesos, con o sin puntos de miles (`889.518` o `889518`). Bajo cada campo aparece cómo se va a registrar. Si no tiene costo (por ejemplo, un apartamento corporativo), escribe `0`; cualquier otro valor debe ser de al menos $10.000. La confirmación avisa si el total queda en $0.
+   - **Compra prevista** (#A82): la **aerolínea** (lista o "Otra…") y el **canal**: *Aviatur*, *Directo* (con la aerolínea o, en solo hospedaje, con el hotel) u *Otra agencia*. Son obligatorios; en solo hospedaje no se pide aerolínea.
 4. Al guardar, si el total ≤ $1.2M y no es internacional → pasa a `APROBADO` directo. Si no → pasa a `PENDIENTE_APROBACION` y se envía correo a CEO + CDS + aprobador de área.
 
 **Costos mal digitados antes del 2026-09-14:** con el campo anterior, `889.518` se guardaba como 889 pesos con decimales. **Equitel Viajes → 11. Corregir costos mal digitados** los corrige: muestra una vista previa, pide confirmación, deja una nota en OBSERVACIONES y el detalle en la pestaña "Reporte corrección costos". Los que no se pueden deducir (por ejemplo, costos de $1) solo los lista para revisarlos a mano.
@@ -156,6 +157,7 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
    - **Tarjeta de crédito** usada (del dropdown)
    - **Fecha de compra** (hoy por default)
    - **Archivos de confirmación** (PDF de la aerolínea / hotel — puedes subir varios)
+   - **Compra (aerolínea y canal)** (#A82): viene llena con lo previsto al confirmar costos. Cámbiala si se compró por otro canal (por ejemplo, directo con la aerolínea porque Aviatur no ajustó el precio). Es obligatoria al registrar; al corregir una reserva es opcional.
 4. Al guardar:
    - La carpeta en Drive se renombra a `SOL-000123 - PNR12345 - TC 1234 - MAY 26`
    - Se envía correo al usuario con el PNR y los archivos adjuntos
@@ -180,6 +182,20 @@ Cuando los soportes post-viaje están listos:
 1. Fila con status `RESERVADO`
 2. **"Finalizar solicitud"** → se genera automáticamente el reporte PDF de soporte
 3. Estado final: `PROCESADO`
+
+**Cierre automático por facturas (#A83).** Una solicitud `RESERVADO` se cierra sola cuando:
+- el viaje ya terminó (fecha de regreso o, si es solo ida, la de ida, anterior a hoy), y
+- lo facturado es **igual o mayor** que lo cotizado. Una diferencia menor a $1.000 cuenta como igual (redondeo). Facturar de más es normal y no es error.
+- hay **al menos un PDF de factura subido por el sistema por cada factura escrita** (los de la reserva no cuentan). Es la misma regla con que avisa el cierre manual, y es necesaria porque con la solicitud `PROCESADO` ya no se pueden subir soportes desde la app.
+
+Lo facturado se suma igual que en el dashboard de costos, con las facturas 1 a 6. Cada cierre deja una nota `[CIERRE AUTOMÁTICO …]` en OBSERVACIONES y genera el reporte PDF, como el cierre manual. No envía correos. Antes de que termine el viaje nunca se cierra, porque una solicitud `PROCESADO` ya no se puede modificar.
+
+Se activa una vez, **con la cuenta dueña del script** (el disparador queda a nombre de quien lo activa), con **Equitel Viajes → 12. Cierre automático por facturas**: muestra cuántas se cerrarían y cuántas quedan por revisar, cierra las que ya cuadran y deja un disparador que repite el cierre cada hora. **13. Desactivar cierre automático por facturas** lo apaga.
+
+**Facturas por revisar.** En el panel del analista aparece una barra **🧾 Facturas por revisar** con los viajes terminados hace 7 días o más cuyas facturas suman menos de lo cotizado, no tienen ninguna o no tienen sus PDF subidos. Cada fila muestra cotizado, facturado y lo que falta: el monto, o "Faltan PDF (1 de 2)". Botones:
+- **Subir PDF:** abre los soportes de la solicitud. Al subir el que falta, se cierra sola en la hora siguiente.
+- **Cerrar:** el cierre manual de siempre, aunque falten facturas.
+- **Omitir aviso:** deja de mostrarla y anota quién y cuándo en la columna `AVISO FACTURAS OMITIDO`. Si después llegan las facturas que faltan, se cierra sola igual. Para volver a ver el aviso, borra esa celda.
 
 ### 5.6 Gestionar solicitudes de cambio
 
@@ -454,6 +470,8 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 | `sendPendingSelectionReminders` | Recordatorio al usuario que no ha descrito su selección. Mismo asunto = mismo hilo en Gmail. |
 | `processAdminReminders` | Resumen diario/periódico al admin de pendientes (cotizar, confirmar costos, reservar, cambios). |
 | `sendPendingConsultReminders` | Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio). |
+
+**Cierre automático por facturas (#A83):** `cierreAutomaticoPorFacturas` cada hora. Lo instala el menú *12* y lo quita el *13* (ver 5.5).
 
 **Trigger de mantenimiento (ya configurado):**
 - `cleanupExpiredSessions` (diario, 1–2 AM) — limpia sesiones `SESSION_*` expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en `cleanupExpiredPropsWeekly`, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.

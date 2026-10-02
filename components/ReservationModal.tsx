@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { TravelRequest, SupportFile, RequestStatus, APPROVER_ROLE_LABELS } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
+import { PurchaseInfoFields } from './PurchaseInfoFields';
+import { normalizePurchaseInfo, purchaseChannelLabel } from '../utils/purchase';
 
 interface ReservationModalProps {
     request: TravelRequest;
@@ -55,6 +57,36 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
 
     // Correction note (edit mode only)
     const [correctionNote, setCorrectionNote] = useState('');
+
+    // #A82: aerolínea y canal con que se compró (precargados con lo previsto al
+    // confirmar costos). Obligatorios al registrar la reserva; al corregirla, solo
+    // si se escribe alguno.
+    const [purchase, setPurchase] = useState<{ airline: string; channel: string }>({
+        airline: request.purchaseAirline || '',
+        channel: request.purchaseChannel || '',
+    });
+    const [triedPurchase, setTriedPurchase] = useState(false);
+    const purchaseCheck = normalizePurchaseInfo(purchase.airline, purchase.channel, isHotelOnly);
+    const purchaseTouched = !!(purchase.airline.trim() || purchase.channel.trim());
+
+    /**
+     * Guarda aerolínea y canal si cambiaron. Con un backend anterior (que no conoce
+     * la acción) sigue sin guardarlos y devuelve una nota; otro error se lanza.
+     */
+    const savePurchaseInfoIfNeeded = async (): Promise<string> => {
+        if (!purchaseCheck.ok) return '';
+        if (purchaseCheck.airline === (request.purchaseAirline || '') && purchaseCheck.channel === (request.purchaseChannel || '')) return '';
+        try {
+            await gasService.setPurchaseInfo(request.requestId, purchaseCheck.airline, purchaseCheck.channel);
+            return '';
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (/Acción desconocida/i.test(msg)) {
+                return '\n\nNota: la aerolínea y el canal no se guardaron porque falta publicar la nueva versión del servidor.';
+            }
+            throw new Error('No se pudo guardar la aerolínea y el canal de compra: ' + msg);
+        }
+    };
 
     // R8: Controla si se envía el correo automático al usuario. Default: sí.
     // Solo aplica en modo NEW (en edit siempre se envía correo de corrección).
@@ -162,6 +194,18 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             });
             return;
         }
+        // #A82: obligatorio al registrar; al corregir, solo si se escribió algo.
+        setTriedPurchase(true);
+        if ((!isEditMode || purchaseTouched) && !purchaseCheck.ok) {
+            setDialog({
+                isOpen: true,
+                title: 'Campo Requerido',
+                message: purchaseCheck.error || 'Revise la aerolínea y el canal de compra.',
+                type: 'ALERT',
+                onConfirm: closeDialog
+            });
+            return;
+        }
 
         // In new mode, must have at least one file
         // In edit mode, must have at least one file remaining (existing not deleted + new)
@@ -206,7 +250,9 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
               + (deleteCount > 0 ? `\nSe eliminarán ${deleteCount} archivo(s) de Drive.` : '')
               + (newFiles.length > 0 ? `\nSe subirán ${newFiles.length} archivo(s) nuevo(s).` : '')
               + `\nSe enviará correo de corrección al usuario.\n\n¿Desea continuar?`
-            : `Se registrará la reserva ${reservationNumber} con la tarjeta ${creditCard}, se subirán ${newFiles.length} archivo(s)`
+            : `Se registrará la reserva ${reservationNumber} con la tarjeta ${creditCard}`
+              + (purchaseCheck.ok ? ` (compra: ${purchaseCheck.airline ? purchaseCheck.airline + ' · ' : ''}${purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)})` : '')
+              + `, se subirán ${newFiles.length} archivo(s)`
               + (sendUserNotification ? ' y se notificará al usuario.' : ' (SIN notificación al usuario).')
               + '\n\n¿Desea continuar?';
 
@@ -230,6 +276,9 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 fileName: f.name
             })));
 
+            // #A82: primero aerolínea y canal (si falla, no se registra nada).
+            const purchaseNote = await savePurchaseInfoIfNeeded();
+
             if (isEditMode) {
                 await gasService.amendReservation(
                     request.requestId,
@@ -243,7 +292,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 setDialog({
                     isOpen: true,
                     title: 'Reserva Corregida',
-                    message: 'La reserva ha sido actualizada y el usuario notificado.',
+                    message: 'La reserva ha sido actualizada y el usuario notificado.' + purchaseNote,
                     type: 'SUCCESS',
                     onConfirm: () => { closeDialog(); onSuccess(); }
                 });
@@ -259,9 +308,9 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 setDialog({
                     isOpen: true,
                     title: 'Reserva Registrada',
-                    message: sendUserNotification
+                    message: (sendUserNotification
                         ? `La reserva ha sido guardada (${newFiles.length} archivo(s)) y el usuario notificado.`
-                        : `La reserva ha sido guardada (${newFiles.length} archivo(s)). NO se envió correo automático al usuario — verifique que haya recibido la información por otro medio.`,
+                        : `La reserva ha sido guardada (${newFiles.length} archivo(s)). NO se envió correo automático al usuario — verifique que haya recibido la información por otro medio.`) + purchaseNote,
                     type: 'SUCCESS',
                     onConfirm: () => { closeDialog(); onSuccess(); }
                 });
@@ -312,6 +361,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 fileData: await readFileAsBase64(f),
                 fileName: f.name
             })));
+            const purchaseNote = await savePurchaseInfoIfNeeded();
             await gasService.saveReservationDraft(
                 request.requestId,
                 reservationNumber,
@@ -322,7 +372,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             setDialog({
                 isOpen: true,
                 title: 'Guardado sin enviar',
-                message: `Se guardaron ${filePayloads.length} archivo(s). No se notificó al usuario. Puede agregar más archivos más tarde; cuando tenga todo, use "Confirmar reserva y enviar".`,
+                message: `Se guardaron ${filePayloads.length} archivo(s). No se notificó al usuario. Puede agregar más archivos más tarde; cuando tenga todo, use "Confirmar reserva y enviar".` + purchaseNote,
                 type: 'SUCCESS',
                 onConfirm: () => { closeDialog(); onSuccess(); }
             });
@@ -439,6 +489,19 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                     </select>
                                 )}
                             </div>
+
+                            {/* #A82: aerolínea y canal con que se compró */}
+                            <PurchaseInfoFields
+                                isHotelOnly={isHotelOnly}
+                                airline={purchase.airline}
+                                channel={purchase.channel}
+                                onChange={setPurchase}
+                                showErrors={triedPurchase && (!isEditMode || purchaseTouched)}
+                                title={isEditMode ? 'Compra (aerolínea y canal)' : 'Compra (aerolínea y canal) *'}
+                                hint={request.purchaseChannel
+                                    ? 'Viene de lo previsto al confirmar costos. Cámbielo si se compró por otro canal.'
+                                    : undefined}
+                            />
 
                             {/* Existing reservation files: en RESERVADO = la reserva;
                                 en APROBADO = lo guardado como reserva parcial. */}

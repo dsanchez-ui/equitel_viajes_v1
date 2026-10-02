@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, PassportStatus, BirthdateStatus, PassengerAdminInfo } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -437,6 +437,27 @@ class GasService {
     const response = await this.runGas('deleteDriveFile', { fileId });
     if (!response.success) throw new Error(response.error);
     return response.data === true;
+  }
+
+  /** Aerolínea y canal de compra (#A82). Solo administradores. */
+  async setPurchaseInfo(requestId: string, airline: string, channel: string): Promise<{ airline: string; channel: string }> {
+    const response = await this.runGas('setPurchaseInfo', { requestId, airline, channel });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
+  /** Facturas por revisar y estado del cierre automático (#A83). Solo administradores. */
+  async getInvoiceReview(): Promise<InvoiceReview> {
+    const response = await this.runGas('getInvoiceReview', {});
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
+  /** Omite el aviso de facturas incompletas de una solicitud (#A83). Solo administradores. */
+  async dismissInvoiceAlert(requestId: string): Promise<{ dismissed: boolean; note: string }> {
+    const response = await this.runGas('dismissInvoiceAlert', { requestId });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
   }
 
   async getMetrics(filters: MetricsFilters = {}): Promise<MetricsResponse> {

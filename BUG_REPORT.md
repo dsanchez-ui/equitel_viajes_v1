@@ -1481,3 +1481,131 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
 **Despliegue** (los dos lados son independientes):
 1. **Push a `main`:** aparece la pestaña. Mientras el backend no esté publicado dice "Esta sección estará disponible cuando se publique la nueva versión del servidor"; la de tiempos no cambia.
 2. **Apps Script:** pegar `Code.gs`, guardar y crear la versión nueva del web app. Con el frontend anterior nadie llama la acción nueva.
+
+## **#A81 — "Confirmar costos" muestra todo el detalle de la solicitud**
+**Fecha:** 2026-10-02 · **Reportado por:** Laura (reunión del 1-oct: "abro para confirmar la misma solicitud de acá"); David lo comprometió ("Te lo quedo debiendo") y lo confirmó el 2-oct · **Estado:** Implementado, pendiente de push
+
+**Síntoma:** el modal mostraba solo el número de solicitud y el texto de la selección. Para ver ruta, horas, pasajeros, hotel y opciones, Laura abría la misma solicitud en otra pestaña.
+
+**Cambio:**
+- El modal se ensancha y muestra el detalle completo a la izquierda (formulario a la derecha):
+  - viaje y datos corporativos (OT incluida)
+  - pasajeros con fecha de nacimiento y celular
+  - preferencia de hospedaje y observaciones
+  - las imágenes de las opciones
+  - avisos de internacional y de fuera de política
+- Las filas del panel no traen las opciones (#A60), así que el modal pide la solicitud completa con `getRequestById`. Mientras llega muestra lo que ya trae la fila. Si falla, muestra el error con "Reintentar"; el formulario sigue disponible porque solo escribe costos.
+- Las secciones de solo lectura se movieron tal cual de `RequestDetail.tsx` a `components/RequestInfoSections.tsx`, que usan los dos.
+
+**Verificado:**
+- `npm run verify`.
+- El detalle de la solicitud se dibuja **idéntico** antes y después del cambio, comparando el HTML en 4 casos: vuelo con opciones (administrador), solo hospedaje (administrador y usuario) e internacional. La única diferencia es la línea "Compra:" de #A82, en el caso con canal registrado.
+- Chrome headless con el modal real:
+  - el detalle se ve de inmediato y las 3 imágenes llegan después, con una sola consulta
+  - la fecha de nacimiento y las observaciones aparecen
+  - si la carga falla, se muestra el error y "Reintentar" la completa
+  - el formulario sigue funcionando
+
+**Despliegue:** solo frontend (push a `main`). Funciona con el backend actual.
+
+## **#A82 — Aerolínea y canal de compra (Aviatur, directo u otra agencia)**
+**Fecha:** 2026-10-02 · **Reportado por:** David (2-oct), a partir del pedido de Alejandro Gómez y de la reunión del 1-oct · **Estado:** Implementado, pendiente de push y de la versión nueva del web app
+
+**Pedido:** registrar en una columna si cada compra fue por Aviatur o directo con la aerolínea, para saber cuánto se compra por fuera y comparar precios (ver `docs/plan-comparador-precios.md`).
+
+**Cambio:**
+- Dos columnas nuevas al final de la hoja: `AEROLINEA` y `CANAL DE COMPRA` (*Aviatur*, *Directo* u *Otra agencia*). Se leen por nombre.
+- **Confirmar costos:** "Compra prevista" con aerolínea (lista o "Otra…") y canal. Obligatorios; solo hospedaje no pide aerolínea. Van en el mismo `updateRequest` que los costos.
+  - `_authorizeStatusUpdate_` los valida antes de escribir nada.
+  - `updateRequestStatus` los escribe sin poder romper el cambio de estado ni el correo de aprobación: un error de escritura solo queda en el registro.
+- **Registrar reserva:** campos precargados con lo previsto, para cambiarlos si se compró por otro canal.
+  - Obligatorios al registrar; al corregir, solo si se escribe alguno.
+  - Se guardan con la acción nueva `setPurchaseInfo` (solo administradores) **antes** de registrar, y solo si cambiaron. Así no se tocan `registerReservation` ni `amendReservation`.
+- El detalle de la solicitud muestra "Compra: LATAM · Directo con la aerolínea" (solo administradores). `mapRowToRequest` trae `purchaseAirline` y `purchaseChannel`.
+- **Regla gemela** en `utils/purchase.ts` y `Code.gs`, comparada por `tools/check-purchase-info-rules.cjs` dentro de `npm run verify`:
+  - el canal se reconoce sin importar tildes ni mayúsculas
+  - aerolínea de hasta 40 caracteres, solo letras, números, espacios y `. & ' / -`; esto descarta fórmulas como `=…`
+  - los nombres conocidos se guardan con su escritura oficial (latam → LATAM)
+
+**Verificado:**
+- `npm run verify`: 27 casos, frontend y backend coinciden.
+- Simulación del `Code.gs` completo con la base del 29-sep:
+  - `setPurchaseInfo` crea las columnas y guarda nombres oficiales; solo hospedaje sin aerolínea; valores inválidos no escriben
+  - confirmar costos con canal inválido no cambia estado ni costos
+  - confirmar con aerolínea y canal guarda todo y envía el correo de aprobación
+  - un formulario anterior (sin estos campos) funciona igual y no crea columnas
+  - si falla la escritura del canal, el estado cambia igual y sale el correo
+  - un no administrador es rechazado
+- Chrome headless (modal de costos y de reserva, 9 escenarios):
+  - no deja confirmar ni registrar sin canal
+  - "Otra…" con nombre libre; solo hospedaje sin aerolínea
+  - envía los valores correctos y en el orden correcto (canal antes de registrar)
+  - sin cambios no llama al servidor
+  - con el servidor anterior registra igual y avisa que falta publicarlo
+  - si falla guardar el canal, no registra
+  - al corregir sin compra no llama al servidor
+
+**Despliegue** (los dos lados son independientes):
+- **Frontend nuevo con backend anterior:** confirmar costos funciona; el backend ignora los campos nuevos. En la reserva aparece la nota "falta publicar la nueva versión del servidor".
+- **Backend nuevo con frontend anterior:** nada cambia.
+- Pegar `Code.gs`, correr el **menú 12** (crea las columnas) y crear la versión nueva del web app.
+
+## **#A83 — Cierre automático por facturas y "Facturas por revisar"**
+**Fecha:** 2026-10-02 · **Reportado por:** Laura (1-oct, decisión acordada); reglas de David del 2-oct · **Estado:** Implementado, pendiente de push, de la versión nueva del web app y de activar el menú 12
+
+**Pedido:**
+- Cerrar sola una solicitud cuando sus facturas suman lo cotizado.
+- Avisar cuando no alcanzan, con la opción de omitir el aviso.
+- Que facturar de más no genere error.
+
+**Reglas** (decisiones de David y lo que se encontró en los datos):
+- **Solo `RESERVADO` y solo con el viaje terminado.** Una solicitud `PROCESADO` ya no se puede modificar; cerrarla antes del viaje impediría pedir un cambio. En la base del 29-sep, 4 solicitudes ya cuadraban con el viaje sin terminar.
+- **Cierra si facturado ≥ cotizado.** Facturar de más es lo normal (en la base, la mediana es 100 % y el percentil 90 es 125 %). Diferencias menores a **$1.000** cuentan como redondeo: había casos de $1, $360, $422 y $481.
+  - David mencionó primero un 10 % de tolerancia y luego precisó: "si es menor a lo cotizado debería saltar una alerta". Se aplicó esa precisión.
+- **Facturado** = la suma del dashboard de costos (`_csComputeRowExecuted_`) más las facturas 2 a 6 que la configuración no incluya (la de fábrica solo tiene 1 a 3). **Cotizado** = `COSTO COTIZADO PARA VIAJE`, o tiquetes + hotel si está vacío. Costo 0 sin facturas (apartamento corporativo) también cierra.
+- **También exige los PDF** (decisión de David del 2-oct, tras revisar los datos): al menos un PDF de factura subido por el sistema por cada factura escrita. Los de la reserva no cuentan. Es la misma regla con que avisa el cierre manual, y es necesaria porque con la solicitud `PROCESADO` la ventana de soportes queda solo para ver: si se cerrara sin el PDF, ya no se podría subir desde la app. En la base del 29-sep, 33 de las 48 solicitudes que cuadraban en montos tenían menos PDF que facturas escritas.
+- **Por revisar:** facturado menor, sin facturas o sin sus PDF, con el viaje terminado hace **7 días o más**. Antes, las facturas pueden estar en camino. Cada fila dice el motivo: "faltan facturas" (con el monto que falta) o "Faltan PDF (1 de 2)".
+- **Omitir aviso** escribe quién, cuándo y cuánto faltaba en la columna nueva `AVISO FACTURAS OMITIDO`. No impide que se cierre sola si después llegan las facturas. Borrar la celda vuelve a mostrar el aviso.
+
+**Cambio:**
+- **Backend:**
+  - `_invoiceReviewScan_` (lee la hoja una vez)
+  - `_autoCloseInvoiced_`: por cada solicitud toma el bloqueo del script, **re-lee la fila** y la cierra solo si sigue `RESERVADO` y cuadrando. Usa `updateRequestStatus`, deja nota `[CIERRE AUTOMÁTICO …]` en OBSERVACIONES y genera el reporte PDF fuera del bloqueo. Se detiene a los 4,5 minutos; lo demás queda para la siguiente hora.
+  - disparador `cierreAutomaticoPorFacturas` cada hora
+  - acciones `getInvoiceReview` y `dismissInvoiceAlert` (solo administradores)
+  - no envía correos
+- **Menús:**
+  - *12. Cierre automático por facturas*: crea las tres columnas nuevas de #A82 y #A83, muestra la vista previa, cierra las que cuadran y activa el disparador.
+  - *13. Desactivar cierre automático por facturas*.
+- **Panel del analista:** barra "🧾 Facturas por revisar (N)" (`InvoiceReviewPanel.tsx`) con cotizado, facturado, lo que falta (monto o PDF) y los botones *Subir PDF* (abre los soportes), *Cerrar* (cierre manual de siempre) y *Omitir aviso*. Indica cuántas ya cuadran y si el cierre automático está inactivo.
+  - Se consulta al abrir el panel y con "Actualizar", no con el sondeo de 30 s. Si una solicitud se cierra, sale de la lista sin otra consulta.
+  - Con el servidor anterior no se muestra; si falla, muestra el error con "Reintentar" (#A49).
+- `tools/check-invoice-autoclose.cjs` en `npm run verify`: hoja sintética con los casos límite.
+
+**Con la base del 29-sep:** se cerrarían **15** solicitudes; **85** quedan por revisar (54 por facturas faltantes y 31 solo por PDF faltantes) y **45** esperan (viaje sin terminar o menos de 7 días).
+
+**Verificado:**
+- `npm run verify`.
+- Simulación del `Code.gs` completo con la base del 29-sep, 63 verificaciones:
+  - las listas, los motivos y el conteo de facturas y PDF coinciden con un cálculo independiente en Python: 15 / 85 (31 por PDF) / 45
+  - cierra exactamente las 15, con la nota (incluye "N PDF de M facturas") y sin tocar ninguna otra celda; las 4 con viaje sin terminar siguen `RESERVADO`
+  - subir el PDF que faltaba deja la solicitud lista para cerrar; los PDF de la reserva no cuentan; un `SOPORTES (JSON)` ilegible cuenta 0 PDF
+  - una segunda pasada no cierra nada; sin correos; un tomar/soltar de bloqueo por cierre
+  - sin tiempo o con el bloqueo ocupado, no cierra y deja todo pendiente
+  - una fila que cambia entre la revisión y el cierre se salta
+  - la factura 4 completa un total
+  - omitir aviso: nota correcta, sale de la lista y se cierra igual si llegan las facturas
+  - permisos; el disparador no se duplica
+  - el menú 12 deja sin faltantes la verificación de estructura de la hoja
+- 16 defectos introducidos a propósito, todos detectados por la simulación; los 13 del cierre también por el chequeo del repo.
+- Chrome headless con el panel real, 5 escenarios:
+  - conteo, aviso del menú 12, fechas, montos y "Faltan PDF (1 de 2)"
+  - omitir llama al servidor y quita la fila; *Subir PDF*, abrir y cerrar usan lo existente
+  - un cierre por sondeo quita la fila sin otra consulta
+  - con el servidor anterior o sin pendientes no se muestra
+  - un error se muestra con "Reintentar"
+
+**Despliegue:**
+1. Push a `main`: la barra aparece cuando el backend esté publicado; antes no se muestra.
+2. Apps Script: pegar `Code.gs`, guardar, recargar la hoja y correr el **menú 12** con la cuenta dueña del script (el disparador queda a nombre de quien lo activa). Con la base del 29-sep cerraría 15 solicitudes y dejaría el disparador cada hora. Después, crear la versión nueva del web app.
+3. Rollback: menú 13 (apaga el disparador) y versión anterior del web app. Las solicitudes ya cerradas quedan con su nota en OBSERVACIONES.

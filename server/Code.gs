@@ -261,7 +261,10 @@ const HEADERS_REQUESTS = [
   "APROBADO PRESUPUESTO",   // "Sí_email_fecha" / "No_email_fecha" / vacío — voto del aprobador de presupuesto (Alejandro o quien configure)
   "COMENTARIOS APROBADORES (JSON)", // Array [{role, email, comment, at}] — comentario OPCIONAL que cada aprobador puede dejar al aprobar
   "FECHAS NACIMIENTO PASAJEROS (JSON)", // Objeto {cédula: 'AAAA-MM-DD'} — fecha de nacimiento de pasajeros NO registrados en USUARIOS, recogida en el formulario
-  "CELULARES PASAJEROS (JSON)" // Objeto {cédula: '3001234567'} — celular OPCIONAL de pasajeros NO registrados en USUARIOS, recogido en el formulario (#A75)
+  "CELULARES PASAJEROS (JSON)", // Objeto {cédula: '3001234567'} — celular OPCIONAL de pasajeros NO registrados en USUARIOS, recogido en el formulario (#A75)
+  "AEROLINEA", // Aerolínea del tiquete (#A82) — al confirmar costos y al registrar la reserva
+  "CANAL DE COMPRA", // 'Aviatur' | 'Directo' | 'Otra agencia' (#A82)
+  "AVISO FACTURAS OMITIDO" // Quién omitió el aviso de facturas incompletas y cuándo (#A83)
 ];
 
 // =====================================================================
@@ -584,7 +587,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport'].includes(action);
+  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport', 'setPurchaseInfo', 'dismissInvoiceAlert'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -615,7 +618,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'dismissInvoiceAlert'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -678,6 +681,10 @@ function dispatch(action, payload) {
       case 'getMetrics': result = getMetrics(payload.filters || {}); break;
       // Estadísticas de compra de tiquetes y hospedaje (#A80). Solo administradores (adminOnlyActions).
       case 'getPurchaseStats': result = getPurchaseStats(payload.filters || {}); break;
+      // Aerolínea y canal de compra (#A82) y facturas por revisar (#A83). Solo administradores.
+      case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel); break;
+      case 'getInvoiceReview': result = getInvoiceReview(); break;
+      case 'dismissInvoiceAlert': result = dismissInvoiceAlert(payload.requestId, currentUserEmail); break;
       // SECURITY: Server-side analyst check
       case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
       case 'getMyRequests': result = getRequestsByEmail(currentUserEmail); break;
@@ -3205,6 +3212,477 @@ function closeRequestWithChecks(requestId, actorEmail, options) {
   try { generateSupportReport(requestId); } catch (e) { console.error('Auto-report failed: ' + e); }
 
   return { success: true, closed: true };
+}
+
+// =====================================================================
+// COLUMNAS NUEVAS DE LA HOJA PRINCIPAL (al final, se leen por nombre)
+// =====================================================================
+
+/**
+ * Crea `header` al final de la hoja principal si no existe (idempotente). Si
+ * existe con otra escritura (acentos, espacios raros) la deja como `header`.
+ * @returns {number} columna 1-based
+ */
+function _ensureRequestColumn_(header, note) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet) throw new Error('Hoja "' + SHEET_NAME_REQUESTS + '" no encontrada.');
+  var lastCol = sheet.getLastColumn();
+  var rawHeaders = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var normIdx = rawHeaders.map(_normalizeHeader_).indexOf(header);
+  if (normIdx !== -1) {
+    if (String(rawHeaders[normIdx] == null ? '' : rawHeaders[normIdx]).trim() !== header) {
+      sheet.getRange(1, normIdx + 1).setValue(header);
+      _clearReqHeadersCache_();
+    }
+    return normIdx + 1;
+  }
+  var nextCol = lastCol + 1;
+  if (lastCol > 0 && sheet.getMaxColumns() < nextCol) sheet.insertColumnsAfter(lastCol, 1);
+  sheet.getRange(1, nextCol).setValue(header)
+    .setFontWeight('bold').setBackground('#D71920').setFontColor('white');
+  sheet.setColumnWidth(nextCol, 160);
+  if (note) sheet.getRange(1, nextCol).setNote(note);
+  _clearReqHeadersCache_();
+  SpreadsheetApp.flush();
+  return nextCol;
+}
+
+// =====================================================================
+// AEROLÍNEA Y CANAL DE COMPRA (#A82)
+// =====================================================================
+// El área de viajes registra con qué aerolínea y por qué canal se compra el
+// tiquete: Aviatur, directo (aerolínea u hotel) u otra agencia. Se pide al
+// confirmar costos (canal previsto) y al registrar la reserva (canal real, puede
+// cambiar si Aviatur no ajusta el precio). Pedido de David, 2-oct-2026, para
+// medir cuánto se compra fuera de Aviatur (docs/plan-comparador-precios.md).
+//
+// ⚠️ GEMELO: utils/purchase.ts. tools/check-purchase-info-rules.cjs compara los
+// dos lados dentro de npm run verify.
+
+var PURCHASE_AIRLINE_HEADER = 'AEROLINEA';
+var PURCHASE_CHANNEL_HEADER = 'CANAL DE COMPRA';
+var PURCHASE_CHANNELS = ['Aviatur', 'Directo', 'Otra agencia'];
+var PURCHASE_AIRLINES = ['Avianca', 'LATAM', 'Wingo', 'JetSMART', 'Satena', 'Clic', 'Copa Airlines', 'American Airlines',
+  'United Airlines', 'Delta', 'Iberia', 'Aeroméxico', 'Arajet', 'Air Europa', 'Varias aerolíneas'];
+var PURCHASE_AIRLINE_MAX = 40;
+
+/** Clave de comparación: sin tildes, minúsculas y espacios simples. */
+function _purchaseKey_(s) {
+  return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Valida y normaliza aerolínea y canal. Solo hospedaje no lleva aerolínea.
+ * @returns {{ok: boolean, airline: string, channel: string, error?: string}}
+ */
+function _normalizePurchaseInfo_(airline, channel, isHotelOnly) {
+  var chKey = _purchaseKey_(channel);
+  if (!chKey) return { ok: false, airline: '', channel: '', error: 'Indique el canal de compra.' };
+  var ch = '';
+  for (var i = 0; i < PURCHASE_CHANNELS.length; i++) {
+    if (_purchaseKey_(PURCHASE_CHANNELS[i]) === chKey) ch = PURCHASE_CHANNELS[i];
+  }
+  if (!ch) return { ok: false, airline: '', channel: '', error: 'Canal de compra no válido. Opciones: Aviatur, Directo u Otra agencia.' };
+  if (isHotelOnly) return { ok: true, airline: '', channel: ch };
+  var a = String(airline == null ? '' : airline).replace(/\s+/g, ' ').trim();
+  if (!a) return { ok: false, airline: '', channel: ch, error: 'Indique la aerolínea.' };
+  if (a.length > PURCHASE_AIRLINE_MAX) {
+    return { ok: false, airline: '', channel: ch, error: 'El nombre de la aerolínea es demasiado largo (máximo ' + PURCHASE_AIRLINE_MAX + ' caracteres).' };
+  }
+  if (!/^[A-Za-zÀ-ÖØ-öø-ÿ0-9][A-Za-zÀ-ÖØ-öø-ÿ0-9 .&'\/-]*$/.test(a)) {
+    return { ok: false, airline: '', channel: ch, error: 'La aerolínea solo puede tener letras, números, espacios y los signos . & \' / -' };
+  }
+  var key = _purchaseKey_(a);
+  for (var j = 0; j < PURCHASE_AIRLINES.length; j++) {
+    if (_purchaseKey_(PURCHASE_AIRLINES[j]) === key) { a = PURCHASE_AIRLINES[j]; break; }
+  }
+  return { ok: true, airline: a, channel: ch };
+}
+
+/** ¿La solicitud (fila 1-based) es de solo hospedaje? */
+function _rowIsHotelOnly_(sheet, rowNumber) {
+  var idx = H('MODO_SOLICITUD');
+  if (idx < 0) return false;
+  return String(sheet.getRange(rowNumber, idx + 1).getValue() || '').trim() === 'SOLO_HOSPEDAJE';
+}
+
+/**
+ * Valida aerolínea y canal que llegan al confirmar costos (updateRequest). Lanza
+ * un error claro si no son válidos, ANTES de escribir nada.
+ */
+function _normalizePurchasePayload_(requestId, inner) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (!sheet || rowNumber === -1) throw new Error('ID no encontrado');
+  var r = _normalizePurchaseInfo_(inner.purchaseAirline, inner.purchaseChannel, _rowIsHotelOnly_(sheet, rowNumber));
+  if (!r.ok) throw new Error(r.error);
+  var out = {};
+  Object.keys(inner).forEach(function(k) { out[k] = inner[k]; });
+  out.purchaseAirline = r.airline;
+  out.purchaseChannel = r.channel;
+  return out;
+}
+
+function _writePurchaseInfo_(sheet, rowNumber, info) {
+  var colAirline = _ensureRequestColumn_(PURCHASE_AIRLINE_HEADER,
+    'Aerolínea del tiquete (#A82). La registra el área de viajes al confirmar costos y al registrar la reserva.');
+  var colChannel = _ensureRequestColumn_(PURCHASE_CHANNEL_HEADER,
+    'Canal de compra (#A82): Aviatur, Directo (aerolínea u hotel) u Otra agencia. Se registra al confirmar costos y al registrar la reserva.');
+  sheet.getRange(rowNumber, colAirline).setValue(safeSheetValue_(info.airline || ''));
+  sheet.getRange(rowNumber, colChannel).setValue(safeSheetValue_(info.channel || ''));
+}
+
+/**
+ * Guarda aerolínea y canal de una solicitud (registro de la reserva o corrección).
+ * Solo administradores (adminOnlyActions).
+ */
+function setPurchaseInfo(requestId, airline, channel) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (!sheet || rowNumber === -1) throw new Error('Solicitud no encontrada.');
+  var r = _normalizePurchaseInfo_(airline, channel, _rowIsHotelOnly_(sheet, rowNumber));
+  if (!r.ok) throw new Error(r.error);
+  _writePurchaseInfo_(sheet, rowNumber, r);
+  return { airline: r.airline, channel: r.channel };
+}
+
+// =====================================================================
+// CIERRE AUTOMÁTICO POR FACTURAS (#A83)
+// =====================================================================
+// Acordado con Laura el 1-oct-2026; reglas de David del 2-oct
+// (docs/plan-reuniones-2026-09-24-al-10-01.md, V4):
+//   - Una solicitud RESERVADO se cierra sola (PROCESADO) cuando el viaje ya
+//     terminó, lo facturado es IGUAL O MAYOR que lo cotizado y hay al menos un PDF
+//     subido por cada factura escrita (la misma regla con que avisa el cierre
+//     manual). Facturar de más es lo normal y no es error. Una diferencia menor a
+//     AUTO_CLOSE_ROUNDING_PESOS es redondeo y cuenta como igual. Los PDF importan
+//     porque con la solicitud PROCESADO ya no se pueden subir soportes desde la app.
+//   - Nunca antes de que termine el viaje: una solicitud PROCESADO ya no se puede
+//     modificar.
+//   - Si lo facturado es menor (o no hay facturas) o faltan PDF, y el viaje terminó
+//     hace INVOICE_ALERT_GRACE_DAYS días o más, aparece en "Facturas por revisar"
+//     del panel del analista con el motivo, que puede omitir el aviso (columna
+//     INVOICE_ALERT_DISMISSED_HEADER). Omitir no impide que se cierre sola si
+//     después llegan las facturas.
+//   - Lo facturado se suma con las reglas del dashboard de costos
+//     (_csComputeRowExecuted_) más las facturas 2 a 6 que la configuración del
+//     dashboard no incluya. Lo cotizado es COSTO COTIZADO PARA VIAJE (o tiquetes
+//     + hotel si está vacío).
+//   - Un disparador cada hora (menú 12). No envía correos. Deja nota en
+//     OBSERVACIONES y genera el reporte de soportes, como el cierre manual.
+
+var INVOICE_ALERT_DISMISSED_HEADER = 'AVISO FACTURAS OMITIDO';
+var AUTO_CLOSE_ROUNDING_PESOS = 1000;
+var INVOICE_ALERT_GRACE_DAYS = 7;
+var AUTO_CLOSE_HANDLER = 'cierreAutomaticoPorFacturas';
+var AUTO_CLOSE_TIME_BUDGET_MS = 270000;
+
+function _quotedForClose_(row, headerMap) {
+  var q = _csToNumber_(_csReadCell_(row, headerMap, 'COSTO COTIZADO PARA VIAJE'));
+  if (q > 0) return q;
+  return _csToNumber_(_csReadCell_(row, headerMap, 'COSTO_FINAL_TIQUETES')) +
+    _csToNumber_(_csReadCell_(row, headerMap, 'COSTO_FINAL_HOTEL'));
+}
+
+/** Suma y número de facturas escritas (con valor) en la fila. */
+function _invoiceTotalsForClose_(row, headerMap, config) {
+  var executed = _csComputeRowExecuted_(row, headerMap, config);
+  var total = executed.real;
+  var count = 0;
+  Object.keys(executed.breakdown || {}).forEach(function(k) {
+    if (k !== '_estimadoFromCotizado' && Number(executed.breakdown[k]) > 0) count++;
+  });
+  var covered = {};
+  (config.facturas || []).forEach(function(f) { covered[f.totalHeader] = true; });
+  for (var n = 2; n <= 6; n++) {
+    if (covered['TOTAL FACTURA ' + n]) continue;
+    var t = _csToNumber_(_csReadCell_(row, headerMap, 'TOTAL FACTURA ' + n));
+    if (t > 0) { total += t; count++; continue; }
+    var v = _csToNumber_(_csReadCell_(row, headerMap, 'VALOR FACTURA ' + n));
+    if (v > 0) { total += v + _csToNumber_(_csReadCell_(row, headerMap, 'IVA FACTURA ' + n)); count++; }
+  }
+  return { total: total, count: count };
+}
+
+/** PDF de facturas subidos por el sistema (SOPORTES sin los de la reserva). */
+function _uploadedInvoicePdfs_(row, headerMap) {
+  var raw = _csReadCell_(row, headerMap, 'SOPORTES (JSON)');
+  if (!raw) return 0;
+  try {
+    var data = JSON.parse(raw);
+    return (data && Array.isArray(data.files)) ? data.files.filter(function(f) { return f && f.isReservation !== true; }).length : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+/** ¿Lo facturado cubre lo cotizado? (0 y 0 = sin costo, p. ej. apartamento corporativo). */
+function _invoicesCoverQuote_(invoiced, quoted) {
+  return invoiced >= quoted - AUTO_CLOSE_ROUNDING_PESOS && (invoiced > 0 || quoted === 0);
+}
+
+/**
+ * Estado de facturas de una fila: cotizado, facturado, facturas escritas, PDF
+ * subidos y si se puede cerrar. reason: '' (cierra), 'FALTAN_FACTURAS' o 'FALTAN_PDF'.
+ */
+function _invoiceStateForClose_(row, headerMap, config) {
+  var quoted = _quotedForClose_(row, headerMap);
+  var totals = _invoiceTotalsForClose_(row, headerMap, config);
+  var pdfs = _uploadedInvoicePdfs_(row, headerMap);
+  var reason = !_invoicesCoverQuote_(totals.total, quoted) ? 'FALTAN_FACTURAS' : (pdfs < totals.count ? 'FALTAN_PDF' : '');
+  return { quoted: quoted, invoiced: totals.total, invoiceCount: totals.count, uploadedPdfs: pdfs, reason: reason };
+}
+
+/**
+ * Revisa las solicitudes RESERVADO: cuáles se pueden cerrar, cuáles tienen
+ * facturas por revisar y cuáles esperan (viaje sin terminar o dentro del plazo).
+ */
+function _invoiceReviewScan_() {
+  var todayKey = _todayBogotaIso_();
+  var out = { closable: [], alerts: [], dismissed: [], waiting: 0, todayKey: todayKey };
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2) return out;
+  var values = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+  var headerMap = {};
+  values[0].forEach(function(h, i) {
+    var name = String(h == null ? '' : h).trim();
+    if (name && headerMap[name] === undefined) headerMap[name] = i;
+  });
+  var config = _csLoadConfig_();
+  var todayN = _psDayNumber_(todayKey);
+  var cell = function(row, h) { return _csReadCell_(row, headerMap, h); };
+  for (var r = 1; r < values.length; r++) {
+    var row = values[r];
+    var id = String(cell(row, 'ID RESPUESTA') || '').trim();
+    if (!id || String(cell(row, 'STATUS') || '').trim() !== 'RESERVADO') continue;
+    var endKey = _psDateKey_(cell(row, 'FECHA VUELTA')) || _psDateKey_(cell(row, 'FECHA IDA'));
+    var st = _invoiceStateForClose_(row, headerMap, config);
+    var item = {
+      requestId: id,
+      requesterEmail: String(cell(row, 'CORREO ENCUESTADO') || '').trim(),
+      origin: String(cell(row, 'CIUDAD ORIGEN') || '').trim(),
+      destination: String(cell(row, 'CIUDAD DESTINO') || '').trim(),
+      hotelOnly: String(cell(row, 'MODO_SOLICITUD') || '').trim() === 'SOLO_HOSPEDAJE',
+      tripEnd: endKey,
+      daysSinceEnd: endKey ? todayN - _psDayNumber_(endKey) : null,
+      quoted: st.quoted,
+      invoiced: st.invoiced,
+      missing: Math.max(0, st.quoted - st.invoiced),
+      invoiceCount: st.invoiceCount,
+      uploadedPdfs: st.uploadedPdfs,
+      reason: st.reason
+    };
+    if (!endKey || endKey >= todayKey) { out.waiting++; continue; }
+    if (!st.reason) { out.closable.push(item); continue; }
+    if (item.daysSinceEnd < INVOICE_ALERT_GRACE_DAYS) { out.waiting++; continue; }
+    var dismissedNote = String(cell(row, INVOICE_ALERT_DISMISSED_HEADER) || '').trim();
+    if (dismissedNote) { item.dismissedNote = dismissedNote; out.dismissed.push(item); }
+    else out.alerts.push(item);
+  }
+  var byEnd = function(a, b) { return a.tripEnd < b.tripEnd ? -1 : a.tripEnd > b.tripEnd ? 1 : (a.requestId < b.requestId ? -1 : 1); };
+  out.closable.sort(byEnd);
+  out.alerts.sort(byEnd);
+  out.dismissed.sort(byEnd);
+  return out;
+}
+
+function _pesosText_(n) { return '$' + _formatCop_(Math.round(n || 0)); }
+
+/**
+ * Cierra las solicitudes que ya cuadran, una por una bajo el bloqueo del script
+ * (re-verifica cada fila antes de cerrarla). Se detiene al agotar el tiempo; lo
+ * que falte se cierra en la siguiente ejecución.
+ * @param {{budgetMs?: number, report?: boolean}} [opts]
+ */
+function _autoCloseInvoiced_(opts) {
+  opts = opts || {};
+  var budget = opts.budgetMs || AUTO_CLOSE_TIME_BUDGET_MS;
+  var t0 = Date.now();
+  var scan = _invoiceReviewScan_();
+  var res = { closed: [], skipped: [], pending: 0, alerts: scan.alerts.length, dismissed: scan.dismissed.length, waiting: scan.waiting };
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  for (var i = 0; i < scan.closable.length; i++) {
+    var it = scan.closable[i];
+    if (Date.now() - t0 > budget) { res.pending = scan.closable.length - i; break; }
+    var lock = LockService.getScriptLock();
+    if (!lock.tryLock(LOCK_WAIT_MS)) { res.pending = scan.closable.length - i; break; }
+    var done = false;
+    try {
+      _clearReqHeadersCache_();
+      var rowNumber = _getRowByRequestId_(it.requestId);
+      if (rowNumber === -1) { res.skipped.push({ requestId: it.requestId, reason: 'no encontrada' }); continue; }
+      var lastCol = sheet.getLastColumn();
+      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      var headerMap = {};
+      headers.forEach(function(h, k) { var nm = String(h == null ? '' : h).trim(); if (nm && headerMap[nm] === undefined) headerMap[nm] = k; });
+      var row = sheet.getRange(rowNumber, 1, 1, lastCol).getValues()[0];
+      var status = String(_csReadCell_(row, headerMap, 'STATUS') || '').trim();
+      var st = _invoiceStateForClose_(row, headerMap, _csLoadConfig_());
+      var quoted = st.quoted;
+      var invoiced = st.invoiced;
+      if (status !== 'RESERVADO' || st.reason) {
+        res.skipped.push({ requestId: it.requestId, reason: 'cambió (' + status + ')' });
+        continue;
+      }
+      updateRequestStatus(it.requestId, 'PROCESADO');
+      var obsIdx = headerMap['OBSERVACIONES'];
+      if (obsIdx !== undefined) {
+        var curr = String(row[obsIdx] || '');
+        var note = '[CIERRE AUTOMÁTICO ' + Utilities.formatDate(new Date(), 'America/Bogota', 'dd/MM/yyyy HH:mm') + ']: facturado ' +
+          _pesosText_(invoiced) + ', cotizado ' + _pesosText_(quoted) + ', ' + st.uploadedPdfs + ' PDF de ' + st.invoiceCount +
+          ' factura' + (st.invoiceCount === 1 ? '' : 's') + '. Viaje terminado el ' + it.tripEnd + '.';
+        sheet.getRange(rowNumber, obsIdx + 1).setValue((curr ? curr + '\n' : '') + note);
+      }
+      SpreadsheetApp.flush();
+      done = true;
+      res.closed.push({ requestId: it.requestId, invoiced: invoiced, quoted: quoted });
+    } catch (e) {
+      res.skipped.push({ requestId: it.requestId, reason: String(e && e.message ? e.message : e) });
+    } finally {
+      lock.releaseLock();
+    }
+    if (done && opts.report !== false) {
+      try { generateSupportReport(it.requestId); } catch (e) { console.error('Cierre automático: reporte de ' + it.requestId + ' falló: ' + e); }
+    }
+  }
+  return res;
+}
+
+/** Disparador cada hora (lo instala el menú 12). */
+function cierreAutomaticoPorFacturas() {
+  _resetPerExecutionCaches_();
+  var r = _autoCloseInvoiced_({});
+  console.log('cierreAutomaticoPorFacturas: cerradas ' + r.closed.length +
+    (r.closed.length ? ' (' + r.closed.map(function(c) { return c.requestId; }).join(', ') + ')' : '') +
+    ', pendientes ' + r.pending + ', omitidas ' + r.skipped.length + ', por revisar ' + r.alerts + '.');
+  return r;
+}
+
+function _autoCloseTriggerInstalled_() {
+  try {
+    return ScriptApp.getProjectTriggers().some(function(t) { return t.getHandlerFunction() === AUTO_CLOSE_HANDLER; });
+  } catch (e) {
+    return null;
+  }
+}
+
+function activarCierreAutomatico() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === AUTO_CLOSE_HANDLER) ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger(AUTO_CLOSE_HANDLER).timeBased().everyHours(1).create();
+  return { installed: true };
+}
+
+function desactivarCierreAutomatico() {
+  var removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === AUTO_CLOSE_HANDLER) { ScriptApp.deleteTrigger(t); removed++; }
+  });
+  return { removed: removed };
+}
+
+/** Crea las columnas nuevas de #A82 y #A83 (idempotente). */
+function _ensureA82A83Columns_() {
+  _ensureRequestColumn_(PURCHASE_AIRLINE_HEADER,
+    'Aerolínea del tiquete (#A82). La registra el área de viajes al confirmar costos y al registrar la reserva.');
+  _ensureRequestColumn_(PURCHASE_CHANNEL_HEADER,
+    'Canal de compra (#A82): Aviatur, Directo (aerolínea u hotel) u Otra agencia. Se registra al confirmar costos y al registrar la reserva.');
+  _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
+    'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.');
+}
+
+/** Menú 12: vista previa, cierre inmediato y activación del disparador. */
+function menuCierreAutomaticoFacturas() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    _ensureA82A83Columns_();
+    var scan = _invoiceReviewScan_();
+    var active = _autoCloseTriggerInstalled_();
+    var ejemplo = function(it) { return '  ' + it.requestId + ': facturado ' + _pesosText_(it.invoiced) + ' / cotizado ' + _pesosText_(it.quoted) + ' (viaje hasta ' + it.tripEnd + ')'; };
+    var msg =
+      'Solicitudes RESERVADO con el viaje terminado:\n' +
+      '• Facturas que suman lo cotizado, con sus PDF (se cierran): ' + scan.closable.length + '\n' +
+      scan.closable.slice(0, 8).map(ejemplo).join('\n') + (scan.closable.length > 8 ? '\n  …' : '') + '\n' +
+      '• Por revisar (salen en el panel de la app): ' + scan.alerts.length +
+      ' (faltan facturas: ' + scan.alerts.filter(function(a) { return a.reason === 'FALTAN_FACTURAS'; }).length +
+      '; facturas completas pero faltan PDF: ' + scan.alerts.filter(function(a) { return a.reason === 'FALTAN_PDF'; }).length + ')\n' +
+      '• Avisos omitidos: ' + scan.dismissed.length + '\n' +
+      '• Viaje sin terminar o con menos de ' + INVOICE_ALERT_GRACE_DAYS + ' días: ' + scan.waiting + '\n\n' +
+      'Cierre automático cada hora: ' + (active ? 'ACTIVO' : 'INACTIVO') + '.\n' +
+      'El disparador queda a nombre de quien lo activa: hágalo con la cuenta dueña del script.';
+    var ok = ui.alert('Cierre automático por facturas', msg + '\n\n¿Cerrar ahora las ' + scan.closable.length +
+      ' que cuadran y ' + (active ? 'mantener' : 'activar') + ' el cierre automático cada hora?', ui.ButtonSet.YES_NO);
+    if (ok !== ui.Button.YES) return;
+    activarCierreAutomatico();
+    var r = _autoCloseInvoiced_({ budgetMs: 240000 });
+    ui.alert('Cierre automático activado',
+      'Cerradas ahora: ' + r.closed.length + '.\n' +
+      (r.pending ? 'Quedan ' + r.pending + ' por cerrar; se cierran solas en la próxima hora.\n' : '') +
+      (r.skipped.length ? 'No se cerraron (cambiaron mientras tanto): ' + r.skipped.map(function(s) { return s.requestId; }).join(', ') + '.\n' : '') +
+      '\nCada cierre deja una nota en OBSERVACIONES. Para desactivarlo: menú 13.', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
+}
+
+function menuDesactivarCierreAutomatico() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    if (!_autoCloseTriggerInstalled_()) { ui.alert('El cierre automático por facturas no está activo.'); return; }
+    if (ui.alert('Desactivar cierre automático', 'Las solicitudes dejarán de cerrarse solas. ¿Desactivar?', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+    var r = desactivarCierreAutomatico();
+    ui.alert('Cierre automático desactivado (' + r.removed + ' disparador eliminado).');
+  } catch (e) {
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
+}
+
+/** Panel "Facturas por revisar" (solo administradores). */
+function getInvoiceReview() {
+  var scan = _invoiceReviewScan_();
+  var pick = function(it) {
+    return {
+      requestId: it.requestId, requesterEmail: it.requesterEmail, origin: it.origin, destination: it.destination,
+      hotelOnly: it.hotelOnly, tripEnd: it.tripEnd, daysSinceEnd: it.daysSinceEnd,
+      quoted: it.quoted, invoiced: it.invoiced, missing: it.missing,
+      reason: it.reason, invoiceCount: it.invoiceCount, uploadedPdfs: it.uploadedPdfs
+    };
+  };
+  return {
+    alerts: scan.alerts.map(pick),
+    pendingClose: scan.closable.map(pick),
+    dismissedCount: scan.dismissed.length,
+    waitingCount: scan.waiting,
+    autoCloseActive: _autoCloseTriggerInstalled_(),
+    graceDays: INVOICE_ALERT_GRACE_DAYS
+  };
+}
+
+/** Omite el aviso de facturas de una solicitud (solo administradores). */
+function dismissInvoiceAlert(requestId, actorEmail) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (!sheet || rowNumber === -1) throw new Error('Solicitud no encontrada.');
+  var col = _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
+    'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.');
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headerMap = {};
+  headers.forEach(function(h, k) { var nm = String(h == null ? '' : h).trim(); if (nm && headerMap[nm] === undefined) headerMap[nm] = k; });
+  var row = sheet.getRange(rowNumber, 1, 1, lastCol).getValues()[0];
+  var status = String(_csReadCell_(row, headerMap, 'STATUS') || '').trim();
+  if (status !== 'RESERVADO') throw new Error('Solo se puede omitir el aviso de una solicitud RESERVADO (estado actual: ' + status + ').');
+  var st = _invoiceStateForClose_(row, headerMap, _csLoadConfig_());
+  var note = 'Omitido por ' + String(actorEmail || 'desconocido').toLowerCase().trim() + ' el ' +
+    Utilities.formatDate(new Date(), 'America/Bogota', 'dd/MM/yyyy HH:mm') +
+    ' (facturado ' + _pesosText_(st.invoiced) + ' de ' + _pesosText_(st.quoted) + ' cotizado; ' +
+    st.uploadedPdfs + ' PDF de ' + st.invoiceCount + ' factura' + (st.invoiceCount === 1 ? '' : 's') + ')';
+  sheet.getRange(rowNumber, col).setValue(safeSheetValue_(note));
+  return { dismissed: true, note: note };
 }
 
 /**
@@ -6463,6 +6941,15 @@ function updateRequestStatus(id, status, payload) {
            // Let's use COSTO COTIZADO PARA VIAJE as the estimated approved cost
            sheet.getRange(rowNumber, H("COSTO COTIZADO PARA VIAJE") + 1).setValue(payload.totalCost);
        }
+       // #A82: ya validados en _authorizeStatusUpdate_. Un error aquí no debe
+       // impedir el cambio de estado ni los correos que siguen.
+       if (payload.purchaseChannel !== undefined) {
+           try {
+               _writePurchaseInfo_(sheet, rowNumber, { airline: payload.purchaseAirline || '', channel: payload.purchaseChannel });
+           } catch (e) {
+               console.error('updateRequestStatus: no se pudo guardar aerolínea/canal de ' + id + ': ' + e);
+           }
+       }
    }
 
    // EMAILS + METRICS
@@ -7134,6 +7621,10 @@ function _authorizeStatusUpdate_(currentUserEmail, payload) {
     // reales, sin decimales ni valores imposibles; el total se recalcula como la
     // suma. Si algo falla, no se escribe nada.
     inner = _normalizeConfirmedCosts_(inner);
+    // #A82: aerolínea y canal de compra, si la app los envía al confirmar costos.
+    if (inner.purchaseChannel !== undefined || inner.purchaseAirline !== undefined) {
+      inner = _normalizePurchasePayload_(id, inner);
+    }
     return { id: id, status: status, payload: inner };
   }
   if (status !== 'PENDIENTE_CONFIRMACION_COSTO') {
@@ -7564,7 +8055,11 @@ function mapRowToRequest(row, lite) {
     creditCard: String(get("TARJETA DE CREDITO CON LA QUE SE HIZO LA COMPRA")),
 
     // Request mode: 'HOTEL_ONLY' when MODO_SOLICITUD='SOLO_HOSPEDAJE', default 'FLIGHT'
-    requestMode: get("MODO_SOLICITUD") === 'SOLO_HOSPEDAJE' ? 'HOTEL_ONLY' : 'FLIGHT'
+    requestMode: get("MODO_SOLICITUD") === 'SOLO_HOSPEDAJE' ? 'HOTEL_ONLY' : 'FLIGHT',
+
+    // Aerolínea y canal de compra (#A82). '' si la columna aún no existe.
+    purchaseAirline: String(get("AEROLINEA") || ''),
+    purchaseChannel: String(get("CANAL DE COMPRA") || '')
   };
 
   // Compute and attach the EFFECTIVE approval status (mirrors the rules in
@@ -11043,6 +11538,8 @@ function onOpen() {
     .addItem('9. Accesos al dashboard de costos', 'menuAccesosDashboardCostos')
     .addItem('10. Ver administradores y permisos especiales', 'menuVerPermisosAdministradores')
     .addItem('11. Corregir costos mal digitados', 'menuCorregirCostos')
+    .addItem('12. Cierre automático por facturas', 'menuCierreAutomaticoFacturas')
+    .addItem('13. Desactivar cierre automático por facturas', 'menuDesactivarCierreAutomatico')
     .addToUi();
 }
 

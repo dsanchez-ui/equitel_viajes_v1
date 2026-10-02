@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A79) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A83) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -26,8 +26,8 @@ archivos; Gmail para notificaciones.
    producción** (ver Mapa de despliegue).
 2. **Verificar siempre antes de proponer un push:** `npm run verify` (typecheck +
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
-   nacimiento, de celular y de costos + estadísticas de compra + build). Debe salir
-   en verde.
+   nacimiento, de celular, de costos y de aerolínea/canal + estadísticas de compra +
+   cierre automático por facturas + build). Debe salir en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -39,7 +39,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + build  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + cierre por facturas + build  ← antes de cualquier push
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -200,6 +200,23 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   El costo por noche se muestra **separado para estadías de 1 a 6 noches y de 7 o más**:
   las largas tienen tarifas mucho menores y un promedio único engaña al comparar
   cotizaciones.
+- **Aerolínea y canal de compra** (#A82, David, 2026-10-02): columnas `AEROLINEA` y
+  `CANAL DE COMPRA` (*Aviatur*, *Directo* u *Otra agencia*). Se piden en *Confirmar costos*
+  (previsto, en el mismo `updateRequest`) y en *Registrar reserva* (real, con la acción
+  `setPurchaseInfo` antes de registrar). Solo hospedaje no lleva aerolínea. Regla gemela en
+  `utils/purchase.ts`.
+- **Cierre automático por facturas** (#A83, acordado con Laura el 2026-10-01, reglas de David
+  del 2026-10-02):
+  - una solicitud `RESERVADO` pasa sola a `PROCESADO` **solo con el viaje terminado** (PROCESADO
+    ya no se puede modificar), si lo facturado es **igual o mayor** que lo cotizado y si hay
+    **al menos un PDF de factura subido por cada factura escrita** (con PROCESADO ya no se
+    pueden subir soportes desde la app). Facturar de más es normal; menos de $1.000 de
+    diferencia es redondeo.
+  - si falta algo, aparece en "Facturas por revisar" desde el día 7 después del viaje, con el
+    motivo (faltan facturas o faltan PDF); el analista puede omitir el aviso (columna
+    `AVISO FACTURAS OMITIDO`), sin impedir el cierre si después se completa.
+  - disparador `cierreAutomaticoPorFacturas` cada hora (menú *12*, se apaga con el *13*); no
+    envía correos; nota `[CIERRE AUTOMÁTICO …]` en OBSERVACIONES.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -235,7 +252,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82) y `AVISO FACTURAS OMITIDO` (#A83) van al final; las crea el menú 12 (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -273,6 +290,7 @@ helper del propio `Code.gs` (`verPropiedadesDelScript`, etc.).
 | `cleanupExpiredPropsWeekly` | Limpia sesiones, lockouts y contadores de rate limit vencidos | `setupWeeklyCleanupTrigger()` |
 | `sendPendingApprovalReminders` / `sendPendingSelectionReminders` / `sendPendingConsultReminders` | Recordatorios; escalan a superadmins tras ~30 h laborales (#A16) | Configurados a mano en la UI |
 | `warmupPing` | Cada 10 min, mantiene tibio el isolate de GAS | Configurado a mano |
+| `cierreAutomaticoPorFacturas` | Cada hora, cierra las RESERVADO con viaje terminado y facturas que cubren lo cotizado (#A83) | Menú *12* (se quita con el *13*) |
 
 **Los triggers corren con la autorización del dueño del script.** Por eso no se
 tocan los scopes OAuth a la ligera — ver la sección de IA.
@@ -289,7 +307,10 @@ components/
   RequestForm.tsx          Crear/modificar solicitud (incluye multidestino)
   RequestDetail.tsx        Modal de detalle + acciones
   OptionUploadModal.tsx    Subir imágenes de vuelo/hotel
-  CostConfirmationModal.tsx  Confirmar costos finales
+  CostConfirmationModal.tsx  Confirmar costos finales, con el detalle completo (#A81) y la compra prevista (#A82)
+  RequestInfoSections.tsx  Secciones de solo lectura del detalle (las usan el detalle y Confirmar costos, #A81)
+  PurchaseInfoFields.tsx   Aerolínea y canal de compra (Confirmar costos y Registrar reserva, #A82)
+  InvoiceReviewPanel.tsx   Barra "Facturas por revisar" del panel del analista (#A83)
   ReservationModal.tsx     Registrar reserva (+ guardado parcial, #A57)
   SupportUploadModal.tsx   Soportes post-aprobación
   PassportUploadModal.tsx  Pasaportes (viajes internacionales)
@@ -308,6 +329,7 @@ utils/workOrder.ts         Validación de OT (gemelo de Code.gs, #A66)
 utils/birthdate.ts         Validación de fecha de nacimiento (gemelo de Code.gs, #A70)
 utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #A75)
 utils/money.ts             Costos en pesos: formato y mínimo (gemelo de Code.gs, #A79)
+utils/purchase.ts          Aerolínea y canal de compra (gemelo de Code.gs, #A82)
 server/
   Code.gs                  Backend completo (~14.400 líneas)
   AdminSidebar.html        Sidebar de administración del Sheets
@@ -320,6 +342,9 @@ tools/check-birthdate-rules.cjs   Reglas de fecha de nacimiento; frontend y back
 tools/check-phone-rules.cjs       Reglas de celular; frontend y backend coinciden (#A75)
 tools/check-cost-rules.cjs        Reglas de costos en pesos; frontend y backend coinciden (#A79)
 tools/check-purchase-stats.cjs    Estadísticas de compra con una hoja sintética, festivos y permiso (#A80)
+tools/check-purchase-info-rules.cjs  Aerolínea y canal; frontend y backend coinciden (#A82)
+tools/check-invoice-autoclose.cjs    Cierre automático por facturas con una hoja sintética (#A83)
+tools/comparador-precios/  Prueba local del comparador de precios (Google Flights vía SerpApi); no la usa la app
 scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)
 docs/                      Guías de administrador, hoja de cálculo y planes
 ```
@@ -341,7 +366,7 @@ docs/                      Guías de administrador, hoja de cálculo y planes
 - **Rate limits:** PIN admin 5 intentos/15 min por correo; regeneración de PIN
   3/hora; creación de solicitudes 10/día.
 - **Validadores gemelos.** Las reglas que se aplican en el formulario y en el
-  backend (OT, fecha de nacimiento, celular, costos) viven en `utils/*.ts` **y** en `Code.gs`,
+  backend (OT, fecha de nacimiento, celular, costos, aerolínea/canal) viven en `utils/*.ts` **y** en `Code.gs`,
   porque no se puede compartir código. `npm run verify` compara ambos lados:
   cambiar uno sin el otro lo hace fallar.
 - **Campos nuevos en payloads de creación: la clave presente activa la regla.**
@@ -404,6 +429,18 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A80** (estadísticas de compra en Métricas → *Compras y costos*; reporte en Excel del
   29-sep entregado aparte): **desplegado** el 2026-09-29. Frontend en `main` (`9adfddf`) y
   versión nueva del web app publicada.
+- **Reuniones del 24-sep al 1-oct-2026** — [docs/plan-reuniones-2026-09-24-al-10-01.md](docs/plan-reuniones-2026-09-24-al-10-01.md)
+  (borrador). Estado de viajes (2026-10-02):
+  - **V1 (#A81), V3 (#A82) y V4 (#A83) implementados**, pendientes de push, de pegar `Code.gs`,
+    correr el **menú 12** con la cuenta dueña del script (crea las columnas y activa el cierre;
+    con la base del 29-sep cerraría 15 solicitudes y dejaría 85 por revisar) y crear la versión
+    nueva del web app.
+  - **V2:** comparador de precios. Propuesta y prueba en
+    [docs/plan-comparador-precios.md](docs/plan-comparador-precios.md) y
+    `tools/comparador-precios/`; David la ejecuta antes de integrar nada en la app.
+  - **V5:** lectura de facturas PDF con IA, **solo como plan** (decisión de David del 2-oct):
+    [docs/plan-lectura-facturas.md](docs/plan-lectura-facturas.md). Proyecto de Apps Script
+    aparte que escribe en la hoja; no toca los permisos del de producción (#A62).
 - **Costos para revisar a mano (#A79, el menú 11 no los toca):** SOL-000310 y 378
   (apartamento corporativo, $1 que debería ser 0), SOL-000379 (tiquetes en $1 con
   facturas), SOL-000035 ($1 en tiquetes de solo hospedaje); SOL-000002 y 109 están
