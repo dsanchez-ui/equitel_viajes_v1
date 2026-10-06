@@ -259,6 +259,7 @@ async function main() {
       if (!v.origen || !v.destino || !v.ida) throw new Error('Faltan origen, destino o fecha de ida.');
       if (!demo && cp.cpFecha(v.ida) < hoy) throw new Error('La fecha de ida ya pasó: Google Flights solo tiene precios futuros.');
       const json = await consultar(v, clave, { demo, profunda: !!a.flags.profunda });
+      const extras = {};
       if (!demo) usadas++;
       res = cp.cpResumir(json, v);
       if (a.flags.vendedores && res.ok && res.masBarata) {
@@ -266,21 +267,29 @@ async function main() {
         let token = res.masBarata.bookingToken;
         if (!token && res.masBarata.departureToken) {
           const vuelta = await consultar(v, clave, { demo, profunda: !!a.flags.profunda }, { departure_token: res.masBarata.departureToken });
+          extras.regreso = vuelta;
           if (!demo) usadas++;
           const r2 = cp.cpResumir(vuelta, {});
           token = r2.ok && r2.masBarata ? r2.masBarata.bookingToken : '';
         }
         if (token || demo) {
           const ventas = await consultar(v, clave, { demo, profunda: !!a.flags.profunda }, { booking_token: token || 'demo' });
+          extras.vendedores = ventas;
           if (!demo) usadas++;
           res.vendedores = cp.cpVendedores(ventas);
         } else {
           res.vendedores = [];
         }
       }
-      let texto = JSON.stringify(json, null, 1);
-      if (clave) texto = texto.split(clave).join('***');
-      fs.writeFileSync(path.join(salida, 'crudo', (v.id || 'viaje').replace(/[^\w-]/g, '_') + '.json'), texto);
+      // Respuestas completas (la búsqueda, y con --vendedores también el regreso y los vendedores), sin la clave.
+      const base = path.join(salida, 'crudo', (v.id || 'viaje').replace(/[^\w-]/g, '_'));
+      const guardar = (archivo, obj) => {
+        let texto = JSON.stringify(obj, null, 1);
+        if (clave) texto = texto.split(clave).join('***');
+        fs.writeFileSync(archivo, texto);
+      };
+      guardar(base + '.json', json);
+      Object.keys(extras).forEach((k) => guardar(base + '-' + k + '.json', extras[k]));
     } catch (e) {
       if (/rechazó la clave/.test(e.message)) { console.error('✗ ' + e.message); process.exit(1); }
       res = { ok: false, error: e.message, porAerolinea: [] };

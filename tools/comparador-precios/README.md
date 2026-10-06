@@ -227,8 +227,9 @@ del proyecto (no se sube al repositorio):
 - `resumen.csv`: una fila por viaje con el más barato, el más barato cerca de la hora pedida,
   el precio por aerolínea, los vendedores y la diferencia con lo cotizado. Se abre con Excel o
   LibreOffice; las columnas van separadas por punto y coma.
-- `crudo/`: la respuesta completa de SerpApi por viaje, por si hay que revisar algo. La clave
-  aparece reemplazada por `***`.
+- `crudo/`: la respuesta completa de SerpApi por viaje, por si hay que revisar algo. Con
+  `--vendedores` también guarda la del regreso y la de los vendedores (`-regreso.json`,
+  `-vendedores.json`). La clave aparece reemplazada por `***`.
 
 ## Si algo falla
 
