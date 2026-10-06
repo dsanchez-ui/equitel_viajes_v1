@@ -1,6 +1,6 @@
 # Plan — Comparador de precios de tiquetes y estudio de sobrecosto
 
-> **Estado (2026-10-02): propuesta + prueba lista para ejecutar. Fase 1 implementada (#A82).** Pedido de Alejandro
+> **Estado (2026-10-06): propuesta + prueba lista para ejecutar, con tutorial paso a paso. Fase 1 implementada (#A82).** Pedido de Alejandro
 > Gómez (vicepresidente) a David. La prueba (fase 0) está en
 > [tools/comparador-precios/](../tools/comparador-precios/README.md); las fases 1 a 4
 > esperan su resultado y las decisiones del final.
@@ -60,21 +60,26 @@ búsquedas por viaje (sección 3) son unas 130 al mes, dentro del plan gratis.
 
 ### Fase 0 — Prueba local (lista)
 
-Un comando que David ejecuta en su computador con la clave gratis de SerpApi
-([instrucciones](../tools/comparador-precios/README.md)). Para cada viaje muestra:
+Un comando que David ejecuta en su computador con la clave gratis de SerpApi, siguiendo el
+[tutorial paso a paso](../tools/comparador-precios/README.md) (unos 30 minutos y 16
+búsquedas de las 250 gratis del mes). No necesita hoja de cálculo ni proyecto de Apps Script.
+Para cada viaje muestra:
 - el precio más bajo por aerolínea
 - el más barato del día
 - el más barato saliendo 2 horas antes o después de la hora pedida
 - la diferencia con lo cotizado
 - con `--vendedores`, quién vende la tarifa: la aerolínea, Aviatur u otras agencias
 
-Hay un lote listo con los 13 viajes próximos de la base:
-`~/Downloads/comparador-viajes-proximos.csv`.
+La prueba principal son 8 rutas escogidas para cubrir las aerolíneas (`--rutas-prueba`), con
+fechas calculadas desde el día en que se corre. El lote con los 13 viajes próximos de la base
+del 29-sep (`~/Downloads/comparador-viajes-proximos.csv`) queda como paso opcional: sus viajes
+van venciendo.
 
 **Qué decide la prueba:**
 1. ¿Aparecen las aerolíneas que importan en las rutas de Equitel?
 2. ¿Los precios coinciden con la página de la aerolínea a la misma hora?
-3. ¿Aviatur aparece como vendedor en Google Flights?
+3. Con varios pasajeros, ¿el precio es el del grupo o por persona?
+4. ¿Aviatur aparece como vendedor en Google Flights?
 
 ### Fase 1 — Registrar cómo se compró (implementada: #A82)
 

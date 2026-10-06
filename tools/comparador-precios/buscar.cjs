@@ -2,12 +2,15 @@
 /**
  * Comparador de precios de tiquetes — PRUEBA. Ver README.md de esta carpeta.
  *
+ *   node tools/comparador-precios/buscar.cjs --configurar      (guarda y valida la clave; no gasta búsquedas)
  *   node tools/comparador-precios/buscar.cjs --demo
+ *   node tools/comparador-precios/buscar.cjs --rutas-prueba    (8 rutas, fechas calculadas desde hoy)
  *   node tools/comparador-precios/buscar.cjs --origen BOGOTA --destino CALI --ida 2026-10-20 --regreso 2026-10-22 --hora-ida 06:30 --cotizado 569395
+ *   node tools/comparador-precios/buscar.cjs --origen BOGOTA --destino CALI --solo-ida   (sin --ida: fechas de la prueba de rutas)
  *   node tools/comparador-precios/buscar.cjs --lote viajes.csv
  *
  * La clave de SerpApi se lee de la variable SERPAPI_KEY o del archivo
- * tools/comparador-precios/.serpapi-key (está en .gitignore). Nunca se imprime ni se guarda.
+ * tools/comparador-precios/.serpapi-key (está en .gitignore). Nunca se imprime.
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,7 +24,7 @@ function argumentos(argv) {
     const k = argv[i];
     if (!k.startsWith('--')) continue;
     const nombre = k.slice(2);
-    if (['demo', 'profunda', 'ayuda', 'vendedores'].includes(nombre)) a.flags[nombre] = true;
+    if (['demo', 'profunda', 'ayuda', 'vendedores', 'rutas-prueba', 'configurar', 'solo-ida'].includes(nombre)) a.flags[nombre] = true;
     else a[nombre] = argv[++i];
   }
   return a;
@@ -31,6 +34,79 @@ function claveApi() {
   if (process.env.SERPAPI_KEY) return process.env.SERPAPI_KEY.trim();
   const f = path.join(AQUI, '.serpapi-key');
   return fs.existsSync(f) ? fs.readFileSync(f, 'utf8').trim() : '';
+}
+
+/**
+ * Rutas para probar la cobertura: las grandes rutas nacionales, dos que salen de Olaya
+ * Herrera (EOH, en Medellín) para ver a Satena y Clic, una regional y una internacional.
+ * No son las más frecuentes de la base: están escogidas para cubrir las aerolíneas.
+ */
+const RUTAS_PRUEBA = [
+  ['R1', 'BOGOTA', 'MEDELLIN'], ['R2', 'BOGOTA', 'CALI'], ['R3', 'BOGOTA', 'BARRANQUILLA'], ['R4', 'BOGOTA', 'CARTAGENA'],
+  ['R5', 'MEDELLIN', 'CALI'], ['R6', 'MEDELLIN', 'QUIBDO'], ['R7', 'BOGOTA', 'YOPAL'], ['R8', 'BOGOTA', 'QUITO'],
+];
+
+/** Martes a 2 semanas o más desde hoy, con regreso el jueves: fechas comunes de viaje de trabajo. */
+function fechasPrueba() {
+  const [y, m, d] = hoyIso().split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + 14));
+  while (t.getUTCDay() !== 2) t.setUTCDate(t.getUTCDate() + 1);
+  const ida = t.toISOString().slice(0, 10);
+  t.setUTCDate(t.getUTCDate() + 2);
+  return { ida, regreso: t.toISOString().slice(0, 10) };
+}
+
+/** Pide un texto sin mostrarlo en pantalla (se ve un * por carácter). */
+function preguntarOculto(texto) {
+  return new Promise((resolve) => {
+    const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    let oculto = false;
+    rl._writeToOutput = (s) => { rl.output.write(oculto && !/[\r\n]/.test(s) ? '*'.repeat(s.length) : s); };
+    rl.question(texto, (v) => { rl.close(); resolve(String(v || '').trim()); });
+    oculto = true;
+  });
+}
+
+/** Estado de la cuenta en SerpApi. La consulta es gratis: no gasta búsquedas. Nunca devuelve la clave. */
+async function revisarCuenta(clave) {
+  let r, json;
+  try {
+    r = await fetch('https://serpapi.com/account.json?api_key=' + encodeURIComponent(clave));
+    json = await r.json().catch(() => ({}));
+  } catch (e) {
+    return { ok: false, error: 'No se pudo conectar con SerpApi (' + (e && e.message ? e.message : e) + '). Revise la conexión a internet.' };
+  }
+  if (r.status === 401 || json.error) {
+    return { ok: false, error: 'SerpApi no reconoce esa clave. Cópiela de nuevo desde https://serpapi.com/manage-api-key (sin espacios) y repita --configurar.' };
+  }
+  return {
+    ok: true,
+    plan: json.plan_name || '—',
+    quedan: typeof json.total_searches_left === 'number' ? json.total_searches_left : json.plan_searches_left,
+    porMes: json.searches_per_month,
+    porHora: json.account_rate_limit_per_hour,
+    usadasHora: json.this_hour_searches,
+  };
+}
+
+async function configurar() {
+  const archivo = path.join(AQUI, '.serpapi-key');
+  const guardada = claveApi();
+  console.log('\nClave de SerpApi: la encuentra en https://serpapi.com/manage-api-key (inicie sesión primero).');
+  console.log('Al pegarla se ven asteriscos: es normal, la clave no se muestra.\n');
+  let clave = await preguntarOculto(guardada
+    ? 'Pegue la clave y presione Enter (o solo Enter para revisar la que ya está guardada): '
+    : 'Pegue la clave y presione Enter: ');
+  if (!clave) clave = guardada;
+  if (!clave) { console.error('✗ No se pegó ninguna clave.'); process.exit(1); }
+  if (/\s/.test(clave)) { console.error('✗ La clave tiene espacios: cópiela de nuevo, solo las letras y números.'); process.exit(1); }
+  console.log('Revisando la clave con SerpApi (no gasta búsquedas)…');
+  const c = await revisarCuenta(clave);
+  if (!c.ok) { console.error('✗ ' + c.error); process.exit(1); }
+  fs.writeFileSync(archivo, clave + '\n', { mode: 0o600 });
+  fs.chmodSync(archivo, 0o600);
+  console.log(`✓ Clave válida y guardada en ${archivo} (solo la lee su usuario; no se sube al repositorio).`);
+  console.log(`  Plan ${c.plan}: le quedan ${c.quedan} búsquedas este mes` + (c.porHora ? ` (máximo ${c.porHora} por hora).` : '.'));
 }
 
 /** CSV con encabezado (separador «,» o «;»): id,origen,destino,ida,regreso,pasajeros,hora_ida,cotizado */
@@ -127,19 +203,50 @@ async function main() {
     console.log(fs.readFileSync(path.join(AQUI, 'README.md'), 'utf8'));
     return;
   }
+  if (a.flags.configurar) return configurar();
   const demo = !!a.flags.demo;
   const clave = demo ? '' : claveApi();
   if (!demo && !clave) {
-    console.error('Falta la clave de SerpApi: export SERPAPI_KEY=... o guárdela en tools/comparador-precios/.serpapi-key (ver README.md).\nPara ver el formato sin clave: --demo');
+    console.error('Falta la clave de SerpApi. Guárdela con:\n  node tools/comparador-precios/buscar.cjs --configurar\nPara ver el formato sin clave: --demo');
     process.exit(1);
   }
   let viajes;
   if (a.lote) viajes = leerLote(a.lote);
+  else if (a.flags['rutas-prueba']) {
+    const f = fechasPrueba();
+    viajes = RUTAS_PRUEBA.map(([id, origen, destino]) => ({ id, origen, destino, ida: f.ida, regreso: f.regreso, pasajeros: a.pasajeros || '1', horaIda: '07:00', cotizado: '' }));
+    console.log(`\nRutas de prueba: ${viajes.length} rutas, ida el martes ${f.ida} y regreso el jueves ${f.regreso}, 1 pasajero, hora pedida 07:00.`);
+  }
   else if (demo) viajes = [{ id: 'DEMO', origen: 'BOGOTA', destino: 'CALI', ida: '2026-10-20', regreso: '2026-10-22', pasajeros: '1', horaIda: '06:30', cotizado: '569395' }];
-  else viajes = [{ id: a.id || 'consulta', origen: a.origen, destino: a.destino, ida: a.ida, regreso: a.regreso, pasajeros: a.pasajeros, horaIda: a['hora-ida'], cotizado: a.cotizado }];
+  else {
+    // Sin --ida se usan las fechas de la prueba de rutas, para copiar los comandos del README tal cual.
+    const f = fechasPrueba();
+    const sinFecha = !a.ida;
+    const regreso = a.flags['solo-ida'] ? '' : (a.regreso || (sinFecha ? f.regreso : ''));
+    viajes = [{ id: a.id || 'consulta', origen: a.origen, destino: a.destino, ida: a.ida || f.ida, regreso, pasajeros: a.pasajeros,
+      horaIda: a['hora-ida'] || (sinFecha ? '07:00' : ''), cotizado: a.cotizado }];
+    if (sinFecha && !demo) console.log(`\nSin --ida: uso las fechas de la prueba de rutas (ida ${f.ida}${regreso ? ', regreso ' + regreso : ', solo ida'}, hora pedida ${viajes[0].horaIda}).`);
+  }
 
   if (demo) console.log('\n*** MODO DEMO: datos INVENTADOS para mostrar el formato. No son precios reales. ***');
   const hoy = hoyIso();
+  if (!demo) {
+    // Cuántas búsquedas puede gastar esta ejecución, antes de gastar alguna.
+    const porViaje = (v) => (a.flags.vendedores ? (v.regreso ? 3 : 2) : 1);
+    let maximo = 0;
+    viajes.forEach((v) => { try { if (v.ida && cp.cpFecha(v.ida) >= hoy) maximo += porViaje(v); } catch (e) { /* se reporta en el viaje */ } });
+    const c = await revisarCuenta(clave);
+    if (!c.ok) { console.error('✗ ' + c.error); process.exit(1); }
+    console.log(`Esta ejecución gastará hasta ${maximo} búsqueda(s); le quedan ${c.quedan} este mes.`);
+    if (typeof c.quedan === 'number' && c.quedan < maximo) {
+      console.error(`✗ No alcanzan las búsquedas del mes (${c.quedan}). Pruebe con menos viajes o sin --vendedores.`);
+      process.exit(1);
+    }
+    if (c.porHora && typeof c.usadasHora === 'number' && c.usadasHora + maximo > c.porHora) {
+      console.error(`✗ SerpApi permite ${c.porHora} búsquedas por hora y ya van ${c.usadasHora}. Espere un rato o use menos viajes.`);
+      process.exit(1);
+    }
+  }
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '').replace(/^(\d{8})/, '$1_');
   const salida = path.resolve(a.salida || 'resultados-comparador', (demo ? 'demo_' : '') + stamp);
   fs.mkdirSync(path.join(salida, 'crudo'), { recursive: true });
@@ -185,13 +292,8 @@ async function main() {
   fs.writeFileSync(path.join(salida, 'resumen.csv'), '﻿' + csv.join('\r\n'));
   console.log(`\nResultados: ${path.join(salida, 'resumen.csv')} (abre en Excel) y las respuestas completas en ${path.join(salida, 'crudo')}.`);
   if (!demo) {
-    try {
-      const r = await fetch('https://serpapi.com/account.json?api_key=' + encodeURIComponent(clave));
-      const acc = await r.json();
-      if (typeof acc.plan_searches_left === 'number') {
-        console.log(`Búsquedas usadas en esta ejecución: ${usadas}. Le quedan ${acc.plan_searches_left} este mes (plan ${acc.plan_name || '—'}).`);
-      }
-    } catch (e) { /* la cuenta es solo informativa */ }
+    const c = await revisarCuenta(clave);
+    console.log(`Búsquedas usadas en esta ejecución: ${usadas}.` + (c.ok ? ` Le quedan ${c.quedan} este mes (plan ${c.plan}).` : ''));
   }
 }
 
