@@ -32,7 +32,12 @@ archivos; Gmail para notificaciones.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
 5. Los commits van **en inglés** con prefijo conventional (`fix:`, `feat:`, `chore:`).
-   Todo el UI y la documentación van **en español**.
+   Todo el UI y la documentación van **en español**. **Las respuestas a David, también en
+   español.** Los commits van a nombre de David (el `git config` del repo es el correcto).
+6. **Sugerir y que una persona confirme.** Cuando algo cambiaría estados en producción
+   (cerrar, aprobar, anular), David prefiere que el sistema lo muestre en una bandeja o aviso y
+   que el área de viajes lo confirme con el flujo de siempre (#A83: *"es más seguro"*). Si de
+   verdad conviene automatizar, preguntar antes de construirlo.
 
 ## Cómo se corre en local
 
@@ -441,6 +446,35 @@ legalizaciones): habilitar `script.external_request` en `appsscript.json`,
 autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
+
+### Para retomar (estado al 2026-10-07, al cerrar en Linux)
+
+- **Todo el código está en `main`** (último commit `7675944`). El frontend de #A85 ya está
+  publicado, pero la casilla de Laura solo aparece al pegar el `Code.gs` nuevo.
+- **Pendiente manual en Apps Script** (lo hace David):
+  1. Plataforma: pegar `server/Code.gs` y `server/CostsDashboard.html` → **Implementar →
+     Gestionar implementaciones → lápiz → Nueva versión**. Opcional: menú 12 (crea
+     `AEROLINEA REGRESO`).
+  2. Proyecto aparte «Equitel · Rastreo de precios»: reemplazar el archivo **Rastreo** con
+     `tools/comparador-precios/apps-script/Rastreo.gs` (`Nucleo` no cambia; no volver a
+     activar ni dar permisos). En la siguiente pasada vuelve a buscar por tramos los viajes
+     por comprar (unas 2 consultas cada uno).
+  3. Comprobar en el dashboard de costos: tocar SOL-000629 → ida y regreso por separado,
+     vuelos directos primero y enlaces a Google Flights.
+- **Estudio de precios:** activo del 7 al 21-oct-2026. El 7-oct quedaban 212 búsquedas de
+  SerpApi (plan gratis, 250 al mes).
+- **Decisiones abiertas:** pedir el valor pagado en «Registrar reserva» para tener el precio
+  real sin esperar las facturas (David: *"eso lo podríamos hablar ya después"*; no está claro si
+  Laura tiene el precio a mano). Mostrarle el comparador a Laura: después de mostrárselo a
+  Alejandro y a Yurani.
+- **Sin código (David):** reunión del 8-oct a las 3 p. m. con Alejandro (invitar a Juan
+  Camilo); enviar el manual y el enlace de la plataforma de cotizaciones al grupo de Growth.
+- **Fuera del repositorio:** el documento de demostración para Alejandro
+  (`Comparador de precios de tiquetes - demostracion 2026-10-06.docx`) quedó en Descargas del
+  PC Linux, y los resultados crudos de la prueba del 6-oct en `resultados-comparador/` (no se
+  versiona). Ver [MIGRACION.md](MIGRACION.md).
+- **Seguridad:** el remoto de git del PC Linux tiene un token de GitHub en la URL y quedó a la
+  vista en una sesión; revocarlo y usar un gestor de credenciales (MIGRACION.md, sección 6).
 
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en

@@ -66,6 +66,16 @@ producción sin darte cuenta.** Cópialo.
 
 Hay un `.env.example` en el repo con el formato esperado.
 
+**Comparador de precios (opcional, solo para pruebas locales con `buscar.cjs`):**
+
+| Archivo | Qué es | Cómo tenerlo en la otra máquina |
+|---|---|---|
+| `tools/comparador-precios/.serpapi-key` | Clave de SerpApi para el comando local | **No copiarla:** `node tools/comparador-precios/buscar.cjs --configurar` la pide sin mostrarla y la guarda con permisos solo para ti. |
+| `resultados-comparador/` | Resultados de pruebas locales (p. ej. la del 6-oct) | Solo si se necesitan; se pueden regenerar con `buscar.cjs` (gastan búsquedas). |
+
+El rastreo automático (#A84) no necesita nada en la máquina: vive en su propio proyecto de
+Apps Script, con la clave en sus propiedades.
+
 ### Lo que NO se copia entre máquinas (se regenera)
 
 | Carpeta | Por qué |
