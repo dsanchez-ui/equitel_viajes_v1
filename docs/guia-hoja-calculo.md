@@ -111,6 +111,17 @@ La antigua hoja de usuarios, antes de la migración a USUARIOS. Está ahí como 
 
 **Lo que NO debes hacer:** borrarla todavía. Déjala al menos 1-2 meses más por si acaso.
 
+### COMPARATIVO PRECIOS y COMPARATIVO ESTADO (ocultas)
+
+Las crea y las escribe el **rastreo de precios** (#A84), un proyecto de Apps Script aparte que
+compara lo cotizado con el precio de Google Flights durante el estudio de dos semanas. Una
+fila por búsqueda, y el estado del rastreo. El dashboard de costos las lee en la sección
+*Comparador de precios* (solo Yurani, Diego y David).
+
+Están ocultas (menú **Ver → Hojas ocultas** para verlas) y avisan si alguien intenta editarlas.
+**No las edites ni las borres mientras el estudio esté activo.** Al terminar se pueden borrar:
+nada de la plataforma depende de ellas.
+
 ### Hojas con `_OLD_` en el nombre
 
 Son respaldos de reorganizaciones anteriores de la hoja principal. **Déjalas quietas** hasta que hayas confirmado que la versión activa funciona bien (usualmente 1-2 semanas) y luego puedes borrarlas.

@@ -618,7 +618,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'dismissInvoiceAlert'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'dismissInvoiceAlert', 'getPriceTracking'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -642,6 +642,10 @@ function dispatch(action, payload) {
     // en el código (COSTS_VARIANCE_ALLOWED), no el rol. Se revalida en cada request.
     if (action === 'getCostsVarianceReport' && !_canViewCostsVariance_(currentUserEmail)) {
       return { success: false, error: _costsVarianceDeniedMsg_() };
+    }
+    // Comparador de precios del estudio (#A84): las mismas personas que la variación.
+    if (action === 'getPriceTracking' && !_canViewCostsVariance_(currentUserEmail)) {
+      return { success: false, error: 'El comparador de precios está restringido a ' + _costsVarianceViewersLabel_() + '.' };
     }
 
     // LOCKING STRATEGY: Block execution until lock is acquired to prevent race conditions.
@@ -774,6 +778,7 @@ function dispatch(action, payload) {
       case 'setCostsDashboardConfig': result = setCostsDashboardConfig(payload.config, currentUserEmail); break;
       case 'resetCostsDashboardConfig': result = resetCostsDashboardConfig(currentUserEmail); break;
       case 'getCostsVarianceReport': result = getCostsVarianceReport(payload.filters, currentUserEmail); break;
+      case 'getPriceTracking': result = getPriceTracking(currentUserEmail); break;
       case 'getMonthlyBudgetUsage': result = getMonthlyBudgetUsage(payload.empresa, payload.unidad); break;
 
       // PASSPORT VALIDATION (internacional). Cualquier sesión válida puede
@@ -16896,6 +16901,8 @@ function getCostsDashboard(filters, currentUserEmail) {
     canConfig: access.canConfig,
     // Variación cotizado vs facturado (#A78): solo la lista fija de Code.gs.
     canViewVariance: _canViewCostsVariance_(access.email),
+    // Comparador de precios (#A84): las mismas personas.
+    canViewPriceTracking: _canViewCostsVariance_(access.email),
     scope: access.allUnits ? 'ALL' : 'UNITS',
     units: access.allUnits ? [] : access.unitLabels
   };
@@ -17181,6 +17188,201 @@ function _csEmptyVariance_(year, fromMonth, toMonth, access) {
   };
 }
 
+// =====================================================================
+// RASTREO DE PRECIOS DE TIQUETES (#A84) — SOLO LECTURA
+// =====================================================================
+// Estudio pedido por Alejandro Gómez (vicepresidente), 2026-10: durante unas dos
+// semanas se compara lo cotizado con el precio del mercado. Un proyecto de Apps
+// Script APARTE (tools/comparador-precios/apps-script/) busca en Google Flights,
+// vía SerpApi, cada solicitud de vuelo al confirmar costos (COTIZACION) y al
+// aprobarse (COMPRA), y escribe en la pestaña oculta PRICE_TRACKING_SHEET de esta
+// misma hoja. La plataforma NO sale a internet (#A62): aquí solo se lee esa
+// pestaña para el dashboard de costos.
+//
+// Lo ven las mismas personas que la variación cotizado vs facturado
+// (COSTS_VARIANCE_ALLOWED): Laura no. No sale ningún nombre, cédula ni correo.
+//
+// Referencia del mercado de una búsqueda = el más barato saliendo ±2 h de la hora
+// pedida; si la solicitud no tiene hora, el más barato del día.
+var PRICE_TRACKING_SHEET = 'COMPARATIVO PRECIOS';
+var PRICE_TRACKING_STATE_SHEET = 'COMPARATIVO ESTADO';
+
+/** Pestaña → objetos por encabezado. */
+function _ptRows_(sheet) {
+  if (!sheet || sheet.getLastRow() < 2 || sheet.getLastColumn() < 1) return [];
+  var v = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+  var head = v[0].map(function(x) { return String(x == null ? '' : x).trim(); });
+  return v.slice(1).map(function(r) {
+    var o = {};
+    head.forEach(function(k, i) { if (k && o[k] === undefined) o[k] = r[i]; });
+    return o;
+  });
+}
+
+function _ptHour_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return isNaN(v.getTime()) ? '' : ('0' + v.getHours()).slice(-2) + ':' + ('0' + v.getMinutes()).slice(-2);
+  }
+  var m = String(v).match(/(\d{1,2}):(\d{2})/);
+  return m ? ('0' + m[1]).slice(-2) + ':' + m[2] : '';
+}
+
+function _ptIso_(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v.getTime()) ? '' : v.toISOString();
+  var d = v ? new Date(v) : null;
+  return d && !isNaN(d.getTime()) ? d.toISOString() : '';
+}
+
+/** Una fila de la pestaña → la búsqueda resumida para el dashboard. */
+function _ptSnapshot_(r) {
+  var n = function(k) { var x = _csToNumber_(r[k]); return x > 0 ? Math.round(x) : null; };
+  var near = n('MAS BARATO CERCA HORA');
+  var day = n('MAS BARATO');
+  var vendors = [];
+  try { vendors = r['VENDEDORES'] ? JSON.parse(r['VENDEDORES']) : []; } catch (e) { vendors = []; }
+  return {
+    at: _ptIso_(r['FECHA BUSQUEDA']),
+    moment: String(r['MOMENTO'] || '').trim(),
+    result: String(r['RESULTADO'] || '').trim(),
+    detail: String(r['DETALLE'] || '').trim(),
+    statusAtSearch: String(r['ESTADO'] || '').trim(),
+    quotedAtSearch: n('COSTO TIQUETES COTIZADO'),
+    airlineAtSearch: String(r['AEROLINEA REGISTRADA'] || '').trim(),
+    cheapest: day, cheapestAirline: String(r['AEROLINEA MAS BARATA'] || '').trim(), cheapestTime: _ptHour_(r['SALIDA MAS BARATA']),
+    near: near, nearAirline: String(r['AEROLINEA CERCA HORA'] || '').trim(), nearTime: _ptHour_(r['SALIDA CERCA HORA']),
+    nearFlight: String(r['VUELO CERCA HORA'] || '').trim(),
+    sameAirlineNear: n('MISMA AEROLINEA CERCA HORA'), sameAirlineDay: n('MISMA AEROLINEA DIA'),
+    reference: near || day, referenceIsNear: !!near,
+    typicalRange: String(r['RANGO TIPICO'] || '').trim(), googleLevel: String(r['NIVEL GOOGLE'] || '').trim(),
+    aviatur: n('AVIATUR EN GOOGLE'), vendors: Array.isArray(vendors) ? vendors : [],
+    queries: _csToNumber_(r['CONSULTAS'])
+  };
+}
+
+/** Suma lo cotizado contra una referencia (solo solicitudes con ambos valores). */
+function _ptAggregate_(pairs) {
+  var out = { n: 0, quoted: 0, market: 0, difference: 0, possibleSavings: 0, pct: null };
+  pairs.forEach(function(p) {
+    if (!(p.quoted > 0) || !(p.market > 0)) return;
+    out.n++;
+    out.quoted += p.quoted;
+    out.market += p.market;
+    out.difference += p.quoted - p.market;
+    out.possibleSavings += Math.max(0, p.quoted - p.market);
+  });
+  out.pct = out.market > 0 ? (out.quoted - out.market) / out.market * 100 : null;
+  return out;
+}
+
+/**
+ * Datos de la sección «Comparador de precios» del dashboard de costos (#A84).
+ * Solo lee: la pestaña del rastreo, su estado y la hoja de solicitudes.
+ */
+function getPriceTracking(currentUserEmail) {
+  if (!_canViewCostsVariance_(currentUserEmail)) {
+    throw new Error('El comparador de precios está restringido a ' + _costsVarianceViewersLabel_() + '.');
+  }
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var tab = ss.getSheetByName(PRICE_TRACKING_SHEET);
+  var state = {};
+  var stateSheet = ss.getSheetByName(PRICE_TRACKING_STATE_SHEET);
+  if (stateSheet && stateSheet.getLastRow() > 0) {
+    stateSheet.getRange(1, 1, stateSheet.getLastRow(), 2).getValues().forEach(function(r) {
+      var k = String(r[0] || '').trim();
+      if (k) state[k] = Object.prototype.toString.call(r[1]) === '[object Date]' ? _ptIso_(r[1]) : r[1];
+    });
+  }
+  var searches = _ptRows_(tab);
+  var meta = {
+    installed: !!tab,
+    state: state,
+    searches: searches.length,
+    queries: searches.reduce(function(s, r) { return s + _csToNumber_(r['CONSULTAS']); }, 0),
+    firstSearchAt: '', lastSearchAt: '',
+    generatedAt: new Date().toISOString()
+  };
+  if (!searches.length) return { items: [], summary: null, meta: meta };
+
+  // Última búsqueda por solicitud y momento.
+  var byId = {};
+  searches.forEach(function(r) {
+    var id = String(r['ID SOLICITUD'] || '').trim();
+    var moment = String(r['MOMENTO'] || '').trim();
+    if (!id || (moment !== 'COTIZACION' && moment !== 'COMPRA')) return;
+    var s = _ptSnapshot_(r);
+    if (s.at && (!meta.firstSearchAt || s.at < meta.firstSearchAt)) meta.firstSearchAt = s.at;
+    if (s.at && s.at > meta.lastSearchAt) meta.lastSearchAt = s.at;
+    var e = byId[id] || (byId[id] = { COTIZACION: null, COMPRA: null });
+    if (!e[moment] || s.at >= e[moment].at) e[moment] = s;
+  });
+
+  // Datos actuales de cada solicitud rastreada.
+  var reqSheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  var items = [];
+  if (reqSheet && reqSheet.getLastRow() > 1) {
+    var vals = reqSheet.getRange(1, 1, reqSheet.getLastRow(), reqSheet.getLastColumn()).getValues();
+    var hm = {};
+    vals[0].forEach(function(h, i) { var k = String(h == null ? '' : h).trim(); if (k && hm[k] === undefined) hm[k] = i; });
+    var cell = function(row, k) { return hm[k] === undefined ? '' : row[hm[k]]; };
+    for (var r = 1; r < vals.length; r++) {
+      var id = String(cell(vals[r], 'ID RESPUESTA') || '').trim();
+      if (!id || !byId[id]) continue;
+      var row = vals[r];
+      var quoted = Math.round(_csToNumber_(cell(row, 'COSTO_FINAL_TIQUETES'))) || null;
+      var snaps = byId[id];
+      var okCot = snaps.COTIZACION && snaps.COTIZACION.result === 'OK' ? snaps.COTIZACION : null;
+      var okBuy = snaps.COMPRA && snaps.COMPRA.result === 'OK' ? snaps.COMPRA : null;
+      var ref = okBuy || okCot;
+      var market = ref ? ref.reference : null;
+      var same = ref ? (ref.sameAirlineNear || ref.sameAirlineDay) : null;
+      items.push({
+        requestId: id,
+        origin: String(cell(row, 'CIUDAD ORIGEN') || '').split(',')[0].trim(),
+        destination: String(cell(row, 'CIUDAD DESTINO') || '').split(',')[0].trim(),
+        departure: _psDateKey_(cell(row, 'FECHA IDA')),
+        returnDate: _psDateKey_(cell(row, 'FECHA VUELTA')),
+        passengers: Math.max(1, Math.round(_csToNumber_(cell(row, '# PERSONAS QUE VIAJAN'))) || 1),
+        company: String(cell(row, 'EMPRESA') || '').trim(),
+        unit: String(cell(row, 'UNIDAD DE NEGOCIO') || '').trim(),
+        status: String(cell(row, 'STATUS') || '').trim(),
+        quoted: quoted,
+        airline: String(cell(row, 'AEROLINEA') || '').trim(),
+        channel: String(cell(row, 'CANAL DE COMPRA') || '').trim(),
+        atQuote: snaps.COTIZACION,
+        atPurchase: snaps.COMPRA,
+        market: market,
+        marketMoment: ref ? ref.moment : '',
+        sameAirline: same,
+        difference: quoted && market ? quoted - market : null,
+        differencePct: quoted && market ? (quoted - market) / market * 100 : null
+      });
+    }
+  }
+  var rank = { APROBADO: 0, PENDIENTE_APROBACION: 1, RESERVADO: 2, PROCESADO: 3 };
+  items.sort(function(a, b) {
+    var ra = rank[a.status] === undefined ? 9 : rank[a.status], rb = rank[b.status] === undefined ? 9 : rank[b.status];
+    return ra !== rb ? ra - rb : (a.departure < b.departure ? -1 : a.departure > b.departure ? 1 : (a.requestId < b.requestId ? -1 : 1));
+  });
+
+  var refOf = function(s) { return s && s.result === 'OK' ? s.reference : null; };
+  var channels = {};
+  items.forEach(function(it) {
+    var k = it.channel || 'Sin registrar';
+    (channels[k] = channels[k] || []).push({ quoted: it.quoted, market: it.market });
+  });
+  var summary = {
+    tracked: items.length,
+    pendingPurchase: items.filter(function(it) { return it.status === 'APROBADO'; }).length,
+    atPurchase: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: refOf(it.atPurchase) }; })),
+    atQuote: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: refOf(it.atQuote) }; })),
+    overall: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.market }; })),
+    sameAirline: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.sameAirline }; })),
+    byChannel: Object.keys(channels).sort().map(function(k) { var a = _ptAggregate_(channels[k]); a.channel = k; a.requests = channels[k].length; return a; })
+  };
+  return { items: items, summary: summary, meta: meta };
+}
+
 // ---------- HELPER DE DIAGNÓSTICO (ejecutable desde editor GAS) ----------
 
 /**
@@ -17258,6 +17460,9 @@ function costsDashboard_resetConfig(payload) {
 }
 function costsDashboard_getVarianceReport(payload) {
   return dispatch('getCostsVarianceReport', payload || {});
+}
+function costsDashboard_getPriceTracking(payload) {
+  return dispatch('getPriceTracking', payload || {});
 }
 
 // =====================================================================

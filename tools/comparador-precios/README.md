@@ -276,4 +276,5 @@ alcanzan las del mes o las de la hora.
 | `comparador.cjs` | Núcleo: aeropuertos, parámetros y resumen por aerolínea. No usa nada de Node, para reutilizarlo en Apps Script en la fase 2 |
 | `buscar.cjs` | El comando de Node |
 | `ejemplo-respuesta.json`, `ejemplo-vendedores.json` | Respuestas inventadas para `--demo` |
+| `apps-script/` | El rastreo automático del estudio de dos semanas (#A84): un proyecto de Apps Script aparte que usa este mismo núcleo. [Instalación](apps-script/README.md) |
 | `.serpapi-key` | Tu clave (la crea `--configurar`; no se sube al repositorio) |

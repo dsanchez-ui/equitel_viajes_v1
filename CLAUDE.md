@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A83) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A84) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -27,7 +27,7 @@ archivos; Gmail para notificaciones.
 2. **Verificar siempre antes de proponer un push:** `npm run verify` (typecheck +
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos y de aerolínea/canal + estadísticas de compra +
-   facturas por cerrar y por revisar + build). Debe salir en verde.
+   facturas por cerrar y por revisar + rastreo de precios + build). Debe salir en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -39,7 +39,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + facturas por cerrar + build  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + facturas por cerrar + rastreo de precios + build  ← antes de cualquier push
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -218,6 +218,19 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     OMITIDO`). Si después se completa, pasa a listas para cerrar.
   - Revisar no escribe en la hoja ni envía correos. `cierreAutomaticoPorFacturas` solo borra el
     disparador de la primera versión, si alguien lo activó.
+- **Rastreo de precios de tiquetes** (#A84, estudio de ~2 semanas pedido por Alejandro Gómez;
+  diseño de David del 2026-10-07): compara lo cotizado con el precio del mercado en Google
+  Flights. **Es un proyecto de Apps Script aparte** (`tools/comparador-precios/apps-script/`):
+  la plataforma no sale a internet (#A62) y no debe hacerlo para esto.
+  - Busca cada solicitud de vuelo con ida futura **al cotizar** (`PENDIENTE_APROBACION`, costos
+    confirmados desde el inicio del estudio) y **al comprar** (`APROBADO`, o `RESERVADO` hace
+    menos de 6 h). Una vez por momento, cada 15 minutos. Referencia: el más barato saliendo ±2 h
+    de la hora pedida (sin hora, el del día), para todos los pasajeros.
+  - **Solo lee** la hoja de solicitudes y **solo escribe** sus dos pestañas ocultas. La clave
+    de SerpApi vive en las propiedades de ese proyecto, nunca en la hoja ni en el repo.
+  - Lo ven en el dashboard de costos las mismas personas que la variación
+    (`COSTS_VARIANCE_ALLOWED`); **Laura no lo ve**, ni en la app ni en el dashboard (decisión de
+    David). `getPriceTracking` en `Code.gs` solo lee.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -261,6 +274,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 | **CIUDADES DEL MUNDO** | Ciudad/país para el autocompletado. |
 | **MISC** | Tarjetas de crédito (A:B), sedes (D) y la tabla de accesos al dashboard de costos (#A76). Los encabezados están en la fila 2 y los datos empiezan en la fila 3. Los encabezados de la tabla de accesos (`DASHBOARD COSTOS · CORREO` / `· UNIDAD DE NEGOCIO`) los crea el menú 9 en la **fila 1** (celdas normales, sin tablas de Google ni listas desplegables) y se buscan por nombre en las filas 1 a 3, así que pueden moverse de columna. |
 | **REGLAS_COAPROBADOR** | Reglas de co-aprobación. |
+| **COMPARATIVO PRECIOS** / **COMPARATIVO ESTADO** | Ocultas. Las escribe el proyecto aparte del rastreo de precios (#A84): una fila por búsqueda y el estado del rastreo. Las lee el dashboard de costos. No editarlas. |
 | **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
 
 ## Script Properties (Apps Script)
@@ -291,6 +305,10 @@ helper del propio `Code.gs` (`verPropiedadesDelScript`, etc.).
 | `cleanupExpiredPropsWeekly` | Limpia sesiones, lockouts y contadores de rate limit vencidos | `setupWeeklyCleanupTrigger()` |
 | `sendPendingApprovalReminders` / `sendPendingSelectionReminders` / `sendPendingConsultReminders` | Recordatorios; escalan a superadmins tras ~30 h laborales (#A16) | Configurados a mano en la UI |
 | `warmupPing` | Cada 10 min, mantiene tibio el isolate de GAS | Configurado a mano |
+
+`rastrearPrecios` (#A84, cada 15 min) **no está en este proyecto**: vive en el proyecto aparte
+del rastreo de precios, con su propia autorización. Se instala y se quita desde ese proyecto
+(`activarRastreo` / `desactivarRastreo`).
 
 **Los triggers corren con la autorización del dueño del script.** Por eso no se
 tocan los scopes OAuth a la ligera — ver la sección de IA.
@@ -334,7 +352,7 @@ server/
   Code.gs                  Backend completo (~14.400 líneas)
   AdminSidebar.html        Sidebar de administración del Sheets
   AdminMobile.html         Panel móvil (público, protegido por sesión)
-  CostsDashboard.html      Dashboard de costos por unidad
+  CostsDashboard.html      Dashboard de costos por unidad (incluye el comparador de precios, #A84)
   ReorgSidebar.html        Workflow de reorganización de columnas
 tools/check-gas-syntax.cjs Verifica sintaxis de Code.gs y del JS de los HTML
 tools/check-workorder-parity.cjs  Frontend y backend validan la OT igual (#A66)
@@ -344,7 +362,9 @@ tools/check-cost-rules.cjs        Reglas de costos en pesos; frontend y backend 
 tools/check-purchase-stats.cjs    Estadísticas de compra con una hoja sintética, festivos y permiso (#A80)
 tools/check-purchase-info-rules.cjs  Aerolínea y canal; frontend y backend coinciden (#A82)
 tools/check-invoice-review.cjs       Facturas listas para cerrar y por revisar con una hoja sintética; nada se cierra solo (#A83)
-tools/comparador-precios/  Prueba local del comparador de precios (Google Flights vía SerpApi); no la usa la app
+tools/check-price-tracking.cjs       Rastreo de precios: el proyecto aparte y Code.gs juntos sobre una hoja simulada (#A84)
+tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs)
+tools/comparador-precios/apps-script/  Proyecto de Apps Script APARTE del rastreo de precios (#A84): Rastreo.gs, manifiesto y guía
 scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)
 docs/                      Guías de administrador, hoja de cálculo y planes
 ```
@@ -387,7 +407,8 @@ backup, que corren con la autorización del dueño— para recuperar una funció
 opcional y sin uso. No compensaba.
 
 **Tras la limpieza no queda ni un solo uso de `UrlFetchApp` en el backend: el
-sistema no necesita salida a internet.**
+sistema no necesita salida a internet.** El rastreo de precios (#A84) sí la necesita, y por
+eso vive en un proyecto aparte con sus propios permisos.
 
 **Si algún día se quiere IA de nuevo** (p. ej. el OCR de facturas del plan de
 legalizaciones): habilitar `script.external_request` en `appsscript.json`,
@@ -435,9 +456,11 @@ autorización) y verificar antes de crear una versión nueva del web app.
     Script: pegar `Code.gs`, correr el **menú 12** (crea las columnas; no cierra nada) y crear
     la versión nueva del web app. Con la base del 29-sep: 15 listas para cerrar y 85 por
     revisar. V4 quedó **sin cierre automático** por decisión de David (2-oct).
-  - **V2:** comparador de precios. Propuesta y prueba en
-    [docs/plan-comparador-precios.md](docs/plan-comparador-precios.md) y
-    `tools/comparador-precios/`; David la ejecuta antes de integrar nada en la app.
+  - **V2:** comparador de precios. Prueba hecha el 6-oct (documento de demostración para
+    Alejandro). **#A84** (rastreo de 2 semanas, oculto para Laura): pendiente pegar `Code.gs` y
+    `CostsDashboard.html` + versión nueva del web app, e instalar el proyecto aparte con
+    `tools/comparador-precios/apps-script/README.md`. Plan en
+    [docs/plan-comparador-precios.md](docs/plan-comparador-precios.md).
   - **V5:** lectura de facturas PDF con IA, **solo como plan** (decisión de David del 2-oct):
     [docs/plan-lectura-facturas.md](docs/plan-lectura-facturas.md). Proyecto de Apps Script
     aparte que escribe en la hoja; no toca los permisos del de producción (#A62).

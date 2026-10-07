@@ -18,7 +18,8 @@
     "check:purchase": "node tools/check-purchase-stats.cjs",
     "check:purchase-info": "node tools/check-purchase-info-rules.cjs",
     "check:invoices": "node tools/check-invoice-review.cjs",
-    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:invoices && npm run build"
+    "check:price-tracking": "node tools/check-price-tracking.cjs",
+    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:invoices && npm run check:price-tracking && npm run build"
   },
   "dependencies": {
     "react": "^19.2.4",

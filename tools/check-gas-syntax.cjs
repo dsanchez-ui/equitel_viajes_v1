@@ -4,6 +4,7 @@
  *
  *   - `server/Code.gs`            — el backend completo de Apps Script.
  *   - `server/*.html`             — sidebars y paneles con JS embebido en <script>.
+ *   - `tools/comparador-precios/apps-script/*.gs` — el proyecto aparte del rastreo de precios (#A84).
  *
  * Por qué existe: `node --check` no acepta la extensión `.gs` (la trata como
  * ESM desconocido) y nunca mira dentro del HTML. Sin esto, un error de sintaxis
@@ -17,7 +18,7 @@
  * nada, así que su ausencia es irrelevante.
  *
  * Uso:  node tools/check-gas-syntax.cjs [archivo...]
- *       (sin argumentos: server/Code.gs + server/*.html)
+ *       (sin argumentos: server/ y tools/comparador-precios/apps-script/)
  */
 
 const fs = require('fs');
@@ -119,13 +120,12 @@ function checkFile(relPath) {
 }
 
 function defaultTargets() {
-  const serverDir = path.join(ROOT, 'server');
-  if (!fs.existsSync(serverDir)) return [];
-  return fs
-    .readdirSync(serverDir)
-    .filter((f) => /\.(gs|html?)$/i.test(f))
-    .sort()
-    .map((f) => path.join('server', f));
+  // server/: la plataforma. tools/comparador-precios/apps-script/: el proyecto aparte del rastreo de precios (#A84).
+  return ['server', path.join('tools', 'comparador-precios', 'apps-script')].flatMap((dir) => {
+    const abs = path.join(ROOT, dir);
+    if (!fs.existsSync(abs)) return [];
+    return fs.readdirSync(abs).filter((f) => /\.(gs|html?)$/i.test(f)).sort().map((f) => path.join(dir, f));
+  });
 }
 
 function main() {

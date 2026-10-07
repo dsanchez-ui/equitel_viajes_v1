@@ -472,6 +472,16 @@
 
     /* ===== VARIANCE REPORT (solo admin/superadmin) ===== */
     #varianceSection { display: none; }
+    /* ===== COMPARADOR DE PRECIOS (estudio #A84, acceso restringido) ===== */
+    #priceSection { display: none; }
+    .pt-health { font-size: 12px; padding: 10px 12px; border-radius: 6px; margin-bottom: 14px; border: 1px solid var(--border); background: #f9fafb; color: var(--text); }
+    .pt-health.warn { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
+    .pt-health.off { background: #f3f4f6; color: var(--muted); }
+    table.variance td .pt-sub { display: block; font-size: 10.5px; color: var(--muted); font-weight: 400; }
+    table.variance#ptTable th, table.variance#ptTable td { padding-left: 6px; padding-right: 6px; }
+    table.variance td.pt-id { font-family: monospace; white-space: nowrap; }
+    table.variance tr.pt-pending td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
+    .pt-controls select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: #fff; }
     .badge-admin {
       display: inline-block;
       font-size: 10px;
@@ -1077,6 +1087,87 @@
       </div>
     </div>
 
+    <!-- ============================================================== -->
+    <!-- COMPARADOR DE PRECIOS (estudio #A84) — acceso restringido       -->
+    <!-- ============================================================== -->
+    <div id="priceSection" class="view-section">
+      <div class="view-title">
+        🔎 Comparador de precios de tiquetes
+        <span class="badge-admin">Prueba · acceso restringido</span>
+        <span class="view-subtitle">lo cotizado contra el precio del mercado en Google Flights</span>
+      </div>
+
+      <div class="variance-explanation">
+        Un proceso aparte busca cada solicitud de vuelo en Google Flights en dos momentos: <strong>al confirmar costos</strong>
+        (la cotización contra el mercado en ese mismo momento) y <strong>al aprobarse</strong> (el precio cuando se va a comprar).
+        <strong>Mercado</strong> = el más barato saliendo entre 2 horas antes y 2 horas después de la hora pedida (sin hora pedida, el más barato del día), para todos los pasajeros.
+        <strong>Cotizado</strong> = costo de tiquetes confirmado. Es el precio público de Google: sin maleta de bodega ni tarifas corporativas.
+        Laura no ve esta sección y no aplica los filtros de arriba.
+      </div>
+
+      <div class="pt-health off" id="ptHealth">Cargando…</div>
+
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">Solicitudes rastreadas</div><div id="ptTracked" class="value">—</div><div class="extra" id="ptTrackedExtra">—</div></div>
+        <div class="kpi"><div class="label">Cotizado (tiquetes)</div><div id="ptQuoted" class="value">—</div><div class="extra" id="ptQuotedExtra">—</div></div>
+        <div class="kpi"><div class="label">Mercado</div><div id="ptMarket" class="value">—</div><div class="extra" id="ptMarketExtra">al comprar; si aún no, al cotizar</div></div>
+        <div class="kpi"><div class="label">Ahorro posible</div><div id="ptSavings" class="value">—</div><div class="extra" id="ptSavingsExtra">—</div></div>
+      </div>
+
+      <div class="card">
+        <h2>Por momento y canal de compra</h2>
+        <div class="variance-table-wrap">
+          <table class="variance" id="ptSummaryTable">
+            <thead>
+              <tr>
+                <th>Comparación</th>
+                <th class="num">Solicitudes</th>
+                <th class="num">Cotizado</th>
+                <th class="num">Mercado</th>
+                <th class="num">Diferencia</th>
+                <th class="num">%</th>
+              </tr>
+            </thead>
+            <tbody id="ptSummaryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Detalle por solicitud <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="ptCount"></span></h2>
+        <div class="variance-table-controls pt-controls">
+          <select id="ptFilter">
+            <option value="">Todas</option>
+            <option value="APROBADO">Por comprar (aprobadas)</option>
+            <option value="PENDIENTE_APROBACION">Esperando aprobación</option>
+            <option value="COMPRADAS">Compradas</option>
+          </select>
+          <button id="btnExportPriceCsv" class="btn-secondary">📥 Exportar CSV</button>
+        </div>
+        <div class="variance-table-wrap">
+          <table class="variance" id="ptTable">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Ruta</th>
+                <th>Ida</th>
+                <th class="num">Pax</th>
+                <th>Estado</th>
+                <th>Compra registrada</th>
+                <th class="num">Cotizado</th>
+                <th class="num">Mercado al cotizar</th>
+                <th class="num">Mercado al comprar</th>
+                <th class="num">Misma aerolínea</th>
+                <th class="num">Diferencia</th>
+              </tr>
+            </thead>
+            <tbody id="ptTableBody"></tbody>
+          </table>
+        </div>
+        <div id="ptEmpty" class="empty-state" style="display: none;">Todavía no hay búsquedas. Aparecen cuando una solicitud de vuelo confirma costos o se aprueba.</div>
+      </div>
+    </div>
+
     <!-- META INFO -->
     <div class="card" style="font-size: 11px; color: var(--muted);">
       <div id="metaInfo"></div>
@@ -1270,6 +1361,7 @@ var charts = {
 
 // Reporte de variación (solo admin) — datos crudos del backend.
 var varianceData = null;
+var priceData = null;          // comparador de precios (#A84)
 // Estado de ordenamiento de la tabla de variación.
 var varianceSort = { col: 'variancePct', dir: 'desc' };
 
@@ -1338,6 +1430,13 @@ function loadDashboard() {
       } else {
         varianceData = null;
         document.getElementById('varianceSection').style.display = 'none';
+      }
+      // Comparador de precios (#A84): mismas personas que la variación; el backend lo revalida.
+      if (fullYearData.meta && fullYearData.meta.access && fullYearData.meta.access.canViewPriceTracking === true) {
+        loadPriceTracking();
+      } else {
+        priceData = null;
+        document.getElementById('priceSection').style.display = 'none';
       }
     })
     .withFailureHandler(function(err) {
@@ -2649,6 +2748,195 @@ function renderVarianceTable(rows) {
     (search ? sorted.length + ' / ' + rows.length + ' (filtrados)' : sorted.length + ' resultados');
 }
 
+// =====================================================================
+// COMPARADOR DE PRECIOS (estudio #A84) — acceso restringido
+// =====================================================================
+// Solo lo carga quien el backend autoriza (meta.access.canViewPriceTracking:
+// las mismas personas que la variación). Los datos los escribe un proyecto de
+// Apps Script aparte; aquí solo se leen.
+
+var PT_STATUS = { APROBADO: 'Por comprar', PENDIENTE_APROBACION: 'Esperando aprobación', RESERVADO: 'Comprada', PROCESADO: 'Cerrada' };
+var PT_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+function ptDay(key) {
+  var m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? Number(m[3]) + '-' + PT_MONTHS[Number(m[2]) - 1] : '—';
+}
+function ptAgo(iso) {
+  if (!iso) return '—';
+  var min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (isNaN(min)) return '—';
+  if (min < 1) return 'hace <1 min';
+  if (min < 60) return 'hace ' + min + ' min';
+  var h = Math.round(min / 60);
+  return h < 48 ? 'hace ' + h + ' h' : 'hace ' + Math.round(h / 24) + ' días';
+}
+function ptSigned(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return (n > 0 ? '+' : n < 0 ? '−' : '') + fmtMoney(Math.abs(n));
+}
+function ptPct(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  return (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(1) + '%';
+}
+
+function loadPriceTracking() {
+  document.getElementById('priceSection').style.display = 'block';
+  google.script.run
+    .withSuccessHandler(function(response) {
+      if (!response || !response.success) {
+        var errMsg = (response && response.error) || 'No se pudo cargar el comparador de precios.';
+        if (errMsg.indexOf('restring') !== -1 || errMsg.indexOf('admin') !== -1) {
+          document.getElementById('priceSection').style.display = 'none';
+          return;
+        }
+        var h = document.getElementById('ptHealth');
+        h.className = 'pt-health warn';
+        h.textContent = 'No se pudo cargar el comparador de precios: ' + errMsg;
+        return;
+      }
+      priceData = response.data;
+      renderPriceTracking();
+    })
+    .withFailureHandler(function(err) {
+      var h = document.getElementById('ptHealth');
+      h.className = 'pt-health warn';
+      h.textContent = 'No se pudo cargar el comparador de precios: ' + ((err && err.message) || 'error de conexión') + '.';
+    })
+    .costsDashboard_getPriceTracking({ userEmail: session.email, sessionToken: session.token });
+}
+
+function renderPriceTracking() {
+  if (!priceData) return;
+  var meta = priceData.meta || {};
+  var st = meta.state || {};
+  var health = document.getElementById('ptHealth');
+  if (!meta.installed) {
+    health.className = 'pt-health off';
+    health.textContent = 'El rastreo aún no está activo: falta instalar el proyecto aparte (tools/comparador-precios/apps-script/README.md).';
+  } else {
+    var last = st['ULTIMA EJECUCION'];
+    var stale = last && (Date.now() - new Date(last).getTime()) > 45 * 60000;
+    var estado = String(st['ESTADO'] || 'SIN EJECUTAR');
+    var partes = ['Estado: ' + estado, 'última ejecución ' + ptAgo(last)];
+    if (st['INICIO ESTUDIO']) partes.push('estudio del ' + ptDay(st['INICIO ESTUDIO']) + ' al ' + ptDay(st['FIN ESTUDIO']));
+    partes.push(meta.searches + ' búsquedas (' + meta.queries + ' consultas)');
+    if (st['QUEDAN EN SERPAPI'] !== '' && st['QUEDAN EN SERPAPI'] !== undefined) partes.push('quedan ' + st['QUEDAN EN SERPAPI'] + ' en SerpApi');
+    var text = partes.join(' · ');
+    if (st['DETALLE']) text += '. ' + st['DETALLE'];
+    if (stale && estado === 'ACTIVO') text += ' ⚠️ No ha corrido en más de 45 minutos: revise el disparador del proyecto aparte.';
+    health.className = 'pt-health' + ((stale && estado === 'ACTIVO') || (estado !== 'ACTIVO' && estado !== 'TERMINADO') ? ' warn' : '');
+    health.textContent = text;
+  }
+
+  var s = priceData.summary;
+  var setText = function(id, t) { document.getElementById(id).textContent = t; };
+  if (!s) {
+    ['ptTracked', 'ptQuoted', 'ptMarket', 'ptSavings'].forEach(function(id) { setText(id, '—'); });
+    setText('ptTrackedExtra', '—'); setText('ptQuotedExtra', '—'); setText('ptSavingsExtra', '—');
+    document.getElementById('ptSummaryBody').innerHTML = '';
+  } else {
+    setText('ptTracked', String(s.tracked));
+    setText('ptTrackedExtra', s.pendingPurchase + ' por comprar');
+    setText('ptQuoted', fmtMoney(s.overall.quoted));
+    setText('ptQuotedExtra', s.overall.n + ' con cotización y mercado');
+    setText('ptMarket', fmtMoney(s.overall.market));
+    setText('ptSavings', fmtMoney(s.overall.possibleSavings));
+    setText('ptSavingsExtra', s.overall.pct === null ? '—' : 'diferencia neta ' + ptSigned(s.overall.difference) + ' (' + ptPct(s.overall.pct) + ')');
+    var rows = [
+      ['Al cotizar (mismo momento que la cotización)', s.atQuote],
+      ['Al comprar (solicitud aprobada)', s.atPurchase],
+      ['Misma aerolínea registrada', s.sameAirline]
+    ].concat(s.byChannel.map(function(c) { return ['Canal: ' + c.channel, c]; }));
+    document.getElementById('ptSummaryBody').innerHTML = rows.map(function(r) {
+      var a = r[1];
+      var dir = a.difference > 0 ? 'over' : a.difference < 0 ? 'under' : 'equal';
+      return '<tr class="' + dir + '"><td>' + escHtml(r[0]) + '</td>' +
+        '<td class="num">' + a.n + '</td>' +
+        '<td class="num">' + (a.n ? fmtMoney(a.quoted) : '—') + '</td>' +
+        '<td class="num">' + (a.n ? fmtMoney(a.market) : '—') + '</td>' +
+        '<td class="num var-cell">' + (a.n ? ptSigned(a.difference) : '—') + '</td>' +
+        '<td class="num var-cell">' + ptPct(a.pct) + '</td></tr>';
+    }).join('');
+  }
+  renderPriceTable();
+}
+
+function _ptFilteredItems() {
+  if (!priceData || !priceData.items) return [];
+  var f = document.getElementById('ptFilter').value;
+  return priceData.items.filter(function(it) {
+    if (!f) return true;
+    if (f === 'COMPRADAS') return it.status === 'RESERVADO' || it.status === 'PROCESADO';
+    return it.status === f;
+  });
+}
+
+function _ptSnapCell(snap) {
+  if (!snap) return '—';
+  if (snap.result !== 'OK') {
+    var why = { SIN_RESULTADOS: 'sin resultados', SIN_AEROPUERTO: 'sin aeropuerto', ERROR: 'error' }[snap.result] || snap.result;
+    return '<span class="pt-sub" title="' + escHtml(snap.detail) + '">' + escHtml(why) + '</span>';
+  }
+  var who = snap.referenceIsNear ? (snap.nearAirline + ' ' + snap.nearTime) : (snap.cheapestAirline + ' ' + snap.cheapestTime + ' (del día)');
+  return fmtMoney(snap.reference) + '<span class="pt-sub">' + escHtml(who) + ' · ' + escHtml(ptAgo(snap.at)) + '</span>';
+}
+
+function renderPriceTable() {
+  var items = _ptFilteredItems();
+  document.getElementById('ptCount').textContent = items.length + (items.length === 1 ? ' solicitud' : ' solicitudes');
+  document.getElementById('ptEmpty').style.display = items.length ? 'none' : '';
+  document.getElementById('ptTableBody').innerHTML = items.map(function(it) {
+    var dir = it.difference > 0 ? 'over' : it.difference < 0 ? 'under' : 'equal';
+    var buy = [it.airline, it.channel].filter(Boolean).join(' · ') || '—';
+    var trip = ptDay(it.departure) + (it.returnDate ? '<span class="pt-sub">regreso ' + ptDay(it.returnDate) + '</span>' : '<span class="pt-sub">solo ida</span>');
+    return '<tr class="' + dir + (it.status === 'APROBADO' ? ' pt-pending' : '') + '">' +
+      '<td class="pt-id">' + escHtml(it.requestId) + '</td>' +
+      '<td>' + escHtml((it.origin || '—') + ' → ' + (it.destination || '—')) + '<span class="pt-sub">' + escHtml(it.unit || '') + '</span></td>' +
+      '<td>' + trip + '</td>' +
+      '<td class="num">' + it.passengers + '</td>' +
+      '<td>' + escHtml(PT_STATUS[it.status] || it.status) + '</td>' +
+      '<td>' + escHtml(buy) + '</td>' +
+      '<td class="num">' + fmtMoney(it.quoted) + '</td>' +
+      '<td class="num">' + _ptSnapCell(it.atQuote) + '</td>' +
+      '<td class="num">' + _ptSnapCell(it.atPurchase) + '</td>' +
+      '<td class="num">' + (it.sameAirline ? fmtMoney(it.sameAirline) : '—') + '</td>' +
+      '<td class="num var-cell">' + (it.difference === null ? '—' : ptSigned(it.difference) +
+        '<span class="pt-sub">' + ptPct(it.differencePct) + '</span>') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+
+function exportPriceCsv() {
+  var items = _ptFilteredItems();
+  if (!items.length) { alert('No hay datos para exportar.'); return; }
+  var snapCols = function(s) {
+    return s ? [s.at, s.result, s.reference || '', s.referenceIsNear ? 'cerca de la hora' : 'del día', s.nearAirline || s.cheapestAirline, s.nearTime || s.cheapestTime, s.sameAirlineNear || s.sameAirlineDay || '', s.aviatur || ''] : ['', '', '', '', '', '', '', ''];
+  };
+  var head = ['Solicitud', 'Origen', 'Destino', 'Ida', 'Regreso', 'Pasajeros', 'Empresa', 'Unidad', 'Estado', 'Aerolínea registrada', 'Canal registrado', 'Cotizado tiquetes',
+    'Al cotizar: fecha', 'Al cotizar: resultado', 'Al cotizar: mercado', 'Al cotizar: referencia', 'Al cotizar: aerolínea', 'Al cotizar: salida', 'Al cotizar: misma aerolínea', 'Al cotizar: Aviatur en Google',
+    'Al comprar: fecha', 'Al comprar: resultado', 'Al comprar: mercado', 'Al comprar: referencia', 'Al comprar: aerolínea', 'Al comprar: salida', 'Al comprar: misma aerolínea', 'Al comprar: Aviatur en Google',
+    'Diferencia', 'Diferencia %'];
+  var q = function(v) {
+    var t = String(v === null || v === undefined ? '' : v);
+    if (typeof v === 'string' && /^[=+\-@]/.test(t)) t = "'" + t; // que Excel no lo lea como fórmula
+    return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  var lines = [head.join(';')].concat(items.map(function(it) {
+    return [it.requestId, it.origin, it.destination, it.departure, it.returnDate, it.passengers, it.company, it.unit, it.status, it.airline, it.channel, it.quoted || '']
+      .concat(snapCols(it.atQuote), snapCols(it.atPurchase),
+        [it.difference === null ? '' : it.difference, it.differencePct === null ? '' : it.differencePct.toFixed(1).replace('.', ',')])
+      .map(q).join(';');
+  }));
+  var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'comparador-precios-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
 function escHtml(s) {
   if (s === null || s === undefined) return '';
   return String(s)
@@ -3024,6 +3312,12 @@ document.addEventListener('DOMContentLoaded', function() {
   // VARIANCE: botón Exportar CSV
   var varCsvBtn = document.getElementById('btnExportVarianceCsv');
   if (varCsvBtn) varCsvBtn.addEventListener('click', exportVarianceCsv);
+
+  // COMPARADOR DE PRECIOS (#A84): filtro de estado y exportación
+  var ptFilterSel = document.getElementById('ptFilter');
+  if (ptFilterSel) ptFilterSel.addEventListener('change', function() { if (priceData) renderPriceTable(); });
+  var ptCsvBtn = document.getElementById('btnExportPriceCsv');
+  if (ptCsvBtn) ptCsvBtn.addEventListener('click', exportPriceCsv);
 
   // Bootstrap: si hay sesión guardada, entrar directo
   session = loadSession();

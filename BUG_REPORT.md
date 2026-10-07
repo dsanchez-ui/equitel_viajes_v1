@@ -1613,3 +1613,71 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
 2. Apps Script: pegar `Code.gs`, guardar, recargar la hoja, correr el **menú 12** (crea las columnas; no cierra nada) y crear la versión nueva del web app.
 3. Si alguien alcanzó a correr el menú 12 de la primera versión: las solicitudes que cerró quedan con la nota `[CIERRE AUTOMÁTICO …]` (cumplían la condición) y su disparador se borra solo en la hora siguiente.
 4. Rollback: versión anterior del web app.
+
+## **#A84 — Rastreo de precios de tiquetes (estudio de 2 semanas)**
+**Fecha:** 2026-10-07 · **Reportado por:** Alejandro Gómez (estudio de sobrecosto); diseño de David del 7-oct · **Estado:** Implementado, pendiente de pegar `Code.gs` y `CostsDashboard.html`, crear la versión nueva del web app e instalar el proyecto aparte
+
+**Pedido:**
+- Durante unas dos semanas, comparar en tiempo real el precio al que se compra con la opción más económica del mercado, para saber si hay ahorro posible.
+- Que no lo vea Laura ni cambie la operación: un sistema aparte.
+- Mostrarlo en el dashboard de costos, en una sección solo para administradores, como la variación cotizado vs facturado.
+
+**Diseño** (decisiones de David y lo que se acordó):
+- **Proyecto de Apps Script aparte** (`tools/comparador-precios/apps-script/`). La plataforma no tiene permiso para salir a internet (#A62): dárselo obligaría a reautorizarla, con riesgo para los recordatorios y la copia diaria. El proyecto aparte:
+  - usa el mismo núcleo de la prueba (`comparador.cjs`, copiado tal cual como `Nucleo.gs`) y la clave de SerpApi en sus propias propiedades;
+  - pide solo tres permisos: hojas de cálculo, conexión externa y disparadores;
+  - se apaga con `desactivarRastreo`.
+- **Datos en la misma base, en dos pestañas ocultas** (`COMPARATIVO PRECIOS`, una fila por búsqueda, y `COMPARATIVO ESTADO`).
+  - El espacio no es problema: unas 130 filas al mes frente al límite de 10 millones de celdas de Sheets.
+  - El proyecto aparte **solo lee** la hoja de solicitudes y **solo escribe** sus pestañas, que llevan un aviso si alguien intenta editarlas.
+  - Así entran en la copia diaria y el dashboard las lee sin permisos nuevos.
+- **Dos momentos por solicitud de vuelo**, una búsqueda en cada uno, cada 15 minutos:
+  - **Al comprar** (lo que pidió David): `APROBADO`, o `RESERVADO` hace menos de 6 horas. Muestra cuánto costaría la opción más barata cuando Laura compra.
+  - **Al cotizar**: `PENDIENTE_APROBACION` con los costos confirmados desde el inicio del estudio. Es la única comparación justa de la cotización de Aviatur, porque se hace en el mismo momento. Se agregó porque cuesta una búsqueda más y responde la pregunta original de Alejandro.
+  - Nunca hospedaje, viajes ya salidos ni otros estados.
+- **Referencia del mercado:** el más barato saliendo ±2 h de la «Hora Requerida de Vuelo» (sin hora, el más barato del día), para todos los pasajeros (comprobado el 6-oct: con 2 pasajeros el precio es el total del grupo). También guarda el más barato de la aerolínea que registró Laura (#A82), con los nombres normalizados («Copa Airlines» = «COPA»).
+- **Cupo:**
+  - no busca si a la cuenta le quedan menos de 15 búsquedas;
+  - máximo 40 consultas al día y 8 búsquedas por pasada;
+  - un error transitorio no deja fila y se reintenta;
+  - los vendedores (si Aviatur vende el vuelo) están apagados por defecto porque gastan 1 o 2 consultas más.
+- **Duración:** `activarRastreo` fija el inicio hoy y el fin en 14 días; después no busca.
+- **Quién lo ve:** las mismas personas que la variación (`COSTS_VARIANCE_ALLOWED`: Yurani, Diego y David). Laura no. Solo agregados y datos de la solicitud: sin nombres, cédulas ni correos.
+
+**Cambio:**
+- **Proyecto aparte** `Rastreo.gs` + `appsscript.json`:
+  - `rastrearPrecios` (disparador), `probarConfiguracion` (no gasta búsquedas), `activarRastreo`, `desactivarRastreo`;
+  - guía de instalación paso a paso en su `README.md`.
+- **`server/Code.gs`** (solo lectura, sin `UrlFetchApp`):
+  - `getPriceTracking` y su envoltura `costsDashboard_getPriceTracking`;
+  - permiso en `dispatch` y en la función;
+  - `canViewPriceTracking` en `meta.access` del dashboard.
+- **`server/CostsDashboard.html`:** sección **🔎 Comparador de precios de tiquetes**:
+  - estado del rastreo, con aviso si no ha corrido en 45 minutos;
+  - cotizado, mercado y ahorro posible;
+  - resumen al cotizar, al comprar, por misma aerolínea y por canal;
+  - detalle por solicitud con filtro (por comprar, esperando aprobación, compradas) y CSV.
+- `tools/check-price-tracking.cjs` en `npm run verify`; `check-gas-syntax` revisa también la carpeta del proyecto aparte.
+- El comando local (`buscar.cjs`) guarda también las respuestas de regreso y vendedores de `--vendedores`.
+
+**Verificado:**
+- `npm run verify`.
+- `tools/check-price-tracking.cjs`, 47 comprobaciones: corre `Rastreo.gs` y `Code.gs` juntos sobre una hoja simulada y un SerpApi simulado, y lo que escribe uno lo lee el otro.
+  - qué busca y cuándo, con prioridad a la compra y a la ida más próxima;
+  - la hoja de solicitudes queda idéntica y la clave nunca llega a la hoja ni al registro de ejecuciones;
+  - reserva, tope diario, tope por pasada, 401, 429, sin resultados, ciudad sin aeropuerto y reintento de errores transitorios;
+  - vendedores solo en el momento configurado; disparador sin duplicar; fechas y horas guardadas como texto;
+  - en el dashboard: Laura y otros usuarios no lo ven (en `dispatch` y en la función), sin datos personales, sin escrituras, cuentas correctas y, con los dos momentos, manda el de la compra.
+- 23 defectos introducidos a propósito en `Rastreo.gs` y `Code.gs`: 22 detectados. El que no se detecta es la segunda capa de limpieza de la clave en DETALLE: con la primera activa, la clave no puede llegar ahí.
+- **Revisión de seguridad:** los errores de red de `UrlFetchApp` traen la URL consultada, y esa URL lleva la clave de SerpApi. Antes de escribirlos en la hoja o en el registro se quitan las direcciones y la clave (`rpLimpio_`). El CSV del dashboard antepone `'` a los valores que Excel leería como fórmula.
+- Chrome sin ventana con el dashboard real y datos generados por `Code.gs`: la sección completa, y los estados sin instalar, con error del servidor, sin permiso y sin correr en 45 minutos.
+- **No verificado aquí:** el proyecto aparte dentro de Apps Script real (`openById`, disparador, ocultar y proteger la pestaña, `UrlFetchApp`). SerpApi sí se probó el 6-oct con el mismo núcleo. El paso 5 de la guía (`probarConfiguracion`) lo comprueba sin gastar búsquedas.
+
+**Despliegue** (independiente del frontend de la app: no cambia nada en React):
+1. Apps Script de la plataforma: pegar `Code.gs` y `CostsDashboard.html`, guardar y crear la versión nueva del web app. Sin el proyecto aparte, la sección dice que el rastreo no está activo.
+2. Proyecto aparte: seguir `tools/comparador-precios/apps-script/README.md` (crear, pegar, propiedades, `probarConfiguracion`, `activarRastreo`).
+3. Combinaciones:
+   - backend anterior con el HTML nuevo: la sección no aparece;
+   - backend nuevo con el HTML anterior: nada visible;
+   - proyecto aparte activo con la plataforma anterior: escribe sus pestañas y nadie las muestra.
+4. Rollback: `desactivarRastreo` y la versión anterior del web app. Las pestañas se pueden borrar; nada de la plataforma depende de ellas.

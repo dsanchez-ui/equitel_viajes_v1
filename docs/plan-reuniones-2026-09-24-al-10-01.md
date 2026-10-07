@@ -30,7 +30,7 @@ Alejandro, y al final lo más grande.
 | # | Qué | Pedido por | Compromiso / meta | Estado (2-oct) |
 |---|---|---|---|---|
 | V1 | Mostrar el detalle de la solicitud en **Confirmar costos** | Laura (1-oct) | David: "Te lo quedo debiendo" | **Implementado (#A81)**, pendiente de push |
-| V2 | Comparador de precios y estudio de 2–3 semanas de sobrecosto | Alejandro (1–2 oct) | Plan y prueba para que David la ejecute | **Plan y prueba listos** ([plan](plan-comparador-precios.md)) |
+| V2 | Comparador de precios y estudio de 2–3 semanas de sobrecosto | Alejandro (1–2 oct) | Plan y prueba para que David la ejecute | Prueba hecha el 6-oct; **rastreo del estudio implementado (#A84)**, pendiente de instalar ([plan](plan-comparador-precios.md)) |
 | V3 | Registrar con qué aerolínea y canal se compró (Aviatur o directo) | Se desprende de V2 y del 1-oct | Fase 1 del plan del comparador | **Implementado (#A82)**, pendiente de despliegue |
 | V4 | **Cierre automático** de solicitudes cuando las facturas suman lo cotizado, con alerta si falta algo | Laura (1-oct); "va de la mano" con lo hablado con Diego | Decisión **acordada**; David: "sí se puede" | **Implementado (#A83)** como bandeja "Listas para cerrar" (sin cierre automático, decisión del 2-oct); pendiente de despliegue |
 | V5 | **Leer las facturas PDF** del Drive y llenar costos y facturas en la hoja | Diego (30-sep) | David: "sobre el final del mes … del otro mes" (dicho el 30-sep: finales de octubre) | **Solo plan** (decisión del 2-oct): [plan-lectura-facturas.md](plan-lectura-facturas.md) |

@@ -1,6 +1,6 @@
 # Plan — Comparador de precios de tiquetes y estudio de sobrecosto
 
-> **Estado (2026-10-06): propuesta + prueba lista para ejecutar, con tutorial paso a paso. Fase 1 implementada (#A82).** Pedido de Alejandro
+> **Estado (2026-10-07): prueba hecha el 6-oct (demostración para Alejandro). Fase 1 en producción (#A82). Fase 2 implementada como estudio de 2 semanas, oculto para Laura (#A84), pendiente de instalar.** Pedido de Alejandro
 > Gómez (vicepresidente) a David. La prueba (fase 0) está en
 > [tools/comparador-precios/](../tools/comparador-precios/README.md); las fases 1 a 4
 > esperan su resultado y las decisiones del final.
@@ -94,24 +94,33 @@ Sirve aunque no haya comparador: permite medir por aerolínea y por canal.
 cambia el precio, y en la reunión del 10-sep se descartó una lista fija de categorías. Se
 agrega si la prueba del comparador muestra que hace falta para comparar en igualdad.
 
-### Fase 2 — Búsqueda automática
+### Fase 2 — Búsqueda automática (implementada: #A84)
 
 Un **proyecto de Apps Script aparte**, no el de producción, con un disparador cada
-15 minutos. Toma las solicitudes de vuelo nuevas y busca precio en dos momentos:
-1. **Al crearse la solicitud** (lo que pide Alejandro): el precio de mercado cuando
-   nace la necesidad.
-2. **Cuando la solicitud llega a confirmación de costos:** el precio comparable con
-   la cotización, porque se busca casi a la misma hora en que Aviatur cotiza.
+15 minutos ([instalación](../tools/comparador-precios/apps-script/README.md)). Busca cada
+solicitud de vuelo en dos momentos (decisión de David del 7-oct):
+1. **Al cotizar** (`PENDIENTE_APROBACION`): el precio comparable con la cotización, porque
+   se busca casi a la misma hora en que Aviatur cotiza.
+2. **Al comprar** (`APROBADO`, o recién `RESERVADO`): cuánto costaría la opción más barata
+   cuando Laura compra.
 
-Los resultados van a una hoja nueva, **COMPARATIVO PRECIOS**. La clave de la API va en
-las propiedades de ese proyecto, nunca en el código.
+No se busca al crearse la solicitud: entre la creación y la compra pasan la selección y
+las aprobaciones, y ese precio no se compara con nada.
+
+Los resultados van a dos pestañas ocultas de la misma base, **COMPARATIVO PRECIOS** y
+**COMPARATIVO ESTADO**, que el proyecto aparte es el único que escribe. La clave de la API
+va en las propiedades de ese proyecto, nunca en el código ni en la hoja.
 
 **Por qué un proyecto aparte:** el de producción no tiene permiso de salida a internet
 (#A62). Dárselo obliga a volver a autorizar el script, con riesgo para los
 recordatorios y la copia diaria, que corren con la autorización del dueño. Uno aparte
 aísla ese riesgo y se apaga sin tocar la plataforma.
 
-### Fase 3 — Comparación visible para Laura
+### Fase 3 — Comparación visible para Laura (después del estudio)
+
+Por ahora (#A84) la comparación **solo la ven Yurani, Diego y David**, en una sección del
+dashboard de costos (las mismas personas de la variación cotizado vs facturado). Laura no
+la ve. Lo que sigue es para después del estudio, si se decide mostrársela:
 
 En **Confirmar costos**, junto al costo que está escribiendo, una tabla con el precio
 más bajo por aerolínea de la búsqueda más reciente. El backend la lee de la hoja
