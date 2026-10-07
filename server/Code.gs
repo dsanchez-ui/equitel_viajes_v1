@@ -264,7 +264,8 @@ const HEADERS_REQUESTS = [
   "CELULARES PASAJEROS (JSON)", // Objeto {cédula: '3001234567'} — celular OPCIONAL de pasajeros NO registrados en USUARIOS, recogido en el formulario (#A75)
   "AEROLINEA", // Aerolínea del tiquete (#A82) — al confirmar costos y al registrar la reserva
   "CANAL DE COMPRA", // 'Aviatur' | 'Directo' | 'Otra agencia' (#A82)
-  "AVISO FACTURAS OMITIDO" // Quién omitió el aviso de facturas incompletas y cuándo (#A83)
+  "AVISO FACTURAS OMITIDO", // Quién omitió el aviso de facturas incompletas y cuándo (#A83)
+  "AEROLINEA REGRESO" // Aerolínea del regreso solo si es distinta de la de ida (#A85)
 ];
 
 // =====================================================================
@@ -618,7 +619,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'dismissInvoiceAlert', 'getPriceTracking'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'dismissInvoiceAlert', 'getPriceTracking', 'getPriceTrackingDetail'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -644,7 +645,7 @@ function dispatch(action, payload) {
       return { success: false, error: _costsVarianceDeniedMsg_() };
     }
     // Comparador de precios del estudio (#A84): las mismas personas que la variación.
-    if (action === 'getPriceTracking' && !_canViewCostsVariance_(currentUserEmail)) {
+    if ((action === 'getPriceTracking' || action === 'getPriceTrackingDetail') && !_canViewCostsVariance_(currentUserEmail)) {
       return { success: false, error: 'El comparador de precios está restringido a ' + _costsVarianceViewersLabel_() + '.' };
     }
 
@@ -686,7 +687,7 @@ function dispatch(action, payload) {
       // Estadísticas de compra de tiquetes y hospedaje (#A80). Solo administradores (adminOnlyActions).
       case 'getPurchaseStats': result = getPurchaseStats(payload.filters || {}); break;
       // Aerolínea y canal de compra (#A82) y facturas por revisar (#A83). Solo administradores.
-      case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel); break;
+      case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline); break;
       case 'getInvoiceReview': result = getInvoiceReview(); break;
       case 'dismissInvoiceAlert': result = dismissInvoiceAlert(payload.requestId, currentUserEmail); break;
       // SECURITY: Server-side analyst check
@@ -746,6 +747,10 @@ function dispatch(action, payload) {
         // #A77: solo los cambios de estado que usa la app, por quien corresponde.
         var _upd = _authorizeStatusUpdate_(currentUserEmail, payload);
         result = updateRequestStatus(_upd.id, _upd.status, _upd.payload);
+        // #A86: quién confirmó los costos (lo muestra el comparador de precios). No crítico.
+        if (_upd.status === 'PENDIENTE_APROBACION' && _upd.payload && _upd.payload.finalCostTickets !== undefined) {
+          _recordEvent_(_upd.id, 'costConfirmedBy', { email: currentUserEmail });
+        }
         break;
       }
       case 'uploadSupportFile': result = uploadSupportFile(payload.requestId, payload.fileData, payload.fileName, payload.mimeType, payload.correctionNote); break;
@@ -779,6 +784,7 @@ function dispatch(action, payload) {
       case 'resetCostsDashboardConfig': result = resetCostsDashboardConfig(currentUserEmail); break;
       case 'getCostsVarianceReport': result = getCostsVarianceReport(payload.filters, currentUserEmail); break;
       case 'getPriceTracking': result = getPriceTracking(currentUserEmail); break;
+      case 'getPriceTrackingDetail': result = getPriceTrackingDetail(currentUserEmail, payload.requestId); break;
       case 'getMonthlyBudgetUsage': result = getMonthlyBudgetUsage(payload.empresa, payload.unidad); break;
 
       // PASSPORT VALIDATION (internacional). Cualquier sesión válida puede
@@ -3261,11 +3267,17 @@ function _ensureRequestColumn_(header, note) {
 // cambiar si Aviatur no ajusta el precio). Pedido de David, 2-oct-2026, para
 // medir cuánto se compra fuera de Aviatur (docs/plan-comparador-precios.md).
 //
+// #A85 (pedido de Laura, 6-oct-2026): a veces la ida se compra con una
+// aerolínea y el regreso con otra (LATAM de ida, Avianca de regreso). AEROLINEA
+// es la de ida (o la de todo el viaje) y AEROLINEA REGRESO la del regreso solo
+// si es distinta; vacía = la misma. Solo aplica a viajes con fecha de regreso.
+//
 // ⚠️ GEMELO: utils/purchase.ts. tools/check-purchase-info-rules.cjs compara los
 // dos lados dentro de npm run verify.
 
 var PURCHASE_AIRLINE_HEADER = 'AEROLINEA';
 var PURCHASE_CHANNEL_HEADER = 'CANAL DE COMPRA';
+var PURCHASE_RETURN_AIRLINE_HEADER = 'AEROLINEA REGRESO';
 var PURCHASE_CHANNELS = ['Aviatur', 'Directo', 'Otra agencia'];
 var PURCHASE_AIRLINES = ['Avianca', 'LATAM', 'Wingo', 'JetSMART', 'Satena', 'Clic', 'Copa Airlines', 'American Airlines',
   'United Airlines', 'Delta', 'Iberia', 'Aeroméxico', 'Arajet', 'Air Europa', 'Varias aerolíneas'];
@@ -3277,32 +3289,45 @@ function _purchaseKey_(s) {
     .toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+/** Valida un nombre de aerolínea (ya sin espacios sobrantes) y lo deja con su escritura oficial. */
+function _purchaseAirlineName_(a, which) {
+  if (a.length > PURCHASE_AIRLINE_MAX) {
+    return { ok: false, name: '', error: 'El nombre de la aerolínea' + which + ' es demasiado largo (máximo ' + PURCHASE_AIRLINE_MAX + ' caracteres).' };
+  }
+  if (!/^[A-Za-zÀ-ÖØ-öø-ÿ0-9][A-Za-zÀ-ÖØ-öø-ÿ0-9 .&'\/-]*$/.test(a)) {
+    return { ok: false, name: '', error: 'La aerolínea' + which + ' solo puede tener letras, números, espacios y los signos . & \' / -' };
+  }
+  var key = _purchaseKey_(a);
+  for (var j = 0; j < PURCHASE_AIRLINES.length; j++) {
+    if (_purchaseKey_(PURCHASE_AIRLINES[j]) === key) return { ok: true, name: PURCHASE_AIRLINES[j] };
+  }
+  return { ok: true, name: a };
+}
+
 /**
  * Valida y normaliza aerolínea y canal. Solo hospedaje no lleva aerolínea.
- * @returns {{ok: boolean, airline: string, channel: string, error?: string}}
+ * returnAirline (#A85): aerolínea del regreso si es distinta de la de ida; vacía
+ * o igual a la de ida = la misma (se guarda '').
+ * @returns {{ok: boolean, airline: string, channel: string, returnAirline: string, error?: string}}
  */
-function _normalizePurchaseInfo_(airline, channel, isHotelOnly) {
+function _normalizePurchaseInfo_(airline, channel, isHotelOnly, returnAirline) {
   var chKey = _purchaseKey_(channel);
-  if (!chKey) return { ok: false, airline: '', channel: '', error: 'Indique el canal de compra.' };
+  if (!chKey) return { ok: false, airline: '', channel: '', returnAirline: '', error: 'Indique el canal de compra.' };
   var ch = '';
   for (var i = 0; i < PURCHASE_CHANNELS.length; i++) {
     if (_purchaseKey_(PURCHASE_CHANNELS[i]) === chKey) ch = PURCHASE_CHANNELS[i];
   }
-  if (!ch) return { ok: false, airline: '', channel: '', error: 'Canal de compra no válido. Opciones: Aviatur, Directo u Otra agencia.' };
-  if (isHotelOnly) return { ok: true, airline: '', channel: ch };
+  if (!ch) return { ok: false, airline: '', channel: '', returnAirline: '', error: 'Canal de compra no válido. Opciones: Aviatur, Directo u Otra agencia.' };
+  if (isHotelOnly) return { ok: true, airline: '', channel: ch, returnAirline: '' };
   var a = String(airline == null ? '' : airline).replace(/\s+/g, ' ').trim();
-  if (!a) return { ok: false, airline: '', channel: ch, error: 'Indique la aerolínea.' };
-  if (a.length > PURCHASE_AIRLINE_MAX) {
-    return { ok: false, airline: '', channel: ch, error: 'El nombre de la aerolínea es demasiado largo (máximo ' + PURCHASE_AIRLINE_MAX + ' caracteres).' };
-  }
-  if (!/^[A-Za-zÀ-ÖØ-öø-ÿ0-9][A-Za-zÀ-ÖØ-öø-ÿ0-9 .&'\/-]*$/.test(a)) {
-    return { ok: false, airline: '', channel: ch, error: 'La aerolínea solo puede tener letras, números, espacios y los signos . & \' / -' };
-  }
-  var key = _purchaseKey_(a);
-  for (var j = 0; j < PURCHASE_AIRLINES.length; j++) {
-    if (_purchaseKey_(PURCHASE_AIRLINES[j]) === key) { a = PURCHASE_AIRLINES[j]; break; }
-  }
-  return { ok: true, airline: a, channel: ch };
+  if (!a) return { ok: false, airline: '', channel: ch, returnAirline: '', error: 'Indique la aerolínea.' };
+  var out = _purchaseAirlineName_(a, '');
+  if (!out.ok) return { ok: false, airline: '', channel: ch, returnAirline: '', error: out.error };
+  var r = String(returnAirline == null ? '' : returnAirline).replace(/\s+/g, ' ').trim();
+  if (!r) return { ok: true, airline: out.name, channel: ch, returnAirline: '' };
+  var back = _purchaseAirlineName_(r, ' del regreso');
+  if (!back.ok) return { ok: false, airline: '', channel: ch, returnAirline: '', error: back.error };
+  return { ok: true, airline: out.name, channel: ch, returnAirline: _purchaseKey_(back.name) === _purchaseKey_(out.name) ? '' : back.name };
 }
 
 /** ¿La solicitud (fila 1-based) es de solo hospedaje? */
@@ -3312,23 +3337,36 @@ function _rowIsHotelOnly_(sheet, rowNumber) {
   return String(sheet.getRange(rowNumber, idx + 1).getValue() || '').trim() === 'SOLO_HOSPEDAJE';
 }
 
+/** ¿La solicitud (fila 1-based) tiene fecha de regreso? Sin regreso no hay aerolínea de regreso (#A85). */
+function _rowHasReturn_(sheet, rowNumber) {
+  var idx = H('FECHA VUELTA');
+  if (idx < 0) return false;
+  return String(sheet.getRange(rowNumber, idx + 1).getValue() || '').trim() !== '';
+}
+
 /**
  * Valida aerolínea y canal que llegan al confirmar costos (updateRequest). Lanza
- * un error claro si no son válidos, ANTES de escribir nada.
+ * un error claro si no son válidos, ANTES de escribir nada. La aerolínea del
+ * regreso (#A85) solo se toca si la clave purchaseReturnAirline viene en el
+ * payload: una pestaña con la app anterior no la manda y no borra la guardada.
  */
 function _normalizePurchasePayload_(requestId, inner) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   var rowNumber = _getRowByRequestId_(requestId);
   if (!sheet || rowNumber === -1) throw new Error('ID no encontrado');
-  var r = _normalizePurchaseInfo_(inner.purchaseAirline, inner.purchaseChannel, _rowIsHotelOnly_(sheet, rowNumber));
+  var withReturn = inner.purchaseReturnAirline !== undefined;
+  var r = _normalizePurchaseInfo_(inner.purchaseAirline, inner.purchaseChannel, _rowIsHotelOnly_(sheet, rowNumber),
+    withReturn && _rowHasReturn_(sheet, rowNumber) ? inner.purchaseReturnAirline : '');
   if (!r.ok) throw new Error(r.error);
   var out = {};
   Object.keys(inner).forEach(function(k) { out[k] = inner[k]; });
   out.purchaseAirline = r.airline;
   out.purchaseChannel = r.channel;
+  if (withReturn) out.purchaseReturnAirline = r.returnAirline;
   return out;
 }
 
+/** Escribe aerolínea y canal; la aerolínea del regreso solo si info.returnAirline viene (#A85). */
 function _writePurchaseInfo_(sheet, rowNumber, info) {
   var colAirline = _ensureRequestColumn_(PURCHASE_AIRLINE_HEADER,
     'Aerolínea del tiquete (#A82). La registra el área de viajes al confirmar costos y al registrar la reserva.');
@@ -3336,20 +3374,29 @@ function _writePurchaseInfo_(sheet, rowNumber, info) {
     'Canal de compra (#A82): Aviatur, Directo (aerolínea u hotel) u Otra agencia. Se registra al confirmar costos y al registrar la reserva.');
   sheet.getRange(rowNumber, colAirline).setValue(safeSheetValue_(info.airline || ''));
   sheet.getRange(rowNumber, colChannel).setValue(safeSheetValue_(info.channel || ''));
+  if (info.returnAirline !== undefined) {
+    var colReturn = _ensureRequestColumn_(PURCHASE_RETURN_AIRLINE_HEADER, PURCHASE_RETURN_AIRLINE_NOTE);
+    sheet.getRange(rowNumber, colReturn).setValue(safeSheetValue_(info.returnAirline || ''));
+  }
 }
+
+var PURCHASE_RETURN_AIRLINE_NOTE = 'Aerolínea del regreso (#A85), solo si es distinta de la de ida (AEROLINEA). Vacía = la misma aerolínea o viaje solo de ida.';
 
 /**
  * Guarda aerolínea y canal de una solicitud (registro de la reserva o corrección).
+ * returnAirline (#A85): undefined = no tocar la guardada (app anterior).
  * Solo administradores (adminOnlyActions).
  */
-function setPurchaseInfo(requestId, airline, channel) {
+function setPurchaseInfo(requestId, airline, channel, returnAirline) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   var rowNumber = _getRowByRequestId_(requestId);
   if (!sheet || rowNumber === -1) throw new Error('Solicitud no encontrada.');
-  var r = _normalizePurchaseInfo_(airline, channel, _rowIsHotelOnly_(sheet, rowNumber));
+  var withReturn = returnAirline !== undefined && returnAirline !== null;
+  var r = _normalizePurchaseInfo_(airline, channel, _rowIsHotelOnly_(sheet, rowNumber),
+    withReturn && _rowHasReturn_(sheet, rowNumber) ? returnAirline : '');
   if (!r.ok) throw new Error(r.error);
-  _writePurchaseInfo_(sheet, rowNumber, r);
-  return { airline: r.airline, channel: r.channel };
+  _writePurchaseInfo_(sheet, rowNumber, { airline: r.airline, channel: r.channel, returnAirline: withReturn ? r.returnAirline : undefined });
+  return { airline: r.airline, channel: r.channel, returnAirline: r.returnAirline };
 }
 
 // =====================================================================
@@ -3513,6 +3560,7 @@ function _ensureA82A83Columns_() {
       'Aerolínea del tiquete (#A82). La registra el área de viajes al confirmar costos y al registrar la reserva.') },
     { header: PURCHASE_CHANNEL_HEADER, col: _ensureRequestColumn_(PURCHASE_CHANNEL_HEADER,
       'Canal de compra (#A82): Aviatur, Directo (aerolínea u hotel) u Otra agencia. Se registra al confirmar costos y al registrar la reserva.') },
+    { header: PURCHASE_RETURN_AIRLINE_HEADER, col: _ensureRequestColumn_(PURCHASE_RETURN_AIRLINE_HEADER, PURCHASE_RETURN_AIRLINE_NOTE) },
     { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
       'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
   ];
@@ -6842,7 +6890,8 @@ function updateRequestStatus(id, status, payload) {
        // impedir el cambio de estado ni los correos que siguen.
        if (payload.purchaseChannel !== undefined) {
            try {
-               _writePurchaseInfo_(sheet, rowNumber, { airline: payload.purchaseAirline || '', channel: payload.purchaseChannel });
+               _writePurchaseInfo_(sheet, rowNumber, { airline: payload.purchaseAirline || '', channel: payload.purchaseChannel,
+                   returnAirline: payload.purchaseReturnAirline }); // #A85: undefined = no tocarla
            } catch (e) {
                console.error('updateRequestStatus: no se pudo guardar aerolínea/canal de ' + id + ': ' + e);
            }
@@ -7519,7 +7568,7 @@ function _authorizeStatusUpdate_(currentUserEmail, payload) {
     // suma. Si algo falla, no se escribe nada.
     inner = _normalizeConfirmedCosts_(inner);
     // #A82: aerolínea y canal de compra, si la app los envía al confirmar costos.
-    if (inner.purchaseChannel !== undefined || inner.purchaseAirline !== undefined) {
+    if (inner.purchaseChannel !== undefined || inner.purchaseAirline !== undefined || inner.purchaseReturnAirline !== undefined) {
       inner = _normalizePurchasePayload_(id, inner);
     }
     return { id: id, status: status, payload: inner };
@@ -7956,7 +8005,10 @@ function mapRowToRequest(row, lite) {
 
     // Aerolínea y canal de compra (#A82). '' si la columna aún no existe.
     purchaseAirline: String(get("AEROLINEA") || ''),
-    purchaseChannel: String(get("CANAL DE COMPRA") || '')
+    purchaseChannel: String(get("CANAL DE COMPRA") || ''),
+    // Aerolínea del regreso si es distinta (#A85). Que la clave venga le dice a la
+    // app que este servidor ya la guarda.
+    purchaseReturnAirline: String(get("AEROLINEA REGRESO") || '')
   };
 
   // Compute and attach the EFFECTIVE approval status (mirrors the rules in
@@ -13826,6 +13878,7 @@ function usuarios_getAnomalias() {
 //   optionsUploaded     — analista carga opciones (PENDIENTE_SELECCION)
 //   selectionMade       — usuario describe su selección (PENDIENTE_CONFIRMACION_COSTO)
 //   costConfirmed       — analista confirma costos (PENDIENTE_APROBACION)
+//   costConfirmedBy     — {email, at} de quién confirmó los costos (#A86, comparador de precios)
 //   approvals.{role}    — cada vez que un aprobador clickea (NORMAL/CEO/CDS)
 //   fullyApproved       — cuando se completan todas las aprobaciones requeridas
 //   reservationRegistered — analista registra la reserva (RESERVADO)
@@ -13882,6 +13935,11 @@ function _recordEvent_(requestId, eventKey, data) {
           email: (data && data.email) || '',
           at: nowIso
         };
+      }
+    } else if (eventKey === 'costConfirmedBy') {
+      // Quién confirmó los costos (#A86): la primera vez, igual que costConfirmed.
+      if (!events.costConfirmedBy) {
+        events.costConfirmedBy = { email: (data && data.email) || '', at: nowIso };
       }
     } else {
       // Solo registra la primera vez que se dispara el evento.
@@ -17200,10 +17258,17 @@ function _csEmptyVariance_(year, fromMonth, toMonth, access) {
 // pestaña para el dashboard de costos.
 //
 // Lo ven las mismas personas que la variación cotizado vs facturado
-// (COSTS_VARIANCE_ALLOWED): Laura no. No sale ningún nombre, cédula ni correo.
+// (COSTS_VARIANCE_ALLOWED): Laura no. No sale ningún dato de los pasajeros ni del
+// solicitante; el detalle de un viaje sí dice qué administrador confirmó los costos.
 //
 // Referencia del mercado de una búsqueda = el más barato saliendo ±2 h de la hora
 // pedida; si la solicitud no tiene hora, el más barato del día.
+//
+// Formato 2 (#A86): cada tramo se busca por separado (la ida con su hora, el
+// regreso con la suya) y la referencia es la suma de los tramos; en internacional
+// de ida y vuelta, el menor entre esa suma y el tiquete redondo. La columna TRAMOS
+// trae cada tramo con sus vuelos. En el formato 1 el precio de ida y vuelta venía
+// junto (el vuelo de ida con el regreso más barato que Google le combinaba).
 var PRICE_TRACKING_SHEET = 'COMPARATIVO PRECIOS';
 var PRICE_TRACKING_STATE_SHEET = 'COMPARATIVO ESTADO';
 
@@ -17234,26 +17299,72 @@ function _ptIso_(v) {
   return d && !isNaN(d.getTime()) ? d.toISOString() : '';
 }
 
-/** Una fila de la pestaña → la búsqueda resumida para el dashboard. */
-function _ptSnapshot_(r) {
+/** Un tramo de TRAMOS (formato 2, #A86) → objeto para el dashboard; con withOptions, sus vuelos. */
+function _ptLeg_(l, withOptions) {
+  if (!l || typeof l !== 'object') return null;
+  var num = function(x) { var v = Number(x); return isFinite(v) && v > 0 ? Math.round(v) : null; };
+  var opt = function(o) {
+    return o && typeof o === 'object'
+      ? { airline: String(o.a || ''), flights: String(o.v || ''), departs: String(o.s || ''), arrives: String(o.l || ''), price: num(o.p) }
+      : null;
+  };
+  var out = {
+    leg: String(l.t || ''), from: String(l.de || ''), to: String(l.a || ''), date: String(l.f || ''), returnDate: String(l.fr || ''),
+    hour: String(l.h || ''), airline: String(l.ar || ''),
+    ok: l.ok === true, result: l.ok === true ? 'OK' : String(l.res || 'ERROR'), error: String(l.err || ''),
+    cheapest: opt(l.barato), near: opt(l.cerca), sameNear: opt(l.mismaCerca), sameDay: opt(l.mismaDia),
+    reference: num(l.ref), referenceIsNear: l.refCerca === true,
+    typicalRange: String(l.rango || ''), level: String(l.nivel || ''),
+    optionCount: num(l.total) || (Array.isArray(l.ops) ? l.ops.length : 0),
+    vendors: Array.isArray(l.vend) ? l.vend.map(function(x) { return { seller: String(x.v || ''), price: num(x.p), isAirline: x.a === true }; }) : []
+  };
+  if (withOptions) {
+    out.options = (Array.isArray(l.ops) ? l.ops : []).map(function(o) {
+      return { airline: String(o[0] || ''), flights: String(o[1] || ''), departs: String(o[2] || ''), arrives: String(o[3] || ''),
+        stops: Number(o[4]) || 0, minutes: num(o[5]), price: num(o[6]) };
+    });
+  }
+  return out;
+}
+
+/** Una fila de la pestaña → la búsqueda resumida para el dashboard. Con withOptions, los vuelos de cada tramo. */
+function _ptSnapshot_(r, withOptions) {
   var n = function(k) { var x = _csToNumber_(r[k]); return x > 0 ? Math.round(x) : null; };
   var near = n('MAS BARATO CERCA HORA');
   var day = n('MAS BARATO');
   var vendors = [];
   try { vendors = r['VENDEDORES'] ? JSON.parse(r['VENDEDORES']) : []; } catch (e) { vendors = []; }
+  var format = Math.round(_csToNumber_(r['FORMATO'])) || 1;
+  var legs = [];
+  try {
+    var raw = r['TRAMOS'] ? JSON.parse(r['TRAMOS']) : [];
+    if (Array.isArray(raw)) legs = raw.map(function(l) { return _ptLeg_(l, withOptions); }).filter(Boolean);
+  } catch (e) { legs = []; }
+  var v2 = format >= 2;
+  var atHour = v2 ? String(r['REFERENCIA A LA HORA'] || '').trim() : (near ? 'SI' : 'NO');
+  var sameNear = n('MISMA AEROLINEA CERCA HORA'), sameDay = n('MISMA AEROLINEA DIA');
   return {
     at: _ptIso_(r['FECHA BUSQUEDA']),
     moment: String(r['MOMENTO'] || '').trim(),
     result: String(r['RESULTADO'] || '').trim(),
     detail: String(r['DETALLE'] || '').trim(),
+    format: format,
     statusAtSearch: String(r['ESTADO'] || '').trim(),
     quotedAtSearch: n('COSTO TIQUETES COTIZADO'),
     airlineAtSearch: String(r['AEROLINEA REGISTRADA'] || '').trim(),
-    cheapest: day, cheapestAirline: String(r['AEROLINEA MAS BARATA'] || '').trim(), cheapestTime: _ptHour_(r['SALIDA MAS BARATA']),
-    near: near, nearAirline: String(r['AEROLINEA CERCA HORA'] || '').trim(), nearTime: _ptHour_(r['SALIDA CERCA HORA']),
+    cheapest: day, cheapestAirline: String(r['AEROLINEA MAS BARATA'] || '').trim(), cheapestTime: v2 ? String(r['SALIDA MAS BARATA'] || '').trim() : _ptHour_(r['SALIDA MAS BARATA']),
+    near: near, nearAirline: String(r['AEROLINEA CERCA HORA'] || '').trim(), nearTime: v2 ? String(r['SALIDA CERCA HORA'] || '').trim() : _ptHour_(r['SALIDA CERCA HORA']),
     nearFlight: String(r['VUELO CERCA HORA'] || '').trim(),
-    sameAirlineNear: n('MISMA AEROLINEA CERCA HORA'), sameAirlineDay: n('MISMA AEROLINEA DIA'),
-    reference: near || day, referenceIsNear: !!near,
+    sameAirlineNear: sameNear, sameAirlineDay: sameDay,
+    // Formato 2: lo de cada tramo sumado; formato 1: el viaje completo en una búsqueda.
+    sameAirline: v2 ? n('MISMA AEROLINEA') : (sameNear || sameDay),
+    reference: v2 ? n('REFERENCIA') : (near || day),
+    referenceIsNear: atHour === 'SI',
+    referenceAtHour: atHour,
+    // TRAMOS = suma de tiquetes de solo ida; IDA Y VUELTA = un tiquete redondo (formato 1 o internacional).
+    referenceKind: String(r['REFERENCIA TIPO'] || '').trim() || (v2 || !String(r['FECHA REGRESO'] || '').trim() ? 'TRAMOS' : 'IDA Y VUELTA'),
+    roundTripTogether: n('IDA Y VUELTA JUNTOS'),
+    legs: legs,
     typicalRange: String(r['RANGO TIPICO'] || '').trim(), googleLevel: String(r['NIVEL GOOGLE'] || '').trim(),
     aviatur: n('AVIATUR EN GOOGLE'), vendors: Array.isArray(vendors) ? vendors : [],
     queries: _csToNumber_(r['CONSULTAS'])
@@ -17335,19 +17446,22 @@ function getPriceTracking(currentUserEmail) {
       var okBuy = snaps.COMPRA && snaps.COMPRA.result === 'OK' ? snaps.COMPRA : null;
       var ref = okBuy || okCot;
       var market = ref ? ref.reference : null;
-      var same = ref ? (ref.sameAirlineNear || ref.sameAirlineDay) : null;
+      var same = ref ? ref.sameAirline : null;
       items.push({
         requestId: id,
         origin: String(cell(row, 'CIUDAD ORIGEN') || '').split(',')[0].trim(),
         destination: String(cell(row, 'CIUDAD DESTINO') || '').split(',')[0].trim(),
         departure: _psDateKey_(cell(row, 'FECHA IDA')),
         returnDate: _psDateKey_(cell(row, 'FECHA VUELTA')),
+        departureTime: _ptHour_(cell(row, 'HORA LLEGADA VUELO IDA')),   // hora pedida por el viajero (#A86)
+        returnTime: _ptHour_(cell(row, 'HORA LLEGADA VUELO VUELTA')),
         passengers: Math.max(1, Math.round(_csToNumber_(cell(row, '# PERSONAS QUE VIAJAN'))) || 1),
         company: String(cell(row, 'EMPRESA') || '').trim(),
         unit: String(cell(row, 'UNIDAD DE NEGOCIO') || '').trim(),
         status: String(cell(row, 'STATUS') || '').trim(),
         quoted: quoted,
         airline: String(cell(row, 'AEROLINEA') || '').trim(),
+        returnAirline: String(cell(row, 'AEROLINEA REGRESO') || '').trim(), // #A85
         channel: String(cell(row, 'CANAL DE COMPRA') || '').trim(),
         atQuote: snaps.COTIZACION,
         atPurchase: snaps.COMPRA,
@@ -17381,6 +17495,79 @@ function getPriceTracking(currentUserEmail) {
     byChannel: Object.keys(channels).sort().map(function(k) { var a = _ptAggregate_(channels[k]); a.channel = k; a.requests = channels[k].length; return a; })
   };
   return { items: items, summary: summary, meta: meta };
+}
+
+/** Nombre en USUARIOS de un correo ('' si no está). */
+function _ptUserName_(email) {
+  var em = String(email || '').toLowerCase().trim();
+  if (!em) return '';
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet || sheet.getLastRow() < 2) return '';
+  var rows = sheet.getRange(2, 2, sheet.getLastRow() - 1, 2).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][1] || '').toLowerCase().trim() === em) return String(rows[i][0] || '').trim();
+  }
+  return '';
+}
+
+/**
+ * Detalle de un viaje del comparador (#A86): lo que registró el área de viajes, lo
+ * que pidió el viajero y la última búsqueda de cada momento con todos los vuelos de
+ * cada tramo. Solo lectura; mismas personas que getPriceTracking. Sin datos de los
+ * pasajeros ni del solicitante.
+ */
+function getPriceTrackingDetail(currentUserEmail, requestId) {
+  if (!_canViewCostsVariance_(currentUserEmail)) {
+    throw new Error('El comparador de precios está restringido a ' + _costsVarianceViewersLabel_() + '.');
+  }
+  var id = String(requestId || '').trim();
+  if (!id) throw new Error('Falta la solicitud.');
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var latest = { COTIZACION: null, COMPRA: null };
+  var counts = { COTIZACION: 0, COMPRA: 0 };
+  _ptRows_(ss.getSheetByName(PRICE_TRACKING_SHEET)).forEach(function(r) {
+    if (String(r['ID SOLICITUD'] || '').trim() !== id) return;
+    var m = String(r['MOMENTO'] || '').trim();
+    if (m !== 'COTIZACION' && m !== 'COMPRA') return;
+    counts[m]++;
+    var snap = _ptSnapshot_(r, true);
+    if (!latest[m] || snap.at >= latest[m].at) latest[m] = snap;
+  });
+  if (!counts.COTIZACION && !counts.COMPRA) throw new Error('La solicitud ' + id + ' no tiene búsquedas en el comparador.');
+
+  var request = { requestId: id };
+  var sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = sheet ? _getRowByRequestId_(id) : -1;
+  if (rowNumber !== -1) {
+    var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var cell = function(k) { var i = H(k); return i < 0 ? '' : row[i]; };
+    var events = {};
+    try { events = JSON.parse(cell('EVENTOS_JSON') || '{}') || {}; } catch (e) { events = {}; }
+    var by = events.costConfirmedBy && typeof events.costConfirmedBy === 'object' ? events.costConfirmedBy : null;
+    request = {
+      requestId: id,
+      origin: String(cell('CIUDAD ORIGEN') || '').split(',')[0].trim(),
+      destination: String(cell('CIUDAD DESTINO') || '').split(',')[0].trim(),
+      departure: _psDateKey_(cell('FECHA IDA')),
+      returnDate: _psDateKey_(cell('FECHA VUELTA')),
+      departureTime: _ptHour_(cell('HORA LLEGADA VUELO IDA')),
+      returnTime: _ptHour_(cell('HORA LLEGADA VUELO VUELTA')),
+      passengers: Math.max(1, Math.round(_csToNumber_(cell('# PERSONAS QUE VIAJAN'))) || 1),
+      international: String(cell('ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI',
+      status: String(cell('STATUS') || '').trim(),
+      company: String(cell('EMPRESA') || '').trim(),
+      unit: String(cell('UNIDAD DE NEGOCIO') || '').trim(),
+      quoted: Math.round(_csToNumber_(cell('COSTO_FINAL_TIQUETES'))) || null,
+      airline: String(cell('AEROLINEA') || '').trim(),
+      returnAirline: String(cell('AEROLINEA REGRESO') || '').trim(),
+      channel: String(cell('CANAL DE COMPRA') || '').trim(),
+      costConfirmedAt: events.costConfirmed || '',
+      // Quién confirmó los costos: se registra desde #A86; antes, vacío.
+      costConfirmedBy: by ? { email: String(by.email || ''), name: _ptUserName_(by.email) } : null,
+      reservationRegisteredAt: events.reservationRegistered || ''
+    };
+  }
+  return { request: request, searches: latest, searchCount: counts };
 }
 
 // ---------- HELPER DE DIAGNÓSTICO (ejecutable desde editor GAS) ----------
@@ -17463,6 +17650,11 @@ function costsDashboard_getVarianceReport(payload) {
 }
 function costsDashboard_getPriceTracking(payload) {
   return dispatch('getPriceTracking', payload || {});
+}
+
+/** Detalle de un viaje del comparador de precios (#A86). Payload: { requestId, userEmail, sessionToken }. */
+function costsDashboard_getPriceTrackingDetail(payload) {
+  return dispatch('getPriceTrackingDetail', payload || {});
 }
 
 // =====================================================================

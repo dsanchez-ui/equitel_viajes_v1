@@ -4,7 +4,7 @@ import { TravelRequest, RequestStatus } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { validateCostAmount, formatCop } from '../utils/money';
-import { normalizePurchaseInfo, purchaseChannelLabel } from '../utils/purchase';
+import { PurchaseForm, checkPurchaseForm, purchaseAirlineLabel, purchaseChannelLabel, purchaseFormFrom } from '../utils/purchase';
 import { PurchaseInfoFields } from './PurchaseInfoFields';
 import {
   BirthdatesLoadState, RequestTripCorporateInfo, RequestPassengersHotelInfo, RequestComments, RequestOptionsGallery,
@@ -81,13 +81,13 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
   const passengerInfoByCedula: Record<string, NonNullable<TravelRequest['passengerAdminInfo']>[number]> = {};
   (full.passengerAdminInfo || []).forEach(r => { passengerInfoByCedula[r.cedula] = r; });
 
-  // #A82: aerolínea y canal de compra previstos.
-  const [purchase, setPurchase] = useState<{ airline: string; channel: string }>({
-    airline: request.purchaseAirline || '',
-    channel: request.purchaseChannel || '',
-  });
+  // #A82: aerolínea y canal de compra previstos. #A85: aerolínea del regreso
+  // distinta, solo con regreso y si el servidor ya la guarda (manda la clave).
+  const [purchase, setPurchase] = useState<PurchaseForm>(() => purchaseFormFrom(request));
   const [triedSubmit, setTriedSubmit] = useState(false);
-  const purchaseCheck = normalizePurchaseInfo(purchase.airline, purchase.channel, isHotelOnly);
+  const serverHasReturnAirline = request.purchaseReturnAirline !== undefined;
+  const canSplitReturn = !!request.returnDate && serverHasReturnAirline;
+  const purchaseCheck = checkPurchaseForm(purchase, isHotelOnly, canSplitReturn);
 
   // Vuelos: tiquetes obligatorio y hotel opcional. Solo hospedaje: hotel obligatorio.
   const ticketsCheck = validateCostAmount(ticketsText, 'de los tiquetes', !isHotelOnly);
@@ -113,7 +113,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
       if (total === 0) {
           message += "⚠️ Se registrará SIN COSTO (por ejemplo, un apartamento corporativo).\n\n";
       }
-      message += `Compra: ${purchaseCheck.airline ? purchaseCheck.airline + ' · ' : ''}${purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)}\n\n`;
+      message += `Compra: ${purchaseCheck.airline ? purchaseAirlineLabel(purchaseCheck.airline, purchaseCheck.returnAirline) + ' · ' : ''}${purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)}\n\n`;
 
       // Saltar aprobación requiere el permiso (#A77) y una justificación válida.
       if (skipApproval) {
@@ -157,6 +157,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
               // #A82: un backend anterior ignora estas claves (no falla).
               purchaseAirline: purchaseCheck.airline,
               purchaseChannel: purchaseCheck.channel,
+              // #A85: solo si el servidor la maneja; '' = la misma de ida (o solo ida).
+              ...(serverHasReturnAirline ? { purchaseReturnAirline: purchaseCheck.returnAirline } : {}),
               // Si vamos a saltar aprobación inmediatamente, le decimos al
               // backend que NO envíe correo a los aprobadores en este paso
               // intermedio — nunca van a actuar sobre la solicitud.
@@ -287,8 +289,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
 
                   <PurchaseInfoFields
                       isHotelOnly={isHotelOnly}
-                      airline={purchase.airline}
-                      channel={purchase.channel}
+                      canSplit={canSplitReturn}
+                      value={purchase}
                       onChange={setPurchase}
                       showErrors={triedSubmit}
                       title="Compra prevista"

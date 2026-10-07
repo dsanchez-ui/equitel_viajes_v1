@@ -478,8 +478,64 @@
     .pt-health.warn { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
     .pt-health.off { background: #f3f4f6; color: var(--muted); }
     table.variance td .pt-sub { display: block; font-size: 10.5px; color: var(--muted); font-weight: 400; }
-    table.variance#ptTable th, table.variance#ptTable td { padding-left: 6px; padding-right: 6px; }
+    table.variance#ptTable th, table.variance#ptTable td { padding-left: 8px; padding-right: 8px; vertical-align: top; }
+    table.variance#ptTable td { white-space: normal; }
+    table.variance#ptTable td.pt-money { font-size: 13px; font-weight: 700; }
+    table.variance#ptTable td .pt-main { white-space: nowrap; }
+    table.variance#ptTable td.num .pt-sub { max-width: 230px; margin-left: auto; }
+    #ptSummaryTable th.num, #ptTable th.num { text-align: right; }
+    .pt-headline { background: #fff; border: 1px solid #e5e7eb; border-left: 4px solid var(--muted); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; font-size: 15px; line-height: 1.55; }
+    .pt-headline.over { border-left-color: var(--red); }
+    .pt-headline.under { border-left-color: var(--green); }
+    .pt-headline .pt-over { color: var(--red); }
+    .pt-headline .pt-under { color: var(--green); }
+    .pt-headline .pt-note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+    .pt-legend { font-size: 12.5px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0 14px; margin-bottom: 14px; }
+    .pt-legend summary { cursor: pointer; font-weight: 700; padding: 10px 0; color: var(--text); }
+    .pt-legend dl { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 8px 14px; padding-bottom: 12px; line-height: 1.5; }
+    .pt-legend dt { font-weight: 700; color: var(--text); }
+    .pt-legend dd { color: #374151; }
+    @media (max-width: 640px) { .pt-legend dl { grid-template-columns: 1fr; gap: 2px; } .pt-legend dd { margin-bottom: 8px; } }
     table.variance td.pt-id { font-family: monospace; white-space: nowrap; }
+    /* Detalle de un viaje (#A86) */
+    #ptTableBody tr.pt-row { cursor: pointer; }
+    #ptTableBody tr.pt-row:hover td { background: #f9fafb; }
+    #ptTableBody tr.pt-row.open td { background: #eff6ff; }
+    .pt-caret { display: inline-block; width: 12px; color: var(--muted); font-family: sans-serif; }
+    .pt-hint { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
+    table.variance#ptTable td.pt-detail-cell { padding: 0; background: #f8fafc; white-space: normal; cursor: default; }
+    .pt-detail { padding: 14px 16px; border-left: 3px solid var(--blue); font-size: 12.5px; line-height: 1.5; text-align: left; }
+    .pt-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-bottom: 12px; }
+    .pt-box { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+    .pt-detail-grid .pt-box { margin-bottom: 0; }
+    .pt-box-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 6px; }
+    .pt-big { font-size: 20px; font-weight: 800; }
+    .pt-muted { color: var(--muted); font-size: 11.5px; }
+    .pt-moments { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+    .pt-moments button { border: 1px solid var(--border); background: #fff; border-radius: 999px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+    .pt-moments button.on { background: var(--text); color: #fff; border-color: var(--text); }
+    .pt-detail table.pt-mini { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .pt-detail table.pt-mini th, .pt-detail table.pt-mini td { padding: 6px 8px; border-bottom: 1px solid #eef0f3; text-align: left; vertical-align: top; }
+    .pt-detail table.pt-mini th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); font-weight: 600; background: #f9fafb; }
+    .pt-detail table.pt-mini td.num, .pt-detail table.pt-mini th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .pt-detail table.pt-mini tr.pt-ref td { background: #fefce8; }
+    .pt-detail table.pt-mini .over { color: var(--red); font-weight: 700; }
+    .pt-detail table.pt-mini .under { color: var(--green); font-weight: 700; }
+    .pt-detail table.pt-flights tr.pt-win td { background: #eff6ff; }
+    .pt-detail .pt-scroll { max-height: 340px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
+    .pt-tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin: 1px 0 1px 4px; white-space: nowrap; }
+    .pt-tag.near { background: #dbeafe; color: #1e40af; }
+    .pt-tag.day { background: #dcfce7; color: #166534; }
+    .pt-tag.mine { background: #f3e8ff; color: #6b21a8; }
+    .pt-leg-title { font-weight: 700; margin-bottom: 2px; }
+    .pt-note-box { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+    /* En celular la tabla es más ancha que la pantalla: el detalle se queda del ancho visible
+       y solo sus tablas se desplazan de lado. */
+    @media (max-width: 760px) {
+      .pt-detail { position: sticky; left: 0; max-width: calc(100vw - 72px); padding: 12px 10px; }
+      .pt-detail-grid { grid-template-columns: 1fr; }
+      .pt-detail table.pt-mini { min-width: 560px; }
+    }
     table.variance tr.pt-pending td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
     .pt-controls select { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; background: #fff; }
     .badge-admin {
@@ -1093,39 +1149,57 @@
     <div id="priceSection" class="view-section">
       <div class="view-title">
         🔎 Comparador de precios de tiquetes
-        <span class="badge-admin">Prueba · acceso restringido</span>
-        <span class="view-subtitle">lo cotizado contra el precio del mercado en Google Flights</span>
-      </div>
-
-      <div class="variance-explanation">
-        Un proceso aparte busca cada solicitud de vuelo en Google Flights en dos momentos: <strong>al confirmar costos</strong>
-        (la cotización contra el mercado en ese mismo momento) y <strong>al aprobarse</strong> (el precio cuando se va a comprar).
-        <strong>Mercado</strong> = el más barato saliendo entre 2 horas antes y 2 horas después de la hora pedida (sin hora pedida, el más barato del día), para todos los pasajeros.
-        <strong>Cotizado</strong> = costo de tiquetes confirmado. Es el precio público de Google: sin maleta de bodega ni tarifas corporativas.
-        Laura no ve esta sección y no aplica los filtros de arriba.
+        <span class="badge-admin">Prueba · solo administradores</span>
+        <span class="view-subtitle">¿lo cotizado estaba caro frente a Google Flights?</span>
       </div>
 
       <div class="pt-health off" id="ptHealth">Cargando…</div>
 
+      <div class="pt-headline" id="ptHeadline">Cargando…</div>
+
+      <details class="pt-legend" open>
+        <summary>¿Cómo se lee?</summary>
+        <dl>
+          <dt>Cotizado</dt>
+          <dd>Lo que el área de viajes confirmó para los tiquetes (ida y regreso, todos los pasajeros).</dd>
+          <dt>Más barato en Google</dt>
+          <dd>Lo más barato que mostraba Google Flights para el mismo viaje (mismas ciudades, fechas y número de pasajeros),
+            buscando cada tramo por separado, como se compra: la ida saliendo hasta 2 horas antes o después de la hora que pidió el
+            viajero, más el regreso a la hora que pidió para el regreso. Si no pidió hora, el más barato del día. En viajes
+            internacionales de ida y vuelta también se busca el tiquete redondo y se toma el menor.</dd>
+          <dt>Misma aerolínea</dt>
+          <dd>Lo más barato en Google con la aerolínea registrada en cada tramo (si el regreso es con otra, la del regreso).</dd>
+          <dt>Detalle</dt>
+          <dd>Toque un viaje para ver el precio de la ida y del regreso por separado, las horas que pidió el viajero y todos los vuelos que mostró Google.</dd>
+          <dt>Diferencia</dt>
+          <dd>Cotizado menos Google. <strong style="color: var(--red);">Más caro</strong>: Google tenía algo más barato.
+            <strong style="color: var(--green);">Más barato</strong>: la cotización le ganó a Google.</dd>
+          <dt>Cuándo se busca</dt>
+          <dd>Dos veces por viaje: al confirmar los costos y cuando se aprueba (justo antes de comprar). Se muestra la búsqueda más reciente.</dd>
+          <dt>Ojo</dt>
+          <dd>Google muestra la tarifa más económica, que normalmente no incluye maleta de bodega ni permite cambios. Parte de la
+            diferencia puede ser equipaje, flexibilidad o el cargo de la agencia. Laura no ve esta sección y los filtros de arriba no aplican aquí.</dd>
+        </dl>
+      </details>
+
       <div class="kpi-grid">
-        <div class="kpi"><div class="label">Solicitudes rastreadas</div><div id="ptTracked" class="value">—</div><div class="extra" id="ptTrackedExtra">—</div></div>
-        <div class="kpi"><div class="label">Cotizado (tiquetes)</div><div id="ptQuoted" class="value">—</div><div class="extra" id="ptQuotedExtra">—</div></div>
-        <div class="kpi"><div class="label">Mercado</div><div id="ptMarket" class="value">—</div><div class="extra" id="ptMarketExtra">al comprar; si aún no, al cotizar</div></div>
-        <div class="kpi"><div class="label">Ahorro posible</div><div id="ptSavings" class="value">—</div><div class="extra" id="ptSavingsExtra">—</div></div>
+        <div class="kpi"><div class="label">Viajes comparados</div><div id="ptTracked" class="value">—</div><div class="extra" id="ptTrackedExtra">—</div></div>
+        <div class="kpi"><div class="label">Cotizado</div><div id="ptQuoted" class="value">—</div><div class="extra" id="ptQuotedExtra">—</div></div>
+        <div class="kpi"><div class="label">Más barato en Google</div><div id="ptMarket" class="value">—</div><div class="extra" id="ptMarketExtra">—</div></div>
+        <div class="kpi" id="ptDiffCard"><div class="label">Diferencia</div><div id="ptDiff" class="value">—</div><div class="extra" id="ptDiffExtra">—</div></div>
       </div>
 
       <div class="card">
-        <h2>Por momento y canal de compra</h2>
+        <h2>Resumen</h2>
         <div class="variance-table-wrap">
           <table class="variance" id="ptSummaryTable">
             <thead>
               <tr>
                 <th>Comparación</th>
-                <th class="num">Solicitudes</th>
+                <th class="num">Viajes</th>
                 <th class="num">Cotizado</th>
-                <th class="num">Mercado</th>
+                <th class="num">Más barato en Google</th>
                 <th class="num">Diferencia</th>
-                <th class="num">%</th>
               </tr>
             </thead>
             <tbody id="ptSummaryBody"></tbody>
@@ -1134,29 +1208,25 @@
       </div>
 
       <div class="card">
-        <h2>Detalle por solicitud <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="ptCount"></span></h2>
+        <h2>Viaje por viaje <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="ptCount"></span></h2>
         <div class="variance-table-controls pt-controls">
           <select id="ptFilter">
-            <option value="">Todas</option>
-            <option value="APROBADO">Por comprar (aprobadas)</option>
+            <option value="">Todos los viajes</option>
+            <option value="APROBADO">Por comprar (aprobados)</option>
             <option value="PENDIENTE_APROBACION">Esperando aprobación</option>
-            <option value="COMPRADAS">Compradas</option>
+            <option value="COMPRADAS">Ya comprados</option>
           </select>
           <button id="btnExportPriceCsv" class="btn-secondary">📥 Exportar CSV</button>
         </div>
-        <div class="variance-table-wrap">
+        <p class="pt-hint">Toque un viaje para ver el detalle por tramo y todos los vuelos que mostró Google.</p>
+        <div class="variance-table-wrap" style="max-height: none;">
           <table class="variance" id="ptTable">
             <thead>
               <tr>
-                <th>ID</th>
-                <th>Ruta</th>
-                <th>Ida</th>
-                <th class="num">Pax</th>
-                <th>Estado</th>
-                <th>Compra registrada</th>
+                <th>Solicitud</th>
+                <th>Viaje</th>
                 <th class="num">Cotizado</th>
-                <th class="num">Mercado al cotizar</th>
-                <th class="num">Mercado al comprar</th>
+                <th class="num">Más barato en Google</th>
                 <th class="num">Misma aerolínea</th>
                 <th class="num">Diferencia</th>
               </tr>
@@ -2755,8 +2825,20 @@ function renderVarianceTable(rows) {
 // las mismas personas que la variación). Los datos los escribe un proyecto de
 // Apps Script aparte; aquí solo se leen.
 
-var PT_STATUS = { APROBADO: 'Por comprar', PENDIENTE_APROBACION: 'Esperando aprobación', RESERVADO: 'Comprada', PROCESADO: 'Cerrada' };
+var PT_STATUS = { APROBADO: 'Por comprar', PENDIENTE_APROBACION: 'Esperando aprobación', RESERVADO: 'Comprado', PROCESADO: 'Cerrado' };
 var PT_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+var PT_STATES = {
+  'ACTIVO': '✅ Funcionando',
+  'TERMINADO': '🏁 Estudio terminado',
+  'SIN CONFIGURAR': '⚠️ Falta configurar el proyecto aparte',
+  'CLAVE INVALIDA': '⚠️ La clave de SerpApi no es válida',
+  'SIN CUPO': '⏸️ Sin búsquedas disponibles en SerpApi',
+  'TOPE DIARIO': '⏸️ Pausado hasta mañana (llegó al tope diario)',
+  'SIN EJECUTAR': '⏳ Aún no ha corrido'
+};
+var PT_CHANNELS = { 'Aviatur': 'Comprado por Aviatur', 'Directo': 'Comprado directo con la aerolínea', 'Otra agencia': 'Comprado por otra agencia', 'Sin registrar': 'Canal sin registrar' };
+var PT_FAIL = { SIN_RESULTADOS: 'Google no mostró vuelos', SIN_AEROPUERTO: 'La ciudad no tiene aeropuerto', ERROR: 'No se pudo buscar' };
+var PT_SAME = 1000; // menos de $1.000 de diferencia = igual (redondeo)
 
 function ptDay(key) {
   var m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -2766,19 +2848,52 @@ function ptAgo(iso) {
   if (!iso) return '—';
   var min = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (isNaN(min)) return '—';
-  if (min < 1) return 'hace <1 min';
+  if (min < 1) return 'hace menos de 1 min';
   if (min < 60) return 'hace ' + min + ' min';
   var h = Math.round(min / 60);
   return h < 48 ? 'hace ' + h + ' h' : 'hace ' + Math.round(h / 24) + ' días';
 }
-function ptSigned(n) {
-  if (n === null || n === undefined || isNaN(n)) return '—';
-  return (n > 0 ? '+' : n < 0 ? '−' : '') + fmtMoney(Math.abs(n));
+/** «128 %», «4,5 %», «menos de 1 %» (sin signo). */
+function ptPctText(n) {
+  var a = Math.abs(n);
+  if (a < 1) return 'menos de 1 %';
+  return (a < 10 ? a.toFixed(1).replace('.', ',') : String(Math.round(a))) + ' %';
 }
-function ptPct(n) {
-  if (n === null || n === undefined || isNaN(n)) return '—';
-  return (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n).toFixed(1) + '%';
+/** Diferencia en palabras: {cls, main, sub}. diff = cotizado − Google. */
+function ptVerdict(diff, pct) {
+  if (diff === null || diff === undefined || isNaN(diff)) return { cls: 'equal', main: '—', sub: '' };
+  if (Math.abs(diff) < PT_SAME) return { cls: 'equal', main: 'Igual', sub: 'menos de $1.000 de diferencia' };
+  var sub = pct === null ? '' : Math.abs(pct) < 1 ? 'menos de 1 % de diferencia'
+    : 'cotizado ' + ptPctText(pct) + (diff > 0 ? ' más' : ' menos') + ' que Google';
+  return diff > 0 ? { cls: 'over', main: fmtMoney(diff) + ' más caro', sub: sub } : { cls: 'under', main: fmtMoney(-diff) + ' más barato', sub: sub };
 }
+function ptPlural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+/** «Avianca», «LATAM ida, Avianca regreso» (#A85). */
+function ptAirlines(it) {
+  if (!it.airline) return '';
+  return it.returnAirline ? it.airline + ' ida, ' + it.returnAirline + ' regreso' : it.airline;
+}
+function ptChannel(ch) { return ch === 'Directo' ? 'directo' : ch; }
+var PT_DAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+/** '2026-10-14' → 'mar 14-oct'. */
+function ptDayLong(key) {
+  var m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '—';
+  var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return PT_DAYS[d.getUTCDay()] + ' ' + ptDay(key);
+}
+/** Fecha y hora de Bogotá: '7-oct, 9:40 a. m.'. */
+function ptWhen(iso) {
+  var d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d.getTime())) return '';
+  try {
+    return d.toLocaleString('es-CO', { timeZone: 'America/Bogota', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+  } catch (e) { return d.toISOString().slice(0, 16).replace('T', ' '); }
+}
+function ptMin(hhmm) { var m = String(hhmm || '').match(/(\d{1,2}):(\d{2})/); return m ? (+m[1]) * 60 + (+m[2]) : null; }
+var PT_LEVEL = { low: 'bajo', typical: 'normal', high: 'alto', bajo: 'bajo', normal: 'normal', alto: 'alto' };
+/** Opción de referencia de un tramo: a la hora pedida o, si no hubo, la más barata del día. */
+function ptLegRef(l) { return l ? (l.referenceIsNear ? l.near : l.cheapest) : null; }
 
 function loadPriceTracking() {
   document.getElementById('priceSection').style.display = 'block';
@@ -2806,57 +2921,95 @@ function loadPriceTracking() {
     .costsDashboard_getPriceTracking({ userEmail: session.email, sessionToken: session.token });
 }
 
-function renderPriceTracking() {
-  if (!priceData) return;
-  var meta = priceData.meta || {};
+function _ptRenderHealth(meta) {
   var st = meta.state || {};
   var health = document.getElementById('ptHealth');
   if (!meta.installed) {
     health.className = 'pt-health off';
-    health.textContent = 'El rastreo aún no está activo: falta instalar el proyecto aparte (tools/comparador-precios/apps-script/README.md).';
-  } else {
-    var last = st['ULTIMA EJECUCION'];
-    var stale = last && (Date.now() - new Date(last).getTime()) > 45 * 60000;
-    var estado = String(st['ESTADO'] || 'SIN EJECUTAR');
-    var partes = ['Estado: ' + estado, 'última ejecución ' + ptAgo(last)];
-    if (st['INICIO ESTUDIO']) partes.push('estudio del ' + ptDay(st['INICIO ESTUDIO']) + ' al ' + ptDay(st['FIN ESTUDIO']));
-    partes.push(meta.searches + ' búsquedas (' + meta.queries + ' consultas)');
-    if (st['QUEDAN EN SERPAPI'] !== '' && st['QUEDAN EN SERPAPI'] !== undefined) partes.push('quedan ' + st['QUEDAN EN SERPAPI'] + ' en SerpApi');
-    var text = partes.join(' · ');
-    if (st['DETALLE']) text += '. ' + st['DETALLE'];
-    if (stale && estado === 'ACTIVO') text += ' ⚠️ No ha corrido en más de 45 minutos: revise el disparador del proyecto aparte.';
-    health.className = 'pt-health' + ((stale && estado === 'ACTIVO') || (estado !== 'ACTIVO' && estado !== 'TERMINADO') ? ' warn' : '');
-    health.textContent = text;
+    health.textContent = '⏳ El rastreo aún no está activo: falta instalar el proyecto aparte (tools/comparador-precios/apps-script/README.md).';
+    return;
   }
+  var last = st['ULTIMA EJECUCION'];
+  var stale = last && (Date.now() - new Date(last).getTime()) > 45 * 60000;
+  var estado = String(st['ESTADO'] || 'SIN EJECUTAR');
+  var partes = [PT_STATES[estado] || estado];
+  if (estado === 'ACTIVO') partes.push('revisa cada 15 minutos');
+  if (last) partes.push('última revisión ' + ptAgo(last));
+  if (st['INICIO ESTUDIO']) partes.push(st['FIN ESTUDIO'] ? 'estudio del ' + ptDay(st['INICIO ESTUDIO']) + ' al ' + ptDay(st['FIN ESTUDIO']) : 'estudio desde el ' + ptDay(st['INICIO ESTUDIO']));
+  partes.push(ptPlural(meta.searches, 'búsqueda hecha', 'búsquedas hechas'));
+  if (st['QUEDAN EN SERPAPI'] !== '' && st['QUEDAN EN SERPAPI'] !== undefined) partes.push('quedan ' + st['QUEDAN EN SERPAPI'] + ' este mes');
+  var text = partes.join(' · ');
+  if (st['DETALLE'] && estado !== 'ACTIVO') text += '. ' + st['DETALLE'];
+  if (stale && estado === 'ACTIVO') text += ' ⚠️ No ha corrido en más de 45 minutos: revise el disparador del proyecto aparte.';
+  health.className = 'pt-health' + ((stale && estado === 'ACTIVO') || (estado !== 'ACTIVO' && estado !== 'TERMINADO') ? ' warn' : '');
+  health.textContent = text;
+}
 
+function _ptRenderHeadline(s, items) {
+  var box = document.getElementById('ptHeadline');
+  var o = s ? s.overall : null;
+  if (!o || !o.n) {
+    box.className = 'pt-headline';
+    box.innerHTML = items.length
+      ? 'Hay ' + ptPlural(items.length, 'viaje buscado', 'viajes buscados') + ', pero todavía ninguno tiene costo cotizado y precio de Google para comparar.'
+      : 'Todavía no hay viajes comparados. Cada viaje en avión se busca en Google Flights cuando se confirman sus costos y cuando se aprueba.';
+    return;
+  }
+  var cheaper = items.filter(function(it) { return it.difference !== null && it.difference >= PT_SAME; }).length;
+  var v = ptVerdict(o.difference, o.pct);
+  var html = 'En <strong>' + ptPlural(o.n, 'viaje comparado', 'viajes comparados') + '</strong>, lo cotizado suma <strong>' + fmtMoney(o.quoted) +
+    '</strong> y lo más barato en Google Flights sumaba <strong>' + fmtMoney(o.market) + '</strong>. ';
+  if (v.cls === 'over') html += 'Lo cotizado fue <strong class="pt-over">' + fmtMoney(o.difference) + ' más caro (' + ptPctText(o.pct) + ' más)</strong>.';
+  else if (v.cls === 'under') html += 'Lo cotizado fue <strong class="pt-under">' + fmtMoney(-o.difference) + ' más barato que Google</strong>.';
+  else html += 'Lo cotizado y Google <strong>salen iguales</strong>.';
+  html += ' Google tenía un precio más bajo en <strong>' + cheaper + ' de ' + o.n + '</strong>.';
+  html += '<div class="pt-note">Ojo: parte de la diferencia puede ser maleta de bodega, tarifa con cambios o el cargo de la agencia, que el precio de Google normalmente no incluye.</div>';
+  box.className = 'pt-headline ' + v.cls;
+  box.innerHTML = html;
+}
+
+function renderPriceTracking() {
+  if (!priceData) return;
+  _ptRenderHealth(priceData.meta || {});
   var s = priceData.summary;
+  var items = priceData.items || [];
+  _ptRenderHeadline(s, items);
   var setText = function(id, t) { document.getElementById(id).textContent = t; };
+  var card = document.getElementById('ptDiffCard');
+  card.className = 'kpi';
   if (!s) {
-    ['ptTracked', 'ptQuoted', 'ptMarket', 'ptSavings'].forEach(function(id) { setText(id, '—'); });
-    setText('ptTrackedExtra', '—'); setText('ptQuotedExtra', '—'); setText('ptSavingsExtra', '—');
+    ['ptTracked', 'ptQuoted', 'ptMarket', 'ptDiff'].forEach(function(id) { setText(id, '—'); });
+    ['ptTrackedExtra', 'ptQuotedExtra', 'ptMarketExtra', 'ptDiffExtra'].forEach(function(id) { setText(id, '—'); });
     document.getElementById('ptSummaryBody').innerHTML = '';
   } else {
-    setText('ptTracked', String(s.tracked));
-    setText('ptTrackedExtra', s.pendingPurchase + ' por comprar');
+    var waiting = items.filter(function(it) { return it.status === 'PENDIENTE_APROBACION'; }).length;
+    setText('ptTracked', String(s.overall.n));
+    setText('ptTrackedExtra', [ptPlural(s.tracked, 'buscado', 'buscados'), s.pendingPurchase ? s.pendingPurchase + ' por comprar' : '',
+      waiting ? waiting + ' esperando aprobación' : ''].filter(Boolean).join(' · '));
     setText('ptQuoted', fmtMoney(s.overall.quoted));
-    setText('ptQuotedExtra', s.overall.n + ' con cotización y mercado');
+    setText('ptQuotedExtra', 'tiquetes de esos viajes');
     setText('ptMarket', fmtMoney(s.overall.market));
-    setText('ptSavings', fmtMoney(s.overall.possibleSavings));
-    setText('ptSavingsExtra', s.overall.pct === null ? '—' : 'diferencia neta ' + ptSigned(s.overall.difference) + ' (' + ptPct(s.overall.pct) + ')');
+    setText('ptMarketExtra', 'a la hora pedida (±2 h)');
+    var v = ptVerdict(s.overall.n ? s.overall.difference : null, s.overall.pct);
+    setText('ptDiff', v.main);
+    setText('ptDiffExtra', v.sub || '—');
+    if (v.cls !== 'equal') card.className = 'kpi ' + v.cls;
     var rows = [
-      ['Al cotizar (mismo momento que la cotización)', s.atQuote],
-      ['Al comprar (solicitud aprobada)', s.atPurchase],
-      ['Misma aerolínea registrada', s.sameAirline]
-    ].concat(s.byChannel.map(function(c) { return ['Canal: ' + c.channel, c]; }));
+      ['Al cotizar', 'el precio de Google en el mismo momento de la cotización', s.atQuote,
+        'Aún sin datos: se llena con los costos que se confirmen desde el inicio del estudio.'],
+      ['Al aprobarse', 'el precio de Google justo antes de comprar', s.atPurchase, 'Aún sin datos.'],
+      ['Con la misma aerolínea', 'lo más barato en Google con la aerolínea de la compra', s.sameAirline, 'Aún sin datos.']
+    ].concat(s.byChannel.map(function(c) { return [PT_CHANNELS[c.channel] || ('Comprado por ' + c.channel), 'según el canal registrado', c, 'Aún sin datos.']; }));
     document.getElementById('ptSummaryBody').innerHTML = rows.map(function(r) {
-      var a = r[1];
-      var dir = a.difference > 0 ? 'over' : a.difference < 0 ? 'under' : 'equal';
-      return '<tr class="' + dir + '"><td>' + escHtml(r[0]) + '</td>' +
+      var a = r[2];
+      var first = '<td>' + escHtml(r[0]) + '<span class="pt-sub">' + escHtml(r[1]) + '</span></td>';
+      if (!a.n) return '<tr class="equal">' + first + '<td class="num">0</td><td colspan="3" style="color: var(--muted);">' + escHtml(r[3]) + '</td></tr>';
+      var vv = ptVerdict(a.difference, a.pct);
+      return '<tr class="' + vv.cls + '">' + first +
         '<td class="num">' + a.n + '</td>' +
-        '<td class="num">' + (a.n ? fmtMoney(a.quoted) : '—') + '</td>' +
-        '<td class="num">' + (a.n ? fmtMoney(a.market) : '—') + '</td>' +
-        '<td class="num var-cell">' + (a.n ? ptSigned(a.difference) : '—') + '</td>' +
-        '<td class="num var-cell">' + ptPct(a.pct) + '</td></tr>';
+        '<td class="num">' + fmtMoney(a.quoted) + '</td>' +
+        '<td class="num">' + fmtMoney(a.market) + '</td>' +
+        '<td class="num var-cell">' + escHtml(vv.main) + '<span class="pt-sub">' + escHtml(vv.sub) + '</span></td></tr>';
     }).join('');
   }
   renderPriceTable();
@@ -2872,60 +3025,278 @@ function _ptFilteredItems() {
   });
 }
 
-function _ptSnapCell(snap) {
-  if (!snap) return '—';
-  if (snap.result !== 'OK') {
-    var why = { SIN_RESULTADOS: 'sin resultados', SIN_AEROPUERTO: 'sin aeropuerto', ERROR: 'error' }[snap.result] || snap.result;
-    return '<span class="pt-sub" title="' + escHtml(snap.detail) + '">' + escHtml(why) + '</span>';
+/** Celda «Más barato en Google»: la búsqueda más reciente que salió bien. */
+function _ptGoogleCell(it) {
+  var buy = it.atPurchase, cot = it.atQuote;
+  var main = buy && buy.result === 'OK' ? buy : (cot && cot.result === 'OK' ? cot : null);
+  if (!main) {
+    var failed = buy || cot;
+    if (!failed) return '—';
+    return '<span class="pt-sub" title="' + escHtml(failed.detail) + '">' + escHtml(PT_FAIL[failed.result] || failed.result) + '</span>';
   }
-  var who = snap.referenceIsNear ? (snap.nearAirline + ' ' + snap.nearTime) : (snap.cheapestAirline + ' ' + snap.cheapestTime + ' (del día)');
-  return fmtMoney(snap.reference) + '<span class="pt-sub">' + escHtml(who) + ' · ' + escHtml(ptAgo(snap.at)) + '</span>';
+  var when = (main.moment === 'COMPRA' ? 'buscado al aprobarse, ' : 'buscado al cotizar, ') + ptAgo(main.at);
+  var html = '<span class="pt-main">' + fmtMoney(main.reference) + '</span>';
+  var legs = (main.legs || []).filter(function(l) { return l.leg === 'IDA' || l.leg === 'REGRESO'; });
+  if (main.referenceKind === 'IDA Y VUELTA' && main.format >= 2) {
+    var rt = (main.legs || []).filter(function(l) { return l.leg === 'IDA Y VUELTA'; })[0];
+    var o = ptLegRef(rt);
+    html += '<span class="pt-sub">ida y vuelta en un solo tiquete' + (o ? ': ' + escHtml(o.airline + ', sale ' + o.departs) : '') + '</span>';
+  } else if (legs.length) {
+    // Formato por tramos (#A86): cada tramo con su vuelo y su precio.
+    legs.forEach(function(l) {
+      var o = ptLegRef(l);
+      html += '<span class="pt-sub">' + (l.leg === 'IDA' ? 'ida ' : 'regreso ') + (o ? escHtml(o.airline + ' ' + o.departs) + ' · ' + fmtMoney(l.reference) : '—') +
+        (l.referenceIsNear ? '' : ' (del día)') + '</span>';
+    });
+  } else {
+    // Formato anterior: un solo precio de ida y vuelta.
+    var who = main.referenceIsNear ? main.nearAirline + ', sale ' + main.nearTime : main.cheapestAirline + ', sale ' + main.cheapestTime;
+    html += '<span class="pt-sub">' + escHtml(who) + '</span>' +
+      (main.referenceIsNear ? '' : '<span class="pt-sub">no había vuelos a la hora pedida: es el más barato del día</span>') +
+      (it.returnDate ? '<span class="pt-sub">ida y vuelta juntos (formato anterior)</span>' : '');
+  }
+  html += '<span class="pt-sub">' + escHtml(when) + '</span>';
+  if (main === buy && cot && cot.result === 'OK') html += '<span class="pt-sub">al cotizar: ' + fmtMoney(cot.reference) + '</span>';
+  return html;
+}
+
+function _ptSameAirlineCell(it) {
+  if (!it.airline) return '<span class="pt-sub">sin aerolínea registrada</span>';
+  if (!it.sameAirline) return '<span class="pt-sub">' + escHtml(ptAirlines(it)) + ' no aparece en Google</span>';
+  return '<span class="pt-main">' + fmtMoney(it.sameAirline) + '</span><span class="pt-sub">' + escHtml(ptAirlines(it)) + '</span>';
 }
 
 function renderPriceTable() {
   var items = _ptFilteredItems();
-  document.getElementById('ptCount').textContent = items.length + (items.length === 1 ? ' solicitud' : ' solicitudes');
+  document.getElementById('ptCount').textContent = ptPlural(items.length, 'viaje', 'viajes');
   document.getElementById('ptEmpty').style.display = items.length ? 'none' : '';
   document.getElementById('ptTableBody').innerHTML = items.map(function(it) {
-    var dir = it.difference > 0 ? 'over' : it.difference < 0 ? 'under' : 'equal';
-    var buy = [it.airline, it.channel].filter(Boolean).join(' · ') || '—';
-    var trip = ptDay(it.departure) + (it.returnDate ? '<span class="pt-sub">regreso ' + ptDay(it.returnDate) + '</span>' : '<span class="pt-sub">solo ida</span>');
-    return '<tr class="' + dir + (it.status === 'APROBADO' ? ' pt-pending' : '') + '">' +
-      '<td class="pt-id">' + escHtml(it.requestId) + '</td>' +
-      '<td>' + escHtml((it.origin || '—') + ' → ' + (it.destination || '—')) + '<span class="pt-sub">' + escHtml(it.unit || '') + '</span></td>' +
-      '<td>' + trip + '</td>' +
-      '<td class="num">' + it.passengers + '</td>' +
-      '<td>' + escHtml(PT_STATUS[it.status] || it.status) + '</td>' +
-      '<td>' + escHtml(buy) + '</td>' +
-      '<td class="num">' + fmtMoney(it.quoted) + '</td>' +
-      '<td class="num">' + _ptSnapCell(it.atQuote) + '</td>' +
-      '<td class="num">' + _ptSnapCell(it.atPurchase) + '</td>' +
-      '<td class="num">' + (it.sameAirline ? fmtMoney(it.sameAirline) : '—') + '</td>' +
-      '<td class="num var-cell">' + (it.difference === null ? '—' : ptSigned(it.difference) +
-        '<span class="pt-sub">' + ptPct(it.differencePct) + '</span>') + '</td>' +
-      '</tr>';
+    var v = ptVerdict(it.difference, it.differencePct);
+    var trip = (it.returnDate ? 'ida ' + ptDay(it.departure) + ' · regreso ' + ptDay(it.returnDate) : 'solo ida ' + ptDay(it.departure)) +
+      ' · ' + ptPlural(it.passengers, 'pasajero', 'pasajeros');
+    var bought = [ptAirlines(it), it.channel ? ptChannel(it.channel) : ''].filter(Boolean).join(' · ');
+    var open = !!ptOpen[it.requestId];
+    return '<tr class="pt-row ' + v.cls + (it.status === 'APROBADO' ? ' pt-pending' : '') + (open ? ' open' : '') + '" data-req="' + escHtml(it.requestId) + '" title="Ver el detalle">' +
+      '<td class="pt-id"><span class="pt-caret">' + (open ? '▾' : '▸') + '</span>' + escHtml(it.requestId) + '<span class="pt-sub">' + escHtml(PT_STATUS[it.status] || it.status) + '</span></td>' +
+      '<td><span class="pt-main">' + escHtml((it.origin || '—') + ' → ' + (it.destination || '—')) + '</span><span class="pt-sub">' + escHtml(trip) + '</span></td>' +
+      '<td class="num pt-money"><span class="pt-main">' + (it.quoted ? fmtMoney(it.quoted) : '—') + '</span><span class="pt-sub">' + escHtml(bought || 'sin compra registrada') + '</span></td>' +
+      '<td class="num pt-money">' + _ptGoogleCell(it) + '</td>' +
+      '<td class="num">' + _ptSameAirlineCell(it) + '</td>' +
+      '<td class="num var-cell pt-money"><span class="pt-main">' + escHtml(it.quoted ? v.main : 'sin costo cotizado') + '</span><span class="pt-sub">' + escHtml(v.sub) + '</span></td>' +
+      '</tr>' + (open ? '<tr class="pt-detail-row"><td class="pt-detail-cell" colspan="6">' + _ptDetailHtml(it) + '</td></tr>' : '');
   }).join('');
+}
+
+// ---------------------------------------------------------------------
+// DETALLE DE UN VIAJE (#A86): se carga al tocar la fila y queda en memoria.
+// ---------------------------------------------------------------------
+var ptOpen = {};       // requestId → true si está abierto
+var ptDetails = {};    // requestId → { loading, error, data, moment }
+
+function _ptToggle(id) {
+  if (ptOpen[id]) { delete ptOpen[id]; renderPriceTable(); return; }
+  ptOpen[id] = true;
+  if (!ptDetails[id] || ptDetails[id].error) {
+    ptDetails[id] = { loading: true };
+    google.script.run
+      .withSuccessHandler(function(response) {
+        ptDetails[id] = response && response.success
+          ? { data: response.data, moment: response.data.searches.COMPRA ? 'COMPRA' : 'COTIZACION' }
+          : { error: (response && response.error) || 'No se pudo cargar el detalle.' };
+        renderPriceTable();
+      })
+      .withFailureHandler(function(err) {
+        ptDetails[id] = { error: (err && err.message) || 'Error de conexión.' };
+        renderPriceTable();
+      })
+      .costsDashboard_getPriceTrackingDetail({ requestId: id, userEmail: session.email, sessionToken: session.token });
+  }
+  renderPriceTable();
+}
+
+function _ptDetailHtml(it) {
+  var st = ptDetails[it.requestId];
+  if (!st || st.loading) return '<div class="pt-detail">Cargando el detalle…</div>';
+  if (st.error) return '<div class="pt-detail"><div class="pt-note-box">No se pudo cargar el detalle: ' + escHtml(st.error) + ' Toque la fila otra vez para reintentar.</div></div>';
+  var d = st.data;
+  var r = d.request || {};
+  var snap = d.searches[st.moment] || d.searches.COMPRA || d.searches.COTIZACION;
+  var pax = r.passengers || it.passengers || 1;
+  var html = '<div class="pt-detail">';
+
+  // 1. Lo que registró el área de viajes y lo que pidió el viajero
+  var airlineTxt = r.airline
+    ? (r.returnAirline ? '<b>' + escHtml(r.airline) + '</b> de ida y <b>' + escHtml(r.returnAirline) + '</b> de regreso'
+      : '<b>' + escHtml(r.airline) + '</b>' + (r.returnDate ? ' (ida y regreso)' : ''))
+    : 'sin aerolínea registrada';
+  var who = r.costConfirmedBy && r.costConfirmedBy.email
+    ? 'Lo registró <b>' + escHtml(r.costConfirmedBy.name || r.costConfirmedBy.email) + '</b>' + (r.costConfirmedBy.name ? ' (' + escHtml(r.costConfirmedBy.email) + ')' : '')
+    : 'Lo registró el área de viajes';
+  html += '<div class="pt-detail-grid">' +
+    '<div class="pt-box"><div class="pt-box-title">Lo que registró el área de viajes</div>' +
+      '<div class="pt-big">' + (r.quoted ? fmtMoney(r.quoted) : 'Sin costo') + '</div>' +
+      '<div>Costo de los tiquetes ' + (r.returnDate ? 'de ida y regreso' : 'de solo ida') + ' para ' + ptPlural(pax, 'pasajero', 'pasajeros') +
+        (pax > 1 && r.quoted ? ' (' + fmtMoney(Math.round(r.quoted / pax)) + ' por persona)' : '') + '.</div>' +
+      '<div>Aerolínea: ' + airlineTxt + ' · Canal: <b>' + escHtml(r.channel === 'Directo' ? 'directo con la aerolínea' : (r.channel || 'sin registrar')) + '</b></div>' +
+      '<div class="pt-muted">' + who + ' en «Confirmar costos»' + (r.costConfirmedAt ? ' el ' + escHtml(ptWhen(r.costConfirmedAt)) : '') + '.' +
+        (r.costConfirmedBy ? '' : ' Antes de esta versión no se guardaba quién.') + ' La plataforma guarda el total de los tiquetes, no el de cada tramo.</div>' +
+    '</div>' +
+    '<div class="pt-box"><div class="pt-box-title">Lo que pidió el viajero</div>' +
+      '<div><b>Ida:</b> ' + escHtml((r.origin || it.origin) + ' → ' + (r.destination || it.destination)) + ' · ' + escHtml(ptDayLong(r.departure || it.departure)) +
+        ' · ' + (r.departureTime ? 'hora preferida <b>' + escHtml(r.departureTime) + '</b>' : 'sin hora preferida') + '</div>' +
+      (r.returnDate ? '<div><b>Regreso:</b> ' + escHtml((r.destination || it.destination) + ' → ' + (r.origin || it.origin)) + ' · ' + escHtml(ptDayLong(r.returnDate)) +
+        ' · ' + (r.returnTime ? 'hora preferida <b>' + escHtml(r.returnTime) + '</b>' : 'sin hora preferida') + '</div>' : '<div>Solo ida.</div>') +
+      '<div>' + ptPlural(pax, 'pasajero', 'pasajeros') + (r.international ? ' · internacional' : '') + ' · ' + escHtml(PT_STATUS[r.status || it.status] || r.status || it.status) + '</div>' +
+      '<div class="pt-muted">«A la hora pedida» = sale hasta 2 horas antes o después de la hora preferida.</div>' +
+    '</div></div>';
+
+  // 2. Qué búsqueda se muestra
+  var moments = ['COMPRA', 'COTIZACION'].filter(function(m) { return d.searches[m]; });
+  if (moments.length > 1) {
+    html += '<div class="pt-moments">' + moments.map(function(m) {
+      var sn = d.searches[m];
+      return '<button type="button" data-pt-moment="' + m + '" data-req="' + escHtml(it.requestId) + '" class="' + (sn === snap ? 'on' : '') + '">' +
+        (m === 'COMPRA' ? 'Búsqueda al aprobarse' : 'Búsqueda al cotizar') + ' · ' + escHtml(ptAgo(sn.at)) + '</button>';
+    }).join('') + '</div>';
+  }
+  if (!snap) return html + '</div>';
+  html += '<div class="pt-muted" style="margin-bottom: 8px;">' + (snap.moment === 'COMPRA' ? 'Búsqueda al aprobarse' : 'Búsqueda al cotizar') + ', el ' +
+    escHtml(ptWhen(snap.at)) + '. Precios de Google para ' + ptPlural(pax, 'pasajero', 'pasajeros') + (pax > 1 ? ' (total del grupo; por persona, dividir entre ' + pax + ')' : '') + '.</div>';
+  if (snap.result !== 'OK') {
+    html += '<div class="pt-note-box">' + escHtml(PT_FAIL[snap.result] || snap.result) + (snap.detail ? ': ' + escHtml(snap.detail) : '') + '</div>';
+  }
+  if (snap.format < 2) return html + _ptLegacyHtml(it, r, snap) + '</div>';
+
+  var legs = snap.legs || [];
+  var ida = legs.filter(function(l) { return l.leg === 'IDA'; })[0];
+  var reg = legs.filter(function(l) { return l.leg === 'REGRESO'; })[0];
+  var rt = legs.filter(function(l) { return l.leg === 'IDA Y VUELTA'; })[0];
+
+  // 3. Armando el viaje: ida + regreso
+  if (snap.result === 'OK') {
+    var quoted = r.quoted || it.quoted;
+    var cellOpt = function(l, o) {
+      if (!l) return '<td>—</td>';
+      if (!o) return '<td class="pt-muted">no hay</td>';
+      return '<td>' + escHtml(o.airline) + ', sale ' + escHtml(o.departs) + '<br><b>' + fmtMoney(o.price) + '</b></td>';
+    };
+    var row = function(label, sub, fIda, fReg, isRef) {
+      var oi = ida ? fIda(ida) : null, or = reg ? fReg(reg) : null;
+      var total = (ida ? (oi ? oi.price : null) : 0) + (reg ? (or ? or.price : null) : 0);
+      var ok = (!ida || oi) && (!reg || or);
+      var v = ok && quoted ? ptVerdict(quoted - total, (quoted - total) / total * 100) : null;
+      return '<tr' + (isRef ? ' class="pt-ref"' : '') + '><td><b>' + escHtml(label) + '</b><div class="pt-muted">' + escHtml(sub) + '</div></td>' +
+        cellOpt(ida, oi) + (reg ? cellOpt(reg, or) : '') +
+        '<td class="num"><b>' + (ok ? fmtMoney(total) : '—') + '</b></td>' +
+        '<td class="num">' + (v ? '<span class="' + v.cls + '">' + escHtml(v.main) + '</span><div class="pt-muted">' + escHtml(v.sub) + '</div>' : '—') + '</td></tr>';
+    };
+    var refByTramos = snap.referenceKind !== 'IDA Y VUELTA';
+    var mineLabel = r.returnAirline && reg ? r.airline + ' / ' + r.returnAirline : (r.airline || 'sin registrar');
+    html += '<div class="pt-box"><div class="pt-box-title">El viaje armado con lo que mostraba Google</div><div class="pt-scroll" style="max-height: none;"><table class="pt-mini">' +
+      '<thead><tr><th></th><th>Ida</th>' + (reg ? '<th>Regreso</th>' : '') + '<th class="num">Total del viaje</th><th class="num">Frente a lo cotizado (' + (quoted ? fmtMoney(quoted) : '—') + ')</th></tr></thead><tbody>' +
+      row('A la hora pedida', 'lo más barato saliendo ±2 h de la hora preferida; si no hay o no pidió hora, el más barato del día', ptLegRef, ptLegRef, refByTramos) +
+      row('El más barato del día', 'sin importar la hora', function(l) { return l.cheapest; }, function(l) { return l.cheapest; }, false) +
+      row('Con la aerolínea registrada', mineLabel + (r.airline ? ': a la hora pedida o, si no hay, en el día' : ''), function(l) { return l.sameNear || l.sameDay; }, function(l) { return l.sameNear || l.sameDay; }, false);
+    if (rt && rt.ok) {
+      var ro = ptLegRef(rt);
+      var vrt = quoted && rt.reference ? ptVerdict(quoted - rt.reference, (quoted - rt.reference) / rt.reference * 100) : null;
+      html += '<tr' + (!refByTramos ? ' class="pt-ref"' : '') + '><td><b>Ida y vuelta en un solo tiquete</b><div class="pt-muted">internacional: Google combina el regreso más barato con este vuelo de ida</div></td>' +
+        '<td colspan="' + (reg ? 2 : 1) + '">' + (ro ? escHtml(ro.airline) + ', sale ' + escHtml(ro.departs) : '—') + '</td>' +
+        '<td class="num"><b>' + fmtMoney(rt.reference) + '</b></td>' +
+        '<td class="num">' + (vrt ? '<span class="' + vrt.cls + '">' + escHtml(vrt.main) + '</span><div class="pt-muted">' + escHtml(vrt.sub) + '</div>' : '—') + '</td></tr>';
+    }
+    html += '</tbody></table></div><div class="pt-muted" style="margin-top: 6px;">La fila resaltada es la que usa el comparador (' +
+      (refByTramos ? 'ida + regreso por separado' : 'el tiquete redondo, más barato que los dos tramos') + ').</div></div>';
+  }
+
+  // 4. Los vuelos de cada tramo
+  legs.forEach(function(l) { html += _ptLegHtml(l, pax, r, it); });
+  return html + '</div>';
+}
+
+/** Tabla de vuelos de un tramo, ordenados por hora de salida; resalta los de la hora pedida. */
+function _ptLegHtml(l, pax, r, it) {
+  var title = l.leg === 'IDA' ? '🛫 Ida' : l.leg === 'REGRESO' ? '🛬 Regreso' : '🔁 Ida y vuelta en un solo tiquete';
+  var o = r.origin || it.origin, dst = r.destination || it.destination;
+  var place = function(city, codes) { return (city ? city + ' ' : '') + '(' + String(codes || '').split(',').join(', ') + ')'; };
+  var route = l.leg === 'REGRESO' ? place(dst, l.from) + ' → ' + place(o, l.to) : place(o, l.from) + ' → ' + place(dst, l.to);
+  var html = '<div class="pt-box"><div class="pt-leg-title">' + title + ' · ' + escHtml(route) + ' · ' + escHtml(ptDayLong(l.date)) +
+    (l.returnDate ? ' y regreso ' + escHtml(ptDayLong(l.returnDate)) : '') +
+    ' · ' + (l.hour ? 'hora preferida ' + escHtml(l.hour) : 'sin hora preferida') + '</div>';
+  if (!l.ok) return html + '<div class="pt-note-box">' + escHtml(PT_FAIL[l.result] || l.result) + (l.error ? ': ' + escHtml(l.error) : '') + '</div></div>';
+  var extra = [];
+  extra.push(ptPlural(l.optionCount, 'vuelo encontrado', 'vuelos encontrados'));
+  var rango = String(l.typicalRange || '').split('-').map(Number);
+  if (rango.length === 2 && rango[0] > 0) extra.push('Google considera normal entre ' + fmtMoney(rango[0]) + ' y ' + fmtMoney(rango[1]) + (PT_LEVEL[l.level] ? ' (hoy: ' + PT_LEVEL[l.level] + ')' : ''));
+  if (l.leg === 'IDA Y VUELTA') extra.push('cada precio es el total de ida y regreso con ese vuelo de ida');
+  html += '<div class="pt-muted" style="margin-bottom: 6px;">' + escHtml(extra.join(' · ')) + '</div>';
+  var pref = ptMin(l.hour);
+  var near = l.near, cheap = l.cheapest, mine = l.sameNear || l.sameDay;
+  var same = function(a, b) { return a && b && a.departs === b.departs && a.price === b.price && a.airline === b.airline; };
+  var opts = l.options || [];
+  html += '<div class="pt-scroll"><table class="pt-mini pt-flights"><thead><tr><th>Sale</th><th>Llega</th><th>Aerolínea</th><th>Vuelo</th><th>Escalas</th>' +
+    '<th class="num">Precio' + (pax > 1 ? ' (' + pax + ' pax)' : '') + '</th>' + (pax > 1 ? '<th class="num">Por persona</th>' : '') + '</tr></thead><tbody>' +
+    opts.map(function(o) {
+      var m = ptMin(o.departs);
+      var win = pref !== null && m !== null && Math.abs(m - pref) <= 120;
+      var tags = (same(o, near) ? '<span class="pt-tag near">más barato a la hora</span>' : '') +
+        (same(o, cheap) ? '<span class="pt-tag day">más barato del día</span>' : '') +
+        (same(o, mine) ? '<span class="pt-tag mine">aerolínea registrada</span>' : '');
+      return '<tr' + (win ? ' class="pt-win"' : '') + '><td><b>' + escHtml(o.departs || '—') + '</b></td><td>' + escHtml(o.arrives || '—') + '</td>' +
+        '<td>' + escHtml(o.airline) + tags + '</td><td>' + escHtml(o.flights || '—') + '</td>' +
+        '<td>' + (o.stops ? o.stops + (o.minutes ? ' · ' + Math.floor(o.minutes / 60) + ' h ' + (o.minutes % 60) + ' min' : '') : 'directo') + '</td>' +
+        '<td class="num"><b>' + fmtMoney(o.price) + '</b></td>' + (pax > 1 ? '<td class="num">' + fmtMoney(Math.round(o.price / pax)) + '</td>' : '') + '</tr>';
+    }).join('') + '</tbody></table></div>';
+  if (pref !== null) html += '<div class="pt-muted" style="margin-top: 4px;">En azul: salen entre 2 horas antes y 2 horas después de las ' + escHtml(l.hour) + '.</div>';
+  if (l.vendors && l.vendors.length) {
+    html += '<div class="pt-muted" style="margin-top: 4px;">Quién vende el vuelo de referencia: ' +
+      l.vendors.map(function(x) { return escHtml(x.seller) + ' ' + fmtMoney(x.price); }).join(' · ') + '</div>';
+  }
+  return html + '</div>';
+}
+
+/** Búsqueda del formato anterior: un solo precio de ida y vuelta, sin la lista de vuelos. */
+function _ptLegacyHtml(it, r, snap) {
+  var who = snap.referenceIsNear ? snap.nearAirline + ', sale ' + snap.nearTime : snap.cheapestAirline + ', sale ' + snap.cheapestTime;
+  return '<div class="pt-note-box">Esta búsqueda es del formato anterior. ' +
+    (r.returnDate || it.returnDate
+      ? 'Google daba un solo precio de ida y vuelta: <b>' + fmtMoney(snap.reference) + '</b> es el vuelo de ida (' + escHtml(who) +
+        ') con el regreso más barato que Google le combinaba, sin tener en cuenta la hora del regreso. Por eso no aparece igual en la página de la aerolínea. '
+      : 'El más barato fue <b>' + fmtMoney(snap.reference) + '</b> (' + escHtml(who) + '). ') +
+    'No se guardó la lista de vuelos. Las búsquedas nuevas van por tramos y con todos los vuelos.</div>';
 }
 
 function exportPriceCsv() {
   var items = _ptFilteredItems();
   if (!items.length) { alert('No hay datos para exportar.'); return; }
   var snapCols = function(s) {
-    return s ? [s.at, s.result, s.reference || '', s.referenceIsNear ? 'cerca de la hora' : 'del día', s.nearAirline || s.cheapestAirline, s.nearTime || s.cheapestTime, s.sameAirlineNear || s.sameAirlineDay || '', s.aviatur || ''] : ['', '', '', '', '', '', '', ''];
+    return s ? [s.at, s.result, s.reference || '', s.referenceIsNear ? 'a la hora pedida (±2 h)' : 'el más barato del día', s.nearAirline || s.cheapestAirline, s.nearTime || s.cheapestTime, s.sameAirlineNear || s.sameAirlineDay || '', s.aviatur || ''] : ['', '', '', '', '', '', '', ''];
   };
-  var head = ['Solicitud', 'Origen', 'Destino', 'Ida', 'Regreso', 'Pasajeros', 'Empresa', 'Unidad', 'Estado', 'Aerolínea registrada', 'Canal registrado', 'Cotizado tiquetes',
-    'Al cotizar: fecha', 'Al cotizar: resultado', 'Al cotizar: mercado', 'Al cotizar: referencia', 'Al cotizar: aerolínea', 'Al cotizar: salida', 'Al cotizar: misma aerolínea', 'Al cotizar: Aviatur en Google',
-    'Al comprar: fecha', 'Al comprar: resultado', 'Al comprar: mercado', 'Al comprar: referencia', 'Al comprar: aerolínea', 'Al comprar: salida', 'Al comprar: misma aerolínea', 'Al comprar: Aviatur en Google',
-    'Diferencia', 'Diferencia %'];
+  var head = ['Solicitud', 'Origen', 'Destino', 'Ida', 'Regreso', 'Pasajeros', 'Empresa', 'Unidad', 'Estado', 'Aerolínea (ida)', 'Aerolínea regreso (si es otra)', 'Canal de compra', 'Cotizado tiquetes',
+    'Al cotizar: fecha de búsqueda', 'Al cotizar: resultado', 'Al cotizar: más barato en Google', 'Al cotizar: criterio', 'Al cotizar: aerolínea', 'Al cotizar: salida', 'Al cotizar: misma aerolínea', 'Al cotizar: Aviatur en Google',
+    'Al aprobarse: fecha de búsqueda', 'Al aprobarse: resultado', 'Al aprobarse: más barato en Google', 'Al aprobarse: criterio', 'Al aprobarse: aerolínea', 'Al aprobarse: salida', 'Al aprobarse: misma aerolínea', 'Al aprobarse: Aviatur en Google',
+    'Diferencia (cotizado - Google)', 'Diferencia %',
+    'Hora pedida ida', 'Hora pedida regreso', 'Cómo se compara', 'Ida: más barato en Google', 'Ida: aerolínea y salida', 'Regreso: más barato en Google', 'Regreso: aerolínea y salida', 'Ida y vuelta en un solo tiquete'];
+  var legCols = function(it) {
+    var s = it.atPurchase && it.atPurchase.result === 'OK' ? it.atPurchase : (it.atQuote && it.atQuote.result === 'OK' ? it.atQuote : null);
+    var legs = s && s.legs ? s.legs : [];
+    var pick = function(name) {
+      var l = legs.filter(function(x) { return x.leg === name; })[0];
+      var o = ptLegRef(l);
+      return l ? [l.reference || '', o ? o.airline + ' ' + o.departs : ''] : ['', ''];
+    };
+    var kind = !s ? '' : s.format < 2 ? (it.returnDate ? 'ida y vuelta juntos (formato anterior)' : 'solo ida') : s.referenceKind === 'IDA Y VUELTA' ? 'tiquete redondo' : 'por tramos';
+    return [it.departureTime || '', it.returnTime || '', kind].concat(pick('IDA'), pick('REGRESO'), [s && s.roundTripTogether ? s.roundTripTogether : '']);
+  };
   var q = function(v) {
     var t = String(v === null || v === undefined ? '' : v);
     if (typeof v === 'string' && /^[=+\-@]/.test(t)) t = "'" + t; // que Excel no lo lea como fórmula
     return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
   };
   var lines = [head.join(';')].concat(items.map(function(it) {
-    return [it.requestId, it.origin, it.destination, it.departure, it.returnDate, it.passengers, it.company, it.unit, it.status, it.airline, it.channel, it.quoted || '']
+    return [it.requestId, it.origin, it.destination, it.departure, it.returnDate, it.passengers, it.company, it.unit, it.status, it.airline, it.returnAirline || '', it.channel, it.quoted || '']
       .concat(snapCols(it.atQuote), snapCols(it.atPurchase),
-        [it.difference === null ? '' : it.difference, it.differencePct === null ? '' : it.differencePct.toFixed(1).replace('.', ',')])
+        [it.difference === null ? '' : it.difference, it.differencePct === null ? '' : it.differencePct.toFixed(1).replace('.', ',')], legCols(it))
       .map(q).join(';');
   }));
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -3316,6 +3687,19 @@ document.addEventListener('DOMContentLoaded', function() {
   // COMPARADOR DE PRECIOS (#A84): filtro de estado y exportación
   var ptFilterSel = document.getElementById('ptFilter');
   if (ptFilterSel) ptFilterSel.addEventListener('change', function() { if (priceData) renderPriceTable(); });
+  // Detalle de un viaje (#A86): tocar la fila lo abre o lo cierra; los botones cambian de búsqueda.
+  var ptBody = document.getElementById('ptTableBody');
+  if (ptBody) ptBody.addEventListener('click', function(e) {
+    var btn = e.target.closest ? e.target.closest('button[data-pt-moment]') : null;
+    if (btn) {
+      var st = ptDetails[btn.getAttribute('data-req')];
+      if (st && st.data) { st.moment = btn.getAttribute('data-pt-moment'); renderPriceTable(); }
+      return;
+    }
+    if (e.target.closest && e.target.closest('.pt-detail')) return;
+    var tr = e.target.closest ? e.target.closest('tr.pt-row') : null;
+    if (tr && priceData) _ptToggle(tr.getAttribute('data-req'));
+  });
   var ptCsvBtn = document.getElementById('btnExportPriceCsv');
   if (ptCsvBtn) ptCsvBtn.addEventListener('click', exportPriceCsv);
 

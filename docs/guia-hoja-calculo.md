@@ -115,7 +115,9 @@ La antigua hoja de usuarios, antes de la migración a USUARIOS. Está ahí como 
 
 Las crea y las escribe el **rastreo de precios** (#A84), un proyecto de Apps Script aparte que
 compara lo cotizado con el precio de Google Flights durante el estudio de dos semanas. Una
-fila por búsqueda, y el estado del rastreo. El dashboard de costos las lee en la sección
+fila por búsqueda, y el estado del rastreo. Desde #A86 cada búsqueda trae la ida y el regreso
+por separado; la columna `TRAMOS` guarda los vuelos de cada tramo (texto en formato JSON, para
+el dashboard). El dashboard de costos las lee en la sección
 *Comparador de precios* (solo Yurani, Diego y David).
 
 Están ocultas (menú **Ver → Hojas ocultas** para verlas) y avisan si alguien intenta editarlas.
@@ -338,13 +340,14 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 
 **Columnas al final que agrega el sistema (2-oct-2026):**
 - `AEROLINEA` y `CANAL DE COMPRA` (#A82): con qué aerolínea y por qué canal (*Aviatur*, *Directo* u *Otra agencia*) se compró. Las llenan "Confirmar costos" y "Registrar reserva".
+- `AEROLINEA REGRESO` (#A85, 7-oct-2026): la aerolínea del regreso **solo si es distinta** de la de ida (por ejemplo, `AEROLINEA` = LATAM y `AEROLINEA REGRESO` = Avianca). Vacía = la misma aerolínea o viaje solo de ida.
 - `AVISO FACTURAS OMITIDO` (#A83): quién omitió el aviso de facturas incompletas y cuándo. Borrar la celda vuelve a mostrar el aviso en el panel.
 
-Las tres las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
+Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
 
 ### 12. Columnas de compra y resumen de facturas
 
-Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
+Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
 - **listas para cerrar:** viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita
 - **facturas por revisar:** les faltan facturas o PDF, a partir del día 7 después del viaje
 - avisos omitidos y solicitudes en espera

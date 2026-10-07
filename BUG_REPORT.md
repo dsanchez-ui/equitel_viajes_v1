@@ -1681,3 +1681,125 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
    - backend nuevo con el HTML anterior: nada visible;
    - proyecto aparte activo con la plataforma anterior: escribe sus pestañas y nadie las muestra.
 4. Rollback: `desactivarRastreo` y la versión anterior del web app. Las pestañas se pueden borrar; nada de la plataforma depende de ellas.
+
+## **#A85 — Aerolínea distinta para el regreso; comparador de precios más fácil de leer**
+**Fecha:** 2026-10-07 · **Reportado por:** Laura (6-oct, regreso con otra aerolínea) y David (7-oct, «costo mercado no es muy claro») · **Estado:** Implementado, pendiente de pegar `Code.gs` y `CostsDashboard.html`, crear la versión nueva del web app y hacer push
+
+**Pedido 1 (Laura):** en "Compra prevista" se debería poder poner dos aerolíneas, una de ida y otra de regreso: a veces se compra LATAM de ida y Avianca de regreso.
+
+**Pedido 2 (David):** en la sección del comparador de precios no se entendía qué era "Mercado". Pidió que fuera lo más fácil posible de leer.
+
+**Cambio 1: aerolínea del regreso:**
+- Columna nueva al final de la hoja, `AEROLINEA REGRESO`, leída por nombre. Solo se llena si el regreso es con **otra** aerolínea; vacía = la misma de ida o viaje solo de ida. `AEROLINEA` sigue siendo la de ida (o la de todo el viaje), así que las sumas por aerolínea y el rastreo de precios no cambian.
+- **Confirmar costos y Registrar reserva:** casilla *"El regreso es con otra aerolínea"* debajo de la aerolínea. Al marcarla aparece *"Aerolínea del regreso *"* al lado (lista o "Otra…") y la primera pasa a llamarse *"Aerolínea de ida"*.
+  - Solo en viajes con fecha de regreso.
+  - Con la casilla marcada, la aerolínea del regreso es obligatoria.
+  - Al desmarcarla se borra lo elegido.
+- El detalle (solo administradores) muestra *"Compra: LATAM (ida) y Avianca (regreso) · Aviatur"*. El dashboard del comparador también.
+- **Regla gemela** (`utils/purchase.ts` ↔ `Code.gs`, `_normalizePurchaseInfo_` con un 4.º argumento y `_purchaseAirlineName_`):
+  - mismas reglas de escritura que la de ida;
+  - los mensajes dicen *"del regreso"*;
+  - igual a la de ida (sin importar tildes ni mayúsculas) se guarda vacía;
+  - solo hospedaje la ignora.
+- **La clave presente activa la regla** (patrón #A70):
+  - `updateRequest` (`purchaseReturnAirline`) y `setPurchaseInfo` (`returnAirline`) solo tocan la columna si la clave viene. Una pestaña con la app anterior no la borra ni crea la columna.
+  - El servidor deja vacío el regreso de un viaje sin fecha de regreso.
+  - `mapRowToRequest` siempre manda `purchaseReturnAirline`: con eso la app sabe que el servidor ya lo guarda. Con un servidor anterior la casilla no aparece.
+- El menú *12* también crea la columna.
+
+**Cambio 2: comparador de precios en lenguaje simple** (`CostsDashboard.html`; los datos no cambian):
+- **"Mercado" pasa a ser "Más barato en Google"** en todas partes, incluido el CSV.
+- **Frase de resumen arriba**, por ejemplo: *"En 2 viajes comparados, lo cotizado suma $1.521.046 y lo más barato en Google Flights sumaba $665.644. Lo cotizado fue $855.402 más caro (129 % más). Google tenía un precio más bajo en 2 de 2."* Debajo, la advertencia de equipaje y tarifa.
+- **"¿Cómo se lee?"** (abierto, se puede plegar), un renglón por término: cotizado, más barato en Google, misma aerolínea, diferencia, cuándo se busca y la advertencia.
+- **Diferencia en palabras:**
+  - *"$431.444 más caro"* en rojo, *"$35.300 más barato"* en verde, *"Igual"* si es menos de $1.000;
+  - debajo, *"cotizado 111 % más que Google"*.
+- **Resumen** con filas en palabras (*Al cotizar*, *Al aprobarse*, *Con la misma aerolínea*, *Comprado por Aviatur*…). Una fila sin datos dice por qué: *"se llena con los costos que se confirmen desde el inicio del estudio"*.
+- **Tabla viaje por viaje**, de 11 a 6 columnas:
+  - la solicitud con su estado;
+  - el viaje (fechas y pasajeros);
+  - el cotizado (con aerolínea y canal);
+  - el más barato en Google (aerolínea, hora de salida y cuándo se buscó);
+  - la misma aerolínea;
+  - la diferencia.
+- **Estado del rastreo en palabras:** *"✅ Funcionando · revisa cada 15 minutos · última revisión hace 4 min · … · quedan 212 este mes"*.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-purchase-info-rules.cjs`:
+  - 43 casos de la regla gemela (16 con aerolínea de regreso) y 8 de la casilla del formulario.
+  - 17 comprobaciones con el `Code.gs` completo sobre una hoja simulada, con el recorrido real: `_authorizeStatusUpdate_` → `updateRequestStatus`, y `setPurchaseInfo`. Confirmar y registrar con regreso distinto. La app anterior no borra el regreso ni crea la columna. Solo ida y solo hospedaje no lo guardan. Igual a la ida queda vacío. Un regreso inválido da un error claro y no escribe nada. La solicitud que recibe la app lo trae.
+  - 11 defectos introducidos a propósito en el frontend y el backend: los 11 detectados.
+- `tools/check-price-tracking.cjs`: el dashboard recibe la aerolínea del regreso.
+- Chrome sin ventana:
+  - el componente en 5 estados, a ancho de celular y de modal;
+  - clic en la casilla: aparece el campo, guarda *LATAM (ida) y …*, y al desmarcar lo borra;
+  - el dashboard con 5 viajes de prueba y con los 2 reales del 7-oct, en escritorio y celular.
+
+**Despliegue:**
+- **Frontend nuevo con backend anterior:** todo igual que hoy. La casilla no aparece porque el servidor no manda `purchaseReturnAirline`.
+- **Backend nuevo con frontend anterior:** todo igual que hoy. La app anterior no manda la clave y no se toca la columna.
+- Orden recomendado: pegar `Code.gs` y `CostsDashboard.html`, guardar y crear la versión nueva del web app; luego push del frontend. El menú *12* crea la columna (si no, se crea sola la primera vez que se usa).
+- **Rollback:** revert del commit (frontend) y versión anterior del web app. La columna puede quedarse; nada depende de ella.
+
+## **#A86 — Comparador de precios: cada tramo por separado y detalle de cada viaje**
+**Fecha:** 2026-10-07 · **Reportado por:** David (7-oct, al revisar SOL-000629 en el dashboard) · **Estado:** Implementado, pendiente de pegar `Code.gs`, `CostsDashboard.html` y `Rastreo.gs`
+
+**Síntoma:** en un viaje de ida y regreso, el comparador mostraba un solo precio (p. ej. SOL-000629: "$387.784, Wingo 06:32") que no se encontraba igual en la página de Wingo ni de Avianca. No se sabía si era un tramo o los dos, ni a qué hora era el regreso. David pidió poder tocar un viaje y ver:
+- lo que registró el área de viajes y con qué aerolínea;
+- las horas que pidió el viajero;
+- todos los vuelos que mostró Google;
+- el precio de la ida y el del regreso por separado, porque a veces se compran con aerolíneas distintas (#A85).
+
+**Causa raíz:** el rastreo (#A84) hacía una sola búsqueda de ida y vuelta. En ese modo, Google Flights da por cada vuelo de ida el precio total del viaje redondo con el regreso más barato que le combina, sin importar la hora del regreso. Ese total no existe como tal en la página de ninguna aerolínea, y la hora pedida para el regreso nunca se usaba.
+
+**Cambio:**
+- **Rastreo (`Rastreo.gs`, proyecto aparte; el núcleo no cambia):**
+  - **Un tramo por consulta**, como se compra: la ida con «Hora Requerida de Vuelo - Ida» y el regreso con la «- Vuelta», cada uno con su aerolínea registrada (la del regreso si es otra, #A85).
+  - Por tramo guarda el más barato del día, el más barato a ±2 h y el de la aerolínea registrada, el rango normal de Google y hasta 60 vuelos (aerolínea, número, salida, llegada, escalas, duración, precio) en la columna nueva `TRAMOS`.
+  - **El viaje = suma de los tramos** (`REFERENCIA`). `REFERENCIA A LA HORA` dice si los dos tramos tenían vuelos a la hora pedida (`SI`), solo uno (`PARCIAL`) o ninguno.
+  - **Internacional de ida y vuelta:** también busca el tiquete redondo (`IDA Y VUELTA JUNTOS`) y la referencia es el menor. Comprar dos tiquetes de solo ida al exterior suele costar mucho más, y la comparación saldría a favor de la cotización sin razón.
+  - Vendedores (opcional, apagado): por tramo.
+  - Las columnas nuevas van al final; una pestaña de la versión anterior las recibe en la siguiente pasada.
+  - Las búsquedas del formato anterior no cuentan como hechas: si la solicitud sigue en su momento, se busca otra vez por tramos (una sola vez).
+  - Cupo: una consulta por tramo (ida y regreso = 2, internacional = 3). El tope diario y la reserva cuentan las consultas que va a gastar la búsqueda antes de empezarla.
+- **`Code.gs`:**
+  - `_ptSnapshot_` lee los dos formatos.
+  - `getPriceTracking` trae los tramos sin la lista de vuelos (para que el dashboard cargue rápido) y las horas pedidas.
+  - **Nueva** `getPriceTrackingDetail` (y `costsDashboard_getPriceTrackingDetail`): un viaje con todo. Mismas personas que la variación, revisado en `dispatch` y en la función. Sin datos de pasajeros ni del solicitante.
+  - **Quién confirmó los costos:** al confirmar por la API se guarda `costConfirmedBy: {email, at}` en `EVENTOS_JSON`, la primera vez, como `costConfirmed`. El detalle muestra el nombre de `USUARIOS`. Las solicitudes anteriores dicen "el área de viajes".
+- **`CostsDashboard.html`:**
+  - Tocar un viaje abre su detalle. Se carga al abrirlo y queda en memoria.
+  - *Lo que registró el área de viajes*: costo total de tiquetes, por persona, aerolínea(s), canal, quién y cuándo. Aclara que la plataforma guarda el total, no cada tramo.
+  - *Lo que pidió el viajero*: ruta, fechas, horas preferidas y pasajeros.
+  - *El viaje armado con lo que mostraba Google*: ida + regreso a la hora pedida, en el día y con la aerolínea registrada, y el tiquete redondo si es internacional, cada uno frente a lo cotizado; resalta el que usa el comparador.
+  - Por cada tramo, todos los vuelos ordenados por hora de salida. Se resaltan en azul los de ±2 h y se marcan con etiquetas el más barato a la hora, el del día y la aerolínea registrada. Con varios pasajeros, también el precio por persona.
+  - Si hay búsqueda al cotizar y al aprobarse, se cambia entre ellas.
+  - Las búsquedas del formato anterior llevan una nota que explica el precio junto.
+  - En la tabla, la celda de Google muestra la ida y el regreso por separado. El CSV agrega las horas pedidas, cómo se comparó y el precio, la aerolínea y la salida de cada tramo.
+  - En celular, el detalle queda del ancho de la pantalla.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-price-tracking.cjs`: corre `Rastreo.gs` y `Code.gs` juntos sobre una hoja simulada.
+  - Una consulta de solo ida por tramo, con su fecha y su hora. Los vuelos de cada tramo, ordenados por hora.
+  - Sumas por tramo: a la hora, del día, parcial y misma aerolínea mezclando hora y día. Regreso con otra aerolínea.
+  - Internacional: el redondo manda cuando es más barato y no cuando es más caro.
+  - Tope diario sin pasarse. Columnas nuevas en una pestaña vieja. Las búsquedas viejas se repiten solo si siguen en su momento, y el dashboard lee los dos formatos.
+  - Detalle: permisos (Laura no lo ve, ni en `dispatch` ni en la función), contenido, nombre de quien confirmó, sin datos de pasajeros, sin escrituras.
+  - Los valores esperados se calcularon a mano con los vuelos de ejemplo.
+- `tools/check-purchase-info-rules.cjs`: confirmar costos por `dispatch` guarda quién confirmó, y una segunda confirmación no lo cambia.
+- 13 defectos introducidos a propósito en `Rastreo.gs` y `Code.gs`: los 13 detectados.
+- Chrome sin ventana, con datos generados por el mismo `Rastreo.gs` y `Code.gs` (respuesta de Google simulada por ruta):
+  - detalle de un viaje nacional, de uno de 2 pasajeros con LATAM de ida y Avianca de regreso y de uno internacional;
+  - en escritorio y en celular.
+- **No verificado aquí:** contra SerpApi real. Los parámetros de solo ida son los mismos que ya usaba la prueba del 6-oct (`--solo-ida`).
+
+**Despliegue** (cualquier orden funciona):
+- **`Rastreo.gs` nuevo con la plataforma anterior:** el dashboard anterior suma bien. Lee `MAS BARATO`/`MAS BARATO CERCA HORA`, que ahora son la suma de los tramos, y no muestra el detalle.
+- **Plataforma nueva con `Rastreo.gs` anterior:** el dashboard muestra las búsquedas viejas con la nota del precio junto.
+- Pasos:
+  1. Plataforma: pegar `Code.gs` y `CostsDashboard.html` y crear la versión nueva del web app.
+  2. Proyecto aparte: pegar `Rastreo.gs` (ver "Actualizar el código" en su README). No requiere permisos nuevos ni volver a activar.
+  3. En la siguiente pasada se vuelven a buscar por tramos las solicitudes aún por comprar: unas 4 consultas con las 2 de hoy.
+- **Rollback:** pegar el `Rastreo.gs` anterior. Cuenta las filas nuevas como hechas y no repite búsquedas; el `Code.gs` anterior las lee como sumas.

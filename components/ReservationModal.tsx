@@ -4,7 +4,7 @@ import { TravelRequest, SupportFile, RequestStatus, APPROVER_ROLE_LABELS } from 
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { PurchaseInfoFields } from './PurchaseInfoFields';
-import { normalizePurchaseInfo, purchaseChannelLabel } from '../utils/purchase';
+import { PurchaseForm, checkPurchaseForm, purchaseAirlineLabel, purchaseChannelLabel, purchaseFormFrom } from '../utils/purchase';
 
 interface ReservationModalProps {
     request: TravelRequest;
@@ -61,13 +61,14 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
     // #A82: aerolínea y canal con que se compró (precargados con lo previsto al
     // confirmar costos). Obligatorios al registrar la reserva; al corregirla, solo
     // si se escribe alguno.
-    const [purchase, setPurchase] = useState<{ airline: string; channel: string }>({
-        airline: request.purchaseAirline || '',
-        channel: request.purchaseChannel || '',
-    });
+    // #A85: aerolínea del regreso distinta, solo con regreso y si el servidor ya
+    // la guarda (manda la clave purchaseReturnAirline).
+    const [purchase, setPurchase] = useState<PurchaseForm>(() => purchaseFormFrom(request));
     const [triedPurchase, setTriedPurchase] = useState(false);
-    const purchaseCheck = normalizePurchaseInfo(purchase.airline, purchase.channel, isHotelOnly);
-    const purchaseTouched = !!(purchase.airline.trim() || purchase.channel.trim());
+    const serverHasReturnAirline = request.purchaseReturnAirline !== undefined;
+    const canSplitReturn = !!request.returnDate && serverHasReturnAirline;
+    const purchaseCheck = checkPurchaseForm(purchase, isHotelOnly, canSplitReturn);
+    const purchaseTouched = !!(purchase.airline.trim() || purchase.channel.trim() || purchase.splitReturn);
 
     /**
      * Guarda aerolínea y canal si cambiaron. Con un backend anterior (que no conoce
@@ -75,9 +76,11 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
      */
     const savePurchaseInfoIfNeeded = async (): Promise<string> => {
         if (!purchaseCheck.ok) return '';
-        if (purchaseCheck.airline === (request.purchaseAirline || '') && purchaseCheck.channel === (request.purchaseChannel || '')) return '';
+        if (purchaseCheck.airline === (request.purchaseAirline || '') && purchaseCheck.channel === (request.purchaseChannel || '')
+            && (!serverHasReturnAirline || purchaseCheck.returnAirline === (request.purchaseReturnAirline || ''))) return '';
         try {
-            await gasService.setPurchaseInfo(request.requestId, purchaseCheck.airline, purchaseCheck.channel);
+            await gasService.setPurchaseInfo(request.requestId, purchaseCheck.airline, purchaseCheck.channel,
+                serverHasReturnAirline ? purchaseCheck.returnAirline : undefined);
             return '';
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -251,7 +254,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
               + (newFiles.length > 0 ? `\nSe subirán ${newFiles.length} archivo(s) nuevo(s).` : '')
               + `\nSe enviará correo de corrección al usuario.\n\n¿Desea continuar?`
             : `Se registrará la reserva ${reservationNumber} con la tarjeta ${creditCard}`
-              + (purchaseCheck.ok ? ` (compra: ${purchaseCheck.airline ? purchaseCheck.airline + ' · ' : ''}${purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)})` : '')
+              + (purchaseCheck.ok ? ` (compra: ${purchaseCheck.airline ? purchaseAirlineLabel(purchaseCheck.airline, purchaseCheck.returnAirline) + ' · ' : ''}${purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)})` : '')
               + `, se subirán ${newFiles.length} archivo(s)`
               + (sendUserNotification ? ' y se notificará al usuario.' : ' (SIN notificación al usuario).')
               + '\n\n¿Desea continuar?';
@@ -493,8 +496,8 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                             {/* #A82: aerolínea y canal con que se compró */}
                             <PurchaseInfoFields
                                 isHotelOnly={isHotelOnly}
-                                airline={purchase.airline}
-                                channel={purchase.channel}
+                                canSplit={canSplitReturn}
+                                value={purchase}
                                 onChange={setPurchase}
                                 showErrors={triedPurchase && (!isEditMode || purchaseTouched)}
                                 title={isEditMode ? 'Compra (aerolínea y canal)' : 'Compra (aerolínea y canal) *'}

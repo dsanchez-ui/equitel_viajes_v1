@@ -1,6 +1,6 @@
 # Plan — Comparador de precios de tiquetes y estudio de sobrecosto
 
-> **Estado (2026-10-07): prueba hecha el 6-oct (demostración para Alejandro). Fase 1 en producción (#A82). Fase 2 implementada como estudio de 2 semanas, oculto para Laura (#A84), pendiente de instalar.** Pedido de Alejandro
+> **Estado (2026-10-07): prueba hecha el 6-oct (demostración para Alejandro). Fase 1 en producción (#A82). Fase 2 activa desde el 7-oct como estudio de 2 semanas, oculto para Laura (#A84); desde #A86 busca cada tramo por separado y el dashboard muestra el detalle de cada viaje.** Pedido de Alejandro
 > Gómez (vicepresidente) a David. La prueba (fase 0) está en
 > [tools/comparador-precios/](../tools/comparador-precios/README.md); las fases 1 a 4
 > esperan su resultado y las decisiones del final.
@@ -106,6 +106,14 @@ solicitud de vuelo en dos momentos (decisión de David del 7-oct):
 
 No se busca al crearse la solicitud: entre la creación y la compra pasan la selección y
 las aprobaciones, y ese precio no se compara con nada.
+
+**Cada tramo por separado (#A86, pedido de David del 7-oct):** la ida con su hora pedida y
+el regreso con la suya, como se compran (a veces con aerolíneas distintas). Así cada precio
+se puede encontrar igual en la página de la aerolínea. La primera versión buscaba ida y
+vuelta juntos: Google daba un solo precio, el vuelo de ida con el regreso más barato que le
+combinaba, sin tener en cuenta la hora del regreso. En internacionales de ida y vuelta se
+busca además el tiquete redondo y se compara contra el menor. Cuesta una búsqueda más por
+viaje de ida y regreso (2 por momento).
 
 Los resultados van a dos pestañas ocultas de la misma base, **COMPARATIVO PRECIOS** y
 **COMPARATIVO ESTADO**, que el proyecto aparte es el único que escribe. La clave de la API

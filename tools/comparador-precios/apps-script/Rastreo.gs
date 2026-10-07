@@ -15,6 +15,9 @@
  *        - COMPRA: está en APROBADO (Laura va a comprar), o pasó a RESERVADO hace
  *          menos de 6 horas. Es el precio del mercado al comprar.
  *      Una sola búsqueda por solicitud y momento.
+ *      Cada tramo se busca por separado (#A86), como se compra: la ida con su
+ *      hora pedida y el regreso con la suya. En viajes internacionales de ida y
+ *      vuelta también se busca el tiquete redondo, que suele salir más barato.
  *   3. Escribe una fila por búsqueda en la pestaña oculta «COMPARATIVO PRECIOS» y
  *      el estado del rastreo en «COMPARATIVO ESTADO». El dashboard de costos las
  *      lee (sección restringida; Laura no la ve).
@@ -29,7 +32,7 @@
  *   FIN_ESTUDIO        AAAA-MM-DD (lo pone activarRastreo: inicio + 14 días); después no busca
  *   MAX_POR_EJECUCION  búsquedas por ejecución (8)
  *   MAX_BUSQUEDAS_DIA  tope diario de consultas a SerpApi (40)
- *   RESERVA_MINIMA     no busca si a la cuenta le quedan menos (15)
+ *   RESERVA_MINIMA     nunca deja a la cuenta con menos búsquedas que esto (15)
  *   VENDEDORES         no | cotizacion | compra | ambos (no). Cada búsqueda con
  *                      vendedores gasta 1 o 2 consultas más.
  */
@@ -43,6 +46,11 @@ var RP_MINUTOS = 15;
 var RP_DIAS_ESTUDIO = 14;
 var RP_VENTANA_COMPRA_MS = 6 * 60 * 60 * 1000;
 var RP_TIEMPO_MAX_MS = 270000;
+// Formato 2 (#A86): un tramo por consulta y la lista de vuelos de cada tramo en
+// TRAMOS. Las búsquedas del formato 1 (ida y regreso juntos) se repiten una vez
+// por tramos si la solicitud sigue en su momento.
+var RP_FORMATO = 2;
+var RP_MAX_OPCIONES = 60;
 
 var RP_ENCABEZADOS = [
   'FECHA BUSQUEDA', 'MOMENTO', 'ID SOLICITUD', 'ESTADO', 'ORIGEN', 'DESTINO', 'AEROPUERTOS',
@@ -52,11 +60,14 @@ var RP_ENCABEZADOS = [
   'MAS BARATO CERCA HORA', 'AEROLINEA CERCA HORA', 'SALIDA CERCA HORA', 'VUELO CERCA HORA',
   'MISMA AEROLINEA CERCA HORA', 'MISMA AEROLINEA DIA',
   'PRECIOS POR AEROLINEA', 'RANGO TIPICO', 'NIVEL GOOGLE', 'AVIATUR EN GOOGLE', 'VENDEDORES',
-  'RESULTADO', 'DETALLE', 'SEGUNDOS', 'CONSULTAS'
+  'RESULTADO', 'DETALLE', 'SEGUNDOS', 'CONSULTAS',
+  // Formato 2 (#A86). Al final: una pestaña creada antes las recibe al final.
+  'FORMATO', 'HORA REGRESO PEDIDA', 'AEROLINEA REGRESO REGISTRADA',
+  'REFERENCIA', 'REFERENCIA A LA HORA', 'REFERENCIA TIPO', 'MISMA AEROLINEA', 'IDA Y VUELTA JUNTOS', 'TRAMOS'
 ];
 // Se guardan como texto: Sheets convertiría '2026-10-20' o '07:00' en fecha u hora.
 var RP_TEXTO = { 'ID SOLICITUD': 1, 'FECHA IDA': 1, 'FECHA REGRESO': 1, 'HORA PEDIDA': 1, 'SALIDA MAS BARATA': 1,
-  'SALIDA CERCA HORA': 1, 'VUELO CERCA HORA': 1, 'RANGO TIPICO': 1 };
+  'SALIDA CERCA HORA': 1, 'VUELO CERCA HORA': 1, 'RANGO TIPICO': 1, 'HORA REGRESO PEDIDA': 1 };
 
 // ---------------------------------------------------------------- configuración
 
@@ -130,7 +141,10 @@ function rpEventos_(raw) {
   try { var e = JSON.parse(raw); return e && typeof e === 'object' ? e : {}; } catch (err) { return {}; }
 }
 
-/** Claves 'ID|MOMENTO' ya buscadas, y consultas hechas hoy (para el tope diario). */
+/**
+ * Claves 'ID|MOMENTO' ya buscadas en el formato actual, y consultas hechas hoy (para
+ * el tope diario). Una búsqueda del formato anterior no cuenta como hecha.
+ */
 function rpLeerHechas_(hoja) {
   var hechas = {};
   var consultasHoy = 0;
@@ -141,7 +155,8 @@ function rpLeerHechas_(hoja) {
   var hoy = rpHoy_();
   for (var r = 1; r < v.length; r++) {
     var id = String(v[r][h['ID SOLICITUD']] || '').trim();
-    if (id) hechas[id + '|' + String(v[r][h['MOMENTO']] || '').trim()] = true;
+    var formato = h['FORMATO'] === undefined ? 0 : rpNumero_(v[r][h['FORMATO']]);
+    if (id && formato >= RP_FORMATO) hechas[id + '|' + String(v[r][h['MOMENTO']] || '').trim()] = true;
     if (rpFecha_(v[r][h['FECHA BUSQUEDA']]) === hoy) consultasHoy += rpNumero_(v[r][h['CONSULTAS']]);
   }
   return { hechas: hechas, consultasHoy: consultasHoy };
@@ -174,10 +189,13 @@ function rpCandidatos_(valores, hechas, cfg, ahoraMs) {
       viaje: {
         id: id, origen: origen, destino: destino, ida: ida, regreso: rpFecha_(celda(fila, 'FECHA VUELTA')),
         pasajeros: String(Math.max(1, Math.round(rpNumero_(celda(fila, '# PERSONAS QUE VIAJAN'))) || 1)),
-        horaIda: rpHora_(celda(fila, 'HORA LLEGADA VUELO IDA'))
+        horaIda: rpHora_(celda(fila, 'HORA LLEGADA VUELO IDA')),
+        horaRegreso: rpHora_(celda(fila, 'HORA LLEGADA VUELO VUELTA')),
+        internacional: String(celda(fila, 'ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI'
       },
       cotizado: rpNumero_(celda(fila, 'COSTO_FINAL_TIQUETES')),
       aerolinea: String(celda(fila, 'AEROLINEA') || '').trim(),
+      aerolineaRegreso: String(celda(fila, 'AEROLINEA REGRESO') || '').trim(),
       canal: String(celda(fila, 'CANAL DE COMPRA') || '').trim()
     };
     if (estado === 'PENDIENTE_APROBACION' && !hechas[id + '|COTIZACION'] && cfg.inicio && ev.costConfirmed &&
@@ -273,6 +291,70 @@ function rpMismaAerolinea_(opciones, aerolinea, horaIda) {
 
 var rpHoraDe_ = function(s) { return (String(s || '').match(/\d{1,2}:\d{2}/) || [''])[0]; };
 
+/** Hora de llegada, con «+1» si llega otro día. */
+function rpLlegada_(o) {
+  var h = rpHoraDe_(o.llegada);
+  return h && String(o.llegada).slice(0, 10) !== String(o.salida).slice(0, 10) ? h + ' +1' : h;
+}
+
+/** Opción resumida para la hoja: aerolínea, vuelos, salida, llegada y precio. */
+function rpOpcion_(o) {
+  return o ? { a: o.aerolinea, v: o.vuelos, s: rpHoraDe_(o.salida), l: rpLlegada_(o), p: Math.round(o.precio) } : null;
+}
+
+/** Tramos que se buscan: la ida y, si hay, el regreso con su propia hora y aerolínea. */
+function rpTramos_(cand) {
+  var v = cand.viaje;
+  var t = [{ tramo: 'IDA', origen: v.origen, destino: v.destino, fecha: v.ida, hora: v.horaIda, aerolinea: cand.aerolinea }];
+  if (v.regreso) {
+    t.push({ tramo: 'REGRESO', origen: v.destino, destino: v.origen, fecha: v.regreso, hora: v.horaRegreso,
+      aerolinea: cand.aerolineaRegreso || cand.aerolinea });
+  }
+  return t;
+}
+
+/** Consultas que gasta una búsqueda (sin vendedores): una por tramo y la del tiquete redondo internacional. */
+function rpConsultasNecesarias_(cand) {
+  return rpTramos_(cand).length + (cand.viaje.regreso && cand.viaje.internacional ? 1 : 0);
+}
+
+/**
+ * Resumen de una respuesta de Google Flights para la hoja: lo más barato del día, a
+ * la hora pedida (±2 h) y con la aerolínea registrada, el rango normal de Google y
+ * los vuelos (los RP_MAX_OPCIONES más baratos, ordenados por hora de salida).
+ */
+function rpResumenTramo_(nombre, params, res, hora, aerolinea, clave) {
+  var out = { t: nombre, de: params.departure_id, a: params.arrival_id, f: params.outbound_date, h: hora || '', ar: aerolinea || '' };
+  if (params.return_date) out.fr = params.return_date;
+  if (!res.ok) {
+    out.ok = false;
+    out.res = /hasn.t returned any results/i.test(res.error) ? 'SIN_RESULTADOS' : 'ERROR';
+    out.err = rpLimpio_(res.error, clave);
+    return { tramo: out, refOpt: null };
+  }
+  var misma = rpMismaAerolinea_(res.opciones, aerolinea, hora);
+  var refOpt = res.cercaHora || res.masBarata;
+  var g = res.referenciaGoogle;
+  out.ok = true;
+  out.barato = rpOpcion_(res.masBarata);
+  out.cerca = rpOpcion_(res.cercaHora);
+  out.mismaCerca = rpOpcion_(misma.cerca);
+  out.mismaDia = rpOpcion_(misma.dia);
+  out.ref = refOpt ? Math.round(refOpt.precio) : null;
+  out.refCerca = !!res.cercaHora;
+  out.rango = g.rangoTipico ? g.rangoTipico.map(Math.round).join('-') : '';
+  out.nivel = g.nivel || '';
+  out.total = res.opciones.length;
+  out.ops = res.opciones.filter(function(o) { return o.precio !== null; })
+    .sort(function(x, y) { return x.precio - y.precio; })
+    .slice(0, RP_MAX_OPCIONES)
+    .sort(function(x, y) { return (cpMinutos(x.salida) || 0) - (cpMinutos(y.salida) || 0) || x.precio - y.precio; })
+    .map(function(o) { return [o.aerolinea, o.vuelos, rpHoraDe_(o.salida), rpLlegada_(o), o.escalas, o.duracionMin || '', Math.round(o.precio)]; });
+  var porAerolinea = {};
+  res.porAerolinea.forEach(function(a) { porAerolinea[a.aerolinea] = Math.round(a.masBarata.precio); });
+  return { tramo: out, refOpt: refOpt, porAerolinea: porAerolinea };
+}
+
 /** Busca un candidato. Devuelve la fila a escribir y cuántas consultas gastó. */
 function rpBuscar_(cand, cfg) {
   var t0 = Date.now();
@@ -280,72 +362,128 @@ function rpBuscar_(cand, cfg) {
   var fila = {
     'FECHA BUSQUEDA': new Date(), 'MOMENTO': cand.momento, 'ID SOLICITUD': cand.id, 'ESTADO': cand.estado,
     'ORIGEN': v.origen, 'DESTINO': v.destino, 'FECHA IDA': v.ida, 'FECHA REGRESO': v.regreso || '',
-    'PASAJEROS': Number(v.pasajeros), 'HORA PEDIDA': v.horaIda || '',
+    'PASAJEROS': Number(v.pasajeros), 'HORA PEDIDA': v.horaIda || '', 'HORA REGRESO PEDIDA': v.horaRegreso || '',
     'COSTO TIQUETES COTIZADO': cand.cotizado || '', 'AEROLINEA REGISTRADA': cand.aerolinea, 'CANAL REGISTRADO': cand.canal,
-    'CONSULTAS': 0
+    'AEROLINEA REGRESO REGISTRADA': cand.aerolineaRegreso || '',
+    'FORMATO': RP_FORMATO, 'CONSULTAS': 0
   };
-  var params;
+  var detalle = [];
+  var cerrar = function() {
+    if (detalle.length) fila['DETALLE'] = detalle.join(' · ');
+    fila['SEGUNDOS'] = Math.round((Date.now() - t0) / 100) / 10;
+    return fila;
+  };
+  var tramos = rpTramos_(cand);
   try {
-    params = cpParametros(v, cfg.clave, {});
+    cpAeropuertos(v.origen);
+    cpAeropuertos(v.destino);
   } catch (e) {
     fila['RESULTADO'] = 'SIN_AEROPUERTO';
     fila['DETALLE'] = String(e && e.message ? e.message : e);
     return fila;
   }
-  fila['AEROPUERTOS'] = params.departure_id + ' → ' + params.arrival_id;
-  var json = rpConsultar_(params);
-  fila['CONSULTAS'] = 1;
-  var res = cpResumir(json, v);
-  if (!res.ok) {
-    fila['RESULTADO'] = /hasn.t returned any results/i.test(res.error) ? 'SIN_RESULTADOS' : 'ERROR';
-    fila['DETALLE'] = rpLimpio_(res.error, cfg.clave);
-    fila['SEGUNDOS'] = Math.round((Date.now() - t0) / 100) / 10;
-    return fila;
+
+  // Un tramo por consulta (solo ida), con la hora y la aerolínea de ese tramo.
+  var hechos = tramos.map(function(t) {
+    var params = cpParametros({ origen: t.origen, destino: t.destino, ida: t.fecha, pasajeros: v.pasajeros }, cfg.clave, {});
+    var json = rpConsultar_(params);
+    fila['CONSULTAS']++;
+    var r = rpResumenTramo_(t.tramo, params, cpResumir(json, { horaIda: t.hora }), t.hora, t.aerolinea, cfg.clave);
+    r.params = params;
+    return r;
+  });
+  fila['AEROPUERTOS'] = hechos[0].params.departure_id + ' → ' + hechos[0].params.arrival_id;
+  var legs = hechos.map(function(h) { return h.tramo; });
+  var fallido = legs.filter(function(l) { return !l.ok; })[0];
+  if (fallido) {
+    fila['RESULTADO'] = fallido.res;
+    detalle.push((legs.length > 1 ? (fallido.t === 'IDA' ? 'Ida: ' : 'Regreso: ') : '') + fallido.err);
+    fila['TRAMOS'] = JSON.stringify(legs);
+    return cerrar();
   }
-  var m = res.masBarata;
-  var c = res.cercaHora;
-  var misma = rpMismaAerolinea_(res.opciones, cand.aerolinea, v.horaIda);
+
+  // Totales del viaje = suma de los tramos ('' si a algún tramo le falta el dato).
+  var suma = function(get) {
+    var s = 0;
+    for (var i = 0; i < legs.length; i++) {
+      var x = get(legs[i]);
+      if (typeof x !== 'number') return '';
+      s += x;
+    }
+    return s;
+  };
+  var junta = function(get) { return legs.map(function(l) { return get(l) || '—'; }).join(' / '); };
+  var todos = function(k) { return legs.every(function(l) { return !!l[k]; }); };
+  fila['MAS BARATO'] = suma(function(l) { return l.barato && l.barato.p; });
+  fila['AEROLINEA MAS BARATA'] = todos('barato') ? junta(function(l) { return l.barato.a; }) : '';
+  fila['SALIDA MAS BARATA'] = todos('barato') ? junta(function(l) { return l.barato.s; }) : '';
+  fila['MAS BARATO CERCA HORA'] = suma(function(l) { return l.cerca && l.cerca.p; });
+  fila['AEROLINEA CERCA HORA'] = todos('cerca') ? junta(function(l) { return l.cerca.a; }) : '';
+  fila['SALIDA CERCA HORA'] = todos('cerca') ? junta(function(l) { return l.cerca.s; }) : '';
+  fila['VUELO CERCA HORA'] = todos('cerca') ? junta(function(l) { return l.cerca.v; }) : '';
+  fila['MISMA AEROLINEA CERCA HORA'] = suma(function(l) { return l.mismaCerca && l.mismaCerca.p; });
+  fila['MISMA AEROLINEA DIA'] = suma(function(l) { return l.mismaDia && l.mismaDia.p; });
+  fila['MISMA AEROLINEA'] = suma(function(l) { var o = l.mismaCerca || l.mismaDia; return o && o.p; });
+  fila['REFERENCIA'] = suma(function(l) { return l.ref; });
+  var aLaHora = legs.filter(function(l) { return l.refCerca; }).length;
+  fila['REFERENCIA A LA HORA'] = aLaHora === legs.length ? 'SI' : aLaHora ? 'PARCIAL' : 'NO';
+  fila['REFERENCIA TIPO'] = 'TRAMOS';
   var porAerolinea = {};
-  res.porAerolinea.forEach(function(a) { porAerolinea[a.aerolinea] = Math.round(a.masBarata.precio); });
-  var g = res.referenciaGoogle;
-  fila['MAS BARATO'] = m ? Math.round(m.precio) : '';
-  fila['AEROLINEA MAS BARATA'] = m ? m.aerolinea : '';
-  fila['SALIDA MAS BARATA'] = m ? rpHoraDe_(m.salida) : '';
-  fila['MAS BARATO CERCA HORA'] = c ? Math.round(c.precio) : '';
-  fila['AEROLINEA CERCA HORA'] = c ? c.aerolinea : '';
-  fila['SALIDA CERCA HORA'] = c ? rpHoraDe_(c.salida) : '';
-  fila['VUELO CERCA HORA'] = c ? c.vuelos : '';
-  fila['MISMA AEROLINEA CERCA HORA'] = misma.cerca ? Math.round(misma.cerca.precio) : '';
-  fila['MISMA AEROLINEA DIA'] = misma.dia ? Math.round(misma.dia.precio) : '';
+  hechos.forEach(function(h) { porAerolinea[h.tramo.t] = h.porAerolinea; });
   fila['PRECIOS POR AEROLINEA'] = JSON.stringify(porAerolinea);
-  fila['RANGO TIPICO'] = g.rangoTipico ? g.rangoTipico.map(Math.round).join('-') : '';
-  fila['NIVEL GOOGLE'] = g.nivel || '';
+  fila['RANGO TIPICO'] = junta(function(l) { return l.rango; });
+  fila['NIVEL GOOGLE'] = junta(function(l) { return l.nivel; });
   fila['RESULTADO'] = 'OK';
 
-  var conVendedores = cfg.vendedores === 'ambos' || cfg.vendedores === cand.momento.toLowerCase();
-  if (conVendedores && m) {
+  // Internacional de ida y vuelta: el tiquete redondo suele costar menos que dos
+  // tiquetes de solo ida. Se busca también y la referencia es el más barato.
+  if (v.regreso && v.internacional) {
     try {
-      var token = m.bookingToken;
-      if (!token && m.departureToken) {
-        var vuelta = rpConsultar_(Object.assign({}, params, { departure_token: m.departureToken }));
-        fila['CONSULTAS']++;
-        var r2 = cpResumir(vuelta, {});
-        token = r2.ok && r2.masBarata ? r2.masBarata.bookingToken : '';
-      }
-      if (token) {
-        var ventas = cpVendedores(rpConsultar_(Object.assign({}, params, { booking_token: token })));
-        fila['CONSULTAS']++;
-        fila['VENDEDORES'] = JSON.stringify(ventas.map(function(x) { return { v: x.vendedor, p: Math.round(x.precio), a: x.esAerolinea }; }));
-        var av = ventas.filter(function(x) { return /aviatur/i.test(x.vendedor); })[0];
-        fila['AVIATUR EN GOOGLE'] = av ? Math.round(av.precio) : '';
+      var pr = cpParametros(v, cfg.clave, {});
+      var jr = rpConsultar_(pr);
+      fila['CONSULTAS']++;
+      var rr = rpResumenTramo_('IDA Y VUELTA', pr, cpResumir(jr, v), v.horaIda, cand.aerolinea, cfg.clave);
+      legs.push(rr.tramo);
+      if (rr.tramo.ok && rr.tramo.ref) {
+        fila['IDA Y VUELTA JUNTOS'] = rr.tramo.ref;
+        if (fila['REFERENCIA'] === '' || rr.tramo.ref < fila['REFERENCIA']) {
+          fila['REFERENCIA'] = rr.tramo.ref;
+          fila['REFERENCIA TIPO'] = 'IDA Y VUELTA';
+          fila['REFERENCIA A LA HORA'] = rr.tramo.refCerca ? 'SI' : 'NO';
+        }
       }
     } catch (e) {
       if (e.tipo === 'CLAVE' || e.tipo === 'CUPO') throw e;
-      fila['DETALLE'] = 'Vendedores no disponibles: ' + rpLimpio_(e && e.message ? e.message : e, cfg.clave);
+      detalle.push('Ida y vuelta en un solo tiquete no disponible: ' + rpLimpio_(e && e.message ? e.message : e, cfg.clave));
     }
   }
-  fila['SEGUNDOS'] = Math.round((Date.now() - t0) / 100) / 10;
-  return fila;
+
+  // Vendedores (opcional): quién vende el vuelo de referencia de cada tramo.
+  var conVendedores = cfg.vendedores === 'ambos' || cfg.vendedores === cand.momento.toLowerCase();
+  if (conVendedores) {
+    try {
+      var ventas = [];
+      var aviatur = 0;
+      var aviaturEnTodos = true;
+      hechos.forEach(function(h) {
+        var o = h.refOpt;
+        if (!o || !o.bookingToken) { aviaturEnTodos = false; return; }
+        var lista = cpVendedores(rpConsultar_(Object.assign({}, h.params, { booking_token: o.bookingToken })));
+        fila['CONSULTAS']++;
+        h.tramo.vend = lista.map(function(x) { return { v: x.vendedor, p: Math.round(x.precio), a: x.esAerolinea }; });
+        h.tramo.vend.forEach(function(x) { ventas.push({ t: h.tramo.t, v: x.v, p: x.p, a: x.a }); });
+        var av = lista.filter(function(x) { return /aviatur/i.test(x.vendedor); })[0];
+        if (av) aviatur += Math.round(av.precio); else aviaturEnTodos = false;
+      });
+      fila['VENDEDORES'] = JSON.stringify(ventas);
+      fila['AVIATUR EN GOOGLE'] = aviaturEnTodos && ventas.length ? aviatur : '';
+    } catch (e) {
+      if (e.tipo === 'CLAVE' || e.tipo === 'CUPO') throw e;
+      detalle.push('Vendedores no disponibles: ' + rpLimpio_(e && e.message ? e.message : e, cfg.clave));
+    }
+  }
+  fila['TRAMOS'] = JSON.stringify(legs);
+  return cerrar();
 }
 
 // ---------------------------------------------------------------- pestañas
@@ -369,6 +507,11 @@ function rpPestanas_(ss) {
   if (hoja.getLastRow() === 0) {
     hoja.getRange(1, 1, 1, RP_ENCABEZADOS.length).setValues([RP_ENCABEZADOS]).setFontWeight('bold');
     hoja.setFrozenRows(1);
+  } else {
+    // Pestaña de una versión anterior: las columnas nuevas van al final (#A86).
+    var actuales = hoja.getRange(1, 1, 1, hoja.getLastColumn()).getValues()[0].map(function(x) { return String(x).trim(); });
+    var faltan = RP_ENCABEZADOS.filter(function(k) { return actuales.indexOf(k) === -1; });
+    if (faltan.length) hoja.getRange(1, actuales.length + 1, 1, faltan.length).setValues([faltan]).setFontWeight('bold');
   }
   var estado = ss.getSheetByName(RP_HOJA_ESTADO);
   if (!estado) {
@@ -454,8 +597,9 @@ function rpEjecutar_(ahoraMs) {
   var gastadas = 0;
   for (var i = 0; i < candidatos.length; i++) {
     if (info.buscadas >= cfg.maxPorEjecucion || Date.now() - t0 > RP_TIEMPO_MAX_MS) break;
-    if (info.consultasHoy >= cfg.maxDia) return terminar('TOPE DIARIO', 'Se alcanzó el tope de ' + cfg.maxDia + ' consultas de hoy; sigue mañana.');
-    if (info.quedan !== null && info.quedan - gastadas <= cfg.reserva) {
+    var necesarias = rpConsultasNecesarias_(candidatos[i]);
+    if (info.consultasHoy + necesarias > cfg.maxDia) return terminar('TOPE DIARIO', 'Se alcanzó el tope de ' + cfg.maxDia + ' consultas de hoy; sigue mañana.');
+    if (info.quedan !== null && info.quedan - gastadas - necesarias < cfg.reserva) {
       return terminar('SIN CUPO', 'A la cuenta de SerpApi le quedan ' + (info.quedan - gastadas) + ' búsquedas (reserva mínima ' + cfg.reserva + ').');
     }
     var fila;
@@ -498,7 +642,8 @@ function probarConfiguracion() {
   lineas.push('Buscaría ahora ' + c.length + ' solicitud(es):');
   c.slice(0, 20).forEach(function(x) {
     lineas.push('  ' + x.id + ' ' + x.momento + ' · ' + x.viaje.origen + ' → ' + x.viaje.destino + ' · ida ' + x.viaje.ida +
-      (x.viaje.regreso ? ', regreso ' + x.viaje.regreso : '') + ' · ' + x.viaje.pasajeros + ' pasajero(s)');
+      (x.viaje.regreso ? ', regreso ' + x.viaje.regreso : '') + ' · ' + x.viaje.pasajeros + ' pasajero(s) · ' +
+      rpConsultasNecesarias_(x) + ' consulta(s)');
   });
   lineas.push(cfg.inicio ? 'Estudio: ' + cfg.inicio + ' a ' + (cfg.fin || '(sin fin)') + '.' : 'El estudio aún no está activo: ejecute activarRastreo().');
   console.log(lineas.join('\n'));

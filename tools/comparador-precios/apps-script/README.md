@@ -21,20 +21,30 @@ dos momentos, una sola vez en cada uno:
 | **Al cotizar** | La solicitud está en `PENDIENTE_APROBACION` y los costos se confirmaron después de empezar el estudio | Comparar la cotización de Aviatur con el mercado **en el mismo momento** |
 | **Al comprar** | La solicitud está en `APROBADO`, o pasó a `RESERVADO` hace menos de 6 horas | Ver cuánto costaría la opción más barata cuando Laura compra |
 
-Para cada búsqueda guarda:
+**Cada tramo se busca por separado** (#A86), como se compra: la ida con la hora que pidió el
+viajero para la ida y el regreso con la del regreso. En viajes internacionales de ida y vuelta
+también busca el tiquete redondo, que suele salir más barato, y compara contra el menor.
+
+Para cada tramo guarda:
 - el más barato del día;
 - el más barato saliendo entre 2 horas antes y 2 horas después de la hora pedida;
-- el de la aerolínea que registró Laura;
-- el precio por aerolínea y el rango normal de Google.
+- el de la aerolínea que registró Laura (si el regreso es con otra, la del regreso);
+- el rango normal de Google;
+- todos los vuelos que mostró Google (hasta 60): aerolínea, número de vuelo, salida, llegada, escalas y precio.
+
+El total del viaje es la suma de los tramos. El dashboard lo muestra por viaje, y al tocar un
+viaje, el detalle de cada tramo.
 
 No guarda nombres, cédulas ni correos. Tampoco busca:
 - solicitudes de solo hospedaje;
 - viajes que ya salieron;
 - otros estados.
 
-**Cupo:**
-- Son 2 búsquedas por solicitud: unas 60 en dos semanas, dentro de las 250 gratis del mes.
-- El proyecto no busca si a la cuenta le quedan menos de 15.
+**Cupo** (una consulta por tramo):
+- Solo ida: 1 consulta por momento. Ida y regreso: 2. Internacional de ida y regreso: 3.
+- Con dos momentos por solicitud son unas 4 consultas por viaje de ida y regreso: unas 100 a 120
+  en dos semanas, dentro de las 250 gratis del mes.
+- Nunca deja a la cuenta con menos de 15 búsquedas.
 - Tiene un tope de 40 consultas al día.
 
 ## Instalación (unos 15 minutos)
@@ -123,21 +133,36 @@ cambia las fechas ya fijadas).
 Al pasar `FIN_ESTUDIO` deja de buscar solo, aunque el disparador siga instalado. Para
 alargar el estudio, cambia `FIN_ESTUDIO` en las propiedades (formato `AAAA-MM-DD`).
 
+## Actualizar el código (#A86: búsqueda por tramos)
+
+Si el rastreo ya está instalado:
+1. Abre el proyecto **Equitel · Rastreo de precios**, archivo **Rastreo**: borra todo, pega el
+   contenido nuevo de [Rastreo.gs](Rastreo.gs) y guarda (`Ctrl+S`). `Nucleo` no cambia.
+2. No hace falta volver a ejecutar `activarRastreo` ni dar permisos: el disparador sigue igual.
+3. En la siguiente pasada (máximo 15 minutos), el proyecto:
+   - agrega las columnas nuevas al final de `COMPARATIVO PRECIOS`;
+   - vuelve a buscar, ahora por tramos, las solicitudes que siguen en su momento (por comprar o
+     esperando aprobación): unas 2 consultas por cada una;
+   - deja como están las búsquedas viejas de las que ya se compraron. El dashboard las sigue
+     mostrando, con una nota de que el precio venía de ida y vuelta juntos.
+
 ## Ajustes opcionales (propiedades del script)
 
 | Propiedad | Por defecto | Qué hace |
 |---|---|---|
 | `INICIO_ESTUDIO` | el día de `activarRastreo` | Solo busca *al cotizar* si los costos se confirmaron desde esta fecha |
 | `FIN_ESTUDIO` | inicio + 14 días | Después de esta fecha no busca |
-| `VENDEDORES` | `no` | `compra`, `cotizacion` o `ambos`: además busca quién vende el vuelo más barato (Aviatur, la aerolínea, otras agencias). Gasta 1 o 2 consultas más por búsqueda |
+| `VENDEDORES` | `no` | `compra`, `cotizacion` o `ambos`: además busca quién vende el vuelo de referencia de cada tramo (Aviatur, la aerolínea, otras agencias). Gasta 1 consulta más por tramo |
 | `MAX_POR_EJECUCION` | `8` | Búsquedas por pasada; lo demás queda para la siguiente |
 | `MAX_BUSQUEDAS_DIA` | `40` | Tope de consultas a SerpApi por día |
-| `RESERVA_MINIMA` | `15` | No busca si a la cuenta le quedan menos |
+| `RESERVA_MINIMA` | `15` | Nunca deja a la cuenta con menos búsquedas que esto |
 
 ## Dónde mirar
 
 - **Dashboard de costos → Comparador de precios:** el estado del rastreo (última ejecución,
-  búsquedas, cupo), los totales y el detalle por solicitud, con exportación a CSV.
+  búsquedas, cupo), los totales y la tabla por viaje, con exportación a CSV. Al tocar un viaje
+  se abre su detalle: lo que registró el área de viajes, las horas que pidió el viajero, el
+  viaje armado con la ida y el regreso por separado y todos los vuelos de cada tramo.
 - **Pestaña oculta `COMPARATIVO PRECIOS`** de la base de datos: una fila por búsqueda. Para
   verla en la hoja: menú **Ver → Hojas ocultas**. Tiene un aviso si alguien intenta editarla:
   no la edites.

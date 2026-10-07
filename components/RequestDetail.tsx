@@ -8,7 +8,7 @@ import { PassportUploadModal } from './PassportUploadModal';
 import {
     BirthdatesLoadState, sanitizeCedula, RequestTripCorporateInfo, RequestPassengersHotelInfo, RequestComments, RequestOptionsGallery,
 } from './RequestInfoSections';
-import { purchaseChannelLabel } from '../utils/purchase';
+import { purchaseAirlineLabel, purchaseChannelLabel } from '../utils/purchase';
 
 interface RequestDetailProps {
     request: TravelRequest;
@@ -898,7 +898,7 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                         {isAdmin && request.purchaseChannel && (
                                             <div className="mt-2 text-xs text-gray-600" data-purchase-summary>
                                                 <span className="text-gray-400">Compra:</span>{' '}
-                                                <strong>{request.purchaseAirline ? request.purchaseAirline + ' · ' : ''}{purchaseChannelLabel(request.purchaseChannel, request.requestMode === 'HOTEL_ONLY')}</strong>
+                                                <strong>{request.purchaseAirline ? purchaseAirlineLabel(request.purchaseAirline, request.purchaseReturnAirline) + ' · ' : ''}{purchaseChannelLabel(request.purchaseChannel, request.requestMode === 'HOTEL_ONLY')}</strong>
                                             </div>
                                         )}
                                     </div>

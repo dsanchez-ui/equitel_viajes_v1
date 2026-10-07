@@ -144,6 +144,7 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
 2. **"Confirmar costos"** abre un modal con todo el detalle de la solicitud a la izquierda (#A81): viaje, datos corporativos y OT, pasajeros con su fecha de nacimiento y celular, hospedaje, observaciones y las imágenes de las opciones. A la derecha, el texto que escribió el usuario ("Opción A, categoría Económica…") y el formulario. Ya no hace falta abrir la solicitud en otra pestaña.
 3. Escribe el costo de los tiquetes y, si aplica, el del hotel, en pesos, con o sin puntos de miles (`889.518` o `889518`). Bajo cada campo aparece cómo se va a registrar. Si no tiene costo (por ejemplo, un apartamento corporativo), escribe `0`; cualquier otro valor debe ser de al menos $10.000. La confirmación avisa si el total queda en $0.
    - **Compra prevista** (#A82): la **aerolínea** (lista o "Otra…") y el **canal**: *Aviatur*, *Directo* (con la aerolínea o, en solo hospedaje, con el hotel) u *Otra agencia*. Son obligatorios; en solo hospedaje no se pide aerolínea.
+   - **Regreso con otra aerolínea** (#A85): si la ida es con una aerolínea y el regreso con otra (por ejemplo, LATAM de ida y Avianca de regreso), marca *"El regreso es con otra aerolínea"* y elige la del regreso. Solo aparece en viajes con regreso.
 4. Al guardar, si el total ≤ $1.2M y no es internacional → pasa a `APROBADO` directo. Si no → pasa a `PENDIENTE_APROBACION` y se envía correo a CEO + CDS + aprobador de área.
 
 **Costos mal digitados antes del 2026-09-14:** con el campo anterior, `889.518` se guardaba como 889 pesos con decimales. **Equitel Viajes → 11. Corregir costos mal digitados** los corrige: muestra una vista previa, pide confirmación, deja una nota en OBSERVACIONES y el detalle en la pestaña "Reporte corrección costos". Los que no se pueden deducir (por ejemplo, costos de $1) solo los lista para revisarlos a mano.
@@ -157,7 +158,7 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
    - **Tarjeta de crédito** usada (del dropdown)
    - **Fecha de compra** (hoy por default)
    - **Archivos de confirmación** (PDF de la aerolínea / hotel — puedes subir varios)
-   - **Compra (aerolínea y canal)** (#A82): viene llena con lo previsto al confirmar costos. Cámbiala si se compró por otro canal (por ejemplo, directo con la aerolínea porque Aviatur no ajustó el precio). Es obligatoria al registrar; al corregir una reserva es opcional.
+   - **Compra (aerolínea y canal)** (#A82): viene llena con lo previsto al confirmar costos. Cámbiala si se compró por otro canal (por ejemplo, directo con la aerolínea porque Aviatur no ajustó el precio). Es obligatoria al registrar; al corregir una reserva es opcional. Si el regreso se compró con otra aerolínea, marca *"El regreso es con otra aerolínea"* (#A85).
 4. Al guardar:
    - La carpeta en Drive se renombra a `SOL-000123 - PNR12345 - TC 1234 - MAY 26`
    - Se envía correo al usuario con el PNR y los archivos adjuntos

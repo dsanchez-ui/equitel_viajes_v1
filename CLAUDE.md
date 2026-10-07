@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A84) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A86) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -205,6 +205,11 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   (previsto, en el mismo `updateRequest`) y en *Registrar reserva* (real, con la acción
   `setPurchaseInfo` antes de registrar). Solo hospedaje no lleva aerolínea. Regla gemela en
   `utils/purchase.ts`.
+  - **Regreso con otra aerolínea** (#A85, pedido de Laura, 2026-10-06): casilla *"El regreso es
+    con otra aerolínea"* en ambos modales, solo en viajes con regreso. `AEROLINEA` es la de ida;
+    `AEROLINEA REGRESO` solo se llena si es distinta (vacía = la misma). Solo se toca si la clave
+    viene en el payload (`purchaseReturnAirline` / `returnAirline`), así una app anterior no la
+    borra; la app solo ofrece la casilla si el servidor manda `purchaseReturnAirline`.
 - **Facturas listas para cerrar y por revisar** (#A83, acordado con Laura el 2026-10-01, reglas
   de David del 2026-10-02). **Ninguna solicitud se cierra sola** (David: *"es más seguro"*): el
   panel del analista las muestra y el área de viajes las cierra con el cierre manual de siempre.
@@ -231,6 +236,16 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   - Lo ven en el dashboard de costos las mismas personas que la variación
     (`COSTS_VARIANCE_ALLOWED`); **Laura no lo ve**, ni en la app ni en el dashboard (decisión de
     David). `getPriceTracking` en `Code.gs` solo lee.
+  - **La sección habla en lenguaje simple** (#A85, David: "costo mercado no es muy claro"): se
+    dice *"Más barato en Google"*, nunca "mercado"; arriba va una frase que responde la pregunta y
+    un *"¿Cómo se lee?"*; las diferencias van en palabras (*"$431.444 más caro"*).
+  - **Cada tramo se busca por separado** (#A86, David, 2026-10-07): la ida con su hora pedida y
+    el regreso con la suya; el viaje = suma de los tramos. Internacional de ida y vuelta: también
+    el tiquete redondo, y manda el menor. Nunca volver a una sola búsqueda de ida y vuelta: Google
+    da un precio junto (ida + el regreso más barato que combina) que no se encuentra igual en la
+    página de la aerolínea. Tocar un viaje abre su detalle (`getPriceTrackingDetail`, mismas
+    personas): lo que registró el área de viajes y quién (`costConfirmedBy` en `EVENTOS_JSON`,
+    desde #A86), las horas pedidas y todos los vuelos de cada tramo.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -266,7 +281,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82) y `AVISO FACTURAS OMITIDO` (#A83) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83) y `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -457,10 +472,13 @@ autorización) y verificar antes de crear una versión nueva del web app.
     la versión nueva del web app. Con la base del 29-sep: 15 listas para cerrar y 85 por
     revisar. V4 quedó **sin cierre automático** por decisión de David (2-oct).
   - **V2:** comparador de precios. Prueba hecha el 6-oct (documento de demostración para
-    Alejandro). **#A84** (rastreo de 2 semanas, oculto para Laura): pendiente pegar `Code.gs` y
-    `CostsDashboard.html` + versión nueva del web app, e instalar el proyecto aparte con
-    `tools/comparador-precios/apps-script/README.md`. Plan en
+    Alejandro). **#A84** (rastreo de 2 semanas, oculto para Laura): **desplegado y activo** el
+    7-oct (estudio del 7 al 21-oct; el dashboard ya muestra las primeras búsquedas). Plan en
     [docs/plan-comparador-precios.md](docs/plan-comparador-precios.md).
+  - **#A85** (regreso con otra aerolínea, pedido de Laura; comparador en lenguaje simple) y
+    **#A86** (comparador por tramos con detalle por viaje): pendiente pegar `Code.gs` y
+    `CostsDashboard.html` + versión nueva del web app, pegar `Rastreo.gs` en el proyecto aparte
+    (`Nucleo` no cambia) y push del frontend.
   - **V5:** lectura de facturas PDF con IA, **solo como plan** (decisión de David del 2-oct):
     [docs/plan-lectura-facturas.md](docs/plan-lectura-facturas.md). Proyecto de Apps Script
     aparte que escribe en la hoja; no toca los permisos del de producción (#A62).

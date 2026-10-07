@@ -187,6 +187,9 @@ export interface TravelRequest {
   // Vacíos si aún no se registraron (o con un backend anterior).
   purchaseAirline?: string;
   purchaseChannel?: string;
+  // Aerolínea del regreso si es distinta de la de ida (#A85). undefined = el
+  // servidor aún no la maneja (la app no ofrece la opción).
+  purchaseReturnAirline?: string;
 
   // EFFECTIVE approval status (computed by backend, mirrors the dedup rules
   // applied in sendApprovalRequestEmail / processApprovalFromEmail).

@@ -440,8 +440,11 @@ class GasService {
   }
 
   /** Aerolínea y canal de compra (#A82). Solo administradores. */
-  async setPurchaseInfo(requestId: string, airline: string, channel: string): Promise<{ airline: string; channel: string }> {
-    const response = await this.runGas('setPurchaseInfo', { requestId, airline, channel });
+  async setPurchaseInfo(requestId: string, airline: string, channel: string, returnAirline?: string): Promise<{ airline: string; channel: string; returnAirline?: string }> {
+    // #A85: returnAirline undefined = no tocar la aerolínea del regreso guardada.
+    const response = await this.runGas('setPurchaseInfo', returnAirline === undefined
+      ? { requestId, airline, channel }
+      : { requestId, airline, channel, returnAirline });
     if (!response.success) throw new Error(response.error);
     return response.data;
   }
