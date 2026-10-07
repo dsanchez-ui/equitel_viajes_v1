@@ -1803,3 +1803,68 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
   2. Proyecto aparte: pegar `Rastreo.gs` (ver "Actualizar el código" en su README). No requiere permisos nuevos ni volver a activar.
   3. En la siguiente pasada se vuelven a buscar por tramos las solicitudes aún por comprar: unas 4 consultas con las 2 de hoy.
 - **Rollback:** pegar el `Rastreo.gs` anterior. Cuenta las filas nuevas como hechas y no repite búsquedas; el `Code.gs` anterior las lee como sumas.
+
+## **#A87 — Comparador: enlace para ir a comprar y lo facturado junto al cotizado**
+**Fecha:** 2026-10-07 · **Reportado por:** David y Juan Camilo Pineda (reunión "Revisión Tiquetes/Cotizaciones Compras" del 7-oct) · **Estado:** Implementado, pendiente de pegar `Code.gs`, `CostsDashboard.html` y `Rastreo.gs`
+
+**Pedido** (de la transcripción):
+- 05:40, sobre comprar desde el comparador: *"podría ser que deje un hipervínculo y lo bote acá"*. Hoy, para ver un vuelo, hay que ir a Google Flights y buscarlo a mano.
+- 09:41, ante la pregunta de si la diferencia ya es lo comprado: *"aquí se ponen dos precios… el cotizado… me falta hacerle el ajuste para que muestre el precio ya comprado como al ladito"*. El cotizado es el primer precio que Laura consulta en Aviatur; falta lo que de verdad se pagó.
+- 05:02: Satena y Clic no publican en Google Flights.
+
+**Cambio:**
+- **Enlace para comprar:**
+  - `Rastreo.gs` guarda en cada tramo la dirección de la misma búsqueda en Google Flights (`search_metadata.google_flights_url` de SerpApi; se comprobó en una respuesta real del 6-oct que no lleva la clave). Solo se acepta una dirección de `https://www.google.com/travel/flights?` sin `api_key` ni la clave; `Code.gs` lo vuelve a revisar antes de mandarla al navegador.
+  - El detalle muestra *"Ver estos vuelos en Google Flights y comprar ↗"* en cada tramo y *"Para comprar: Ida · Regreso en Google Flights"* bajo el viaje armado. En Google Flights cada vuelo lleva a la página de la aerolínea o de la agencia.
+  - Si un tramo no tiene la dirección guardada (búsquedas anteriores a esta versión), el enlace es una búsqueda equivalente armada con la ruta y la fecha.
+- **Lo facturado (ya comprado):**
+  - Columna *Facturado* junto a *Cotizado*: la suma de las facturas, con las mismas reglas que la variación cotizado vs facturado y las facturas por cerrar (`_invoiceTotalsForClose_`). Si no hay facturas, dice *"sin facturas aún"*; las facturas se suben después del viaje.
+  - La factura no separa tiquetes y hotel: si se cotizó hotel, lo facturado lo incluye, se marca *"incluye el hotel"* y **no se compara con Google**.
+  - Resumen: fila *"Lo facturado (ya comprado)"* frente a Google, solo viajes sin hotel.
+  - Detalle: lo facturado en *"Lo que registró el área de viajes"* y, si se puede comparar, *"Lo facturado frente a Google"*.
+  - CSV: facturado, número de facturas, si incluye hotel y la diferencia con Google.
+- Satena y Clic: la explicación lo dice, y *Misma aerolínea* muestra *"no publica en Google Flights"* cuando se compró con ellas.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-price-tracking.cjs`:
+  - cada tramo guarda su enlace y llega al detalle;
+  - un enlace con la clave o que no es de Google Flights no se guarda ni llega al navegador (incluido un `javascript:` y uno con `"><script>`);
+  - lo facturado sin hotel se compara con Google y con hotel no; el resumen y el detalle lo traen.
+- 3 defectos introducidos a propósito, los 3 detectados.
+- Chrome sin ventana: la columna, el resumen, la línea de lo facturado y los enlaces.
+- **No verificado:** que la búsqueda equivalente de las búsquedas viejas (`?q=Flights from … to … on …`) abra la búsqueda exacta en Google Flights. Las búsquedas nuevas usan la dirección que da Google, que sí es exacta.
+
+**Despliegue:** igual que #A86 (`Code.gs` + `CostsDashboard.html` en la plataforma y `Rastreo.gs` en el proyecto aparte; cualquier orden). Sin cambios en la app React.
+
+## **#A88 — Comparador: solo vuelos directos**
+**Fecha:** 2026-10-07 · **Reportado por:** David (al revisar #A87) · **Estado:** Implementado, pendiente de pegar `Code.gs`, `CostsDashboard.html` y `Rastreo.gs`
+
+**Pedido:** a los viajeros no se les compran vuelos con escala: *"en el 99 % de los casos se va a escoger un vuelo directo"*. El comparador debe preferir los directos y mostrarlos primero, y después los de escala.
+
+**Causa:** hasta #A87, lo más barato a la hora, del día y con la aerolínea registrada se calculaba con todos los vuelos. Un vuelo con escala más barato, que nunca se compraría, podía quedar como referencia e inflar la diferencia.
+
+**Cambio:**
+- **`Rastreo.gs` (formato 3):** si un tramo tiene vuelos directos, solo esos cuentan para lo más barato a la hora, del día, la misma aerolínea y la referencia del viaje; si ese día no hay directos, cuentan los de escala.
+  - La lista de vuelos guarda primero los que cuentan y después los demás. Cada tramo marca si hubo directos (`dir`).
+  - El tiquete redondo internacional sigue la misma regla.
+  - Las búsquedas de formatos anteriores (1 y 2) se repiten una vez si la solicitud sigue en su momento.
+- **`Code.gs`:** `directOnly` en cada tramo.
+- **`CostsDashboard.html`:**
+  - en cada tramo, primero los directos y después una fila *"Con escala: no cuentan para comparar porque hay vuelos directos"*, con esos vuelos en gris;
+  - si no había directos, lo dice;
+  - la explicación y el viaje armado dicen *"directo"*.
+- Aclaración de David: el enlace a Google Flights y lo facturado (#A87) están **solo en el dashboard de costos** (sección restringida), no en la app. #A87 y #A88 no tocan ningún archivo de la app React.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-price-tracking.cjs`:
+  - un vuelo con escala a $100.000 no le gana a los directos;
+  - una ruta sin directos usa los de escala;
+  - misma aerolínea sin el vuelo con escala (Avianca a las 05:00: $612.400 directo en vez de $540.100 con escala);
+  - los directos van primero en la lista;
+  - las búsquedas del formato 2 se repiten una vez.
+- 4 defectos introducidos a propósito, los 4 detectados.
+- Chrome sin ventana con vuelos de escala más baratos en los datos: la referencia sigue siendo el directo y los de escala aparecen al final, en gris y con la nota.
+
+**Despliegue:** igual que #A86 y #A87. Si ya se había pegado el `Rastreo.gs` de #A86, las solicitudes que siguen por comprar se buscan una vez más (unas 2 consultas cada una).

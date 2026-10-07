@@ -115,6 +115,10 @@ combinaba, sin tener en cuenta la hora del regreso. En internacionales de ida y 
 busca además el tiquete redondo y se compara contra el menor. Cuesta una búsqueda más por
 viaje de ida y regreso (2 por momento).
 
+**Solo vuelos directos (#A88, David, 7-oct):** a los viajeros no se les compran vuelos con
+escala, así que, si un tramo tiene vuelos directos, solo esos se comparan. Los de escala
+cuentan solo si ese día no hay directos.
+
 Los resultados van a dos pestañas ocultas de la misma base, **COMPARATIVO PRECIOS** y
 **COMPARATIVO ESTADO**, que el proyecto aparte es el único que escribe. La clave de la API
 va en las propiedades de ese proyecto, nunca en el código ni en la hoja.

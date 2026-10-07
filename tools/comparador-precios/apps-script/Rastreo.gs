@@ -18,6 +18,8 @@
  *      Cada tramo se busca por separado (#A86), como se compra: la ida con su
  *      hora pedida y el regreso con la suya. En viajes internacionales de ida y
  *      vuelta también se busca el tiquete redondo, que suele salir más barato.
+ *      Solo cuentan los vuelos directos (#A88): a los viajeros no se les compran
+ *      vuelos con escala; si un tramo no tiene directos ese día, cuentan los de escala.
  *   3. Escribe una fila por búsqueda en la pestaña oculta «COMPARATIVO PRECIOS» y
  *      el estado del rastreo en «COMPARATIVO ESTADO». El dashboard de costos las
  *      lee (sección restringida; Laura no la ve).
@@ -47,9 +49,10 @@ var RP_DIAS_ESTUDIO = 14;
 var RP_VENTANA_COMPRA_MS = 6 * 60 * 60 * 1000;
 var RP_TIEMPO_MAX_MS = 270000;
 // Formato 2 (#A86): un tramo por consulta y la lista de vuelos de cada tramo en
-// TRAMOS. Las búsquedas del formato 1 (ida y regreso juntos) se repiten una vez
-// por tramos si la solicitud sigue en su momento.
-var RP_FORMATO = 2;
+// TRAMOS. Formato 3 (#A88): solo cuentan los vuelos directos si los hay. Las
+// búsquedas de un formato anterior se repiten una vez si la solicitud sigue en su
+// momento.
+var RP_FORMATO = 3;
 var RP_MAX_OPCIONES = 60;
 
 var RP_ENCABEZADOS = [
@@ -302,6 +305,18 @@ function rpOpcion_(o) {
   return o ? { a: o.aerolinea, v: o.vuelos, s: rpHoraDe_(o.salida), l: rpLlegada_(o), p: Math.round(o.precio) } : null;
 }
 
+/**
+ * Enlace a la misma búsqueda en Google Flights (search_metadata.google_flights_url),
+ * para ir a comprar desde el dashboard. Solo direcciones de Google Flights y nunca
+ * con la clave; si no, ''.
+ */
+function rpUrlGoogle_(json, clave) {
+  var u = String((json && json.search_metadata && json.search_metadata.google_flights_url) || '');
+  if (!/^https:\/\/www\.google\.com\/travel\/flights\?[^\s"'<>]*$/.test(u)) return '';
+  if (/api_key/i.test(u) || (clave && u.indexOf(clave) !== -1)) return '';
+  return u.slice(0, 1500);
+}
+
 /** Tramos que se buscan: la ida y, si hay, el regreso con su propia hora y aerolínea. */
 function rpTramos_(cand) {
   var v = cand.viaje;
@@ -319,9 +334,32 @@ function rpConsultasNecesarias_(cand) {
 }
 
 /**
+ * Vuelos que cuentan para comparar (#A88): si hay vuelos directos, solo los directos
+ * (a los viajeros no se les compran vuelos con escala); si no hay, todos.
+ */
+function rpComparables_(opciones) {
+  var conPrecio = (opciones || []).filter(function(o) { return o.precio !== null; });
+  var directos = conPrecio.filter(function(o) { return o.escalas === 0; });
+  return { lista: directos.length ? directos : conPrecio, soloDirectos: directos.length > 0 };
+}
+
+/** El más barato del día y el más barato a la hora pedida (±2 h) de una lista de vuelos. */
+function rpElegir_(lista, hora) {
+  var pref = hora ? cpMinutos(hora) : null;
+  var barato = null, cerca = null;
+  lista.forEach(function(o) {
+    if (!barato || o.precio < barato.precio) barato = o;
+    var m = cpMinutos(o.salida);
+    if (pref !== null && m !== null && Math.abs(m - pref) <= 120 && (!cerca || o.precio < cerca.precio)) cerca = o;
+  });
+  return { barato: barato, cerca: cerca };
+}
+
+/**
  * Resumen de una respuesta de Google Flights para la hoja: lo más barato del día, a
- * la hora pedida (±2 h) y con la aerolínea registrada, el rango normal de Google y
- * los vuelos (los RP_MAX_OPCIONES más baratos, ordenados por hora de salida).
+ * la hora pedida (±2 h) y con la aerolínea registrada (solo directos si los hay), el
+ * rango normal de Google y los vuelos (hasta RP_MAX_OPCIONES: primero los que
+ * cuentan, ordenados por hora de salida; después los demás).
  */
 function rpResumenTramo_(nombre, params, res, hora, aerolinea, clave) {
   var out = { t: nombre, de: params.departure_id, a: params.arrival_id, f: params.outbound_date, h: hora || '', ar: aerolinea || '' };
@@ -332,23 +370,27 @@ function rpResumenTramo_(nombre, params, res, hora, aerolinea, clave) {
     out.err = rpLimpio_(res.error, clave);
     return { tramo: out, refOpt: null };
   }
-  var misma = rpMismaAerolinea_(res.opciones, aerolinea, hora);
-  var refOpt = res.cercaHora || res.masBarata;
+  var comp = rpComparables_(res.opciones);
+  var elegido = rpElegir_(comp.lista, hora);
+  var misma = rpMismaAerolinea_(comp.lista, aerolinea, hora);
+  var refOpt = elegido.cerca || elegido.barato;
   var g = res.referenciaGoogle;
   out.ok = true;
-  out.barato = rpOpcion_(res.masBarata);
-  out.cerca = rpOpcion_(res.cercaHora);
+  out.dir = comp.soloDirectos;
+  out.barato = rpOpcion_(elegido.barato);
+  out.cerca = rpOpcion_(elegido.cerca);
   out.mismaCerca = rpOpcion_(misma.cerca);
   out.mismaDia = rpOpcion_(misma.dia);
   out.ref = refOpt ? Math.round(refOpt.precio) : null;
-  out.refCerca = !!res.cercaHora;
+  out.refCerca = !!elegido.cerca;
   out.rango = g.rangoTipico ? g.rangoTipico.map(Math.round).join('-') : '';
   out.nivel = g.nivel || '';
   out.total = res.opciones.length;
+  var cuenta = function(o) { return comp.lista.indexOf(o) !== -1 ? 0 : 1; };
   out.ops = res.opciones.filter(function(o) { return o.precio !== null; })
-    .sort(function(x, y) { return x.precio - y.precio; })
+    .sort(function(x, y) { return cuenta(x) - cuenta(y) || x.precio - y.precio; })
     .slice(0, RP_MAX_OPCIONES)
-    .sort(function(x, y) { return (cpMinutos(x.salida) || 0) - (cpMinutos(y.salida) || 0) || x.precio - y.precio; })
+    .sort(function(x, y) { return cuenta(x) - cuenta(y) || (cpMinutos(x.salida) || 0) - (cpMinutos(y.salida) || 0) || x.precio - y.precio; })
     .map(function(o) { return [o.aerolinea, o.vuelos, rpHoraDe_(o.salida), rpLlegada_(o), o.escalas, o.duracionMin || '', Math.round(o.precio)]; });
   var porAerolinea = {};
   res.porAerolinea.forEach(function(a) { porAerolinea[a.aerolinea] = Math.round(a.masBarata.precio); });
@@ -390,6 +432,8 @@ function rpBuscar_(cand, cfg) {
     fila['CONSULTAS']++;
     var r = rpResumenTramo_(t.tramo, params, cpResumir(json, { horaIda: t.hora }), t.hora, t.aerolinea, cfg.clave);
     r.params = params;
+    var url = rpUrlGoogle_(json, cfg.clave);
+    if (url) r.tramo.url = url;
     return r;
   });
   fila['AEROPUERTOS'] = hechos[0].params.departure_id + ' → ' + hechos[0].params.arrival_id;
@@ -443,6 +487,8 @@ function rpBuscar_(cand, cfg) {
       var jr = rpConsultar_(pr);
       fila['CONSULTAS']++;
       var rr = rpResumenTramo_('IDA Y VUELTA', pr, cpResumir(jr, v), v.horaIda, cand.aerolinea, cfg.clave);
+      var urlRt = rpUrlGoogle_(jr, cfg.clave);
+      if (urlRt) rr.tramo.url = urlRt;
       legs.push(rr.tramo);
       if (rr.tramo.ok && rr.tramo.ref) {
         fila['IDA Y VUELTA JUNTOS'] = rr.tramo.ref;

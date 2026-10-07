@@ -80,13 +80,18 @@ function makeSpreadsheet(sheets) {
 const H = ['ID RESPUESTA', 'STATUS', 'MODO_SOLICITUD', 'CIUDAD ORIGEN', 'CIUDAD DESTINO', 'FECHA IDA', 'FECHA VUELTA',
   '# PERSONAS QUE VIAJAN', 'HORA LLEGADA VUELO IDA', 'EVENTOS_JSON', 'COSTO_FINAL_TIQUETES', 'AEROLINEA', 'CANAL DE COMPRA',
   'EMPRESA', 'UNIDAD DE NEGOCIO', 'CORREO ENCUESTADO', 'CÉDULA PERSONA 1', 'NOMBRE PERSONA 1',
-  'HORA LLEGADA VUELO VUELTA', 'ES INTERNACIONAL', 'AEROLINEA REGRESO'];
+  'HORA LLEGADA VUELO VUELTA', 'ES INTERNACIONAL', 'AEROLINEA REGRESO', 'COSTO_FINAL_HOTEL', 'TOTAL FACTURA'];
 const ev = (o) => JSON.stringify(o);
 const hace = (h) => new Date(Date.now() - h * 3600000).toISOString();
 const priv = ['pasajero@ejemplo.test', 'CEDULA-FICTICIA-1', 'NOMBRE PRIVADO'];
 function solicitudes() {
-  // Las tres últimas columnas (hora del regreso, internacional, aerolínea del regreso) van vacías salvo en SOL-1.
-  return [H].concat(filasBase().map((r) => (r.length < H.length ? r.concat(['', '', '']) : r)));
+  // Las columnas del final (hora del regreso, internacional, aerolínea del regreso, hotel y factura) van vacías salvo donde se ponen.
+  const rows = filasBase().map((r) => r.concat(Array(Math.max(0, H.length - r.length)).fill('')));
+  const set = (id, k, v) => { rows.find((r) => r[0] === id)[H.indexOf(k)] = v; };
+  set('SOL-6', 'TOTAL FACTURA', 410000);        // ya comprada y facturada, sin hotel
+  set('SOL-9', 'COSTO_FINAL_HOTEL', 200000);    // con hotel: la factura lo incluye
+  set('SOL-9', 'TOTAL FACTURA', 900000);
+  return [H].concat(rows);
 }
 function filasBase() {
   return [
@@ -144,8 +149,13 @@ function loadTracker(opts = {}) {
         if (f === 'vacio') return resp(200, { error: "Google Flights hasn't returned any results for this query." });
         if (p.booking_token) return resp(200, VENDEDORES);
         const r = JSON.parse(JSON.stringify(EJEMPLO));
-        r.search_metadata = { url_con_clave: 'https://serpapi.com/search?api_key=' + p.api_key };
+        const gf = log.urlMala === 'clave' ? 'https://www.google.com/travel/flights?x=' + p.api_key
+          : log.urlMala === 'otra' ? 'javascript:alert(1)'
+            : 'https://www.google.com/travel/flights?hl=es-419&gl=co&curr=COP&tfs=PRUEBA-' + encodeURIComponent(p.departure_id + '-' + p.arrival_id + '-' + p.outbound_date);
+        r.search_metadata = { url_con_clave: 'https://serpapi.com/search?api_key=' + p.api_key, google_flights_url: gf };
         const f2 = log.factor * (p.type === '1' ? log.factorIdaYVuelta : 1);
+        if (log.escalaBarata) [].concat(r.best_flights, r.other_flights).forEach((o) => { if (o.flights.length > 1) o.price = log.escalaBarata; });
+        if (log.todoConEscala) [].concat(r.best_flights, r.other_flights).forEach((o) => { if (o.flights.length === 1) o.flights = [o.flights[0], Object.assign({}, o.flights[0], { flight_number: 'XX 1' })]; });
         [].concat(r.best_flights, r.other_flights).forEach((o) => { if (typeof o.price === 'number') o.price = Math.round(o.price * f2); });
         [].concat(r.best_flights, r.other_flights).forEach((o, i) => {
           if (p.departure_token || p.type === '2') o.booking_token = 'BT' + i;
@@ -214,14 +224,17 @@ function main() {
   // ($351.700); LATAM (registrada) a la hora, 06:30 ($455.900). El viaje = ida + regreso.
   eq('SOL-1: más barato, a la hora pedida de cada tramo y misma aerolínea, sumando ida y regreso', [s1['MAS BARATO'], s1['AEROLINEA MAS BARATA'], s1['MAS BARATO CERCA HORA'], s1['AEROLINEA CERCA HORA'], s1['SALIDA CERCA HORA'], s1['MISMA AEROLINEA CERCA HORA'], s1['MISMA AEROLINEA DIA'], s1['MISMA AEROLINEA']],
     [703400, 'JetSMART / JetSMART', 778400, 'Wingo / Wingo', '05:40 / 05:40', 911800, 911800, 911800]);
-  eq('SOL-1: referencia por tramos, las dos horas a tiempo, formato 2', [s1['REFERENCIA'], s1['REFERENCIA A LA HORA'], s1['REFERENCIA TIPO'], s1['FORMATO'], s1['HORA REGRESO PEDIDA'], s1['IDA Y VUELTA JUNTOS']],
-    [778400, 'SI', 'TRAMOS', 2, '06:00', '']);
+  eq('SOL-1: referencia por tramos, las dos horas a tiempo, formato 3', [s1['REFERENCIA'], s1['REFERENCIA A LA HORA'], s1['REFERENCIA TIPO'], s1['FORMATO'], s1['HORA REGRESO PEDIDA'], s1['IDA Y VUELTA JUNTOS']],
+    [778400, 'SI', 'TRAMOS', 3, '06:00', '']);
   const t1 = JSON.parse(s1['TRAMOS']);
   eq('SOL-1: tramos con su ruta, fecha y hora', t1.map((l) => [l.t, l.de, l.a, l.f, l.h, l.ar, l.ref, l.refCerca]),
     [['IDA', 'BOG', 'MDE,EOH', plus(14), '07:00', 'LATAM', 389200, true], ['REGRESO', 'MDE,EOH', 'BOG', plus(16), '06:00', 'LATAM', 389200, true]]);
-  eq('SOL-1: los vuelos de cada tramo, con precio y ordenados por hora de salida', t1[0].ops.map((o) => o[2] + ' ' + o[0] + ' ' + o[6]),
-    ['05:00 Avianca 612400', '05:40 Wingo 389200', '06:00 Avianca 540100', '06:30 LATAM 455900', '07:05 Avianca 498600', '13:20 JetSMART 351700']);
-  eq('SOL-1: el vuelo con escala trae sus dos números, la escala y la duración', t1[0].ops[2].slice(1, 6), ['AV 9290 / AV 9902', '06:00', '08:50', 1, 170]);
+  eq('SOL-1: los vuelos de cada tramo: primero los directos por hora de salida, después los de escala', t1[0].ops.map((o) => o[2] + ' ' + o[0] + ' ' + o[6]),
+    ['05:00 Avianca 612400', '05:40 Wingo 389200', '06:30 LATAM 455900', '07:05 Avianca 498600', '13:20 JetSMART 351700', '06:00 Avianca 540100']);
+  eq('SOL-1: el vuelo con escala trae sus dos números, la escala y la duración', t1[0].ops[5].slice(1, 6), ['AV 9290 / AV 9902', '06:00', '08:50', 1, 170]);
+  eq('SOL-1: los tramos tenían directos y solo esos cuentan', t1.map((l) => l.dir), [true, true]);
+  eq('SOL-1: cada tramo guarda el enlace a la misma búsqueda en Google Flights', t1.map((l) => l.url),
+    ['BOG-MDE,EOH-' + plus(14), 'MDE,EOH-BOG-' + plus(16)].map((x) => 'https://www.google.com/travel/flights?hl=es-419&gl=co&curr=COP&tfs=PRUEBA-' + encodeURIComponent(x)));
   eq('SOL-1: búsquedas de ida y de regreso con sus fechas', t.log.search.filter((p) => ['BOG|MDE,EOH|' + plus(14), 'MDE,EOH|BOG|' + plus(16)].includes(p.departure_id + '|' + p.arrival_id + '|' + p.outbound_date)).length, 2);
   const s2 = filas.find((r) => r['ID SOLICITUD'] === 'SOL-2');
   eq('SOL-2 sin hora de regreso: ida a la hora (06:30) + regreso el más barato del día', [s2['REFERENCIA'], s2['REFERENCIA A LA HORA'], s2['MAS BARATO CERCA HORA']], [740900, 'PARCIAL', '']);
@@ -308,18 +321,41 @@ function main() {
   t.ctx.rastrearPrecios();
   eq('tope diario: no empieza una búsqueda que lo pasaría', [t.log.search.length, estadoOf(t.ss)['ESTADO']], [0, 'TOPE DIARIO']);
 
+  // 5a. El enlace a Google Flights nunca lleva la clave ni es de otro sitio.
+  for (const mala of ['clave', 'otra']) {
+    t = loadTracker({ props: { INICIO_ESTUDIO: today }, rows: [H, nueva('SOL-40', { STATUS: 'APROBADO' })] });
+    t.log.urlMala = mala;
+    t.ctx.rastrearPrecios();
+    const fm = rowsOf(t.ss.sheets['COMPARATIVO PRECIOS'])[0];
+    eq('enlace de Google rechazado (' + mala + ')', [fm['RESULTADO'], JSON.parse(fm['TRAMOS']).map((l) => l.url), JSON.stringify(t.ss.sheets['COMPARATIVO PRECIOS'].data).includes(KEY)], ['OK', [undefined, undefined], false]);
+  }
+
   // 5b2. Regreso registrado con otra aerolínea (#A85): misma aerolínea = LATAM de ida + Wingo de regreso.
   t = loadTracker({ props: { INICIO_ESTUDIO: today }, rows: [H, nueva('SOL-31', { STATUS: 'APROBADO', 'AEROLINEA REGRESO': 'Wingo' })] });
   t.ctx.rastrearPrecios();
   const fw = rowsOf(t.ss.sheets['COMPARATIVO PRECIOS'])[0];
   eq('regreso con otra aerolínea: cada tramo con la suya', [JSON.parse(fw['TRAMOS']).map((l) => l.ar), fw['AEROLINEA REGRESO REGISTRADA'], fw['MISMA AEROLINEA']], [['LATAM', 'Wingo'], 'Wingo', 455900 + 389200]);
-  // Avianca con ida a las 05:00: a la hora (03:00–07:00) la más barata es 06:00 ($540.100), aunque en el día hay una de
-  // $498.600 a las 07:05; regreso sin hora: la del día. Misma aerolínea = 540.100 + 498.600.
+  // Avianca con ida a las 05:00: a la hora (03:00–07:00) el directo es el de las 05:00 ($612.400); el de las 06:00
+  // ($540.100) tiene escala y no cuenta, y el de $498.600 (07:05) queda fuera de la hora. Regreso sin hora: el directo
+  // más barato del día ($498.600). Misma aerolínea = 612.400 + 498.600.
   t = loadTracker({ props: { INICIO_ESTUDIO: today }, rows: [H, nueva('SOL-32', { STATUS: 'APROBADO', AEROLINEA: 'Avianca', 'HORA LLEGADA VUELO IDA': '05:00', 'HORA LLEGADA VUELO VUELTA': '' })] });
   t.ctx.rastrearPrecios();
   const fa = rowsOf(t.ss.sheets['COMPARATIVO PRECIOS'])[0];
   eq('misma aerolínea por tramo: a la hora en la ida, del día en el regreso', [fa['MISMA AEROLINEA'], fa['MISMA AEROLINEA CERCA HORA'], fa['MISMA AEROLINEA DIA'],
-    loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co').items[0].sameAirline], [1038700, '', 997200, 1038700]);
+    loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co').items[0].sameAirline], [1111000, '', 997200, 1111000]);
+
+  // Vuelos directos primero (#A88): un vuelo con escala más barato no le gana a los directos…
+  t = loadTracker({ props: { INICIO_ESTUDIO: today }, rows: [H, nueva('SOL-33', { STATUS: 'APROBADO' })] });
+  t.log.escalaBarata = 100000;
+  t.ctx.rastrearPrecios();
+  const fe = rowsOf(t.ss.sheets['COMPARATIVO PRECIOS'])[0];
+  eq('directos primero: el de escala a $100.000 no cuenta', [fe['REFERENCIA'], fe['MAS BARATO'], JSON.parse(fe['TRAMOS'])[0].ops.slice(-1)[0][6]], [778400, 703400, 100000]);
+  // …y si la ruta no tiene directos ese día, cuentan los de escala.
+  t = loadTracker({ props: { INICIO_ESTUDIO: today }, rows: [H, nueva('SOL-34', { STATUS: 'APROBADO', 'FECHA VUELTA': '' })] });
+  t.log.todoConEscala = true;
+  t.ctx.rastrearPrecios();
+  const fs2 = rowsOf(t.ss.sheets['COMPARATIVO PRECIOS'])[0];
+  eq('sin directos: cuentan los de escala', [fs2['REFERENCIA'], JSON.parse(fs2['TRAMOS'])[0].dir, fs2['REFERENCIA A LA HORA']], [389200, false, 'SI']);
   let lanzoDet = '';
   try { loadPlatform(t.ss).getPriceTrackingDetail('compras.equitel@equitel.com.co', 'SOL-31'); } catch (e) { lanzoDet = e.message; }
   eq('detalle: la función también frena a Laura', /restringido/.test(lanzoDet), true);
@@ -337,11 +373,17 @@ function main() {
   const hv = t.ss.sheets['COMPARATIVO PRECIOS'];
   eq('formato anterior: las columnas nuevas quedan al final', hv.data[0].slice(v1Head.length), t.ctx.RP_ENCABEZADOS.slice(v1Head.length));
   eq('formato anterior: SOL-1 (aprobada) se busca otra vez por tramos; SOL-7 (comprada hace 2 días) no', rowsOf(hv).filter((r) => r['ID SOLICITUD'] === 'SOL-1' || r['ID SOLICITUD'] === 'SOL-7').map((r) => r['ID SOLICITUD'] + ':' + (r['FORMATO'] || 1)),
-    ['SOL-1:1', 'SOL-7:1', 'SOL-1:2']);
+    ['SOL-1:1', 'SOL-7:1', 'SOL-1:3']);
   const pv = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
   const pv1 = pv.items.find((i) => i.requestId === 'SOL-1'), pv7 = pv.items.find((i) => i.requestId === 'SOL-7');
   eq('dashboard: SOL-1 usa la búsqueda nueva; SOL-7 la anterior', [pv1.market, pv1.atPurchase.format, pv1.atPurchase.legs.length, pv7.market, pv7.atPurchase.format, pv7.atPurchase.legs.length],
-    [778400, 2, 2, 389200, 1, 0]);
+    [778400, 3, 2, 389200, 1, 0]);
+  // Una búsqueda del formato 2 (por tramos, sin preferir directos) también se repite una vez.
+  t = loadTracker({ props: { INICIO_ESTUDIO: today } });
+  t.ss.sheets['COMPARATIVO PRECIOS'] = makeSheet('COMPARATIVO PRECIOS', [t.ctx.RP_ENCABEZADOS.slice(),
+    t.ctx.RP_ENCABEZADOS.map((k) => ({ 'FECHA BUSQUEDA': viejo, MOMENTO: 'COMPRA', 'ID SOLICITUD': 'SOL-1', RESULTADO: 'OK', CONSULTAS: 2, FORMATO: 2 })[k] ?? '')]);
+  t.ctx.rastrearPrecios();
+  eq('formato 2: se repite una vez con directos primero', rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).filter((r) => r['ID SOLICITUD'] === 'SOL-1').map((r) => r['FORMATO']), [2, 3]);
   const viejaIyV = loadPlatform(t.ss)._ptSnapshot_(rowsOf(hv)[0]);
   eq('formato anterior de ida y vuelta: precio junto, a la hora del vuelo de ida', [viejaIyV.format, viejaIyV.referenceKind, viejaIyV.reference, viejaIyV.referenceIsNear], [1, 'IDA Y VUELTA', 389200, true]);
 
@@ -383,6 +425,10 @@ function main() {
   eq('resumen al comprar', [ap.n, ap.quoted, ap.market, ap.difference, ap.possibleSavings], [4, 1782888, 1871000, -88112, 291988]);
   const i6 = d.items.find((i) => i.requestId === 'SOL-6');
   eq('SOL-6: sin vuelos cerca de las 10:40, referencia del día; misma aerolínea del día', [i6.market, i6.atPurchase.referenceIsNear, i6.sameAirline], [351700, false, 389200]);
+  const i9 = d.items.find((i) => i.requestId === 'SOL-9');
+  eq('lo facturado: SOL-6 sin hotel se compara con Google; SOL-9 con hotel no', [i6.invoiced, i6.invoiceCount, i6.invoicedIncludesHotel, i6.invoicedVsGoogle, i9.invoiced, i9.invoicedIncludesHotel, i9.invoicedVsGoogle, i1.invoiced],
+    [410000, 1, false, 58300, 900000, true, null, null]);
+  eq('resumen de lo facturado frente a Google', [d.summary.invoiced.n, d.summary.invoiced.quoted, d.summary.invoiced.market, d.summary.invoiced.difference], [1, 410000, 351700, 58300]);
   eq('resumen al cotizar (SOL-2: 800000 vs ida 06:30 389200 + regreso del día 351700)', [d.summary.atQuote.n, d.summary.atQuote.quoted, d.summary.atQuote.market], [1, 800000, 740900]);
   eq('por canal', d.summary.byChannel.map((c) => c.channel + ':' + c.requests + ':' + c.n), ['Aviatur:3:3', 'Directo:1:1', 'Sin registrar:2:1']);
   eq('estado del rastreo para el dashboard', [d.meta.installed, d.meta.state['ESTADO'], d.meta.searches, d.meta.queries], [true, 'ACTIVO', 6, 7]);
@@ -399,6 +445,11 @@ function main() {
   eq('detalle: cada tramo con todos sus vuelos', [dd.data.searchCount, dd.data.searches.COTIZACION, dl.map((l) => l.leg + ':' + l.options.length), dl[1].options[1]],
     [{ COTIZACION: 0, COMPRA: 1 }, null, ['IDA:6', 'REGRESO:6'], { airline: 'Wingo', flights: 'P5 7120', departs: '05:40', arrives: '06:45', stops: 0, minutes: 65, price: 389200 }]);
   eq('detalle: sin datos de los pasajeros ni del solicitante', priv.some((x) => JSON.stringify(dd).includes(x)), false);
+  eq('detalle: enlace de cada tramo a Google Flights', dl.map((l) => /^https:\/\/www\.google\.com\/travel\/flights\?.*PRUEBA-/.test(l.googleUrl)), [true, true]);
+  eq('detalle: un enlace que no es de Google Flights no llega al dashboard', ['javascript:alert(1)', 'https://evil.example/travel/flights?x', 'https://www.google.com/travel/flights?x="><script>']
+    .map((u) => p._ptLeg_({ t: 'IDA', ok: true, url: u }).googleUrl), ['', '', '']);
+  const d6 = det('dsanchez@equitel.com.co', 'SOL-6').data.request;
+  eq('detalle: lo facturado', [d6.invoiced, d6.invoiceCount, d6.invoicedIncludesHotel, dd.data.request.invoiced], [410000, 1, false, null]);
   eq('detalle: solicitud sin búsquedas', /no tiene búsquedas/.test(det('dsanchez@equitel.com.co', 'SOL-404').error), true);
   eq('detalle: no escribe nada', JSON.stringify(Object.values(t.ss.sheets).filter((s) => s.name !== 'USUARIOS').map((s) => s.data)) === snap, true);
   const ej = t.ctx.cpResumir(JSON.parse(JSON.stringify(EJEMPLO).replace(/"LATAM"/g, '"COPA"')), { horaIda: '07:00' });

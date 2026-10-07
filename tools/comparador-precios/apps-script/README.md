@@ -25,6 +25,9 @@ dos momentos, una sola vez en cada uno:
 viajero para la ida y el regreso con la del regreso. En viajes internacionales de ida y vuelta
 también busca el tiquete redondo, que suele salir más barato, y compara contra el menor.
 
+**Solo cuentan los vuelos directos** (#A88): a los viajeros no se les compran vuelos con escala.
+Si ese día el tramo no tiene vuelos directos, cuentan los de escala.
+
 Para cada tramo guarda:
 - el más barato del día;
 - el más barato saliendo entre 2 horas antes y 2 horas después de la hora pedida;
@@ -141,8 +144,9 @@ Si el rastreo ya está instalado:
 2. No hace falta volver a ejecutar `activarRastreo` ni dar permisos: el disparador sigue igual.
 3. En la siguiente pasada (máximo 15 minutos), el proyecto:
    - agrega las columnas nuevas al final de `COMPARATIVO PRECIOS`;
-   - vuelve a buscar, ahora por tramos, las solicitudes que siguen en su momento (por comprar o
-     esperando aprobación): unas 2 consultas por cada una;
+   - vuelve a buscar, ahora por tramos y con vuelos directos, las solicitudes que siguen en su
+     momento (por comprar o esperando aprobación): unas 2 consultas por cada una. Pasa una sola vez
+     por solicitud y momento, también si ya se había pegado la versión de #A86;
    - deja como están las búsquedas viejas de las que ya se compraron. El dashboard las sigue
      mostrando, con una nota de que el precio venía de ida y vuelta juntos.
 
@@ -162,7 +166,8 @@ Si el rastreo ya está instalado:
 - **Dashboard de costos → Comparador de precios:** el estado del rastreo (última ejecución,
   búsquedas, cupo), los totales y la tabla por viaje, con exportación a CSV. Al tocar un viaje
   se abre su detalle: lo que registró el área de viajes, las horas que pidió el viajero, el
-  viaje armado con la ida y el regreso por separado y todos los vuelos de cada tramo.
+  viaje armado con la ida y el regreso por separado y todos los vuelos de cada tramo, con un
+  enlace a la misma búsqueda en Google Flights para ir a comprar (#A87).
 - **Pestaña oculta `COMPARATIVO PRECIOS`** de la base de datos: una fila por búsqueda. Para
   verla en la hoja: menú **Ver → Hojas ocultas**. Tiene un aviso si alguien intenta editarla:
   no la edites.

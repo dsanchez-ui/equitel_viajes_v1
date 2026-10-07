@@ -519,15 +519,19 @@
     .pt-detail table.pt-mini th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); font-weight: 600; background: #f9fafb; }
     .pt-detail table.pt-mini td.num, .pt-detail table.pt-mini th.num { text-align: right; font-variant-numeric: tabular-nums; }
     .pt-detail table.pt-mini tr.pt-ref td { background: #fefce8; }
-    .pt-detail table.pt-mini .over { color: var(--red); font-weight: 700; }
-    .pt-detail table.pt-mini .under { color: var(--green); font-weight: 700; }
+    .pt-detail .over { color: var(--red); font-weight: 700; }
+    .pt-detail .under { color: var(--green); font-weight: 700; }
     .pt-detail table.pt-flights tr.pt-win td { background: #eff6ff; }
+    .pt-detail table.pt-flights tr.pt-stop td { color: var(--muted); }
+    .pt-detail table.pt-flights tr.pt-sep td { background: #f3f4f6; font-size: 11px; font-weight: 700; color: var(--muted); }
     .pt-detail .pt-scroll { max-height: 340px; overflow: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
     .pt-tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; margin: 1px 0 1px 4px; white-space: nowrap; }
     .pt-tag.near { background: #dbeafe; color: #1e40af; }
     .pt-tag.day { background: #dcfce7; color: #166534; }
     .pt-tag.mine { background: #f3e8ff; color: #6b21a8; }
     .pt-leg-title { font-weight: 700; margin-bottom: 2px; }
+    .pt-link { color: var(--blue); font-weight: 600; text-decoration: none; white-space: nowrap; }
+    .pt-link:hover { text-decoration: underline; }
     .pt-note-box { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
     /* En celular la tabla es más ancha que la pantalla: el detalle se queda del ancho visible
        y solo sus tablas se desplazan de lado. */
@@ -1165,12 +1169,16 @@
           <dt>Más barato en Google</dt>
           <dd>Lo más barato que mostraba Google Flights para el mismo viaje (mismas ciudades, fechas y número de pasajeros),
             buscando cada tramo por separado, como se compra: la ida saliendo hasta 2 horas antes o después de la hora que pidió el
-            viajero, más el regreso a la hora que pidió para el regreso. Si no pidió hora, el más barato del día. En viajes
-            internacionales de ida y vuelta también se busca el tiquete redondo y se toma el menor.</dd>
+            viajero, más el regreso a la hora que pidió para el regreso. Si no pidió hora, el más barato del día. Solo cuentan los
+            vuelos directos, porque a los viajeros no se les compran vuelos con escala; los de escala cuentan solo si ese día no hay
+            directos. En viajes internacionales de ida y vuelta también se busca el tiquete redondo y se toma el menor.</dd>
+          <dt>Facturado</dt>
+          <dd>Lo que de verdad se pagó, según las facturas que se suben después del viaje (lo mismo que usa la variación cotizado
+            vs facturado). La factura no separa tiquetes y hotel: si el viaje lleva hotel, lo facturado no se compara con Google.</dd>
           <dt>Misma aerolínea</dt>
           <dd>Lo más barato en Google con la aerolínea registrada en cada tramo (si el regreso es con otra, la del regreso).</dd>
           <dt>Detalle</dt>
-          <dd>Toque un viaje para ver el precio de la ida y del regreso por separado, las horas que pidió el viajero y todos los vuelos que mostró Google.</dd>
+          <dd>Toque un viaje para ver el precio de la ida y del regreso por separado, las horas que pidió el viajero y todos los vuelos que mostró Google, con un enlace a Google Flights para ir a comprar.</dd>
           <dt>Diferencia</dt>
           <dd>Cotizado menos Google. <strong style="color: var(--red);">Más caro</strong>: Google tenía algo más barato.
             <strong style="color: var(--green);">Más barato</strong>: la cotización le ganó a Google.</dd>
@@ -1178,7 +1186,8 @@
           <dd>Dos veces por viaje: al confirmar los costos y cuando se aprueba (justo antes de comprar). Se muestra la búsqueda más reciente.</dd>
           <dt>Ojo</dt>
           <dd>Google muestra la tarifa más económica, que normalmente no incluye maleta de bodega ni permite cambios. Parte de la
-            diferencia puede ser equipaje, flexibilidad o el cargo de la agencia. Laura no ve esta sección y los filtros de arriba no aplican aquí.</dd>
+            diferencia puede ser equipaje, flexibilidad o el cargo de la agencia. Satena y Clic casi no publican en Google Flights: si se compró
+            con ellas, puede no haber con qué comparar. Laura no ve esta sección y los filtros de arriba no aplican aquí.</dd>
         </dl>
       </details>
 
@@ -1226,6 +1235,7 @@
                 <th>Solicitud</th>
                 <th>Viaje</th>
                 <th class="num">Cotizado</th>
+                <th class="num">Facturado</th>
                 <th class="num">Más barato en Google</th>
                 <th class="num">Misma aerolínea</th>
                 <th class="num">Diferencia</th>
@@ -2998,8 +3008,10 @@ function renderPriceTracking() {
       ['Al cotizar', 'el precio de Google en el mismo momento de la cotización', s.atQuote,
         'Aún sin datos: se llena con los costos que se confirmen desde el inicio del estudio.'],
       ['Al aprobarse', 'el precio de Google justo antes de comprar', s.atPurchase, 'Aún sin datos.'],
-      ['Con la misma aerolínea', 'lo más barato en Google con la aerolínea de la compra', s.sameAirline, 'Aún sin datos.']
-    ].concat(s.byChannel.map(function(c) { return [PT_CHANNELS[c.channel] || ('Comprado por ' + c.channel), 'según el canal registrado', c, 'Aún sin datos.']; }));
+      ['Con la misma aerolínea', 'lo más barato en Google con la aerolínea de la compra', s.sameAirline, 'Aún sin datos.'],
+      s.invoiced ? ['Lo facturado (ya comprado)', 'lo que se pagó frente a Google; solo viajes sin hotel', s.invoiced,
+        'Aún sin datos: las facturas se suben después del viaje.'] : null
+    ].filter(Boolean).concat(s.byChannel.map(function(c) { return [PT_CHANNELS[c.channel] || ('Comprado por ' + c.channel), 'según el canal registrado', c, 'Aún sin datos.']; }));
     document.getElementById('ptSummaryBody').innerHTML = rows.map(function(r) {
       var a = r[2];
       var first = '<td>' + escHtml(r[0]) + '<span class="pt-sub">' + escHtml(r[1]) + '</span></td>';
@@ -3060,8 +3072,35 @@ function _ptGoogleCell(it) {
   return html;
 }
 
+/** Lo ya comprado (#A87): lo facturado, o por qué aún no hay. */
+function _ptInvoicedCell(it) {
+  if (it.invoiced === undefined) return '—';
+  if (!it.invoiced) return '<span class="pt-sub">sin facturas aún</span>';
+  var sub = it.invoicedIncludesHotel ? 'incluye el hotel' : ptPlural(it.invoiceCount || 1, 'factura', 'facturas');
+  return '<span class="pt-main">' + fmtMoney(it.invoiced) + '</span><span class="pt-sub">' + escHtml(sub) + '</span>';
+}
+
+/** Enlace a la búsqueda del tramo en Google Flights; si no se guardó, una búsqueda equivalente. */
+function ptGoogleUrl(l) {
+  if (!l) return '';
+  if (/^https:\/\/www\.google\.com\/travel\/flights\?/.test(l.googleUrl || '')) return l.googleUrl;
+  var from = String(l.from || '').split(',')[0], to = String(l.to || '').split(',')[0];
+  if (!/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to)) return '';
+  return ptGoogleQueryUrl(from, to, l.date, l.returnDate);
+}
+/** Búsqueda en Google Flights armada con ciudades o códigos y fechas (cuando no hay enlace guardado). */
+function ptGoogleQueryUrl(from, to, date, returnDate) {
+  if (!from || !to || !/^\d{4}-\d{2}-\d{2}$/.test(date || '')) return '';
+  var q = 'Flights from ' + from + ' to ' + to + ' on ' + date + (returnDate ? ' returning ' + returnDate : ' one way');
+  return 'https://www.google.com/travel/flights?hl=es-419&gl=co&curr=COP&q=' + encodeURIComponent(q);
+}
+function ptLink(url, text) {
+  return url ? '<a class="pt-link" href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escHtml(text) + ' ↗</a>' : '';
+}
+
 function _ptSameAirlineCell(it) {
   if (!it.airline) return '<span class="pt-sub">sin aerolínea registrada</span>';
+  if (!it.sameAirline && /satena|clic/i.test(ptAirlines(it))) return '<span class="pt-sub">' + escHtml(ptAirlines(it)) + ': no publica en Google Flights</span>';
   if (!it.sameAirline) return '<span class="pt-sub">' + escHtml(ptAirlines(it)) + ' no aparece en Google</span>';
   return '<span class="pt-main">' + fmtMoney(it.sameAirline) + '</span><span class="pt-sub">' + escHtml(ptAirlines(it)) + '</span>';
 }
@@ -3080,10 +3119,11 @@ function renderPriceTable() {
       '<td class="pt-id"><span class="pt-caret">' + (open ? '▾' : '▸') + '</span>' + escHtml(it.requestId) + '<span class="pt-sub">' + escHtml(PT_STATUS[it.status] || it.status) + '</span></td>' +
       '<td><span class="pt-main">' + escHtml((it.origin || '—') + ' → ' + (it.destination || '—')) + '</span><span class="pt-sub">' + escHtml(trip) + '</span></td>' +
       '<td class="num pt-money"><span class="pt-main">' + (it.quoted ? fmtMoney(it.quoted) : '—') + '</span><span class="pt-sub">' + escHtml(bought || 'sin compra registrada') + '</span></td>' +
+      '<td class="num">' + _ptInvoicedCell(it) + '</td>' +
       '<td class="num pt-money">' + _ptGoogleCell(it) + '</td>' +
       '<td class="num">' + _ptSameAirlineCell(it) + '</td>' +
       '<td class="num var-cell pt-money"><span class="pt-main">' + escHtml(it.quoted ? v.main : 'sin costo cotizado') + '</span><span class="pt-sub">' + escHtml(v.sub) + '</span></td>' +
-      '</tr>' + (open ? '<tr class="pt-detail-row"><td class="pt-detail-cell" colspan="6">' + _ptDetailHtml(it) + '</td></tr>' : '');
+      '</tr>' + (open ? '<tr class="pt-detail-row"><td class="pt-detail-cell" colspan="7">' + _ptDetailHtml(it) + '</td></tr>' : '');
   }).join('');
 }
 
@@ -3138,6 +3178,10 @@ function _ptDetailHtml(it) {
       '<div>Costo de los tiquetes ' + (r.returnDate ? 'de ida y regreso' : 'de solo ida') + ' para ' + ptPlural(pax, 'pasajero', 'pasajeros') +
         (pax > 1 && r.quoted ? ' (' + fmtMoney(Math.round(r.quoted / pax)) + ' por persona)' : '') + '.</div>' +
       '<div>Aerolínea: ' + airlineTxt + ' · Canal: <b>' + escHtml(r.channel === 'Directo' ? 'directo con la aerolínea' : (r.channel || 'sin registrar')) + '</b></div>' +
+      (r.invoiced === undefined ? ''
+        : r.invoiced ? '<div>Facturado (ya comprado): <b>' + fmtMoney(r.invoiced) + '</b> en ' + ptPlural(r.invoiceCount || 1, 'factura', 'facturas') +
+            (r.invoicedIncludesHotel ? ' · incluye el hotel (' + fmtMoney(r.hotelQuoted) + ' cotizado), por eso no se compara con Google' : '') + '.</div>'
+          : '<div>Facturado: <b>sin facturas todavía</b> (se suben después del viaje).</div>') +
       '<div class="pt-muted">' + who + ' en «Confirmar costos»' + (r.costConfirmedAt ? ' el ' + escHtml(ptWhen(r.costConfirmedAt)) : '') + '.' +
         (r.costConfirmedBy ? '' : ' Antes de esta versión no se guardaba quién.') + ' La plataforma guarda el total de los tiquetes, no el de cada tramo.</div>' +
     '</div>' +
@@ -3194,8 +3238,8 @@ function _ptDetailHtml(it) {
     var mineLabel = r.returnAirline && reg ? r.airline + ' / ' + r.returnAirline : (r.airline || 'sin registrar');
     html += '<div class="pt-box"><div class="pt-box-title">El viaje armado con lo que mostraba Google</div><div class="pt-scroll" style="max-height: none;"><table class="pt-mini">' +
       '<thead><tr><th></th><th>Ida</th>' + (reg ? '<th>Regreso</th>' : '') + '<th class="num">Total del viaje</th><th class="num">Frente a lo cotizado (' + (quoted ? fmtMoney(quoted) : '—') + ')</th></tr></thead><tbody>' +
-      row('A la hora pedida', 'lo más barato saliendo ±2 h de la hora preferida; si no hay o no pidió hora, el más barato del día', ptLegRef, ptLegRef, refByTramos) +
-      row('El más barato del día', 'sin importar la hora', function(l) { return l.cheapest; }, function(l) { return l.cheapest; }, false) +
+      row('A la hora pedida', 'el directo más barato saliendo ±2 h de la hora preferida; si no hay o no pidió hora, el más barato del día', ptLegRef, ptLegRef, refByTramos) +
+      row('El más barato del día', 'directo, sin importar la hora', function(l) { return l.cheapest; }, function(l) { return l.cheapest; }, false) +
       row('Con la aerolínea registrada', mineLabel + (r.airline ? ': a la hora pedida o, si no hay, en el día' : ''), function(l) { return l.sameNear || l.sameDay; }, function(l) { return l.sameNear || l.sameDay; }, false);
     if (rt && rt.ok) {
       var ro = ptLegRef(rt);
@@ -3206,16 +3250,25 @@ function _ptDetailHtml(it) {
         '<td class="num">' + (vrt ? '<span class="' + vrt.cls + '">' + escHtml(vrt.main) + '</span><div class="pt-muted">' + escHtml(vrt.sub) + '</div>' : '—') + '</td></tr>';
     }
     html += '</tbody></table></div><div class="pt-muted" style="margin-top: 6px;">La fila resaltada es la que usa el comparador (' +
-      (refByTramos ? 'ida + regreso por separado' : 'el tiquete redondo, más barato que los dos tramos') + ').</div></div>';
+      (refByTramos ? 'ida + regreso por separado' : 'el tiquete redondo, más barato que los dos tramos') + ').</div>';
+    if (r.invoiced && !r.invoicedIncludesHotel && snap.reference) {
+      var vi = ptVerdict(r.invoiced - snap.reference, (r.invoiced - snap.reference) / snap.reference * 100);
+      html += '<div style="margin-top: 6px;">Lo facturado (' + fmtMoney(r.invoiced) + ') frente a Google (' + fmtMoney(snap.reference) + '): <b class="' + vi.cls + '">' +
+        escHtml(vi.main) + '</b> <span class="pt-muted">' + escHtml(vi.sub) + '</span></div>';
+    }
+    var links = [ida ? ptLink(ptGoogleUrl(ida), 'Ida en Google Flights') : '', reg ? ptLink(ptGoogleUrl(reg), 'Regreso en Google Flights') : '',
+      rt ? ptLink(ptGoogleUrl(rt), 'Ida y vuelta en Google Flights') : ''].filter(Boolean);
+    if (links.length) html += '<div style="margin-top: 8px;">Para comprar: ' + links.join(' · ') + '</div>';
+    html += '</div>';
   }
 
   // 4. Los vuelos de cada tramo
-  legs.forEach(function(l) { html += _ptLegHtml(l, pax, r, it); });
+  legs.forEach(function(l) { html += _ptLegHtml(l, pax, r, it, snap.format); });
   return html + '</div>';
 }
 
 /** Tabla de vuelos de un tramo, ordenados por hora de salida; resalta los de la hora pedida. */
-function _ptLegHtml(l, pax, r, it) {
+function _ptLegHtml(l, pax, r, it, format) {
   var title = l.leg === 'IDA' ? '🛫 Ida' : l.leg === 'REGRESO' ? '🛬 Regreso' : '🔁 Ida y vuelta en un solo tiquete';
   var o = r.origin || it.origin, dst = r.destination || it.destination;
   var place = function(city, codes) { return (city ? city + ' ' : '') + '(' + String(codes || '').split(',').join(', ') + ')'; };
@@ -3224,6 +3277,9 @@ function _ptLegHtml(l, pax, r, it) {
     (l.returnDate ? ' y regreso ' + escHtml(ptDayLong(l.returnDate)) : '') +
     ' · ' + (l.hour ? 'hora preferida ' + escHtml(l.hour) : 'sin hora preferida') + '</div>';
   if (!l.ok) return html + '<div class="pt-note-box">' + escHtml(PT_FAIL[l.result] || l.result) + (l.error ? ': ' + escHtml(l.error) : '') + '</div></div>';
+  var gl = ptGoogleUrl(l);
+  if (gl) html += '<div style="margin: 2px 0 4px;">' + ptLink(gl, 'Ver estos vuelos en Google Flights y comprar') +
+    ' <span class="pt-muted">(ahí cada vuelo lleva a la página de la aerolínea o de la agencia)</span></div>';
   var extra = [];
   extra.push(ptPlural(l.optionCount, 'vuelo encontrado', 'vuelos encontrados'));
   var rango = String(l.typicalRange || '').split('-').map(Number);
@@ -3233,16 +3289,30 @@ function _ptLegHtml(l, pax, r, it) {
   var pref = ptMin(l.hour);
   var near = l.near, cheap = l.cheapest, mine = l.sameNear || l.sameDay;
   var same = function(a, b) { return a && b && a.departs === b.departs && a.price === b.price && a.airline === b.airline; };
-  var opts = l.options || [];
+  // Primero los directos y después los de escala (#A88), cada grupo por hora de salida.
+  var opts = (l.options || []).slice().sort(function(a, b) {
+    return (a.stops ? 1 : 0) - (b.stops ? 1 : 0) || (ptMin(a.departs) || 0) - (ptMin(b.departs) || 0) || a.price - b.price;
+  });
+  var hasDirect = opts.some(function(o) { return !o.stops; });
+  var hasStops = opts.some(function(o) { return o.stops; });
+  var cols = pax > 1 ? 7 : 6;
+  if (format >= 3 && !hasDirect && hasStops) html += '<div class="pt-muted" style="margin-bottom: 6px;">Este tramo no tenía vuelos directos ese día: se comparan los de escala.</div>';
+  var sepDone = false;
   html += '<div class="pt-scroll"><table class="pt-mini pt-flights"><thead><tr><th>Sale</th><th>Llega</th><th>Aerolínea</th><th>Vuelo</th><th>Escalas</th>' +
     '<th class="num">Precio' + (pax > 1 ? ' (' + pax + ' pax)' : '') + '</th>' + (pax > 1 ? '<th class="num">Por persona</th>' : '') + '</tr></thead><tbody>' +
     opts.map(function(o) {
+      var sep = '';
+      if (o.stops && hasDirect && !sepDone) {
+        sepDone = true;
+        sep = '<tr class="pt-sep"><td colspan="' + cols + '">Con escala' + (format >= 3 ? ': no cuentan para comparar porque hay vuelos directos' : '') + '</td></tr>';
+      }
       var m = ptMin(o.departs);
       var win = pref !== null && m !== null && Math.abs(m - pref) <= 120;
       var tags = (same(o, near) ? '<span class="pt-tag near">más barato a la hora</span>' : '') +
         (same(o, cheap) ? '<span class="pt-tag day">más barato del día</span>' : '') +
         (same(o, mine) ? '<span class="pt-tag mine">aerolínea registrada</span>' : '');
-      return '<tr' + (win ? ' class="pt-win"' : '') + '><td><b>' + escHtml(o.departs || '—') + '</b></td><td>' + escHtml(o.arrives || '—') + '</td>' +
+      var cls = [win ? 'pt-win' : '', o.stops && hasDirect && format >= 3 ? 'pt-stop' : ''].filter(Boolean).join(' ');
+      return sep + '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td><b>' + escHtml(o.departs || '—') + '</b></td><td>' + escHtml(o.arrives || '—') + '</td>' +
         '<td>' + escHtml(o.airline) + tags + '</td><td>' + escHtml(o.flights || '—') + '</td>' +
         '<td>' + (o.stops ? o.stops + (o.minutes ? ' · ' + Math.floor(o.minutes / 60) + ' h ' + (o.minutes % 60) + ' min' : '') : 'directo') + '</td>' +
         '<td class="num"><b>' + fmtMoney(o.price) + '</b></td>' + (pax > 1 ? '<td class="num">' + fmtMoney(Math.round(o.price / pax)) + '</td>' : '') + '</tr>';
@@ -3263,7 +3333,13 @@ function _ptLegacyHtml(it, r, snap) {
       ? 'Google daba un solo precio de ida y vuelta: <b>' + fmtMoney(snap.reference) + '</b> es el vuelo de ida (' + escHtml(who) +
         ') con el regreso más barato que Google le combinaba, sin tener en cuenta la hora del regreso. Por eso no aparece igual en la página de la aerolínea. '
       : 'El más barato fue <b>' + fmtMoney(snap.reference) + '</b> (' + escHtml(who) + '). ') +
-    'No se guardó la lista de vuelos. Las búsquedas nuevas van por tramos y con todos los vuelos.</div>';
+    'No se guardó la lista de vuelos. Las búsquedas nuevas van por tramos y con todos los vuelos.</div>' +
+    (function() {
+      var o = r.origin || it.origin, d = r.destination || it.destination, ret = r.returnDate || it.returnDate;
+      var links = [ptLink(ptGoogleQueryUrl(o, d, r.departure || it.departure, ''), 'Ida en Google Flights'),
+        ret ? ptLink(ptGoogleQueryUrl(d, o, ret, ''), 'Regreso en Google Flights') : ''].filter(Boolean);
+      return links.length ? '<div>Para buscar y comprar: ' + links.join(' · ') + '</div>' : '';
+    })();
 }
 
 function exportPriceCsv() {
@@ -3276,7 +3352,8 @@ function exportPriceCsv() {
     'Al cotizar: fecha de búsqueda', 'Al cotizar: resultado', 'Al cotizar: más barato en Google', 'Al cotizar: criterio', 'Al cotizar: aerolínea', 'Al cotizar: salida', 'Al cotizar: misma aerolínea', 'Al cotizar: Aviatur en Google',
     'Al aprobarse: fecha de búsqueda', 'Al aprobarse: resultado', 'Al aprobarse: más barato en Google', 'Al aprobarse: criterio', 'Al aprobarse: aerolínea', 'Al aprobarse: salida', 'Al aprobarse: misma aerolínea', 'Al aprobarse: Aviatur en Google',
     'Diferencia (cotizado - Google)', 'Diferencia %',
-    'Hora pedida ida', 'Hora pedida regreso', 'Cómo se compara', 'Ida: más barato en Google', 'Ida: aerolínea y salida', 'Regreso: más barato en Google', 'Regreso: aerolínea y salida', 'Ida y vuelta en un solo tiquete'];
+    'Hora pedida ida', 'Hora pedida regreso', 'Cómo se compara', 'Ida: más barato en Google', 'Ida: aerolínea y salida', 'Regreso: más barato en Google', 'Regreso: aerolínea y salida', 'Ida y vuelta en un solo tiquete',
+    'Facturado', 'Facturas', 'Facturado incluye hotel', 'Facturado - Google'];
   var legCols = function(it) {
     var s = it.atPurchase && it.atPurchase.result === 'OK' ? it.atPurchase : (it.atQuote && it.atQuote.result === 'OK' ? it.atQuote : null);
     var legs = s && s.legs ? s.legs : [];
@@ -3286,7 +3363,8 @@ function exportPriceCsv() {
       return l ? [l.reference || '', o ? o.airline + ' ' + o.departs : ''] : ['', ''];
     };
     var kind = !s ? '' : s.format < 2 ? (it.returnDate ? 'ida y vuelta juntos (formato anterior)' : 'solo ida') : s.referenceKind === 'IDA Y VUELTA' ? 'tiquete redondo' : 'por tramos';
-    return [it.departureTime || '', it.returnTime || '', kind].concat(pick('IDA'), pick('REGRESO'), [s && s.roundTripTogether ? s.roundTripTogether : '']);
+    return [it.departureTime || '', it.returnTime || '', kind].concat(pick('IDA'), pick('REGRESO'), [s && s.roundTripTogether ? s.roundTripTogether : ''],
+      [it.invoiced || '', it.invoiceCount || '', it.invoiced ? (it.invoicedIncludesHotel ? 'sí' : 'no') : '', it.invoicedVsGoogle === null || it.invoicedVsGoogle === undefined ? '' : it.invoicedVsGoogle]);
   };
   var q = function(v) {
     var t = String(v === null || v === undefined ? '' : v);

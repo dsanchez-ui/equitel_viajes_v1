@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A86) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A88) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -246,6 +246,16 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     página de la aerolínea. Tocar un viaje abre su detalle (`getPriceTrackingDetail`, mismas
     personas): lo que registró el área de viajes y quién (`costConfirmedBy` en `EVENTOS_JSON`,
     desde #A86), las horas pedidas y todos los vuelos de cada tramo.
+  - **Para comprar y para medir** (#A87, reunión del 7-oct con Juan Camilo): cada tramo trae el
+    enlace a la misma búsqueda en Google Flights (`search_metadata.google_flights_url`, solo
+    direcciones de Google Flights y nunca con la clave) para ir a comprar. Junto al cotizado va lo
+    **facturado** (lo ya comprado, mismas reglas que la variación); la factura no separa tiquetes y
+    hotel, así que con hotel no se compara con Google.
+  - **Solo vuelos directos** (#A88, David, 2026-10-07): a los viajeros no se les compran vuelos
+    con escala. Si un tramo tiene directos, solo esos cuentan (a la hora, del día y misma
+    aerolínea); los de escala se listan al final en gris. Si ese día no hay directos, cuentan
+    los de escala. El enlace y lo facturado están **solo en el dashboard de costos**, nunca en la
+    app de Laura.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -475,8 +485,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
     Alejandro). **#A84** (rastreo de 2 semanas, oculto para Laura): **desplegado y activo** el
     7-oct (estudio del 7 al 21-oct; el dashboard ya muestra las primeras búsquedas). Plan en
     [docs/plan-comparador-precios.md](docs/plan-comparador-precios.md).
-  - **#A85** (regreso con otra aerolínea, pedido de Laura; comparador en lenguaje simple) y
-    **#A86** (comparador por tramos con detalle por viaje): pendiente pegar `Code.gs` y
+  - **#A85** (regreso con otra aerolínea, pedido de Laura; comparador en lenguaje simple),
+    **#A86** (comparador por tramos con detalle por viaje), **#A87** (enlace para comprar y lo
+    facturado junto al cotizado) y **#A88** (solo vuelos directos): frontend en `main` (`0cc66b5`, #A85–#A86); pendiente pegar `Code.gs` y
     `CostsDashboard.html` + versión nueva del web app, pegar `Rastreo.gs` en el proyecto aparte
     (`Nucleo` no cambia) y push del frontend.
   - **V5:** lectura de facturas PDF con IA, **solo como plan** (decisión de David del 2-oct):

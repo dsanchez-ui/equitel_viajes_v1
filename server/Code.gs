@@ -17269,6 +17269,7 @@ function _csEmptyVariance_(year, fromMonth, toMonth, access) {
 // de ida y vuelta, el menor entre esa suma y el tiquete redondo. La columna TRAMOS
 // trae cada tramo con sus vuelos. En el formato 1 el precio de ida y vuelta venía
 // junto (el vuelo de ida con el regreso más barato que Google le combinaba).
+// Formato 3 (#A88): si un tramo tiene vuelos directos, solo cuentan los directos.
 var PRICE_TRACKING_SHEET = 'COMPARATIVO PRECIOS';
 var PRICE_TRACKING_STATE_SHEET = 'COMPARATIVO ESTADO';
 
@@ -17314,8 +17315,12 @@ function _ptLeg_(l, withOptions) {
     ok: l.ok === true, result: l.ok === true ? 'OK' : String(l.res || 'ERROR'), error: String(l.err || ''),
     cheapest: opt(l.barato), near: opt(l.cerca), sameNear: opt(l.mismaCerca), sameDay: opt(l.mismaDia),
     reference: num(l.ref), referenceIsNear: l.refCerca === true,
+    // Formato 3 (#A88): true = el tramo tenía vuelos directos y solo esos cuentan.
+    directOnly: l.dir === true,
     typicalRange: String(l.rango || ''), level: String(l.nivel || ''),
     optionCount: num(l.total) || (Array.isArray(l.ops) ? l.ops.length : 0),
+    // La misma búsqueda en Google Flights, para ir a comprar (#A87). Solo direcciones de Google Flights.
+    googleUrl: /^https:\/\/www\.google\.com\/travel\/flights\?[^\s"'<>]*$/.test(String(l.url || '')) ? String(l.url) : '',
     vendors: Array.isArray(l.vend) ? l.vend.map(function(x) { return { seller: String(x.v || ''), price: num(x.p), isAirline: x.a === true }; }) : []
   };
   if (withOptions) {
@@ -17369,6 +17374,17 @@ function _ptSnapshot_(r, withOptions) {
     aviatur: n('AVIATUR EN GOOGLE'), vendors: Array.isArray(vendors) ? vendors : [],
     queries: _csToNumber_(r['CONSULTAS'])
   };
+}
+
+/**
+ * Lo facturado de una solicitud (#A87), con las mismas reglas que la variación
+ * cotizado vs facturado y las facturas por cerrar. La factura no separa tiquetes y
+ * hotel: si se cotizó hotel, lo facturado lo incluye y no se compara con Google.
+ */
+function _ptInvoiced_(row, headerMap, config) {
+  var t = _invoiceTotalsForClose_(row, headerMap, config);
+  var hotel = _csToNumber_(_csReadCell_(row, headerMap, 'COSTO_FINAL_HOTEL'));
+  return { invoiced: t.total > 0 ? Math.round(t.total) : null, count: t.count, includesHotel: hotel > 0, hotelQuoted: Math.round(hotel) || 0 };
 }
 
 /** Suma lo cotizado contra una referencia (solo solicitudes con ambos valores). */
@@ -17436,6 +17452,7 @@ function getPriceTracking(currentUserEmail) {
     var hm = {};
     vals[0].forEach(function(h, i) { var k = String(h == null ? '' : h).trim(); if (k && hm[k] === undefined) hm[k] = i; });
     var cell = function(row, k) { return hm[k] === undefined ? '' : row[hm[k]]; };
+    var config = _csLoadConfig_();
     for (var r = 1; r < vals.length; r++) {
       var id = String(cell(vals[r], 'ID RESPUESTA') || '').trim();
       if (!id || !byId[id]) continue;
@@ -17447,6 +17464,7 @@ function getPriceTracking(currentUserEmail) {
       var ref = okBuy || okCot;
       var market = ref ? ref.reference : null;
       var same = ref ? ref.sameAirline : null;
+      var inv = _ptInvoiced_(row, hm, config);
       items.push({
         requestId: id,
         origin: String(cell(row, 'CIUDAD ORIGEN') || '').split(',')[0].trim(),
@@ -17469,7 +17487,10 @@ function getPriceTracking(currentUserEmail) {
         marketMoment: ref ? ref.moment : '',
         sameAirline: same,
         difference: quoted && market ? quoted - market : null,
-        differencePct: quoted && market ? (quoted - market) / market * 100 : null
+        differencePct: quoted && market ? (quoted - market) / market * 100 : null,
+        // Lo ya comprado (#A87): lo facturado, igual que la variación cotizado vs facturado.
+        invoiced: inv.invoiced, invoiceCount: inv.count, invoicedIncludesHotel: inv.includesHotel,
+        invoicedVsGoogle: inv.invoiced && !inv.includesHotel && market ? inv.invoiced - market : null
       });
     }
   }
@@ -17492,6 +17513,8 @@ function getPriceTracking(currentUserEmail) {
     atQuote: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: refOf(it.atQuote) }; })),
     overall: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.market }; })),
     sameAirline: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.sameAirline }; })),
+    // Lo facturado frente a Google: solo viajes sin hotel (la factura no separa tiquetes y hotel).
+    invoiced: _ptAggregate_(items.map(function(it) { return { quoted: it.invoicedVsGoogle === null ? null : it.invoiced, market: it.market }; })),
     byChannel: Object.keys(channels).sort().map(function(k) { var a = _ptAggregate_(channels[k]); a.channel = k; a.requests = channels[k].length; return a; })
   };
   return { items: items, summary: summary, meta: meta };
@@ -17541,6 +17564,12 @@ function getPriceTrackingDetail(currentUserEmail, requestId) {
   if (rowNumber !== -1) {
     var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
     var cell = function(k) { var i = H(k); return i < 0 ? '' : row[i]; };
+    var headerMap = {};
+    sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].forEach(function(h, i) {
+      var k = String(h == null ? '' : h).trim();
+      if (k && headerMap[k] === undefined) headerMap[k] = i;
+    });
+    var inv = _ptInvoiced_(row, headerMap, _csLoadConfig_());
     var events = {};
     try { events = JSON.parse(cell('EVENTOS_JSON') || '{}') || {}; } catch (e) { events = {}; }
     var by = events.costConfirmedBy && typeof events.costConfirmedBy === 'object' ? events.costConfirmedBy : null;
@@ -17564,7 +17593,8 @@ function getPriceTrackingDetail(currentUserEmail, requestId) {
       costConfirmedAt: events.costConfirmed || '',
       // Quién confirmó los costos: se registra desde #A86; antes, vacío.
       costConfirmedBy: by ? { email: String(by.email || ''), name: _ptUserName_(by.email) } : null,
-      reservationRegisteredAt: events.reservationRegistered || ''
+      reservationRegisteredAt: events.reservationRegistered || '',
+      invoiced: inv.invoiced, invoiceCount: inv.count, invoicedIncludesHotel: inv.includesHotel, hotelQuoted: inv.hotelQuoted
     };
   }
   return { request: request, searches: latest, searchCount: counts };
