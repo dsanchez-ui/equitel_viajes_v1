@@ -1989,3 +1989,25 @@ Plan completo y vivo en [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahor
 - Defecto introducido a propósito (volver a la URL corta en el botón): detectado.
 
 **Despliegue:** solo frontend (push a `main`). No toca Apps Script.
+
+## **#A92 — Dashboard de costos: etiquetas y cifras en lenguaje simple**
+**Fecha:** 2026-10-08 · **Reportado por:** David · **Estado:** Corregido, en `main`
+
+**Síntoma:** en *Ahorro observado* las columnas **Canal** y **Vuelo** no se entendían, ni siquiera con la nota al pie. Tampoco *"Por tiquete"*, *"% del cotizado"* ni *"Más barato en Google"*. David pidió revisar todo el dashboard: etiquetas claras, datos fáciles de leer, bien organizados y **sin llenarlo de recuadros de texto**.
+
+**Causa raíz:** las etiquetas nacieron de los nombres internos del cálculo (canal, vuelo, prudente, probable, embudo, método) y de las columnas de la hoja (`COSTO COTIZADO PARA VIAJE`, `TOTAL FACTURA 2`, `RESERVADO`), no de la pregunta que responde cada cifra.
+
+**Fix (solo `server/CostsDashboard.html`; las cuentas no cambian):**
+- **Ahorro observado:** columnas *Valor cotizado*, *Precio más barato en Google*, *Diferencia*, *Diferencia por tiquete* y *% de ahorro sobre lo cotizado*. Canal y Vuelo pasan a un grupo **«¿De dónde sale la diferencia?»**: *Comprando la misma aerolínea* (con el precio de esa aerolínea en Google debajo) y *Cambiando de vuelo o aerolínea*. Se quitó la nota al pie. La ruta, el tipo de viaje y los tiquetes van debajo de la solicitud. Indicadores: *Diferencia típica por viaje / por tiquete* («la menor: …») y *% de ahorro típico*.
+- **Proyección:** *Prudente* y *Probable* se reemplazan por un **Rango** («$6,4 M – $22,2 M»: de solo con la misma aerolínea a todo el ahorro). La tabla muestra *Ahorro proyectado*, *% de lo gastado* y *Rango*; el gráfico queda con una sola serie (el rango sale al pasar el dedo). Controles en palabras: *Cómo calcular* («Ahorro típico por tiquete», «El menor ahorro por tiquete»…), *Ahorro a contar* («Solo con la misma aerolínea»), *Restar maleta por tiquete*, *Viajes que siguen el ahorro*. La frase principal dice *"En un mes promedio, entre $X (solo con la misma aerolínea) y $Y (todo el ahorro)"*.
+- **Volumen:** grupos *Solicitudes (por mes en que se pidieron)*, *Compradas (por mes de compra)*, *Cambios que costaron más*, *Días entre la compra y el vuelo*.
+- **Comparador:** *Valor cotizado*, *Precio más barato en Google*, *Precio con la misma aerolínea*. El *¿Cómo se lee?* queda cerrado y más corto. La fila ya no repite el precio al cotizar (está en el detalle). Si el rastreo no ha corrido, el aviso reemplaza el *"Funcionando"* en vez de aparecer junto a él.
+- **Variación cotizado vs facturado:** se quitó el recuadro amarillo con nombres de columnas; queda una línea bajo el título. *Diferencia total* (facturado − cotizado), *Diferencia promedio por viaje*, contadores *Se pagó más de lo cotizado / Se pagó menos / Igual*, gráfico *Los 20 viajes con más diferencia entre lo cotizado y lo facturado*, columna *Diferencia %*.
+- **Presupuesto:** *Δ vs ppto* → **Disponible** (lo mismo que dice el indicador de arriba; en rojo si se pasó). *RESERVADO sin factura* → *comprado, aún sin factura*. Sin *YTD* ni paréntesis dobles en el periodo.
+- **Pie:** en palabras (*"N solicitudes con costo · no cuentan …"*), sin los aciertos de caché.
+
+**Verificado:**
+- `npm run verify` en verde (las cuentas de la proyección y del comparador no cambiaron).
+- Capturas con los datos del 8-oct en escritorio y en celular (390 px): el dashboard completo, sin errores en la consola.
+
+**Despliegue:** pegar `server/CostsDashboard.html` en Apps Script y crear una versión nueva del web app. No cambia la app ni `Code.gs`.

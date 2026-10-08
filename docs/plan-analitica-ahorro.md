@@ -190,9 +190,10 @@ Responde *cuánto y por qué* en los viajes comparados.
   - viajes comparados, con aviso si son menos de 15;
   - ahorro mediano por viaje, por tiquete y como % del cotizado;
   - cuántos viajes tenían algo más barato en Google.
-- **Tabla por viaje** con la partición en dos:
-  - **canal** = cotizado − la misma aerolínea en Google;
-  - **vuelo** = la misma aerolínea − el más barato.
+- **Tabla por viaje** con la diferencia partida en dos, bajo *«¿De dónde sale la diferencia?»*
+  (#A92; internamente *canal* y *vuelo*):
+  - **Comprando la misma aerolínea** = cotizado − la misma aerolínea en Google;
+  - **Cambiando de vuelo o aerolínea** = la misma aerolínea − el más barato.
 
   Muestra si el ahorro está en *por dónde se compra* o en *qué vuelo se compra*.
 - **Por tipo de viaje**, cuando hay al menos 5 viajes en el grupo: solo ida e ida y vuelta,
@@ -202,14 +203,15 @@ Responde *cuánto y por qué* en los viajes comparados.
 
 Responde *cuánto se habría ahorrado* en cada mes.
 
-- **Frase arriba.** Por ejemplo: *"Con la mediana por tiquete, en septiembre se habrían
-  ahorrado unos $31 M (42 % del gasto en tiquetes). Con el escenario prudente, $10 M."*
-- **Columnas por mes:** el ahorro proyectado con el método elegido, con una marca del
-  escenario prudente al probable. Una sola escala, en pesos.
+- **Frase arriba.** Por ejemplo: *"Con el ahorro típico por tiquete, en septiembre se habrían
+  ahorrado unos $29 M (38 % de lo gastado en tiquetes). En un mes promedio, entre $6,3 M
+  (solo con la misma aerolínea) y $21,7 M (todo el ahorro)."*
+- **Columnas por mes:** el ahorro proyectado con el método elegido, una sola serie en pesos.
+  El rango aparece al pasar el dedo sobre la columna.
 - **Tabla por mes:**
-  - viajes, tiquetes y gasto real;
-  - ahorro prudente, probable y con el método elegido;
-  - % del gasto.
+  - viajes, tiquetes y gasto;
+  - ahorro proyectado y % de lo gastado;
+  - rango, de *solo con la misma aerolínea* a *todo el ahorro*.
 
   Al final van el total del periodo y el equivalente a un año.
 
@@ -237,18 +239,18 @@ Para cada viaje en avión comprado del mes (nacional, salvo que se marquen inter
    Mínimo, percentil 25, mediana y promedio se calculan sobre la muestra. Si hay al menos
    5 viajes comparados del mismo tipo (solo ida o ida y vuelta), se usa el valor de ese
    grupo; si no, el de todos.
-2. **Qué ahorro cuenta:** con *solo canal* se usa la parte de canal de la muestra.
+2. **Ahorro a contar:** con *solo con la misma aerolínea* se usa esa parte de la muestra.
 3. **Ajuste por equipaje:** se resta el valor por tiquete × los tiquetes del viaje.
 4. **Tope:** el ahorro de un viaje no supera su costo cotizado × el % más alto observado,
    para que un valor fijo no "ahorre" más de lo que costó un tiquete barato.
 5. **Adopción:** se multiplica por el % de adopción.
 6. **El mes** = la suma de sus viajes. El año = el promedio de los meses del periodo × 12.
 
-**El rango que siempre se ve:**
-- *Prudente:* solo canal con la mediana.
-- *Probable:* todo con la mediana.
+**El rango que siempre se ve** (antes *prudente* y *probable*; nombres cambiados en #A92):
+- *Solo con la misma aerolínea:* esa parte de la muestra, con la mediana por tiquete.
+- *Todo el ahorro:* la diferencia completa, con la mediana por tiquete.
 
-Lo que se elija en *Método* se muestra además de ese rango.
+Lo que se elija en *Cómo calcular* se muestra además de ese rango.
 
 ## 7. Cómo leer la proyección (va en un *"¿Cómo se lee?"* en pantalla)
 
@@ -259,7 +261,7 @@ Lo que se elija en *Método* se muestra además de ese rango.
   cotizado puede incluirlos, además del cargo de la agencia. Para eso está el ajuste por
   equipaje.
 - **El ahorro por cambiar de vuelo** solo existe si el viajero acepta otra aerolínea u
-  horario. *Solo canal* no le cambia nada.
+  horario. *Solo con la misma aerolínea* no le cambia nada.
 - **Los meses pasados se proyectan con el patrón de octubre.** Los precios cambian por
   temporada y anticipación: es una estimación, no lo que pasó.
 - **La búsqueda se hace minutos después de aprobarse la solicitud,** no en el instante de
@@ -289,7 +291,7 @@ Además:
 
 ### Ahorro observado: comparador, 8-oct (por tramos y solo vuelos directos, #A86–#A88)
 
-| Viaje | Cotizado | Google (ida + regreso) | Diferencia | Por tiquete | % del cotizado | Canal | Vuelo |
+| Viaje | Valor cotizado | Precio más barato en Google | Diferencia | Por tiquete | % de ahorro | Misma aerolínea | Otro vuelo o aerolínea |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | SOL-000627 Barranquilla → Bogotá | $701.818 | $198.486 | $503.332 | $251.666 | 72 % | $112.658 | $390.674 |
 | SOL-000629 Medellín → Bogotá | $819.228 | $419.080 | $400.148 | $200.074 | 49 % | **−$106.302** | $506.450 |
@@ -303,7 +305,7 @@ Aviatur.
 
 | Método | Septiembre ($75,6 M) | Mes promedio ($60,0 M) |
 |---|---:|---:|
-| Solo canal, mediana por viaje (prudente) | $10,4 M (14 %) | $7,7 M (13 %) |
+| Solo con la misma aerolínea, mediana por viaje | $10,4 M (14 %) | $7,7 M (13 %) |
 | Mínimo por tiquete ($77.094) | $12,1 M (16 %) | $9,7 M (16 %) |
 | Mínimo por viaje ($154.189, los *"150 mil por solicitud"*) | $14,2 M (19 %) | $10,5 M (18 %) |
 | Mediana por tiquete ($200.074) | $31,4 M (42 %) | $25,1 M (42 %) |
@@ -324,6 +326,9 @@ Aviatur.
 - [x] **Prueba automática:** `tools/check-savings-analysis.cjs` (36 comprobaciones), dentro de
   `npm run verify`.
 - [x] **Documentación:** `BUG_REPORT.md` (#A89, #A90) y `CLAUDE.md`.
+- [x] **Lenguaje simple en todo el dashboard (#A92):** nada de *canal*, *vuelo*, *prudente*,
+  *probable*, *embudo* ni nombres de columnas de la hoja en pantalla. Sin recuadros de texto
+  nuevos.
 - [ ] **David:** pegar `Code.gs` y `CostsDashboard.html` y crear la versión nueva del web app
   antes de la reunión. Luego mirar al pie del dashboard los tiempos reales.
 
@@ -347,17 +352,23 @@ Aviatur.
 
 | # | Tema | Estado |
 |---|---|---|
-| 1 | Método por defecto | Propuesto y aplicado: mediana por tiquete, con el rango prudente–probable a la vista |
-| 2 | Ahorro por cambiar de aerolínea | Propuesto y aplicado: se cuenta, siempre separado del de canal |
+| 1 | Método por defecto | Propuesto y aplicado: ahorro típico (mediana) por tiquete, con el rango a la vista |
+| 2 | Ahorro por cambiar de aerolínea | Propuesto y aplicado: se cuenta, siempre separado del de la misma aerolínea |
 | 3 | Ajuste por equipaje | Control en pantalla, $0 por defecto; falta la cifra de David |
 | 4 | Periodo base | Desde abril de 2026 |
 | 5 | Filtros de empresa y unidad | Sí, en volumen y proyección |
 | 6 | Internacionales | Aparte, sin incluir por defecto |
 | 7 | "Viaje con cambios" | La compra es una modificación (`TIPO DE SOLICITUD = MODIFICACION`), contando aparte las con costo |
 | 8 | Dónde guardar lo precalculado | `CacheService`, sin Script Properties (David, 8-oct) |
+| 9 | Cómo se nombran las cifras | En palabras de la pregunta que responden (*Precio más barato en Google*, *% de ahorro sobre lo cotizado*, *¿De dónde sale la diferencia?*), nunca con nombres internos ni de columnas; sin recuadros de texto (David, 8-oct, #A92) |
 
 ## 11. Bitácora
 
+- **2026-10-08 (tarde)** — David no entendía *Canal* y *Vuelo* en *Ahorro observado* y pidió
+  revisar todo el dashboard (#A92). Se renombraron las cifras en palabras, el rango
+  reemplazó a *prudente/probable*, se quitó el recuadro de la variación y la nota al pie
+  de la muestra, y el *¿Cómo se lee?* del comparador quedó cerrado y más corto. Las cuentas no
+  cambiaron.
 - **2026-10-08 (mañana)** — Implementados P0 (#A89) y P1/P2 (#A90). Con la base real:
   - 68,2 viajes al mes, $60,0 M y $479.921 por tiquete;
   - con la mediana por tiquete, septiembre da $28,9 M sin internacionales;

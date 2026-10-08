@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A91) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A92) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -270,10 +270,17 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   nueva sale de un payload en caché, lee la hoja una sola vez y no encadena llamadas; los controles
   interactivos calculan en el navegador. Ver [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §3.
 - **Proyección de ahorro** (#A90, pedido de Juan Camilo, 2026-10-08): sección del dashboard de costos
-  con volumen de viajes, ahorro observado del comparador (partido en canal y vuelo) y proyección
-  por mes con método elegible y un rango prudente–probable. Mismo permiso que el comparador. Es un
+  con volumen de viajes, ahorro observado del comparador (partido en *comprando la misma aerolínea*
+  y *cambiando de vuelo o aerolínea*) y proyección por mes con método elegible y un rango (de solo
+  la misma aerolínea a todo el ahorro). Mismo permiso que el comparador. Es un
   **plan vivo**: [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md), donde se anotan los
   pedidos e ideas nuevas (§9) y la bitácora (§11).
+- **Todo el dashboard de costos en lenguaje simple** (#A92, David, 2026-10-08): cada cifra se nombra
+  con la pregunta que responde (*Precio más barato en Google*, *Diferencia por tiquete*, *% de ahorro
+  sobre lo cotizado*, *¿De dónde sale la diferencia?*, *Disponible*). En pantalla nunca nombres
+  internos (*canal*, *vuelo*, *prudente*, *probable*, *embudo*) ni de columnas de la hoja
+  (`TOTAL FACTURA 2`, `RESERVADO`). **No llenarlo de recuadros de texto:** una línea bajo el título
+  y, si hace falta, un *¿Cómo se lee?* cerrado y corto.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -494,8 +501,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **Seguridad:** el remoto de git del PC Linux tiene un token de GitHub en la URL y quedó a la
   vista en una sesión; revocarlo y usar un gestor de credenciales (MIGRACION.md, sección 6).
 
-- **Análisis de ahorro y velocidad del dashboard** (#A89, #A90, 8-oct): implementados; pendiente
-  pegar `Code.gs` y `CostsDashboard.html` y crear la versión nueva del web app. Lo que sigue está en
+- **Análisis de ahorro y velocidad del dashboard** (#A89, #A90, 8-oct) y **lenguaje simple en todo
+  el dashboard** (#A92): implementados; pendiente pegar `Code.gs` y `CostsDashboard.html` y crear la
+  versión nueva del web app. Lo que sigue está en
   [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §9.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
