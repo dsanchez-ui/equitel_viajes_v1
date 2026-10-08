@@ -17,6 +17,7 @@
 | **Tarifa por noches del viaje** (tabla de la página 2) | Se recomienda en *Cargar opciones*, *Confirmar costos* y *Registrar reserva*. Otra tarifa exige una justificación, y todo queda en la hoja (#A95). Ver abajo. |
 | Otras aerolíneas (JetSMART, etc.) si el integrante lo requiere | La compra admite cualquier aerolínea de la lista u «Otra…» (#A82). |
 | Facturas a nombre de la empresa como soporte del viaje | Soportes después del viaje y avisos de facturas por revisar desde el día 7 (#A83). |
+| La solicitud debe decir si el viajero requiere equipaje de bodega | Casilla *¿Lleva maleta de bodega?* en el formulario, solo en vuelos (#A95). Laura la ve al cotizar, al confirmar costos y al registrar la reserva. |
 
 ## La tarifa del tiquete (#A95)
 
@@ -36,6 +37,7 @@
 **Cómo la interpreta la plataforma:**
 - **Noches** = fecha de regreso − fecha de ida; sin regreso, las noches de hotel.
 - **Los 6 noches** son TIPO 3. El manual dice «más de 6» y deja los 6 por fuera (Yurani: *«la tres es de 6 días»*).
+- **Maleta de bodega:** la recomendación sigue siendo la de las noches. Si el viajero la pidió y Laura elige una tarifa que la incluye, el motivo se propone solo; si elige una que no la incluye, se le avisa. Incluyen bodega: LATAM Full, Avianca Classic y las tres de Clic; Satena no.
 - **Excepción** = una tarifa con otro nombre que la recomendada. En Avianca, TIPO 2 y 3 son la misma Classic: comprar una u otra no es excepción. Con aerolíneas fuera de la tabla (Wingo, JetSMART…) cuenta el número.
 - **En la hoja:**
   - la tarifa comprada va en `TIPO DE COMPRA DE TKT`, la misma columna que se llenaba a mano;
@@ -58,8 +60,7 @@ Por eso, en LATAM TIPO 2 y en todo TIPO 3, el precio de Google puede quedar por 
 
 | Manual | Plataforma hoy | Estado |
 |---|---|---|
-| Tiquetes internacionales: aprobación **del CEO** | Basta el CEO **o** el Director de Cadena de Suministro | Anotado para decidir; no se cambió |
-| El COM-F-06 debe decir **si el viajero requiere equipaje de bodega** | El formulario no lo pregunta | Propuesta: preguntarlo al crear la solicitud. Sustentaría las excepciones de tarifa y la comparación con Google |
+| Tiquetes internacionales: aprobación **del CEO** | Basta el CEO **o** el Director de Cadena de Suministro | Se queda así (David, 8-oct: se decidió en su momento) |
 
 ## Lo que la plataforma no cubre hoy
 

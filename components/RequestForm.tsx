@@ -210,6 +210,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   // Hotel-only always requires hotel; for flights it's a toggle
   const [requiresHotel, setRequiresHotel] = useState(initialData ? initialData.requiresHotel : false);
+  // Maleta de bodega (#A95): la pide el manual COM-P-02. Solo vuelos; el área de viajes la tiene en cuenta al elegir la tarifa.
+  const [checkedBaggage, setCheckedBaggage] = useState<boolean>(initialData?.checkedBaggage === true);
   const [manualNights, setManualNights] = useState<boolean>(false);
   const [numberOfNights, setNumberOfNights] = useState<number>(initialData ? (initialData.nights || 0) : 0);
 
@@ -1253,6 +1255,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             passengers,
             passengerBirthdates: birthdatesPayload,
             passengerPhones: phonesPayload,
+            checkedBaggage,
             requiresHotel: leg.requiresHotel,
             hotelName: leg.requiresHotel ? leg.hotelName : '',
             nights: leg.requiresHotel ? leg.nights : 0,
@@ -1302,6 +1305,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         passengerBirthdates: isHotelOnly ? undefined : birthdatesPayload,
         // Celulares opcionales (#A75), también en solo hospedaje: solo los que se escribieron.
         passengerPhones: phonesPayload,
+        // #A95: solo vuelos; que la clave venga le dice al servidor que el formulario ya la pregunta.
+        checkedBaggage: isHotelOnly ? undefined : checkedBaggage,
         requiresHotel: isHotelOnly ? true : requiresHotel,
         nights: (isHotelOnly || requiresHotel) ? numberOfNights : 0,
         status: isModification ? RequestStatus.PENDING_CHANGE_APPROVAL : RequestStatus.PENDING_OPTIONS,
@@ -1990,6 +1995,18 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </button>
           )}
         </div>
+
+        {/* Maleta de bodega (#A95): la pide el manual COM-P-02. Solo vuelos, una vez por solicitud. */}
+        {!isHotelOnly && (
+          <div className="flex items-start gap-3 bg-gray-50 border border-gray-200 rounded-md p-3" data-checked-baggage-field>
+            <input id="checkedBaggage" type="checkbox" className="mt-0.5 focus:ring-brand-red h-4 w-4 text-brand-red border-gray-300 rounded"
+              checked={checkedBaggage} disabled={loading || isLocked} onChange={(e) => setCheckedBaggage(e.target.checked)} />
+            <label htmlFor="checkedBaggage" className="text-sm text-gray-700">
+              <span className="font-medium">¿Lleva maleta de bodega?</span>
+              <span className="block text-xs text-gray-500">Márquela si algún pasajero necesita despachar equipaje, además de la maleta de mano. El área de viajes la tiene en cuenta al elegir la tarifa.</span>
+            </label>
+          </div>
+        )}
 
         {/* Section 4: Hotel — siempre visible y forzado para hotel-only, toggle para vuelos.
             En multidestino NO se renderiza: el hospedaje del Tramo 1 vive dentro de su bloque. */}

@@ -324,6 +324,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
                           onChange={setFare}
                           showErrors={triedSubmit}
                           title="Tarifa del tiquete (manual COM-P-02) *"
+                          checkedBaggage={request.checkedBaggage}
                       />
                   )}
 

@@ -130,6 +130,13 @@ export const RequestTripCorporateInfo: React.FC<{ request: TravelRequest }> = ({
                                                     </span>
                                                 </div>
                                             </div>
+                                            {/* #A95: lo pide el manual COM-P-02; solo vuelos y solicitudes que lo preguntaron */}
+                                            {request.requestMode !== 'HOTEL_ONLY' && typeof request.checkedBaggage === 'boolean' && (
+                                                <div data-checked-baggage>
+                                                    <span className="block text-xs text-gray-500">Maleta de bodega</span>
+                                                    <span className="font-medium">{request.checkedBaggage ? '🧳 Sí' : 'No'}</span>
+                                                </div>
+                                            )}
                                             <div><span className="block text-xs text-gray-500">Solicitante</span><span className="font-medium break-words text-blue-600">{request.requesterEmail}</span></div>
                                         </div>
                                     </div>

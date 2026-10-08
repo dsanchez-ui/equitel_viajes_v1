@@ -270,7 +270,8 @@ const HEADERS_REQUESTS = [
   "CANAL DE COMPRA HOTEL", // 'Aviatur' | 'Directo' | 'Otra agencia' | 'No se reservó' (#A94)
   "TARIFA RECOMENDADA", // 'TIPO 1|2|3' según las noches del viaje (manual COM-P-02, #A95); la comprada va en TIPO DE COMPRA DE TKT
   "TARIFA NOMBRE", // Nombre de la tarifa en la aerolínea: 'Classic', 'Light (ida) y Classic (regreso)' (#A95)
-  "TARIFA JUSTIFICACION" // Por qué se compró otra tarifa, si no es la recomendada (#A95)
+  "TARIFA JUSTIFICACION", // Por qué se compró otra tarifa, si no es la recomendada (#A95)
+  "MALETA DE BODEGA" // 'SI' | 'NO' según el formulario de solicitud; vacía = no se preguntó (#A95, manual COM-P-02)
 ];
 
 // =====================================================================
@@ -3455,6 +3456,25 @@ var FARE_RECOMMENDED_NOTE = 'Tarifa que recomienda el manual COM-P-02 por las no
 var FARE_NAME_NOTE = 'Nombre de la tarifa comprada en la aerolínea (#A95), p. ej. Classic o Light (ida) y Classic (regreso).';
 var FARE_JUSTIFICATION_NOTE = 'Por qué se compró una tarifa distinta de la recomendada por el manual (#A95). Vacía = se compró la recomendada.';
 
+// Maleta de bodega (#A95): el manual COM-P-02 pide que la solicitud diga si el viajero
+// la requiere. Casilla del formulario, solo en vuelos: 'SI' o 'NO'; vacía = la solicitud
+// es anterior y no se preguntó. Que la clave venga en el payload activa la regla, así
+// un formulario anterior abierto en otra pestaña no escribe nada.
+var CHECKED_BAG_HEADER = 'MALETA DE BODEGA';
+var CHECKED_BAG_NOTE = 'Si el viajero pidió maleta de bodega en el formulario (#A95, manual COM-P-02): SI o NO. Vacía = solicitud anterior, no se preguntó.';
+
+/** 'SI', 'NO' o null (solo hospedaje, o un formulario que no la pregunta). */
+function _checkedBaggageValue_(data) {
+  if (!data || data.requestMode === 'HOTEL_ONLY' || typeof data.checkedBaggage !== 'boolean') return null;
+  return data.checkedBaggage ? 'SI' : 'NO';
+}
+
+/** true, false o null (no se preguntó) a partir de la celda. */
+function _checkedBaggageFromCell_(v) {
+  var t = String(v == null ? '' : v).trim().toUpperCase();
+  return t === 'SI' || t === 'SÍ' ? true : t === 'NO' ? false : null;
+}
+
 function _fareOptionForNights_(nights) {
   var n = Number(nights);
   if (!isFinite(n) || n <= 1) return 1;
@@ -3787,6 +3807,7 @@ function _ensureA82A83Columns_() {
     { header: FARE_RECOMMENDED_HEADER, col: _ensureRequestColumn_(FARE_RECOMMENDED_HEADER, FARE_RECOMMENDED_NOTE) },
     { header: FARE_NAME_HEADER, col: _ensureRequestColumn_(FARE_NAME_HEADER, FARE_NAME_NOTE) },
     { header: FARE_JUSTIFICATION_HEADER, col: _ensureRequestColumn_(FARE_JUSTIFICATION_HEADER, FARE_JUSTIFICATION_NOTE) },
+    { header: CHECKED_BAG_HEADER, col: _ensureRequestColumn_(CHECKED_BAG_HEADER, CHECKED_BAG_NOTE) },
     { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
       'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
   ];
@@ -5875,6 +5896,16 @@ function createNewRequest(data, emailHtml) {
       console.warn('createNewRequest: no se pudo crear la columna "' + REQUEST_PHONES_HEADER + '": ' + colErr);
     }
   }
+  // Maleta de bodega (#A95): la columna se crea al final la primera vez. Si falla, la
+  // solicitud se crea igual: es informativa.
+  const _checkedBag = _checkedBaggageValue_(data);
+  if (_checkedBag !== null && H(CHECKED_BAG_HEADER) < 0) {
+    try {
+      _ensureRequestColumn_(CHECKED_BAG_HEADER, CHECKED_BAG_NOTE);
+    } catch (colErr) {
+      console.warn('createNewRequest: no se pudo crear la columna "' + CHECKED_BAG_HEADER + '": ' + colErr);
+    }
+  }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -5951,6 +5982,7 @@ function createNewRequest(data, emailHtml) {
   set("UNIDAD DE NEGOCIO", data.businessUnit);
   set("SEDE", data.site);
   set("REQUIERE HOSPEDAJE", data.requiresHotel ? 'Sí' : 'No');
+  if (_checkedBag !== null) set(CHECKED_BAG_HEADER, _checkedBag); // #A95
   // FORCE UPPERCASE HOTEL NAME
   set("NOMBRE HOTEL", safeSheetValue_((data.hotelName || '').toUpperCase()));
   set("# NOCHES (AUTOMÁTICO)", nights);
@@ -8254,7 +8286,9 @@ function mapRowToRequest(row, lite) {
     fareType: String(_fareOptionValue_(get("TIPO DE COMPRA DE TKT")) || ''),
     fareRecommended: String(_fareOptionValue_(get("TARIFA RECOMENDADA")) || ''),
     fareName: String(get("TARIFA NOMBRE") || ''),
-    fareJustification: String(get("TARIFA JUSTIFICACION") || '')
+    fareJustification: String(get("TARIFA JUSTIFICACION") || ''),
+    // Maleta de bodega que pidió el viajero (#A95): true, false o null si no se preguntó.
+    checkedBaggage: _checkedBaggageFromCell_(get(CHECKED_BAG_HEADER))
   };
 
   // Compute and attach the EFFECTIVE approval status (mirrors the rules in
@@ -18104,6 +18138,7 @@ function _ptBuildDetail_(id) {
         _fareOptionForNights_(_fareNights_(_psDateKey_(cell('FECHA IDA')), _psDateKey_(cell('FECHA VUELTA')), cell('# NOCHES (AUTOMÁTICO)')))),
       fareName: String(cell(FARE_NAME_HEADER) || ''),
       fareJustification: String(cell(FARE_JUSTIFICATION_HEADER) || ''),
+      checkedBaggage: _checkedBaggageFromCell_(cell(CHECKED_BAG_HEADER)),
       invoiced: inv.invoiced, invoiceCount: inv.count, invoicedIncludesHotel: inv.includesHotel, hotelQuoted: inv.hotelQuoted
     };
   }

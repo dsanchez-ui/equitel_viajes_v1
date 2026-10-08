@@ -62,7 +62,8 @@ function loadFrontend() {
   return {
     table: e.FARE_TABLE, forNights: e.fareOptionForNights, nights: e.fareNights, name: e.fareName, label: e.fareLabel,
     exception: e.fareIsException, normalize: e.normalizeFare, recommendation: e.fareRecommendation, dateKey: e.fareDateKey,
-    formFrom: e.fareFormFrom, short: e.fareShort,
+    formFrom: e.fareFormFrom, short: e.fareShort, includesChecked: e.fareIncludesChecked, checkedText: e.fareCheckedOptionsText,
+    baggageLabel: e.fareBaggageLabel,
   };
 }
 
@@ -196,6 +197,13 @@ function checkWrites(gs, failures) {
   const legacy = ctx.mapRowToRequest(['SOL-9', 'RESERVADO', 'VIAJE', '', '', '', '', '', '', 'TIIPO 2']);
   eq('un valor histórico mal escrito no se toma como tarifa', legacy.fareType, '');
   eq('la acción pasa la tarifa', gs.includes('payload.fareOption, payload.fareJustification); break;'), true);
+  // Maleta de bodega del formulario de solicitud (#A95).
+  eq('maleta de bodega: lo que escribe la solicitud (solo vuelos y si el formulario la pregunta)',
+    [{ checkedBaggage: true }, { checkedBaggage: false }, {}, { requestMode: 'HOTEL_ONLY', checkedBaggage: true }, { checkedBaggage: 'true' }].map((d) => ctx._checkedBaggageValue_(d)),
+    ['SI', 'NO', null, null, null]);
+  eq('maleta de bodega: lo que lee la app', ['SI', 'Sí', 'NO', '', 'x'].map((v) => ctx._checkedBaggageFromCell_(v)), [true, true, false, null, null]);
+  eq('sin la columna, la app recibe null (no se preguntó)', legacy.checkedBaggage, null);
+  eq('createNewRequest la guarda solo si el formulario la pregunta', /if \(_checkedBag !== null\) set\(CHECKED_BAG_HEADER, _checkedBag\)/.test(gs), true);
   return count;
 }
 
@@ -230,6 +238,11 @@ function main() {
   if (front.short(2, 'Avianca') !== 'TIPO 2 · Classic' || front.short(2, 'Wingo') !== 'TIPO 2') failures.push('fareShort: ' + front.short(2, 'Avianca'));
   if (JSON.stringify(front.formFrom({}, 2)) !== JSON.stringify({ option: '2', justification: '' })) failures.push('fareFormFrom sin registro');
   if (JSON.stringify(front.formFrom({ fareType: '1', fareJustification: J }, 2)) !== JSON.stringify({ option: '1', justification: J })) failures.push('fareFormFrom con registro');
+  // Maleta de bodega según el manual: Avianca desde Classic, LATAM solo Full, Clic siempre, Satena nunca.
+  const bag = [['Avianca', 1], ['Avianca', 2], ['LATAM', 2], ['LATAM', 3], ['Clic', 1], ['Satena', 3], ['Wingo', 2], ['Wingo', 3]].map(([a, o]) => front.includesChecked(a, o));
+  if (JSON.stringify(bag) !== JSON.stringify([false, true, false, true, true, false, false, true])) failures.push('fareIncludesChecked: ' + JSON.stringify(bag));
+  if (front.checkedText() !== 'LATAM Full · Avianca Classic · Clic VeLigera; Satena no la incluye') failures.push('fareCheckedOptionsText: ' + front.checkedText());
+  if (front.baggageLabel(2, 'LATAM', 'Avianca') !== 'artículo pequeño y equipaje de mano 10 kg (ida); equipaje de mano 10 kg y bodega 23 kg (regreso)') failures.push('fareBaggageLabel: ' + front.baggageLabel(2, 'LATAM', 'Avianca'));
 
   let writes = 0;
   try { writes = checkWrites(gs, failures); } catch (e) { failures.push('guardado: ' + (e && e.stack || e)); }

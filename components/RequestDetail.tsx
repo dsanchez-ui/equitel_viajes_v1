@@ -9,7 +9,7 @@ import {
     BirthdatesLoadState, sanitizeCedula, RequestTripCorporateInfo, RequestPassengersHotelInfo, RequestComments, RequestOptionsGallery,
 } from './RequestInfoSections';
 import { hotelPurchaseLabel, purchaseAirlineLabel, purchaseChannelLabel } from '../utils/purchase';
-import { fareShort } from '../utils/fare';
+import { fareBaggageLabel, fareShort } from '../utils/fare';
 
 interface RequestDetailProps {
     request: TravelRequest;
@@ -902,14 +902,19 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                 <strong>{request.purchaseAirline ? purchaseAirlineLabel(request.purchaseAirline, request.purchaseReturnAirline) + ' · ' : ''}{purchaseChannelLabel(request.purchaseChannel, request.requestMode === 'HOTEL_ONLY')}</strong>
                                             </div>
                                         )}
-                                        {/* #A95: tarifa del tiquete (solo administradores) */}
-                                        {isAdmin && request.fareType && (
+                                        {/* #A95: tarifa del tiquete y su equipaje según el manual. La ve también el
+                                            viajero (le dice qué equipaje lleva); la recomendada y el motivo, solo los administradores. */}
+                                        {request.fareType && request.requestMode !== 'HOTEL_ONLY' && (
                                             <div className="mt-1 text-xs text-gray-600" data-fare-summary>
                                                 <span className="text-gray-400">Tarifa:</span>{' '}
                                                 <strong>{fareShort(Number(request.fareType), request.purchaseAirline, request.purchaseReturnAirline)}</strong>
-                                                {request.fareJustification
-                                                    ? <span> · recomendada TIPO {request.fareRecommended} · <em>"{request.fareJustification}"</em></span>
-                                                    : request.fareRecommended ? <span className="text-gray-400"> · la recomendada</span> : null}
+                                                <span className="text-gray-500"> ({fareBaggageLabel(Number(request.fareType), request.purchaseAirline, request.purchaseReturnAirline)})</span>
+                                                {isAdmin && (request.fareJustification
+                                                    ? <div className="mt-0.5" data-fare-exception>
+                                                        <span className="text-gray-400">El manual recomienda TIPO {request.fareRecommended}. Motivo de esta tarifa:</span>{' '}
+                                                        <em>"{request.fareJustification}"</em>
+                                                      </div>
+                                                    : request.fareRecommended ? <span className="text-gray-400"> · la recomendada por el manual</span> : null)}
                                             </div>
                                         )}
                                         {/* #A94: hotel reservado y su canal (solo administradores) */}

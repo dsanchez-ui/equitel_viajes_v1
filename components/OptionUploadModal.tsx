@@ -403,7 +403,7 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                         </h3>
                         {/* #A95: qué tarifa cotizar según el manual COM-P-02 */}
                         {request.requestMode !== 'HOTEL_ONLY' && (
-                            <div className="-mt-2 mb-3"><FareRecommendationNote trip={request} /></div>
+                            <div className="-mt-2 mb-3"><FareRecommendationNote trip={request} checkedBaggage={request.checkedBaggage} /></div>
                         )}
 
                         <div className="flex flex-col lg:flex-row gap-6 h-[70vh]">

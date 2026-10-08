@@ -630,6 +630,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                     onChange={setFare}
                                     showErrors={triedFare && (!isEditMode || fareChanged)}
                                     title={isEditMode ? 'Tarifa comprada (manual COM-P-02)' : 'Tarifa comprada (manual COM-P-02) *'}
+                                    checkedBaggage={request.checkedBaggage}
                                 />
                             )}
 

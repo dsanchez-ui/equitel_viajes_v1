@@ -3544,10 +3544,11 @@ function _ptDetailHtml(it) {
 
 /** «TIPO 2 · Classic, la recomendada» o la excepción con su motivo (#A95). */
 function _ptFareDetail(r) {
-  if (!r.fareType) return '<b>sin registrar</b> (el manual recomienda TIPO ' + escHtml(r.fareRecommended) + '): no se compara por tarifa';
+  var bag = r.checkedBaggage === true ? ' · el viajero pidió maleta de bodega' : r.checkedBaggage === false ? ' · sin maleta de bodega' : '';
+  if (!r.fareType) return '<b>sin registrar</b> (el manual recomienda TIPO ' + escHtml(r.fareRecommended) + '): no se compara por tarifa' + bag;
   var html = '<b>' + escHtml(ptFareText({ type: r.fareType, name: r.fareName })) + '</b>';
-  if (!r.fareJustification) return html + (r.fareType === r.fareRecommended ? ', la recomendada por el manual' : '');
-  return html + ' · el manual recomienda TIPO ' + escHtml(r.fareRecommended) + '; motivo: «' + escHtml(r.fareJustification) + '»';
+  if (!r.fareJustification) return html + (r.fareType === r.fareRecommended ? ', la recomendada por el manual' : '') + bag;
+  return html + ' · el manual recomienda TIPO ' + escHtml(r.fareRecommended) + '; motivo: «' + escHtml(r.fareJustification) + '»' + bag;
 }
 
 /** Tabla de vuelos de un tramo, ordenados por hora de salida; resalta los de la hora pedida. */

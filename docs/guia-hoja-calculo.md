@@ -350,12 +350,13 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 - `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94, 8-oct-2026): el hotel que reservó el área de viajes (en mayúsculas y sin tildes) y su canal (*Aviatur*, *Directo* u *Otra agencia*). *No se reservó* = al final no hubo hotel. `NOMBRE HOTEL` sigue siendo el que pidió el viajero. Las llena "Registrar reserva".
 
 - `TARIFA RECOMENDADA`, `TARIFA NOMBRE` y `TARIFA JUSTIFICACION` (#A95, 8-oct-2026): la tarifa que recomienda el manual COM-P-02 por las noches del viaje (`TIPO 1`, `TIPO 2` o `TIPO 3`, la calcula el sistema), su nombre en la aerolínea (por ejemplo, *Classic*) y, si se compró otra, el motivo. La tarifa comprada sigue en `TIPO DE COMPRA DE TKT`, que ahora llenan "Confirmar costos" y "Registrar reserva". Ver [manual-com-p-02.md](manual-com-p-02.md).
+- `MALETA DE BODEGA` (#A95, 8-oct-2026): lo que marcó el viajero en el formulario (*¿Lleva maleta de bodega?*): `SI` o `NO`. Vacía = la solicitud es anterior y no se preguntó. Solo vuelos.
 
 Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
 
 ### 12. Columnas de compra y resumen de facturas
 
-Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
+Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION`, `MALETA DE BODEGA` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
 - **listas para cerrar:** viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita
 - **facturas por revisar:** les faltan facturas o PDF, a partir del día 7 después del viaje
 - avisos omitidos y solicitudes en espera

@@ -200,6 +200,8 @@ export interface TravelRequest {
   fareRecommended?: string;
   fareName?: string;
   fareJustification?: string;
+  /** Maleta de bodega que pidió el viajero en la solicitud (#A95, manual COM-P-02). null = no se preguntó (solicitudes anteriores). */
+  checkedBaggage?: boolean | null;
 
   // EFFECTIVE approval status (computed by backend, mirrors the dedup rules
   // applied in sendApprovalRequestEmail / processApprovalFromEmail).

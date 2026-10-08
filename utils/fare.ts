@@ -131,7 +131,7 @@ const FARE_BAGGAGE: Record<string, string[]> = {
   'Clic': ['equipaje de mano 5 kg y bodega 10 kg', 'equipaje de mano 5 kg y bodega 15 kg', 'equipaje de mano 10 kg y bodega 20 kg'],
   'Satena': ['equipaje de mano 5 kg', 'equipaje de mano 5 kg', 'equipaje de mano 5 kg'],
 };
-const FARE_BAGGAGE_GENERIC = ['solo artículo pequeño', 'con equipaje de mano', 'con equipaje de mano y bodega'];
+const FARE_BAGGAGE_GENERIC = ['solo artículo pequeño', 'equipaje de mano', 'equipaje de mano y bodega'];
 
 export function fareBaggage(airline: unknown, option: number): string {
   const key = purchaseKey(airline);
@@ -140,6 +140,44 @@ export function fareBaggage(airline: unknown, option: number): string {
   }
   return FARE_BAGGAGE_GENERIC[option - 1] || '';
 }
+
+/** Equipaje de la tarifa; si el regreso es con otra aerolínea y cambia, los dos. */
+export function fareBaggageLabel(option: number, airline: unknown, returnAirline?: unknown): string {
+  const ida = fareBaggage(airline, option);
+  const back = returnAirline ? fareBaggage(returnAirline, option) : '';
+  return back && back !== ida ? ida + ' (ida); ' + back + ' (regreso)' : ida;
+}
+
+/** ¿La opción incluye maleta de bodega en esa aerolínea, según el manual? */
+const FARE_CHECKED: Record<string, boolean[]> = {
+  'LATAM': [false, false, true],
+  'Avianca': [false, true, true],
+  'Clic': [true, true, true],
+  'Satena': [false, false, false],
+};
+const FARE_CHECKED_GENERIC = [false, false, true];
+
+export function fareIncludesChecked(airline: unknown, option: number): boolean {
+  const key = purchaseKey(airline);
+  for (const a of Object.keys(FARE_CHECKED)) {
+    if (purchaseKey(a) === key) return !!FARE_CHECKED[a][option - 1];
+  }
+  return !!FARE_CHECKED_GENERIC[option - 1];
+}
+
+/** «Avianca Classic · LATAM Full · Clic VeLigera; Satena no la incluye»: la primera tarifa con bodega de cada aerolínea. */
+export function fareCheckedOptionsText(): string {
+  const withBag: string[] = [];
+  const without: string[] = [];
+  Object.keys(FARE_CHECKED).forEach((a) => {
+    const i = FARE_CHECKED[a].indexOf(true);
+    if (i < 0) without.push(a); else withBag.push(a + ' ' + FARE_TABLE[a][i]);
+  });
+  return withBag.join(' · ') + (without.length ? '; ' + without.join(' y ') + ' no la incluye' : '');
+}
+
+/** Motivo que se propone cuando el viajero pidió maleta de bodega y se elige una tarifa que la incluye. */
+export const FARE_CHECKED_BAG_REASON = 'El viajero pidió maleta de bodega en la solicitud.';
 
 /** Lo que sabe la pantalla de una solicitud para recomendar la tarifa. */
 export interface FareTrip {

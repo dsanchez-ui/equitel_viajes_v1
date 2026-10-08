@@ -1,5 +1,8 @@
 import React from 'react';
-import { FareForm, FareTrip, fareBaggage, fareIsException, fareLabel, fareRecommendation, fareShort, normalizeFare } from '../utils/fare';
+import {
+    FARE_CHECKED_BAG_REASON, FareForm, FareTrip, fareBaggage, fareBaggageLabel, fareCheckedOptionsText, fareIncludesChecked,
+    fareIsException, fareLabel, fareRecommendation, fareShort, normalizeFare,
+} from '../utils/fare';
 
 interface FareFieldsProps {
     trip: FareTrip;
@@ -11,6 +14,8 @@ interface FareFieldsProps {
     /** Mostrar el error de validación (después de intentar guardar). */
     showErrors: boolean;
     title: string;
+    /** Lo que marcó el viajero en la solicitud (#A95): true, false o null si no se preguntó. */
+    checkedBaggage?: boolean | null;
 }
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -31,14 +36,27 @@ export function fareTripText(trip: FareTrip): string {
  * Tarifa del tiquete según el manual COM-P-02 (#A95). Muestra la recomendada por las
  * noches del viaje, deja elegir otra y, si lo es, pide por qué.
  */
-export const FareFields: React.FC<FareFieldsProps> = ({ trip, airline, returnAirline, value, onChange, showErrors, title }) => {
+export const FareFields: React.FC<FareFieldsProps> = ({ trip, airline, returnAirline, value, onChange, showErrors, title, checkedBaggage }) => {
     const rec = fareRecommendation(trip);
     const check = normalizeFare(value.option, value.justification, rec.option, airline, returnAirline);
     const option = Number(value.option) || 0;
-    const exception = option > 0 && fareIsException(option, rec.option, [airline, returnAirline].filter(Boolean));
+    const airlines = [airline, returnAirline].filter(Boolean);
+    const exception = option > 0 && fareIsException(option, rec.option, airlines);
     const optionText = (n: number) => {
         const name = fareLabel(n, airline, returnAirline);
-        return 'TIPO ' + n + (name ? ' · ' + name : '') + ' — ' + fareBaggage(airline, n) + (n === rec.option ? ' (recomendada)' : '');
+        return 'TIPO ' + n + (name ? ' · ' + name : '') + ' — ' + fareBaggageLabel(n, airline, returnAirline) + (n === rec.option ? ' (recomendada)' : '');
+    };
+    // Maleta de bodega pedida y una tarifa que no la incluye (en alguna de las aerolíneas).
+    const lacksChecked = checkedBaggage === true && option > 0 && (airlines.length ? airlines : ['']).some(a => !fareIncludesChecked(a, option));
+    const pick = (opt: string) => {
+        const n = Number(opt) || 0;
+        const next = { ...value, option: opt };
+        // Si el viajero pidió bodega y se elige otra tarifa que la incluye, se propone el motivo (editable).
+        if (checkedBaggage === true && n > 0 && !value.justification.trim() && fareIsException(n, rec.option, airlines)
+            && (airlines.length ? airlines : ['']).every(a => fareIncludesChecked(a, n))) {
+            next.justification = FARE_CHECKED_BAG_REASON;
+        }
+        onChange(next);
     };
     return (
         <div className="p-3 border border-teal-200 bg-teal-50 rounded" data-fare-fields>
@@ -46,15 +64,28 @@ export const FareFields: React.FC<FareFieldsProps> = ({ trip, airline, returnAir
             <p className="text-xs text-teal-900 mb-2" data-fare-recommended>
                 El manual recomienda <strong>{fareShort(rec.option, airline, returnAirline)}</strong>: {fareTripText(trip)}.
             </p>
+            {checkedBaggage === true && (
+                <p className="text-xs text-teal-900 mb-2" data-fare-checked-bag>
+                    🧳 <strong>El viajero pidió maleta de bodega.</strong> Tarifas que la incluyen: {fareCheckedOptionsText()}.
+                </p>
+            )}
+            {checkedBaggage === false && (
+                <p className="text-xs text-teal-900 mb-2" data-fare-checked-bag>El viajero no pidió maleta de bodega.</p>
+            )}
             <select
                 data-fare-option
                 className="w-full border border-gray-300 rounded p-2 text-sm bg-white text-gray-900"
                 value={value.option}
-                onChange={(e) => onChange({ ...value, option: e.target.value })}
+                onChange={(e) => pick(e.target.value)}
             >
                 <option value="">Seleccione…</option>
                 {[1, 2, 3].map(n => <option key={n} value={String(n)}>{optionText(n)}</option>)}
             </select>
+            {lacksChecked && (
+                <p className="text-xs text-amber-800 mt-2" data-fare-lacks-checked>
+                    ⚠️ Esta tarifa no incluye maleta de bodega según el manual, y el viajero la pidió.
+                </p>
+            )}
             {exception && (
                 <div className="mt-2">
                     <label className="block text-xs font-bold text-amber-900 mb-1">¿Por qué otra tarifa? *</label>
@@ -78,13 +109,16 @@ export const FareFields: React.FC<FareFieldsProps> = ({ trip, airline, returnAir
  * Aviso al cargar opciones (#A95): qué tarifa cotizar según el manual, con su nombre
  * en las aerolíneas del manual.
  */
-export const FareRecommendationNote: React.FC<{ trip: FareTrip }> = ({ trip }) => {
+export const FareRecommendationNote: React.FC<{ trip: FareTrip; checkedBaggage?: boolean | null }> = ({ trip, checkedBaggage }) => {
     const rec = fareRecommendation(trip);
     const names = ['Avianca', 'LATAM', 'Clic', 'Satena'].map(a => a + ' ' + fareLabel(rec.option, a)).join(' · ');
     return (
         <p className="text-xs text-teal-900 bg-teal-50 border border-teal-200 rounded p-2 leading-relaxed" data-fare-note>
             <strong>Tarifa a cotizar según el manual (COM-P-02): TIPO {rec.option}</strong> — {fareTripText(trip)}.{' '}
             {names}; otras aerolíneas: {fareBaggage('', rec.option)}.
+            {checkedBaggage === true && (
+                <span className="block mt-1">🧳 <strong>El viajero pidió maleta de bodega.</strong> Tarifas que la incluyen: {fareCheckedOptionsText()}.</span>
+            )}
         </p>
     );
 };

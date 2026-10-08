@@ -108,6 +108,10 @@ El portal te avisará si tu fecha de ida es demasiado próxima:
 
 Si ves un banner rojo que dice **"Solicitud fuera de política de anticipación"**, la solicitud **sí se puede enviar**, pero aparecerá marcada como "fuera de política" y tu aprobador verá el aviso en el correo. Úsalo solo si realmente es urgente y tienes justificación — aprobadores pueden denegarla.
 
+#### Maleta de bodega
+
+Marca **"¿Lleva maleta de bodega?"** si algún pasajero necesita despachar equipaje, además de la maleta de mano. El manual de viajes elige la tarifa del tiquete según las noches del viaje, y las tarifas de viajes cortos normalmente no incluyen bodega. Con esta casilla, el área de viajes sabe que debe comprar una tarifa que la incluya. Solo aparece en viajes con vuelo.
+
 ### 2.5 Hospedaje (solo para viajes con vuelo)
 
 Si tu viaje requiere hotel, marca la casilla **"Requiere hospedaje"**.
@@ -254,6 +258,8 @@ Cuando el área de viajes registra la reserva, te llega un correo de confirmaci�
 - **Archivos adjuntos** con los detalles (PDF del tiquete, confirmación del hotel, etc.).
 
 Guarda estos datos — los vas a necesitar en el aeropuerto o al llegar al hotel.
+
+En el detalle de tu solicitud, en **Resumen de selección**, verás también la **tarifa** que se compró y el equipaje que incluye según el manual de viajes (por ejemplo, *Tarifa: TIPO 2 · Classic (equipaje de mano 10 kg y bodega 23 kg)*). Las condiciones exactas son las de la aerolínea, que vienen en el tiquete.
 
 **Importante:** el correo viene del **Sistema de Viajes Equitel** (`compras.equitel@equitel.com.co`). Si respondes a ese correo, tu mensaje llega al área de viajes.
 

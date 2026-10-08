@@ -231,7 +231,11 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   en `TIPO DE COMPRA DE TKT` (la columna de siempre) más `TARIFA RECOMENDADA` (la calcula el servidor),
   `TARIFA NOMBRE` y `TARIFA JUSTIFICACION`. Gemelo `utils/fare.ts` ↔ `_normalizeFare_`; la app solo muestra
   el bloque si el servidor manda `fareRecommended`, y el servidor descarta cualquier `fare` que mande un
-  cliente. Las reglas del manual y lo que la plataforma no cubre: [docs/manual-com-p-02.md](docs/manual-com-p-02.md).
+  cliente. El detalle muestra la tarifa y su equipaje **también al viajero** (le dice qué equipaje lleva); la
+  recomendada y el motivo, solo a los administradores. **Maleta de bodega** (David, 8-oct): casilla en el formulario,
+  solo vuelos, columna `MALETA DE BODEGA` (`SI`/`NO`, vacía = no se preguntó; la clave `checkedBaggage` presente
+  activa la regla). No cambia la recomendación: si Laura elige una tarifa con bodega por eso, el motivo se propone
+  solo; si elige una sin bodega, se le avisa. Las reglas del manual y lo que la plataforma no cubre: [docs/manual-com-p-02.md](docs/manual-com-p-02.md).
 - **Facturas listas para cerrar y por revisar** (#A83, acordado con Laura el 2026-10-01, reglas
   de David del 2026-10-02). **Ninguna solicitud se cierra sola** (David: *"es más seguro"*): el
   panel del analista las muestra y el área de viajes las cierra con el cierre manual de siempre.
@@ -352,7 +356,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE` y `TARIFA JUSTIFICACION` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -547,9 +551,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
   aparece cuando se pega el `Code.gs` nuevo (versión nueva del web app) y se publica el frontend.
 - **Tarifa del manual y comparador «peras con peras»** (#A95, reunión del 8-oct): implementado. Pendiente:
   pegar `Code.gs` y `CostsDashboard.html` + versión nueva del web app; pegar `Rastreo.gs` en el proyecto aparte
-  (`Nucleo` no cambia); push del frontend; opcional, menú 12. Propuestas abiertas: preguntar en el formulario si
-  el viajero lleva equipaje de bodega (lo pide el manual) y decidir si un internacional exige al CEO (el manual sí;
-  hoy basta CEO o CDS). Revisar las cifras de ahorro con Yurani antes de mostrarlas a Alejandro.
+  (`Nucleo` no cambia); push del frontend **después** de pegar el `Code.gs` (para que la casilla de bodega se
+  guarde); opcional, menú 12. Internacionales: se queda CEO o CDS (David, 8-oct). Revisar las cifras de ahorro con
+  Yurani antes de mostrarlas a Alejandro.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
   [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).

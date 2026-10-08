@@ -2117,7 +2117,11 @@ El manual dice «más de 6» para la opción 3; los viajes de 6 noches no caen e
 - **Confirmar costos:** bloque *Tarifa del tiquete (manual COM-P-02)* con la recomendada preseleccionada, el equipaje de cada opción y *¿Por qué otra tarifa?* si se elige otra. Obligatorio en vuelos; solo hospedaje no lo lleva.
 - **Registrar reserva:** el mismo bloque como *Tarifa comprada*, precargado con lo de Confirmar costos. Obligatorio al registrar; al corregir o al guardar sin enviar, solo se valida y se guarda si se cambió (una reserva antigua no queda con la recomendada sin que nadie la eligiera). Se guarda con `setPurchaseInfo`.
 - **Cargar opciones:** un aviso con la tarifa a cotizar y su nombre en cada aerolínea.
-- **Detalle de la solicitud** (administradores): la tarifa y, si es una excepción, el motivo.
+- **Detalle de la solicitud:** la tarifa y su equipaje según el manual (*Tarifa: TIPO 2 · Classic (equipaje de mano 10 kg y bodega 23 kg)*). La ve también el viajero, porque le dice qué equipaje lleva. Los administradores ven además la recomendada y el motivo de una excepción.
+- **Maleta de bodega** (lo pide el manual; David lo aprobó el 8-oct): casilla *¿Lleva maleta de bodega?* en el formulario de solicitud, solo en vuelos y una vez por solicitud (también en multidestino y en las solicitudes de cambio).
+  - Columna `MALETA DE BODEGA` al final (`SI` / `NO`; vacía = solicitud anterior, no se preguntó). Solo se escribe si el formulario manda la clave `checkedBaggage`.
+  - Se ve en el detalle (*Maleta de bodega: Sí / No*), en el aviso de *Cargar opciones* y en el bloque de tarifa de Laura, con las tarifas que la incluyen (LATAM Full, Avianca Classic, Clic; Satena no).
+  - La recomendación sigue siendo la del manual por noches. Si Laura elige una tarifa que incluye bodega por esa razón, el motivo se propone solo (*«El viajero pidió maleta de bodega en la solicitud.»*, editable); si elige una que no la incluye, se le avisa.
 - **Hoja:** la tarifa va en la columna de siempre, `TIPO DE COMPRA DE TKT` (`TIPO 1/2/3`). Columnas nuevas al final: `TARIFA RECOMENDADA` (la calcula el servidor, nunca el navegador), `TARIFA NOMBRE` y `TARIFA JUSTIFICACION`. Las crea el menú 12 o el sistema la primera vez.
 - **Rastreo (`Rastreo.gs`):**
   - busca con el equipaje de la tarifa registrada: TIPO 1, sin maleta; TIPO 2 o 3, una maleta de mano por pasajero;
@@ -2137,12 +2141,14 @@ El manual dice «más de 6» para la opción 3; los viajes de 6 noches no caen e
 - *Servidor nuevo + app anterior:* la app anterior no manda `fareOption` y el servidor no exige ni toca la tarifa. Una clave `fare` enviada por un cliente siempre se descarta.
 - *Dashboard nuevo + rastreo anterior:* las búsquedas sin la columna `MALETA DE MANO` cuentan como hechas sin maleta, que es como se hicieron.
 - *Rastreo nuevo + `Code.gs` anterior:* las columnas nuevas de `COMPARATIVO PRECIOS` se ignoran.
+- *Formulario nuevo + servidor anterior:* la casilla de bodega aparece, pero el servidor anterior no la guarda (no se pierde nada más). Por eso conviene pegar el `Code.gs` antes del push.
 
 **Verificado:**
 - `npm run verify` en verde.
 - `tools/check-fare-rules.cjs` (nuevo):
   - 61 casos en los que la app y el servidor coinciden: noches, TIPO, nombres, Avianca 2 = 3, aerolíneas fuera del manual, regreso con otra aerolínea y justificación;
-  - 17 verificaciones de guardado en la hoja: la recomendada la calcula el servidor; sin `fareOption` no se toca nada; un `fare` del cliente se descarta; solo hospedaje; errores sin escritura a medias.
+  - 21 verificaciones de guardado en la hoja: la recomendada la calcula el servidor; sin `fareOption` no se toca nada; un `fare` del cliente se descarta; solo hospedaje; errores sin escritura a medias; maleta de bodega (qué se escribe y qué lee la app);
+  - el equipaje de cada tarifa según el manual (qué tarifas incluyen bodega).
 - `tools/check-price-tracking.cjs` (sección 5d) verifica:
   - las maletas por tarifa y pasajeros;
   - que sin maleta no se manda `bags`;
@@ -2155,14 +2161,13 @@ El manual dice «más de 6» para la opción 3; los viajes de 6 noches no caen e
 **Despliegue:**
 1. Pegar `server/Code.gs` y `server/CostsDashboard.html` en Apps Script y crear una versión nueva del web app.
 2. En el proyecto aparte «Equitel · Rastreo de precios»: reemplazar el archivo **Rastreo** con `tools/comparador-precios/apps-script/Rastreo.gs`. `Nucleo` no cambia.
-3. Push del frontend.
+3. Push del frontend (después del paso 1, para que la casilla de bodega se guarde desde el primer momento).
 4. Opcional: menú 12 para crear las columnas.
 
 **Pendiente / límites:**
 - Los viajes ya cotizados antes de este cambio no tienen tarifa y no entran en *misma tarifa*; aparecen en *Todas las búsquedas*.
 - LATAM TIPO 2 y todo TIPO 3 quedan por debajo en Google (ver arriba).
-- El manual pide que el formulario COM-F-06 diga si el viajero requiere equipaje de bodega. Queda como propuesta: preguntarlo en el formulario de solicitud.
-- Diferencia con el manual: para tiquetes internacionales pide aprobación del CEO; la plataforma acepta CEO o CDS. Solo se anota; ver [docs/manual-com-p-02.md](docs/manual-com-p-02.md).
+- Diferencia con el manual: para tiquetes internacionales pide aprobación del CEO; la plataforma acepta CEO o CDS. Se queda así: David, 8-oct, *«eso lo decidimos en su momento»*. Ver [docs/manual-com-p-02.md](docs/manual-com-p-02.md).
 
 ---
 
