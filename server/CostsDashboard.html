@@ -492,6 +492,8 @@
     .pt-headline .pt-note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
     .pt-legend { font-size: 12.5px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0 14px; margin-bottom: 14px; }
     .pt-legend summary { cursor: pointer; font-weight: 700; padding: 10px 0; color: var(--text); }
+    .how-legend { margin-top: 14px; }
+    .pt-legend dd.how-example { font-variant-numeric: tabular-nums; }
     .pt-legend dl { display: grid; grid-template-columns: minmax(150px, max-content) 1fr; gap: 8px 14px; padding-bottom: 12px; line-height: 1.5; }
     .pt-legend dt { font-weight: 700; color: var(--text); }
     .pt-legend dd { color: #374151; }
@@ -828,6 +830,28 @@
       </div>
     </div>
 
+    <details class="pt-legend how-legend">
+      <summary>¿Cómo se calcula? Ejecutado, presupuesto y disponible</summary>
+      <dl>
+        <dt>Qué se cuenta</dt>
+        <dd>Las solicitudes compradas (reservadas o procesadas), en el mes de su fecha de compra. Las cargadas a una orden de
+          trabajo (OT) no cuentan: se pagan con la OT.</dd>
+        <dt>Ejecutado real</dt>
+        <dd>La suma de las facturas de cada solicitud (hasta 3). Si una factura no tiene total, se suman su valor y su IVA.</dd>
+        <dt>Ejecutado estimado</dt>
+        <dd>Si la solicitud está reservada pero aún no tiene factura, se toma lo cotizado (tiquetes + hotel); cuando llega la
+          factura, la reemplaza. Así el gasto no se ve menor de lo que es mientras llegan las facturas.</dd>
+        <dt>Presupuesto</dt>
+        <dd>El de la hoja PPTOS UNIDADES, sumando los meses de cada vista. El periodo actual es el bloque de
+          <span class="how-period">3 meses</span> en curso, el mismo que usa la aprobación de presupuesto.</dd>
+        <dt>Disponible y % usado</dt>
+        <dd>Disponible = presupuesto − (real + estimado). % usado = (real + estimado) ÷ presupuesto. Las unidades sin
+          presupuesto no entran en estas dos cifras.</dd>
+        <dt>Top 10 de viajeros</dt>
+        <dd>El costo de cada viaje se reparte en partes iguales entre sus pasajeros.</dd>
+      </dl>
+    </details>
+
     <!-- ============================================================== -->
     <!-- VISTA ANUAL                                                     -->
     <!-- ============================================================== -->
@@ -1070,8 +1094,21 @@
       <div class="view-title">
         📊 Variación Cotizado vs Facturado
         <span class="badge-admin">Acceso restringido</span>
-        <span class="view-subtitle">lo cotizado al confirmar costos frente a lo que se pagó según las facturas · sin viajes cargados a una OT</span>
+        <span class="view-subtitle">lo cotizado al confirmar costos frente a lo que se pagó según las facturas</span>
       </div>
+
+      <details class="pt-legend">
+        <summary>¿Cómo se calcula?</summary>
+        <dl>
+          <dt>Qué se cuenta</dt>
+          <dd>Viajes comprados que tienen las dos cifras, en el mes de su fecha de compra. Los cargados a una OT no cuentan.</dd>
+          <dt>Cotizado y facturado</dt>
+          <dd>Cotizado: lo que el área de viajes confirmó (tiquetes + hotel). Facturado: la suma de las facturas, como en el ejecutado real.</dd>
+          <dt>Diferencia</dt>
+          <dd>Facturado − cotizado. En %: esa diferencia ÷ lo cotizado. El % total usa las sumas de todos los viajes; la mediana
+            es el % del viaje del medio, que un caso extremo no mueve.</dd>
+        </dl>
+      </details>
 
       <!-- Filtro de mes (cliente-side, sin re-fetch) -->
       <div class="variance-filters">
@@ -1101,14 +1138,14 @@
         <div class="kpi"><div class="label">Total cotizado</div><div id="varTotalQuoted" class="value">—</div><div class="extra" id="varCount">— solicitudes</div></div>
         <div class="kpi"><div class="label">Total facturado</div><div id="varTotalReal" class="value">—</div></div>
         <div class="kpi delta" id="varVarianceKpi"><div class="label">Diferencia total</div><div id="varTotalVariance" class="value">—</div><div class="extra" id="varTotalVarianceLabel">facturado − cotizado</div></div>
-        <div class="kpi delta" id="varAvgPctKpi"><div class="label">Diferencia promedio por viaje</div><div id="varAvgPct" class="value">—</div><div class="extra">mediana: <span id="varMedianPct">—</span></div></div>
+        <div class="kpi delta" id="varAvgPctKpi"><div class="label">Diferencia en %</div><div id="varAvgPct" class="value">—</div><div class="extra">sobre el total cotizado · mediana por viaje: <span id="varMedianPct">—</span></div></div>
       </div>
 
       <!-- Counters -->
       <div class="variance-counters">
         <div class="variance-counter over">📈 Se pagó más de lo cotizado: <strong id="varCountOver">—</strong></div>
         <div class="variance-counter under">📉 Se pagó menos: <strong id="varCountUnder">—</strong></div>
-        <div class="variance-counter equal">= Igual (menos de $1.000): <strong id="varCountEqual">—</strong></div>
+        <div class="variance-counter equal">= Igual: <strong id="varCountEqual">—</strong></div>
       </div>
 
       <!-- Highlight: peor sobrecosto + mejor ahorro -->
@@ -1125,7 +1162,7 @@
 
       <!-- Chart -->
       <div class="card">
-        <h2>Los 20 viajes con más diferencia entre lo cotizado y lo facturado</h2>
+        <h2>Los 20 viajes con más diferencia entre lo cotizado y lo facturado (% sobre lo cotizado)</h2>
         <div class="chart-wrap"><canvas id="varianceChart"></canvas></div>
         <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 6px;">
           Rojo: se pagó más de lo cotizado · Verde: se pagó menos.
@@ -1179,19 +1216,23 @@
       <div class="pt-headline" id="ptHeadline">Cargando…</div>
 
       <details class="pt-legend">
-        <summary>¿Cómo se lee?</summary>
+        <summary>¿Cómo se calcula?</summary>
         <dl>
           <dt>Valor cotizado</dt>
           <dd>Lo que el área de viajes confirmó para los tiquetes (ida y regreso, todos los pasajeros).</dd>
           <dt>Precio más barato en Google</dt>
           <dd>El vuelo directo más barato en Google Flights para las mismas ciudades, fechas y pasajeros, saliendo hasta 2 horas antes
-            o después de la hora pedida. La ida y el regreso se buscan por separado, como se compran. Con escala solo si ese día no hay directos.</dd>
+            o después de la hora pedida (si a esa hora no hay, el más barato del día). La ida y el regreso se buscan por separado, como
+            se compran, y se suman. Con escala solo si ese día no hay directos.</dd>
           <dt>Precio con la misma aerolínea</dt>
           <dd>Lo más barato en Google con la misma aerolínea con que se cotizó.</dd>
+          <dt>Diferencia</dt>
+          <dd>Valor cotizado − precio en Google. «Cotizado 34 % más que Google» = esa diferencia ÷ el precio en Google; menos de
+            $1.000 cuenta como igual. (En «Proyección de ahorro» el % se mide sobre lo cotizado: cuánto se habría ahorrado de lo pagado.)</dd>
           <dt>Facturado</dt>
           <dd>Lo que se pagó según las facturas. Si el viaje lleva hotel no se compara: la factura no separa tiquetes y hotel.</dd>
           <dt>Cuándo se busca</dt>
-          <dd>Al confirmar los costos y al aprobarse (justo antes de comprar). Se muestra la búsqueda más reciente.</dd>
+          <dd>Al confirmar los costos y al aprobarse (justo antes de comprar). Las cifras usan la búsqueda más reciente de cada viaje.</dd>
           <dt>Ojo</dt>
           <dd>Google muestra la tarifa más económica, normalmente sin maleta de bodega ni cambios. Satena y Clic casi no publican en
             Google Flights. Laura no ve esta sección y los filtros de arriba no aplican aquí.</dd>
@@ -1306,23 +1347,8 @@
       <div class="pt-headline" id="saHeadline">Cargando…</div>
 
       <details class="pt-legend">
-        <summary>¿Cómo se lee?</summary>
-        <dl>
-          <dt>De dónde sale</dt>
-          <dd>De los viajes ya comparados con Google: cuánto menos habrían costado. Ese ahorro, por tiquete o como % de lo cotizado,
-            se aplica a todos los viajes en avión comprados de cada mes.</dd>
-          <dt>Rango</dt>
-          <dd>Va de lo que se ahorra <b>solo con la misma aerolínea</b> (al viajero no le cambia nada) a <b>todo el ahorro</b>
-            (también cambiando a otro vuelo u otra aerolínea más barata).</dd>
-          <dt>Típico</dt>
-          <dd>La mediana: el valor del medio de los viajes comparados. Un viaje con un ahorro muy alto o muy bajo no la mueve.</dd>
-          <dt>Muestra</dt>
-          <dd>Con pocos viajes comparados, las cifras son un indicio, no una conclusión. El estudio va del 7 al 21 de octubre.</dd>
-          <dt>Ojo</dt>
-          <dd>Google muestra la tarifa más económica, normalmente sin maleta ni cambios; use «Restar maleta por tiquete» para descontarlo.
-            Los meses pasados se proyectan con el patrón del estudio: los precios cambian por temporada y anticipación.
-            Los filtros de empresa y unidad de arriba sí aplican aquí.</dd>
-        </dl>
+        <summary>¿Cómo se calcula? Metodología y supuestos</summary>
+        <dl id="saHowList"></dl>
       </details>
 
       <div class="card">
@@ -1344,7 +1370,7 @@
       </div>
 
       <div class="card">
-        <h2>Ahorro proyectado por mes</h2>
+        <h2>Ahorro proyectado por mes <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="saProjScope"></span></h2>
         <div class="chart-wrap" style="height: 260px;"><canvas id="saProjChart"></canvas></div>
         <div class="variance-table-wrap" style="margin-top: 14px; max-height: none;">
           <table class="variance sa-table" id="saProjTable"></table>
@@ -2395,6 +2421,9 @@ function renderPeriodView(data) {
     subtitleText = bounds.periodMonths + ' meses';
   }
   document.getElementById('periodSubtitle').textContent = '(' + subtitleText + ')';
+  Array.prototype.forEach.call(document.querySelectorAll('.how-period'), function(el) {
+    el.textContent = bounds.periodMonths === 1 ? '1 mes' : bounds.periodMonths + ' meses';
+  });
 
   var pData = computePeriodData(data, bounds);
   renderKpis('periodKpis', pData, bounds.label + ' ' + year);
@@ -3696,17 +3725,34 @@ function saRates(sample, how, base, kind) {
   return { rt: pick(true), ow: pick(false) };
 }
 
-/** Ahorro proyectado por mes con un método. null si el método necesita muestra y no hay. */
-function saProject(trips, months, sample, opts) {
+/**
+ * Ahorro proyectado por mes con un método. null si el método necesita muestra y no hay.
+ * detail (opcional) recibe la base de cada mes y cada paso de la cuenta, para mostrarla y repetirla a mano (#A93).
+ */
+function saProject(trips, months, sample, opts, detail) {
   var rates = opts.how === 'fixed' ? null : saRates(sample, opts.how, opts.base, opts.kind);
   var cap = saStat(sample.map(function(x) { return x.pct; }), 'max');
   var out = {};
   var any = false;
   months.forEach(function(m) { out[m] = 0; });
+  if (detail) {
+    detail.rates = rates;
+    detail.cap = cap;
+    detail.months = {};
+    months.forEach(function(m) {
+      detail.months[m] = { flights: 0, tickets: 0, spend: 0, flightsRt: 0, flightsOw: 0, ticketsRt: 0, ticketsOw: 0, spendRt: 0, spendOw: 0,
+        raw: 0, bag: 0, cut: 0, cutTrips: 0 };
+    });
+  }
   trips.forEach(function(t) {
     if (t.st !== 'C' || !t.flight || out[t.month] === undefined || t.quoted < SA_MIN_COST) return;
     if (t.intl && !opts.intl) return;
     var tk = saTickets(t.pax, t.rt);
+    var d = detail ? detail.months[t.month] : null;
+    if (d) {
+      d.flights++; d.tickets += tk; d.spend += t.quoted;
+      if (t.rt) { d.flightsRt++; d.ticketsRt += tk; d.spendRt += t.quoted; } else { d.flightsOw++; d.ticketsOw += tk; d.spendOw += t.quoted; }
+    }
     var v;
     if (opts.how === 'fixed') {
       v = opts.base === 'ticket' ? opts.fixed * tk : opts.base === 'trip' ? opts.fixed : opts.fixed / 100 * t.quoted;
@@ -3715,8 +3761,12 @@ function saProject(trips, months, sample, opts) {
       if (r === null) return;
       v = opts.base === 'ticket' ? r * tk : opts.base === 'trip' ? r : r * t.quoted;
     }
+    if (d) { d.raw += v; d.bag += opts.baggage * tk; }
     v -= opts.baggage * tk;
-    if (cap !== null && cap > 0 && v > t.quoted * cap) v = t.quoted * cap;
+    if (cap !== null && cap > 0 && v > t.quoted * cap) {
+      if (d) { d.cut += v - t.quoted * cap; d.cutTrips++; }
+      v = t.quoted * cap;
+    }
     out[t.month] += v * opts.adoption;
     any = true;
   });
@@ -3751,12 +3801,15 @@ function renderSavings() {
 
   var vol = saVolume(all, months);
   var sample = saSample(opts.intl);
-  var proj = saProject(all, months, sample, opts);
+  var detail = {};
+  var proj = saProject(all, months, sample, opts, detail);
   var prudent = saProject(all, months, sample, { how: 'median', base: 'ticket', kind: 'channel', fixed: 0, baggage: opts.baggage, adoption: opts.adoption, intl: opts.intl });
   var probable = saProject(all, months, sample, { how: 'median', base: 'ticket', kind: 'all', fixed: 0, baggage: opts.baggage, adoption: opts.adoption, intl: opts.intl });
-  saLast = { months: months, vol: vol, sample: sample, proj: proj, prudent: prudent, probable: probable, opts: opts, from: from, to: to };
+  saLast = { months: months, vol: vol, sample: sample, proj: proj, prudent: prudent, probable: probable, opts: opts, from: from, to: to,
+    detail: detail, rangeRates: { channel: saRates(sample, 'median', 'ticket', 'channel'), all: saRates(sample, 'median', 'ticket', 'all') } };
 
   _saRenderHeadline(saLast);
+  _saRenderHow(saLast);
   _saRenderVolume(vol, months);
   _saRenderSample(sample);
   _saRenderProjection(saLast);
@@ -3770,7 +3823,7 @@ function _saRenderHeadline(st) {
   var n = st.sample.length, months = st.months;
   if (!months.length) { box.className = 'pt-headline'; box.innerHTML = 'No hay meses con viajes para el periodo elegido.'; return; }
   var last = months[months.length - 1];
-  var spendLast = st.vol[last] ? st.vol[last].spend : 0;
+  var spendLast = st.detail.months[last] ? st.detail.months[last].spend : 0;
   var parts = [];
   if (!st.proj) {
     parts.push('Todavía no hay viajes comparados para calcular ' + SA_METHOD_LABEL[st.opts.how + '|' + st.opts.base] +
@@ -3791,6 +3844,89 @@ function _saRenderHeadline(st) {
   if (st.opts.baggage) note += ' Restando ' + fmtMoney(st.opts.baggage) + ' de maleta por tiquete.';
   box.className = 'pt-headline ' + (st.proj && _saSum(st.proj, months) > 0 ? 'under' : '');
   box.innerHTML = parts.join('') + '<div class="pt-note">' + escHtml(note) + '</div>';
+}
+
+/** Un % con un decimal: 0,7171 → «71,7 %». */
+function saPct1(x) { return x === null || x === undefined || isNaN(x) ? '—' : (x * 100).toFixed(1).replace('.', ',') + ' %'; }
+/** Valor del método: pesos o %, según la base. */
+function saRateText(x, base) { return x === null || x === undefined ? '—' : base === 'pct' ? saPct1(x) : fmtMoney(Math.round(x)); }
+/** «$200.074», o «$180.000 en ida y vuelta y $250.000 en solo ida» si cada tipo tiene su valor. */
+function saRatesText(rates, base) {
+  if (!rates) return '—';
+  return rates.rt === rates.ow ? saRateText(rates.rt, base)
+    : saRateText(rates.rt, base) + ' en ida y vuelta y ' + saRateText(rates.ow, base) + ' en solo ida';
+}
+
+/** La cuenta de un mes, en pesos exactos, para repetirla a mano (#A93). */
+function saCalcText(st, m) {
+  var d = st.detail && st.detail.months[m], o = st.opts, r = st.detail && st.detail.rates;
+  if (!d || !st.proj || !d.flights) return '';
+  var qty = function(which) {
+    var sfx = which ? (which === 'Rt' ? 'Rt' : 'Ow') : '';
+    if (o.base === 'ticket') return ptPlural(d['tickets' + sfx], 'tiquete', 'tiquetes');
+    if (o.base === 'trip') return ptPlural(d['flights' + sfx], 'viaje', 'viajes');
+    return fmtMoney(Math.round(d['spend' + sfx])) + ' cotizados';
+  };
+  var first;
+  if (o.how === 'fixed') {
+    first = qty('') + ' × ' + (o.base === 'pct' ? saPct1(o.fixed / 100) : fmtMoney(o.fixed));
+  } else if (r.rt === r.ow) {
+    first = qty('') + ' × ' + saRateText(r.rt, o.base);
+  } else {
+    first = qty('Rt') + ' de ida y vuelta × ' + saRateText(r.rt, o.base) + ' + ' + qty('Ow') + ' de solo ida × ' + saRateText(r.ow, o.base);
+  }
+  var s = first + ' = ' + fmtMoney(Math.round(d.raw));
+  if (d.bag) s += '; menos maleta (' + fmtMoney(o.baggage) + ' × ' + d.tickets + ' tiquetes): ' + fmtMoney(Math.round(d.raw - d.bag));
+  if (d.cut) s += '; el tope recorta ' + fmtMoney(Math.round(d.cut)) + ' en ' + ptPlural(d.cutTrips, 'viaje', 'viajes');
+  if (o.adoption < 1) s += '; × ' + Math.round(o.adoption * 100) + ' % de los viajes';
+  return d.bag || d.cut || o.adoption < 1 ? s + ' → ' + fmtMoney(Math.round(st.proj[m])) : s;
+}
+
+/** «¿Cómo se calcula?» de la proyección, con las cifras del cálculo vigente (#A93). */
+function _saRenderHow(st) {
+  var el = document.getElementById('saHowList');
+  if (!el) return;
+  var o = st.opts, n = st.sample.length, d = st.detail;
+  var scope = (o.intl ? 'viaje en avión' : 'viaje nacional en avión') + ' comprado en el mes (con costo de al menos ' + fmtMoney(SA_MIN_COST) + ')';
+  var rule;
+  if (o.how === 'fixed') {
+    rule = o.base === 'ticket' ? 'se le cuentan sus tiquetes × ' + fmtMoney(o.fixed) + ', un valor fijo elegido.'
+      : o.base === 'trip' ? 'se le cuentan ' + fmtMoney(o.fixed) + ', un valor fijo elegido.'
+      : 'se le cuenta el ' + saPct1(o.fixed / 100) + ' de su valor cotizado, un % fijo elegido.';
+  } else {
+    var label = SA_METHOD_LABEL[o.how + '|' + o.base] + (o.kind === 'channel' ? ' solo con la misma aerolínea' : '');
+    var value = d && d.rates ? saRatesText(d.rates, o.base) : '—';
+    rule = (o.base === 'ticket' ? 'se le cuentan sus tiquetes × ' + value : o.base === 'trip' ? 'se le cuentan ' + value
+      : 'se le cuenta el ' + value + ' de su valor cotizado') + ': ' + label + (n === 1 ? ' del único viaje comparado.' : ' de los ' + n + ' viajes comparados.');
+    if (d && d.rates && d.rates.rt !== d.rates.ow) rule += ' Cada tipo de viaje usa su propio valor porque ya tiene ' + SA_MIN_GROUP + ' o más viajes comparados.';
+  }
+  var last = st.months[st.months.length - 1];
+  var example = last ? saCalcText(st, last) : '';
+  var rr = st.rangeRates;
+  var items = [
+    ['Volumen', 'Viajes comprados (reservados o procesados), en el mes de la compra. Tiquetes = pasajeros × 2 si hay regreso (× 1 si es solo ida). ' +
+      'Gasto = lo cotizado para los tiquetes; el costo por tiquete no incluye costos menores a ' + fmtMoney(SA_MIN_COST) + ', que no son reales.'],
+    ['Ahorro observado', 'Por cada viaje comparado: diferencia = valor cotizado − precio más barato en Google; por tiquete = diferencia ÷ tiquetes; ' +
+      '% de ahorro = diferencia ÷ valor cotizado. Se parte en lo que se ahorra con la misma aerolínea (cotizado − su precio en Google) y ' +
+      'lo que se ahorra cambiando de vuelo o aerolínea (el resto). Típico = la mediana, el valor del medio: un viaje extremo no la mueve.'],
+    ['Ahorro proyectado', 'A cada ' + scope + ' ' + rule +
+      (d && d.cap ? ' Tope: a ningún viaje se le cuenta más del ' + saPct1(d.cap) + ' de su valor cotizado, el mayor ahorro visto en la muestra; ' +
+        'así un tiquete barato no «ahorra» más de lo que costó.' : '') +
+      (o.baggage ? ' A cada tiquete se le restan ' + fmtMoney(o.baggage) + ' de maleta.' : '') +
+      (o.adoption < 1 ? ' El total se multiplica por ' + Math.round(o.adoption * 100) + ' %, los viajes que seguirían el ahorro.' : '')],
+    example ? ['Cuenta de ' + saMonthLabel(last), example + '. La de cada mes está en el CSV (columna «Cuenta») y al pasar el cursor por su ahorro en la tabla.'] : null,
+    ['Año', 'Equivalente a un año = promedio de los meses elegidos × 12.'],
+    rr ? ['Rango', 'Las mismas cuentas con el ahorro típico por tiquete de cada parte: ' + saRatesText(rr.channel, 'ticket') +
+      ' solo con la misma aerolínea y ' + saRatesText(rr.all, 'ticket') + ' con todo el ahorro.'] : null,
+    ['Por qué así', 'Por tiquete, porque el ahorro crece con los pasajeros y los tramos de cada viaje. Con la mediana y no el promedio, porque con ' +
+      'pocos viajes un caso extremo movería mucho el resultado. «Cómo calcular» permite otros métodos.'],
+    ['Supuestos', 'Los meses pasados se proyectan con los precios del estudio de octubre. Google muestra la tarifa más económica, normalmente sin ' +
+      'maleta ni cambios. Con ' + ptPlural(n, 'viaje comparado', 'viajes comparados') + (n < SA_SMALL_SAMPLE ? ', la cifra es un indicio.' : '.')],
+    ['Cotizado frente a facturado', 'Solo viajes sin hotel con facturas: la factura no separa tiquetes y hotel. Diferencia % = (facturado − cotizado) ÷ cotizado.']
+  ].filter(Boolean);
+  el.innerHTML = items.map(function(it) {
+    return '<dt>' + escHtml(it[0]) + '</dt><dd' + (it[0].indexOf('Cuenta') === 0 ? ' class="how-example"' : '') + '>' + escHtml(it[1]) + '</dd>';
+  }).join('');
 }
 
 function _saRenderVolume(vol, months) {
@@ -3928,17 +4064,21 @@ function _saRenderProjection(st) {
       }
     });
   }
+  var base = st.detail.months;
+  document.getElementById('saProjScope').textContent = (st.opts.intl ? 'viajes en avión comprados (nacionales e internacionales)' : 'viajes nacionales en avión comprados') +
+    ', con costo cotizado';
   var rows = months.map(function(m) {
-    var c = st.vol[m];
+    var c = base[m];
     return '<tr><td>' + saMonthLabel(m) + '</td><td class="num">' + c.flights + '</td><td class="num">' + c.tickets + '</td><td class="num">' + saM(c.spend) + '</td>' +
-      '<td class="num sa-total">' + (st.proj ? saM(st.proj[m]) : '—') + '</td><td class="num">' + (st.proj && c.spend ? saPct(st.proj[m] / c.spend) : '—') + '</td>' +
+      '<td class="num sa-total" title="' + escHtml(saCalcText(st, m)) + '">' + (st.proj ? saM(st.proj[m]) : '—') + '</td>' +
+      '<td class="num">' + (st.proj && c.spend ? saPct(st.proj[m] / c.spend) : '—') + '</td>' +
       '<td class="num">' + saRange(st.prudent && st.prudent[m], st.probable && st.probable[m]) + '</td></tr>';
   });
   var n = months.length || 1;
-  var tSpend = months.reduce(function(s, m) { return s + st.vol[m].spend; }, 0);
+  var tSpend = months.reduce(function(s, m) { return s + base[m].spend; }, 0);
   var foot = function(label, f, isTotal) {
-    return '<tr class="sa-group"><td>' + label + '</td><td class="num">' + f(function(m) { return st.vol[m].flights; }, 0) + '</td><td class="num">' + f(function(m) { return st.vol[m].tickets; }, 0) + '</td>' +
-      '<td class="num">' + saM(f(function(m) { return st.vol[m].spend; }, 1)) + '</td>' +
+    return '<tr class="sa-group"><td>' + label + '</td><td class="num">' + f(function(m) { return base[m].flights; }, 0) + '</td><td class="num">' + f(function(m) { return base[m].tickets; }, 0) + '</td>' +
+      '<td class="num">' + saM(f(function(m) { return base[m].spend; }, 1)) + '</td>' +
       '<td class="num">' + (st.proj ? saM(f(function(m) { return st.proj[m]; }, 1)) : '—') + '</td>' +
       '<td class="num">' + (st.proj && tSpend ? saPct(_saSum(st.proj, months) / tSpend) : '—') + '</td>' +
       '<td class="num">' + saRange(st.prudent && f(function(m) { return st.prudent[m]; }, 1), st.probable && f(function(m) { return st.probable[m]; }, 1)) + '</td></tr>';
@@ -3989,16 +4129,20 @@ function exportSavingsCsv() {
   var r = function(n) { return n === null || n === undefined || isNaN(n) ? '' : Math.round(n); };
   var lines = [];
   lines.push(['Proyección de ahorro', 'Generado ' + new Date().toLocaleString('es-CO')].map(q).join(';'));
-  lines.push(['Parámetros', 'Cómo calcular: ' + SA_METHOD_LABEL[st.opts.how + '|' + st.opts.base], 'Ahorro a contar: ' + (st.opts.kind === 'channel' ? 'solo con la misma aerolínea' : 'todo'),
+  lines.push(['Parámetros', 'Cómo calcular: ' + SA_METHOD_LABEL[st.opts.how + '|' + st.opts.base] +
+    (st.detail.rates ? ' = ' + saRatesText(st.detail.rates, st.opts.base) : ''), 'Tope por viaje: ' + (st.detail.cap ? saPct1(st.detail.cap) + ' del cotizado' : 'sin tope'), 'Ahorro a contar: ' + (st.opts.kind === 'channel' ? 'solo con la misma aerolínea' : 'todo'),
     st.opts.how === 'fixed' ? 'Valor fijo: ' + st.opts.fixed : '', 'Maleta por tiquete: ' + st.opts.baggage, 'Viajes que siguen el ahorro: ' + Math.round(st.opts.adoption * 100) + '%',
     'Internacionales: ' + (st.opts.intl ? 'sí' : 'no'), 'Periodo: ' + st.from + ' a ' + st.to].map(q).join(';'));
   lines.push('');
   lines.push(['Mes', 'Viajes en avión', 'Solo ida', 'Ida y vuelta', 'Tiquetes', 'Gasto en tiquetes', 'Con hotel', 'Internacional', '1 pasajero', '2 pasajeros', '3 o más',
-    'Con cambios', 'Solicitudes', 'Anuladas', 'Denegadas', 'Ahorro solo con la misma aerolínea', 'Todo el ahorro', 'Ahorro proyectado'].map(q).join(';'));
+    'Con cambios', 'Solicitudes', 'Anuladas', 'Denegadas', 'Ahorro solo con la misma aerolínea', 'Todo el ahorro', 'Ahorro proyectado',
+    'Viajes proyectados', 'Tiquetes proyectados', 'Gasto proyectado', 'Ahorro antes de maleta y tope', 'Maleta restada', 'Recorte del tope', 'Cuenta'].map(q).join(';'));
   st.months.forEach(function(m) {
     var c = st.vol[m];
     lines.push([m, c.flights, c.oneway, c.roundtrip, c.tickets, r(c.spend), c.hotel, c.intl, c.pax1, c.pax2, c.pax3, c.mod, c.requests, c.annulled, c.denied,
-      st.prudent ? r(st.prudent[m]) : '', st.probable ? r(st.probable[m]) : '', st.proj ? r(st.proj[m]) : ''].map(q).join(';'));
+      st.prudent ? r(st.prudent[m]) : '', st.probable ? r(st.probable[m]) : '', st.proj ? r(st.proj[m]) : '',
+      st.detail.months[m].flights, st.detail.months[m].tickets, r(st.detail.months[m].spend), r(st.detail.months[m].raw), r(st.detail.months[m].bag),
+      r(st.detail.months[m].cut), saCalcText(st, m)].map(q).join(';'));
   });
   lines.push('');
   lines.push(['Muestra: solicitud', 'Origen', 'Destino', 'Tiquetes', 'Valor cotizado', 'Precio más barato en Google', 'Diferencia', 'Diferencia por tiquete',

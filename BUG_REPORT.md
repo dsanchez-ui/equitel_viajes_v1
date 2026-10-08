@@ -2011,3 +2011,37 @@ Plan completo y vivo en [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahor
 - Capturas con los datos del 8-oct en escritorio y en celular (390 px): el dashboard completo, sin errores en la consola.
 
 **Despliegue:** pegar `server/CostsDashboard.html` en Apps Script y crear una versión nueva del web app. No cambia la app ni `Code.gs`.
+
+## **#A93 — Dashboard de costos: cada estimación dice cómo se calculó**
+**Fecha:** 2026-10-08 · **Reportado por:** David · **Estado:** Corregido, en `main`
+
+**Síntoma:** David necesita explicar y defender las cifras estimadas (el rango de la proyección, el ahorro proyectado, el ejecutado estimado…) y poder repetirlas a mano. El dashboard las mostraba sin decir cómo se calcularon: *"solo estoy mostrando una cifra que no puedo sustentar… no es verificable"*. Pidió una explicación breve en cada lugar: cómo se hizo y por qué ese método.
+
+**Causa raíz:**
+- La proyección no se podía repetir con lo que se veía. Su tabla mostraba viajes, tiquetes y gasto de **todos** los viajes comprados (también internacionales y costos simbólicos), pero el ahorro solo se calcula sobre los viajes nacionales con costo. Además, el tope por viaje (nadie ahorra más que el mayor % visto) no aparecía en ningún lado.
+- El ejecutado estimado, el % de variación y el % del comparador (que se mide sobre el precio de Google, no sobre lo cotizado) no decían de dónde salían.
+- El indicador «Diferencia promedio por viaje» en realidad era el % sobre el total cotizado.
+
+**Fix (solo `server/CostsDashboard.html`; las cifras no cambian):**
+- **Un *¿Cómo se calcula?* arriba de cada sección con cifras derivadas**, cerrado por defecto y de una o dos frases por concepto:
+  - Presupuesto (debajo de los filtros): qué se cuenta, ejecutado real, ejecutado estimado y por qué, presupuesto y periodo, disponible y % usado, top de viajeros.
+  - Variación: qué se cuenta, cotizado, facturado, diferencia y mediana.
+  - Comparador: ahora incluye la *Diferencia* y aclara que su % es sobre el precio de Google.
+  - Proyección: volumen, ahorro observado, ahorro proyectado con sus valores reales (ahorro típico y tope), **la cuenta del último mes en pesos**, año, rango, por qué así y supuestos. Este texto se arma con el cálculo vigente: cambia con el método elegido, la maleta y los viajes que siguen el ahorro.
+- **Proyección verificable:**
+  - `saProject` guarda cada paso de la cuenta: base, antes del tope, maleta y recorte del tope.
+  - La tabla muestra los viajes, tiquetes y gasto que de verdad se proyectan; su subtítulo dice cuáles.
+  - Al pasar el cursor por el ahorro de un mes se ve su cuenta. Ejemplo con la base del 8-oct: *"145 tiquetes × $200.074 = $29.010.730; el tope recorta $122.171 en 3 viajes → $28.888.559"*.
+  - El CSV trae esos pasos por mes (columna *Cuenta*) y los parámetros con el valor usado y el tope.
+- Variación: el indicador se llama **«Diferencia en %»** (*sobre el total cotizado · mediana por viaje*). *Igual* vuelve a significar exactamente igual.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-savings-analysis.cjs`, 4 comprobaciones nuevas (40 en total):
+  - la cuenta de cada mes, paso a paso, da la misma cifra;
+  - el valor y el tope usados son los correctos;
+  - el texto de la cuenta cuadra con la cifra.
+- Cuenta probada con cada método: por tiquete, como % del cotizado, por viaje, valor fijo, con maleta y viajes que siguen el ahorro, y con un valor por tipo de viaje.
+- Capturas con la base del 8-oct en escritorio y celular.
+
+**Despliegue:** pegar `server/CostsDashboard.html` y crear una versión nueva del web app. No cambia la app ni `Code.gs`.

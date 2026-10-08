@@ -245,6 +245,16 @@ function main() {
   const p1 = proj({ how: 'median', base: 'ticket' });
   // 150.000 × 2 = 300.000 en el de $600.000; en el de $500.000, el tope (50 %) lo deja en 250.000; en ago, 900.000 → tope 300.000.
   eq('mediana por tiquete × tiquetes, con tope del % más alto observado', [p1['2026-09'], p1['2026-08']], [550000, 300000]);
+  // #A93: la cuenta queda paso a paso para mostrarla y repetirla a mano, sin cambiar el resultado.
+  const det = {};
+  const p1d = b.saProject(trips, months, sample, Object.assign({}, base, { how: 'median', base: 'ticket' }), det);
+  const ds = det.months['2026-09'], da = det.months['2026-08'];
+  eq('cuenta de sep: base, antes del tope y recorte del tope', [ds.flights, ds.tickets, ds.spend, ds.raw, ds.cut, ds.cutTrips, p1d['2026-09']],
+    [2, 4, 1100000, 600000, 50000, 1, 550000]);
+  eq('cuenta de ago: 6 tiquetes × 150.000, el tope deja 300.000', [da.tickets, da.raw, da.cut, p1d['2026-08']], [6, 900000, 600000, 300000]);
+  eq('valor y tope que usa la cuenta', [det.rates.rt, det.cap], [150000, 0.5]);
+  const calc = b.saCalcText({ detail: det, proj: p1d, opts: Object.assign({}, base, { how: 'median', base: 'ticket' }) }, '2026-09');
+  eq('la cuenta en palabras cuadra con la cifra', [/^4 tiquetes × \$150\.000 = \$600\.000; el tope recorta \$50\.000 en 1 viaje → \$550\.000$/.test(calc)], [true]);
   const p2 = proj({ how: 'median', base: 'pct' });
   near('mediana como % del cotizado (45 %)', p2['2026-09'], 0.45 * (600000 + 500000));
   const p3 = proj({ how: 'fixed', base: 'trip', fixed: 150000 });

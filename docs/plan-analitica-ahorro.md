@@ -360,9 +360,15 @@ Aviatur.
 | 6 | Internacionales | Aparte, sin incluir por defecto |
 | 7 | "Viaje con cambios" | La compra es una modificación (`TIPO DE SOLICITUD = MODIFICACION`), contando aparte las con costo |
 | 8 | Dónde guardar lo precalculado | `CacheService`, sin Script Properties (David, 8-oct) |
+| 10 | Toda estimación es verificable | Cada sección con cifras derivadas tiene un *¿Cómo se calcula?* breve (cómo y por qué); la proyección muestra la cuenta de cada mes en pesos y el CSV la trae (David, 8-oct, #A93) |
 | 9 | Cómo se nombran las cifras | En palabras de la pregunta que responden (*Precio más barato en Google*, *% de ahorro sobre lo cotizado*, *¿De dónde sale la diferencia?*), nunca con nombres internos ni de columnas; sin recuadros de texto (David, 8-oct, #A92) |
 
 ## 11. Bitácora
+
+- **2026-10-08 (noche)** — David pide poder sustentar y repetir a mano cada estimación (#A93).
+  - Cada sección tiene un *¿Cómo se calcula?* breve.
+  - La proyección guarda cada paso de su cuenta: la tabla muestra solo lo que se proyecta (viajes nacionales con costo) y el CSV trae la cuenta.
+  - Con la base del 8-oct: sep 2026 = 145 tiquetes × $200.074 = $29.010.730; el tope recorta $122.171 en 3 viajes → $28.888.559.
 
 - **2026-10-08 (tarde)** — David no entendía *Canal* y *Vuelo* en *Ahorro observado* y pidió
   revisar todo el dashboard (#A92). Se renombraron las cifras en palabras, el rango

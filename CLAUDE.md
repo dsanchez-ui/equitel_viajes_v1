@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A92) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A93) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -280,7 +280,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   sobre lo cotizado*, *¿De dónde sale la diferencia?*, *Disponible*). En pantalla nunca nombres
   internos (*canal*, *vuelo*, *prudente*, *probable*, *embudo*) ni de columnas de la hoja
   (`TOTAL FACTURA 2`, `RESERVADO`). **No llenarlo de recuadros de texto:** una línea bajo el título
-  y, si hace falta, un *¿Cómo se lee?* cerrado y corto.
+  y un *¿Cómo se calcula?* cerrado y corto.
+- **Toda estimación del dashboard se puede sustentar y repetir a mano** (#A93, David, 2026-10-08: *"una cifra
+  que no es verificable"* no sirve). Cada sección con cifras derivadas tiene arriba un *¿Cómo se calcula?*
+  de una o dos frases por concepto: cómo se hizo y por qué ese método. Si se agrega una estimación nueva,
+  va con su explicación. La proyección muestra la cuenta de cada mes en pesos (cursor y CSV, columna *Cuenta*),
+  y su tabla solo cuenta lo que se proyecta.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -501,8 +506,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **Seguridad:** el remoto de git del PC Linux tiene un token de GitHub en la URL y quedó a la
   vista en una sesión; revocarlo y usar un gestor de credenciales (MIGRACION.md, sección 6).
 
-- **Análisis de ahorro y velocidad del dashboard** (#A89, #A90, 8-oct) y **lenguaje simple en todo
-  el dashboard** (#A92): implementados; pendiente pegar `Code.gs` y `CostsDashboard.html` y crear la
+- **Análisis de ahorro y velocidad del dashboard** (#A89, #A90, 8-oct), **lenguaje simple en todo
+  el dashboard** (#A92) y **metodología de cada estimación** (#A93): implementados; pendiente pegar `Code.gs` y `CostsDashboard.html` y crear la
   versión nueva del web app. Lo que sigue está en
   [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §9.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
