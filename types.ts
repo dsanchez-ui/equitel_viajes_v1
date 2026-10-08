@@ -194,6 +194,12 @@ export interface TravelRequest {
   // 'Otra agencia' | 'No se reservó'. undefined = el servidor aún no los maneja.
   purchaseHotelName?: string;
   purchaseHotelChannel?: string;
+  // Tarifa del tiquete según el manual COM-P-02 (#A95): '1' | '2' | '3' o '' si no
+  // está registrada. undefined = el servidor aún no la maneja (la app no la pide).
+  fareType?: string;
+  fareRecommended?: string;
+  fareName?: string;
+  fareJustification?: string;
 
   // EFFECTIVE approval status (computed by backend, mirrors the dedup rules
   // applied in sendApprovalRequestEmail / processApprovalFromEmail).

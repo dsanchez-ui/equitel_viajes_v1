@@ -243,8 +243,8 @@ function checkBackendWrites(failures) {
 
   const mapped = ctx.mapRowToRequest(base.data.find((r) => r[0] === 'SOL-1'));
   eq('la solicitud que recibe la app trae el regreso', [mapped.purchaseAirline, mapped.purchaseReturnAirline], ['LATAM', 'Avianca']);
-  eq('la acción setPurchaseInfo pasa el regreso y el hotel',
-    gs.includes('setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline, payload.hotelName, payload.hotelChannel)'), true);
+  eq('la acción setPurchaseInfo pasa el regreso, el hotel y la tarifa (#A95)',
+    /setPurchaseInfo\(payload\.requestId, payload\.airline, payload\.channel, payload\.returnAirline, payload\.hotelName, payload\.hotelChannel,\s*payload\.fareOption, payload\.fareJustification\)/.test(gs), true);
 
   // #A94: hotel reservado y su canal.
   const hotelPair = (id) => [cell(id, 'HOTEL RESERVADO'), cell(id, 'CANAL DE COMPRA HOTEL')];

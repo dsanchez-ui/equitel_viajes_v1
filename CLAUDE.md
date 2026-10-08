@@ -26,7 +26,7 @@ archivos; Gmail para notificaciones.
    producción** (ver Mapa de despliegue).
 2. **Verificar siempre antes de proponer un push:** `npm run verify` (typecheck +
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
-   nacimiento, de celular, de costos y de aerolínea/canal + estadísticas de compra +
+   nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + rastreo de precios + velocidad y análisis de ahorro +
    enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -45,7 +45,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + facturas por cerrar + rastreo de precios + caché y análisis de ahorro + build + un solo .js  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + rastreo de precios + caché y análisis de ahorro + build + un solo .js  ← antes de cualquier push
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -222,6 +222,16 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     confirmar la reserva, con la casilla *No se reservó hotel* (no en solo hospedaje, donde el bloque reemplaza al de
     compra y su canal es también `CANAL DE COMPRA`). Gemelo `normalizeHotelPurchase` ↔ `_normalizeHotelPurchase_`.
     Solo se toca si viene `hotelChannel`; la app solo muestra el bloque si el servidor manda `purchaseHotelChannel`.
+- **Tarifa del tiquete según el manual COM-P-02** (#A95, reunión del 8-oct, aprobado por David): la
+  tarifa sale de las noches del viaje: **TIPO 1** de 0 a 1 noche, **TIPO 2** de 2 a 5, **TIPO 3** de 6 o más
+  (el manual dice «más de 6»; los 6 son TIPO 3). Cada aerolínea le da su nombre (Avianca: Basic, Classic,
+  Classic; LATAM: Basic, Light, Full). La plataforma **recomienda y Laura decide**: se avisa al cargar
+  opciones, y en *Confirmar costos* y *Registrar reserva* viene preseleccionada; otra tarifa exige una
+  justificación (10 a 500 caracteres). Es excepción si cambia el nombre (Avianca 2 = 3 no lo es). Se guarda
+  en `TIPO DE COMPRA DE TKT` (la columna de siempre) más `TARIFA RECOMENDADA` (la calcula el servidor),
+  `TARIFA NOMBRE` y `TARIFA JUSTIFICACION`. Gemelo `utils/fare.ts` ↔ `_normalizeFare_`; la app solo muestra
+  el bloque si el servidor manda `fareRecommended`, y el servidor descarta cualquier `fare` que mande un
+  cliente. Las reglas del manual y lo que la plataforma no cubre: [docs/manual-com-p-02.md](docs/manual-com-p-02.md).
 - **Facturas listas para cerrar y por revisar** (#A83, acordado con Laura el 2026-10-01, reglas
   de David del 2026-10-02). **Ninguna solicitud se cierra sola** (David: *"es más seguro"*): el
   panel del analista las muestra y el área de viajes las cierra con el cierre manual de siempre.
@@ -268,6 +278,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     aerolínea); los de escala se listan al final en gris. Si ese día no hay directos, cuentan
     los de escala. El enlace y lo facturado están **solo en el dashboard de costos**, nunca en la
     app de Laura.
+  - **Misma tarifa, «peras con peras»** (#A95, reunión del 8-oct, Yurani): el rastreo busca con el
+    equipaje de la tarifa registrada (TIPO 1 sin maleta; TIPO 2 y 3 con una maleta de mano por pasajero,
+    `bags`) y repite una vez si la tarifa cambia. El dashboard compara por defecto **solo** los viajes
+    buscados con el equipaje de su tarifa (`summary.sameFare`); *Todas las búsquedas* queda como
+    referencia. Google no trae las tres tarifas por separado ni deja pedir bodega: en LATAM TIPO 2 y en
+    TIPO 3 su precio queda por debajo. Nunca volver a comparar contra la más barata sin decirlo.
 - **Dashboard de costos: la velocidad es el pilar** (#A89, David, 2026-10-08: *"si no es rápido,
   nadie lo va a utilizar"*). Todas las secciones se piden **en paralelo** y sus respuestas se guardan
   en **`CacheService`** (`_dashCached_`), con una llave que lleva el alcance del usuario y una versión
@@ -336,7 +352,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE` y `TARIFA JUSTIFICACION` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -344,7 +360,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 | **CIUDADES DEL MUNDO** | Ciudad/país para el autocompletado. |
 | **MISC** | Tarjetas de crédito (A:B), sedes (D) y la tabla de accesos al dashboard de costos (#A76). Los encabezados están en la fila 2 y los datos empiezan en la fila 3. Los encabezados de la tabla de accesos (`DASHBOARD COSTOS · CORREO` / `· UNIDAD DE NEGOCIO`) los crea el menú 9 en la **fila 1** (celdas normales, sin tablas de Google ni listas desplegables) y se buscan por nombre en las filas 1 a 3, así que pueden moverse de columna. |
 | **REGLAS_COAPROBADOR** | Reglas de co-aprobación. |
-| **COMPARATIVO PRECIOS** / **COMPARATIVO ESTADO** | Ocultas. Las escribe el proyecto aparte del rastreo de precios (#A84): una fila por búsqueda y el estado del rastreo. Las lee el dashboard de costos. No editarlas. |
+| **COMPARATIVO PRECIOS** / **COMPARATIVO ESTADO** | Ocultas. Las escribe el proyecto aparte del rastreo de precios (#A84): una fila por búsqueda y el estado del rastreo. Desde #A95 cada búsqueda guarda `TARIFA` y `MALETA DE MANO`. Las lee el dashboard de costos. No editarlas. |
 | **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
 
 ## Script Properties (Apps Script)
@@ -398,6 +414,7 @@ components/
   CostConfirmationModal.tsx  Confirmar costos finales, con el detalle completo (#A81) y la compra prevista (#A82)
   RequestInfoSections.tsx  Secciones de solo lectura del detalle (las usan el detalle y Confirmar costos, #A81)
   PurchaseInfoFields.tsx   Aerolínea y canal de compra (Confirmar costos y Registrar reserva, #A82) y hotel reservado (#A94)
+  FareFields.tsx           Tarifa del manual COM-P-02: recomendada, excepción y aviso al cargar opciones (#A95)
   InvoiceReviewPanel.tsx   Barra "Listas para cerrar" y "Facturas por revisar" del panel del analista (#A83)
   ReservationModal.tsx     Registrar reserva (+ guardado parcial, #A57)
   SupportUploadModal.tsx   Soportes post-aprobación
@@ -418,6 +435,7 @@ utils/birthdate.ts         Validación de fecha de nacimiento (gemelo de Code.gs
 utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #A75)
 utils/money.ts             Costos en pesos: formato y mínimo (gemelo de Code.gs, #A79)
 utils/purchase.ts          Aerolínea, canal de compra y hotel reservado (gemelo de Code.gs, #A82, #A94)
+utils/fare.ts              Tarifa del tiquete por noches y su justificación (gemelo de Code.gs, #A95)
 server/
   Code.gs                  Backend completo (~14.400 líneas)
   AdminSidebar.html        Sidebar de administración del Sheets
@@ -430,11 +448,12 @@ tools/check-birthdate-rules.cjs   Reglas de fecha de nacimiento; frontend y back
 tools/check-phone-rules.cjs       Reglas de celular; frontend y backend coinciden (#A75)
 tools/check-cost-rules.cjs        Reglas de costos en pesos; frontend y backend coinciden (#A79)
 tools/check-purchase-stats.cjs    Estadísticas de compra con una hoja sintética, festivos y permiso (#A80)
-tools/check-purchase-info-rules.cjs  Aerolínea y canal; frontend y backend coinciden (#A82)
+tools/check-purchase-info-rules.cjs  Aerolínea, canal y hotel; frontend y backend coinciden (#A82, #A94)
 tools/check-invoice-review.cjs       Facturas listas para cerrar y por revisar con una hoja sintética; nada se cierra solo (#A83)
 tools/check-price-tracking.cjs       Rastreo de precios: el proyecto aparte y Code.gs juntos sobre una hoja simulada (#A84)
 tools/check-savings-analysis.cjs     Caché del dashboard (alcance, invalidación, trozos, fallas) y cuentas de la proyección de ahorro (#A89, #A90)
 tools/check-webapp-links.cjs         Enlaces a páginas del web app con el dominio de Equitel (#A91)
+tools/check-fare-rules.cjs           Tarifa del manual; frontend y backend coinciden y guardado en la hoja (#A95)
 tools/check-single-bundle.cjs        La app es un solo archivo JavaScript, sin cargas bajo demanda (#A96)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs)
 tools/comparador-precios/apps-script/  Proyecto de Apps Script APARTE del rastreo de precios (#A84): Rastreo.gs, manifiesto y guía
@@ -459,7 +478,7 @@ docs/                      Guías de administrador, hoja de cálculo y planes
 - **Rate limits:** PIN admin 5 intentos/15 min por correo; regeneración de PIN
   3/hora; creación de solicitudes 10/día.
 - **Validadores gemelos.** Las reglas que se aplican en el formulario y en el
-  backend (OT, fecha de nacimiento, celular, costos, aerolínea/canal) viven en `utils/*.ts` **y** en `Code.gs`,
+  backend (OT, fecha de nacimiento, celular, costos, aerolínea/canal, tarifa) viven en `utils/*.ts` **y** en `Code.gs`,
   porque no se puede compartir código. `npm run verify` compara ambos lados:
   cambiar uno sin el otro lo hace fallar.
 - **Campos nuevos en payloads de creación: la clave presente activa la regla.**
@@ -526,6 +545,11 @@ autorización) y verificar antes de crear una versión nueva del web app.
   [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §9.
 - **Hotel reservado y su canal en *Registrar reserva*** (#A94, pedido de Laura, 8-oct): implementado; el bloque
   aparece cuando se pega el `Code.gs` nuevo (versión nueva del web app) y se publica el frontend.
+- **Tarifa del manual y comparador «peras con peras»** (#A95, reunión del 8-oct): implementado. Pendiente:
+  pegar `Code.gs` y `CostsDashboard.html` + versión nueva del web app; pegar `Rastreo.gs` en el proyecto aparte
+  (`Nucleo` no cambia); push del frontend; opcional, menú 12. Propuestas abiertas: preguntar en el formulario si
+  el viajero lleva equipaje de bodega (lo pide el manual) y decidir si un internacional exige al CEO (el manual sí;
+  hoy basta CEO o CDS). Revisar las cifras de ahorro con Yurani antes de mostrarlas a Alejandro.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
   [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).

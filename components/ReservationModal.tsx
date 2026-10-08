@@ -4,6 +4,8 @@ import { TravelRequest, SupportFile, RequestStatus, APPROVER_ROLE_LABELS } from 
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { HotelPurchaseFields, PurchaseInfoFields } from './PurchaseInfoFields';
+import { FareFields } from './FareFields';
+import { FareForm, fareFormFrom, fareRecommendation, fareShort, normalizeFare } from '../utils/fare';
 import { HotelForm, PurchaseForm, checkHotelForm, checkPurchaseForm, hotelFormFrom, hotelPurchaseLabel, purchaseAirlineLabel, purchaseChannelLabel, purchaseFormFrom } from '../utils/purchase';
 
 interface ReservationModalProps {
@@ -85,18 +87,37 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
         ? hotelChanged
         : !!(purchase.airline.trim() || purchase.channel.trim() || purchase.splitReturn);
 
+    // #A95: tarifa del tiquete según el manual COM-P-02. Viene de lo registrado al
+    // confirmar costos (o la recomendada). Obligatoria al registrar; al corregir, solo
+    // si se cambió. Solo vuelos y si el servidor ya la guarda.
+    const serverHasFare = !isHotelOnly && request.fareRecommended !== undefined;
+    const fareRec = fareRecommendation(request);
+    const [initialFare] = useState<FareForm>(() => fareFormFrom(request, fareRec.option));
+    const [fare, setFare] = useState<FareForm>(initialFare);
+    const [triedFare, setTriedFare] = useState(false);
+    const fareAirline = purchaseCheck.ok ? purchaseCheck.airline : purchase.airline;
+    const fareReturnAirline = purchaseCheck.ok ? purchaseCheck.returnAirline : (purchase.splitReturn ? purchase.returnAirline : '');
+    const fareCheck = normalizeFare(fare.option, fare.justification, fareRec.option, fareAirline, fareReturnAirline);
+    const fareChanged = JSON.stringify(fare) !== JSON.stringify(initialFare);
+
     /**
-     * Guarda aerolínea, canal y hotel si cambiaron. Con un backend anterior (que no
+     * Guarda aerolínea, canal, hotel y tarifa si cambiaron. Con un backend anterior (que no
      * conoce la acción) sigue sin guardarlos y devuelve una nota; otro error se lanza.
+     * draft: «Guardar sin enviar», donde la tarifa puede quedar para después.
      */
-    const savePurchaseInfoIfNeeded = async (): Promise<string> => {
+    const savePurchaseInfoIfNeeded = async (draft = false): Promise<string> => {
         const purchaseChanged = purchaseCheck.ok && !(purchaseCheck.airline === (request.purchaseAirline || '')
             && purchaseCheck.channel === (request.purchaseChannel || '')
             && (!serverHasReturnAirline || purchaseCheck.returnAirline === (request.purchaseReturnAirline || '')));
         const hotelNeedsSave = showHotel && hotelCheck.ok && !(hotelCheck.hotelName === (request.purchaseHotelName || '')
             && hotelCheck.hotelChannel === (request.purchaseHotelChannel || ''));
-        if (!purchaseChanged && !hotelNeedsSave) return '';
-        const info: { airline?: string; channel?: string; returnAirline?: string; hotelName?: string; hotelChannel?: string } = {};
+        // La tarifa se guarda si Laura la cambió, si cambió la aerolínea de una ya registrada (su nombre)
+        // o, al registrar la reserva, si aún no estaba (allí es obligatoria y va en la confirmación).
+        // Al corregir o en un borrador, la precargada que nadie tocó no se guarda.
+        const fareNeedsSave = serverHasFare && fareCheck.ok && (fareChanged || (purchaseChanged && !!request.fareType)
+            || (!isEditMode && !draft && !request.fareType));
+        if (!purchaseChanged && !hotelNeedsSave && !fareNeedsSave) return '';
+        const info: { airline?: string; channel?: string; returnAirline?: string; hotelName?: string; hotelChannel?: string; fareOption?: string; fareJustification?: string } = {};
         if (purchaseChanged) {
             info.airline = purchaseCheck.airline;
             info.channel = purchaseCheck.channel;
@@ -106,6 +127,10 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             info.hotelName = hotelCheck.hotelName;
             info.hotelChannel = hotelCheck.hotelChannel;
         }
+        if (fareNeedsSave) {
+            info.fareOption = String(fareCheck.option);
+            info.fareJustification = fareCheck.justification;
+        }
         try {
             await gasService.setPurchaseInfo(request.requestId, info);
             return '';
@@ -114,7 +139,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             if (/Acción desconocida/i.test(msg)) {
                 return '\n\nNota: la aerolínea y el canal no se guardaron porque falta publicar la nueva versión del servidor.';
             }
-            throw new Error('No se pudo guardar la compra (aerolínea, canal u hotel): ' + msg);
+            throw new Error('No se pudo guardar la compra (aerolínea, canal, hotel o tarifa): ' + msg);
         }
     };
 
@@ -239,6 +264,20 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 return;
             }
         }
+        // #A95: la tarifa, obligatoria al registrar; al corregir, solo si se cambió.
+        if (serverHasFare) {
+            setTriedFare(true);
+            if ((!isEditMode || fareChanged) && !fareCheck.ok) {
+                setDialog({
+                    isOpen: true,
+                    title: 'Campo Requerido',
+                    message: fareCheck.error || 'Revise la tarifa del tiquete.',
+                    type: 'ALERT',
+                    onConfirm: closeDialog
+                });
+                return;
+            }
+        }
         // #A82: obligatorio al registrar; al corregir, solo si se escribió algo.
         setTriedPurchase(true);
         if ((!isEditMode || purchaseTouched) && !purchaseCheck.ok) {
@@ -294,6 +333,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             purchaseCheck.ok && !hotelReplacesPurchase
                 ? (purchaseCheck.airline ? purchaseAirlineLabel(purchaseCheck.airline, purchaseCheck.returnAirline) + ' · ' : '') + purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)
                 : '',
+            serverHasFare && fareCheck.ok && (!isEditMode || fareChanged || !!request.fareType) ? 'tarifa ' + fareShort(fareCheck.option, fareAirline, fareReturnAirline) + (fareCheck.exception ? ' (no es la recomendada)' : '') : '',
             showHotel && hotelCheck.ok ? 'hotel: ' + hotelPurchaseLabel(hotelCheck.hotelName, hotelCheck.hotelChannel) : ''
         ].filter(Boolean).join('; ');
         const confirmMsg = isEditMode
@@ -381,6 +421,18 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
 
     // --- RESERVA PARCIAL: "Guardar sin enviar" (solo modo NEW / APROBADO) ---
     const handleSaveDraft = () => {
+        // #A95: la tarifa puede quedar para después, pero si se cambió debe estar bien.
+        if (serverHasFare && fareChanged && !fareCheck.ok) {
+            setTriedFare(true);
+            setDialog({
+                isOpen: true,
+                title: 'Revise la tarifa',
+                message: fareCheck.error || 'Revise la tarifa del tiquete.',
+                type: 'ALERT',
+                onConfirm: closeDialog
+            });
+            return;
+        }
         // #A94: el hotel puede faltar (se compra después), pero si se cambió debe estar bien.
         if (showHotel && hotelChanged && !hotelCheck.ok) {
             setTriedHotel(true);
@@ -424,7 +476,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 fileData: await readFileAsBase64(f),
                 fileName: f.name
             })));
-            const purchaseNote = await savePurchaseInfoIfNeeded();
+            const purchaseNote = await savePurchaseInfoIfNeeded(true);
             await gasService.saveReservationDraft(
                 request.requestId,
                 reservationNumber,
@@ -565,6 +617,19 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                     hint={request.purchaseChannel
                                         ? 'Viene de lo previsto al confirmar costos. Cámbielo si se compró por otro canal.'
                                         : undefined}
+                                />
+                            )}
+
+                            {/* #A95: tarifa del tiquete según el manual */}
+                            {serverHasFare && (
+                                <FareFields
+                                    trip={request}
+                                    airline={fareAirline}
+                                    returnAirline={fareReturnAirline}
+                                    value={fare}
+                                    onChange={setFare}
+                                    showErrors={triedFare && (!isEditMode || fareChanged)}
+                                    title={isEditMode ? 'Tarifa comprada (manual COM-P-02)' : 'Tarifa comprada (manual COM-P-02) *'}
                                 />
                             )}
 

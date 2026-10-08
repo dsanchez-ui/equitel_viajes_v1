@@ -9,6 +9,7 @@ import {
     BirthdatesLoadState, sanitizeCedula, RequestTripCorporateInfo, RequestPassengersHotelInfo, RequestComments, RequestOptionsGallery,
 } from './RequestInfoSections';
 import { hotelPurchaseLabel, purchaseAirlineLabel, purchaseChannelLabel } from '../utils/purchase';
+import { fareShort } from '../utils/fare';
 
 interface RequestDetailProps {
     request: TravelRequest;
@@ -899,6 +900,16 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                             <div className="mt-2 text-xs text-gray-600" data-purchase-summary>
                                                 <span className="text-gray-400">Compra:</span>{' '}
                                                 <strong>{request.purchaseAirline ? purchaseAirlineLabel(request.purchaseAirline, request.purchaseReturnAirline) + ' · ' : ''}{purchaseChannelLabel(request.purchaseChannel, request.requestMode === 'HOTEL_ONLY')}</strong>
+                                            </div>
+                                        )}
+                                        {/* #A95: tarifa del tiquete (solo administradores) */}
+                                        {isAdmin && request.fareType && (
+                                            <div className="mt-1 text-xs text-gray-600" data-fare-summary>
+                                                <span className="text-gray-400">Tarifa:</span>{' '}
+                                                <strong>{fareShort(Number(request.fareType), request.purchaseAirline, request.purchaseReturnAirline)}</strong>
+                                                {request.fareJustification
+                                                    ? <span> · recomendada TIPO {request.fareRecommended} · <em>"{request.fareJustification}"</em></span>
+                                                    : request.fareRecommended ? <span className="text-gray-400"> · la recomendada</span> : null}
                                             </div>
                                         )}
                                         {/* #A94: hotel reservado y su canal (solo administradores) */}

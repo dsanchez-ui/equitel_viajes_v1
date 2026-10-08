@@ -443,11 +443,12 @@ class GasService {
   /**
    * Aerolínea, canal y hotel de la compra. Solo se envían las claves que vienen:
    * returnAirline undefined = no tocar la del regreso (#A85); sin channel solo se
-   * guarda el hotel; sin hotelChannel no se toca el hotel (#A94).
+   * guarda el hotel; sin hotelChannel no se toca el hotel (#A94); sin fareOption no se
+   * toca la tarifa (#A95).
    */
-  async setPurchaseInfo(requestId: string, info: { airline?: string; channel?: string; returnAirline?: string; hotelName?: string; hotelChannel?: string }): Promise<{ airline?: string; channel?: string; returnAirline?: string; hotelName?: string; hotelChannel?: string }> {
+  async setPurchaseInfo(requestId: string, info: { airline?: string; channel?: string; returnAirline?: string; hotelName?: string; hotelChannel?: string; fareOption?: string; fareJustification?: string }): Promise<{ airline?: string; channel?: string; returnAirline?: string; hotelName?: string; hotelChannel?: string; fareType?: string }> {
     const payload: Record<string, string> = { requestId };
-    (['airline', 'channel', 'returnAirline', 'hotelName', 'hotelChannel'] as const).forEach((k) => {
+    (['airline', 'channel', 'returnAirline', 'hotelName', 'hotelChannel', 'fareOption', 'fareJustification'] as const).forEach((k) => {
       if (info[k] !== undefined) payload[k] = info[k] as string;
     });
     const response = await this.runGas('setPurchaseInfo', payload);

@@ -267,7 +267,10 @@ const HEADERS_REQUESTS = [
   "AVISO FACTURAS OMITIDO", // Quién omitió el aviso de facturas incompletas y cuándo (#A83)
   "AEROLINEA REGRESO", // Aerolínea del regreso solo si es distinta de la de ida (#A85)
   "HOTEL RESERVADO", // Hotel que reservó el área de viajes (#A94); NOMBRE HOTEL sigue siendo el que pidió el viajero
-  "CANAL DE COMPRA HOTEL" // 'Aviatur' | 'Directo' | 'Otra agencia' | 'No se reservó' (#A94)
+  "CANAL DE COMPRA HOTEL", // 'Aviatur' | 'Directo' | 'Otra agencia' | 'No se reservó' (#A94)
+  "TARIFA RECOMENDADA", // 'TIPO 1|2|3' según las noches del viaje (manual COM-P-02, #A95); la comprada va en TIPO DE COMPRA DE TKT
+  "TARIFA NOMBRE", // Nombre de la tarifa en la aerolínea: 'Classic', 'Light (ida) y Classic (regreso)' (#A95)
+  "TARIFA JUSTIFICACION" // Por qué se compró otra tarifa, si no es la recomendada (#A95)
 ];
 
 // =====================================================================
@@ -689,7 +692,8 @@ function dispatch(action, payload) {
       // Estadísticas de compra de tiquetes y hospedaje (#A80). Solo administradores (adminOnlyActions).
       case 'getPurchaseStats': result = getPurchaseStats(payload.filters || {}); break;
       // Aerolínea y canal de compra (#A82) y facturas por revisar (#A83). Solo administradores.
-      case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline, payload.hotelName, payload.hotelChannel); break;
+      case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline, payload.hotelName, payload.hotelChannel,
+        payload.fareOption, payload.fareJustification); break;
       case 'getInvoiceReview': result = getInvoiceReview(); break;
       case 'dismissInvoiceAlert': result = dismissInvoiceAlert(payload.requestId, currentUserEmail); break;
       // SECURITY: Server-side analyst check
@@ -3429,6 +3433,136 @@ function _normalizeHotelPurchase_(hotelName, hotelChannel, isHotelOnly) {
   return { ok: true, hotelName: n, hotelChannel: ch };
 }
 
+// ---------------------------------------------------------------------
+// TARIFA DEL TIQUETE SEGÚN EL MANUAL COM-P-02 (#A95, reunión del 8-oct-2026)
+// ---------------------------------------------------------------------
+// El manual asigna la tarifa por las noches del viaje: TIPO 1 de 0 a 1 noche,
+// TIPO 2 de 2 a 5, TIPO 3 de 6 o más (el manual dice «más de 6»; los 6 se tratan
+// como TIPO 3). Noches = regreso − ida; sin regreso, las noches de hotel. Cada
+// aerolínea le da su nombre (FARE_TABLE); en Avianca las opciones 2 y 3 son la
+// misma (Classic). La comprada se guarda en TIPO DE COMPRA DE TKT ('TIPO 2'), la
+// columna que el área de viajes llenaba a mano; si no es la recomendada, se pide
+// una justificación. Yurani: comparar «peras con peras» en el comparador de precios.
+// ⚠️ GEMELO: utils/fare.ts. tools/check-fare-rules.cjs compara los dos lados.
+var FARE_TYPE_HEADER = 'TIPO DE COMPRA DE TKT';
+var FARE_RECOMMENDED_HEADER = 'TARIFA RECOMENDADA';
+var FARE_NAME_HEADER = 'TARIFA NOMBRE';
+var FARE_JUSTIFICATION_HEADER = 'TARIFA JUSTIFICACION';
+var FARE_TABLE = { 'LATAM': ['Basic', 'Light', 'Full'], 'Avianca': ['Basic', 'Classic', 'Classic'], 'Clic': ['VeLigera', 'VeEcono', 'VePreferencial'], 'Satena': ['Z0Basic', 'Z0Econo', 'Z0Flexi'] };
+var FARE_JUSTIFICATION_MIN = 10;
+var FARE_JUSTIFICATION_MAX = 500;
+var FARE_RECOMMENDED_NOTE = 'Tarifa que recomienda el manual COM-P-02 por las noches del viaje (#A95): TIPO 1 de 0 a 1 noche, TIPO 2 de 2 a 5, TIPO 3 de 6 o más. La comprada va en TIPO DE COMPRA DE TKT.';
+var FARE_NAME_NOTE = 'Nombre de la tarifa comprada en la aerolínea (#A95), p. ej. Classic o Light (ida) y Classic (regreso).';
+var FARE_JUSTIFICATION_NOTE = 'Por qué se compró una tarifa distinta de la recomendada por el manual (#A95). Vacía = se compró la recomendada.';
+
+function _fareOptionForNights_(nights) {
+  var n = Number(nights);
+  if (!isFinite(n) || n <= 1) return 1;
+  if (n <= 5) return 2;
+  return 3;
+}
+
+function _fareNights_(departureKey, returnKey, hotelNights) {
+  var re = /^(\d{4})-(\d{2})-(\d{2})$/;
+  var d = re.exec(String(departureKey || '').slice(0, 10));
+  var r = re.exec(String(returnKey || '').slice(0, 10));
+  if (d && r) {
+    var days = Math.round((Date.UTC(+r[1], +r[2] - 1, +r[3]) - Date.UTC(+d[1], +d[2] - 1, +d[3])) / 86400000);
+    return days > 0 ? days : 0;
+  }
+  var h = Math.round(Number(hotelNights));
+  return isFinite(h) && h > 0 ? h : 0;
+}
+
+function _fareName_(airline, option) {
+  var key = _purchaseKey_(airline);
+  var names = Object.keys(FARE_TABLE);
+  for (var i = 0; i < names.length; i++) {
+    if (_purchaseKey_(names[i]) === key) return FARE_TABLE[names[i]][option - 1] || '';
+  }
+  return '';
+}
+
+function _fareLabel_(option, airline, returnAirline) {
+  var ida = _fareName_(airline, option);
+  var back = returnAirline ? _fareName_(returnAirline, option) : '';
+  if (back && back !== ida) return (ida || 'TIPO ' + option) + ' (ida) y ' + back + ' (regreso)';
+  return ida;
+}
+
+function _fareIsException_(option, recommended, airlines) {
+  if (option === recommended) return false;
+  var known = airlines.filter(function(a) { return _fareName_(a, 1); });
+  if (!known.length) return true;
+  return known.some(function(a) { return _fareName_(a, option) !== _fareName_(a, recommended); });
+}
+
+/** Acepta 2, '2', 'TIPO 2', 'Opción 2'; 0 si no es válida. */
+function _fareOptionValue_(v) {
+  var m = /^(?:tipo|opci[oó]n)?\s*([123])$/i.exec(String(v == null ? '' : v).trim());
+  return m ? Number(m[1]) : 0;
+}
+
+function _normalizeFare_(option, justification, recommended, airline, returnAirline) {
+  var rec = _fareOptionValue_(recommended) || 1;
+  var opt = _fareOptionValue_(option);
+  if (!opt) return { ok: false, option: 0, recommended: rec, name: '', exception: false, justification: '', error: 'Seleccione la tarifa (TIPO 1, 2 o 3).' };
+  var name = _fareLabel_(opt, airline, returnAirline);
+  var exception = _fareIsException_(opt, rec, [airline, returnAirline].filter(Boolean));
+  if (!exception) return { ok: true, option: opt, recommended: rec, name: name, exception: false, justification: '' };
+  var j = String(justification == null ? '' : justification).replace(/\s+/g, ' ').trim();
+  if (j.length < FARE_JUSTIFICATION_MIN) {
+    var recName = _fareLabel_(rec, airline, returnAirline);
+    return { ok: false, option: opt, recommended: rec, name: name, exception: true, justification: '',
+      error: 'La tarifa elegida no es la que recomienda el manual (TIPO ' + rec + (recName ? ' · ' + recName : '') + '). Escriba por qué (mínimo ' + FARE_JUSTIFICATION_MIN + ' caracteres).' };
+  }
+  if (j.length > FARE_JUSTIFICATION_MAX) {
+    return { ok: false, option: opt, recommended: rec, name: name, exception: true, justification: '',
+      error: 'La justificación de la tarifa es demasiado larga (máximo ' + FARE_JUSTIFICATION_MAX + ' caracteres).' };
+  }
+  return { ok: true, option: opt, recommended: rec, name: name, exception: true, justification: j };
+}
+
+/** TIPO recomendado para una fila de la hoja (fechas de ida y regreso, o noches de hotel). */
+function _fareRecommendedForRow_(sheet, rowNumber) {
+  var cell = function(h) { var i = H(h); return i < 0 ? '' : sheet.getRange(rowNumber, i + 1).getValue(); };
+  return _fareOptionForNights_(_fareNights_(_psDateKey_(cell('FECHA IDA')), _psDateKey_(cell('FECHA VUELTA')), cell('# NOCHES (AUTOMÁTICO)')));
+}
+
+/**
+ * Tarifa que llega al confirmar costos (#A95). Siempre quita la clave interna `fare`
+ * (un cliente no puede mandarla hecha); si viene fareOption, la valida contra la
+ * recomendada que calcula el servidor y deja `fare` lista para escribir.
+ */
+function _normalizeFarePayload_(requestId, inner) {
+  var out = {};
+  Object.keys(inner).forEach(function(k) { if (k !== 'fare') out[k] = inner[k]; });
+  if (inner.fareOption === undefined) return out;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (!sheet || rowNumber === -1) throw new Error('ID no encontrado');
+  if (_rowIsHotelOnly_(sheet, rowNumber)) return out;
+  var cell = function(h) { var i = H(h); return i < 0 ? '' : sheet.getRange(rowNumber, i + 1).getValue(); };
+  var airline = inner.purchaseAirline !== undefined ? inner.purchaseAirline : cell(PURCHASE_AIRLINE_HEADER);
+  var back = inner.purchaseReturnAirline !== undefined ? inner.purchaseReturnAirline : cell(PURCHASE_RETURN_AIRLINE_HEADER);
+  var f = _normalizeFare_(inner.fareOption, inner.fareJustification, _fareRecommendedForRow_(sheet, rowNumber), airline, back);
+  if (!f.ok) throw new Error(f.error);
+  out.fare = f;
+  return out;
+}
+
+/** Escribe la tarifa (comprada, recomendada, nombre y justificación). */
+function _writeFare_(sheet, rowNumber, f) {
+  var colType = _ensureRequestColumn_(FARE_TYPE_HEADER, '');
+  var colRec = _ensureRequestColumn_(FARE_RECOMMENDED_HEADER, FARE_RECOMMENDED_NOTE);
+  var colName = _ensureRequestColumn_(FARE_NAME_HEADER, FARE_NAME_NOTE);
+  var colJust = _ensureRequestColumn_(FARE_JUSTIFICATION_HEADER, FARE_JUSTIFICATION_NOTE);
+  sheet.getRange(rowNumber, colType).setValue('TIPO ' + f.option);
+  sheet.getRange(rowNumber, colRec).setValue('TIPO ' + f.recommended);
+  sheet.getRange(rowNumber, colName).setValue(safeSheetValue_(f.name || ''));
+  sheet.getRange(rowNumber, colJust).setValue(safeSheetValue_(f.justification || ''));
+}
+
 /** Escribe el hotel reservado y su canal (crea las columnas al final si faltan). */
 function _writeHotelPurchase_(sheet, rowNumber, info) {
   var colName = _ensureRequestColumn_(PURCHASE_HOTEL_HEADER, PURCHASE_HOTEL_NOTE);
@@ -3445,15 +3579,16 @@ function _writeHotelPurchase_(sheet, rowNumber, info) {
  * antes de escribir: un error no deja nada a medias.
  * Solo administradores (adminOnlyActions).
  */
-function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, hotelChannel) {
+function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, hotelChannel, fareOption, fareJustification) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   var rowNumber = _getRowByRequestId_(requestId);
   if (!sheet || rowNumber === -1) throw new Error('Solicitud no encontrada.');
   var hotelOnly = _rowIsHotelOnly_(sheet, rowNumber);
   var withPurchase = channel !== undefined && channel !== null;
   var withHotel = hotelChannel !== undefined && hotelChannel !== null;
-  var r = null, h = null;
-  if (withPurchase || !withHotel) {
+  var withFare = fareOption !== undefined && fareOption !== null && !hotelOnly; // #A95: solo hospedaje no lleva tarifa
+  var r = null, h = null, f = null;
+  if (withPurchase || (!withHotel && !withFare)) {
     var withReturn = returnAirline !== undefined && returnAirline !== null;
     r = _normalizePurchaseInfo_(airline, channel, hotelOnly, withReturn && _rowHasReturn_(sheet, rowNumber) ? returnAirline : '');
     if (!r.ok) throw new Error(r.error);
@@ -3463,6 +3598,12 @@ function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, 
     h = _normalizeHotelPurchase_(hotelName, hotelChannel, hotelOnly);
     if (!h.ok) throw new Error(h.error);
   }
+  if (withFare) {
+    var rowCell = function(hd) { var i = H(hd); return i < 0 ? '' : sheet.getRange(rowNumber, i + 1).getValue(); };
+    f = _normalizeFare_(fareOption, fareJustification, _fareRecommendedForRow_(sheet, rowNumber),
+      r ? r.airline : rowCell(PURCHASE_AIRLINE_HEADER), r && r.writeReturn ? r.returnAirline : rowCell(PURCHASE_RETURN_AIRLINE_HEADER));
+    if (!f.ok) throw new Error(f.error);
+  }
   var out = {};
   if (r) {
     _writePurchaseInfo_(sheet, rowNumber, { airline: r.airline, channel: r.channel, returnAirline: r.writeReturn ? r.returnAirline : undefined });
@@ -3471,6 +3612,10 @@ function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, 
   if (h) {
     _writeHotelPurchase_(sheet, rowNumber, h);
     out.hotelName = h.hotelName; out.hotelChannel = h.hotelChannel;
+  }
+  if (f) {
+    _writeFare_(sheet, rowNumber, f);
+    out.fareType = String(f.option); out.fareRecommended = String(f.recommended); out.fareName = f.name; out.fareJustification = f.justification;
   }
   return out;
 }
@@ -3639,6 +3784,9 @@ function _ensureA82A83Columns_() {
     { header: PURCHASE_RETURN_AIRLINE_HEADER, col: _ensureRequestColumn_(PURCHASE_RETURN_AIRLINE_HEADER, PURCHASE_RETURN_AIRLINE_NOTE) },
     { header: PURCHASE_HOTEL_HEADER, col: _ensureRequestColumn_(PURCHASE_HOTEL_HEADER, PURCHASE_HOTEL_NOTE) },
     { header: PURCHASE_HOTEL_CHANNEL_HEADER, col: _ensureRequestColumn_(PURCHASE_HOTEL_CHANNEL_HEADER, PURCHASE_HOTEL_CHANNEL_NOTE) },
+    { header: FARE_RECOMMENDED_HEADER, col: _ensureRequestColumn_(FARE_RECOMMENDED_HEADER, FARE_RECOMMENDED_NOTE) },
+    { header: FARE_NAME_HEADER, col: _ensureRequestColumn_(FARE_NAME_HEADER, FARE_NAME_NOTE) },
+    { header: FARE_JUSTIFICATION_HEADER, col: _ensureRequestColumn_(FARE_JUSTIFICATION_HEADER, FARE_JUSTIFICATION_NOTE) },
     { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
       'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
   ];
@@ -6974,6 +7122,14 @@ function updateRequestStatus(id, status, payload) {
                console.error('updateRequestStatus: no se pudo guardar aerolínea/canal de ' + id + ': ' + e);
            }
        }
+       // #A95: ya validada en _normalizeFarePayload_.
+       if (payload.fare && payload.fare.ok) {
+           try {
+               _writeFare_(sheet, rowNumber, payload.fare);
+           } catch (e) {
+               console.error('updateRequestStatus: no se pudo guardar la tarifa de ' + id + ': ' + e);
+           }
+       }
    }
 
    // EMAILS + METRICS
@@ -7649,6 +7805,8 @@ function _authorizeStatusUpdate_(currentUserEmail, payload) {
     if (inner.purchaseChannel !== undefined || inner.purchaseAirline !== undefined || inner.purchaseReturnAirline !== undefined) {
       inner = _normalizePurchasePayload_(id, inner);
     }
+    // #A95: tarifa del tiquete (si la app la manda); la recomendada la calcula el servidor.
+    inner = _normalizeFarePayload_(id, inner);
     return { id: id, status: status, payload: inner };
   }
   if (status !== 'PENDIENTE_CONFIRMACION_COSTO') {
@@ -8090,7 +8248,13 @@ function mapRowToRequest(row, lite) {
     // Hotel reservado y su canal (#A94). Igual que el regreso: que la clave venga
     // le dice a la app que este servidor ya los guarda.
     purchaseHotelName: String(get("HOTEL RESERVADO") || ''),
-    purchaseHotelChannel: String(get("CANAL DE COMPRA HOTEL") || '')
+    purchaseHotelChannel: String(get("CANAL DE COMPRA HOTEL") || ''),
+    // Tarifa del tiquete (#A95): '1' | '2' | '3' o '' si no está registrada. Que las
+    // claves vengan le dice a la app que este servidor ya la guarda.
+    fareType: String(_fareOptionValue_(get("TIPO DE COMPRA DE TKT")) || ''),
+    fareRecommended: String(_fareOptionValue_(get("TARIFA RECOMENDADA")) || ''),
+    fareName: String(get("TARIFA NOMBRE") || ''),
+    fareJustification: String(get("TARIFA JUSTIFICACION") || '')
   };
 
   // Compute and attach the EFFECTIVE approval status (mirrors the rules in
@@ -17590,7 +17754,62 @@ function _ptSnapshot_(r, withOptions) {
     legs: legs,
     typicalRange: String(r['RANGO TIPICO'] || '').trim(), googleLevel: String(r['NIVEL GOOGLE'] || '').trim(),
     aviatur: n('AVIATUR EN GOOGLE'), vendors: Array.isArray(vendors) ? vendors : [],
-    queries: _csToNumber_(r['CONSULTAS'])
+    queries: _csToNumber_(r['CONSULTAS']),
+    // #A95: con cuántas maletas de mano se buscó (0 = sin maleta) y la tarifa del viaje en ese momento.
+    bags: Math.round(_csToNumber_(r['MALETA DE MANO'])) || 0,
+    fareSearched: _fareOptionValue_(r['TARIFA'])
+  };
+}
+
+/**
+ * Tarifa de una solicitud del comparador (#A95, «peras con peras»). TIPO 1 se compara
+ * con una búsqueda sin maleta y TIPO 2 o 3 con una con maleta de mano. match: true si
+ * la búsqueda usada tiene el equipaje de la tarifa, false si no, null si la tarifa no
+ * está registrada (no se puede comparar) o no hay búsqueda.
+ */
+function _ptFare_(row, cell, snaps) {
+  var type = _fareOptionValue_(cell(row, FARE_TYPE_HEADER));
+  var rec = _fareOptionValue_(cell(row, FARE_RECOMMENDED_HEADER)) ||
+    _fareOptionForNights_(_fareNights_(_psDateKey_(cell(row, 'FECHA IDA')), _psDateKey_(cell(row, 'FECHA VUELTA')), cell(row, '# NOCHES (AUTOMÁTICO)')));
+  var level = type ? (type >= 2 ? 1 : 0) : null;
+  var lvl = function(s) { return s && s.bags > 0 ? 1 : 0; };
+  var ok = snaps.filter(function(s) { return s && s.result === 'OK'; });
+  var match = level === null ? null : ok.filter(function(s) { return lvl(s) === level; })[0] || null;
+  var ref = match || ok[0] || null;
+  return {
+    ref: ref,
+    level: level,
+    info: {
+      type: type ? String(type) : '', recommended: String(rec),
+      name: String(cell(row, FARE_NAME_HEADER) || ''), justification: String(cell(row, FARE_JUSTIFICATION_HEADER) || ''),
+      searchedBags: ref ? ref.bags : null,
+      match: level === null || !ref ? null : !!match
+    }
+  };
+}
+
+/** Totales del comparador. Con levelAware, cada momento solo cuenta si se buscó con el equipaje de la tarifa (#A95). */
+function _ptSummary_(items, levelAware) {
+  var refOf = function(it, s) {
+    if (!s || s.result !== 'OK') return null;
+    if (levelAware && (!it.fare || it.fare.type === '' || (s.bags > 0 ? 1 : 0) !== (Number(it.fare.type) >= 2 ? 1 : 0))) return null;
+    return s.reference;
+  };
+  var channels = {};
+  items.forEach(function(it) {
+    var k = it.channel || 'Sin registrar';
+    (channels[k] = channels[k] || []).push({ quoted: it.quoted, market: it.market });
+  });
+  return {
+    tracked: items.length,
+    pendingPurchase: items.filter(function(it) { return it.status === 'APROBADO'; }).length,
+    atPurchase: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: refOf(it, it.atPurchase) }; })),
+    atQuote: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: refOf(it, it.atQuote) }; })),
+    overall: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.market }; })),
+    sameAirline: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.sameAirline }; })),
+    // Lo facturado frente a Google: solo viajes sin hotel (la factura no separa tiquetes y hotel).
+    invoiced: _ptAggregate_(items.map(function(it) { return { quoted: it.invoicedVsGoogle === null ? null : it.invoiced, market: it.market }; })),
+    byChannel: Object.keys(channels).sort().map(function(k) { var a = _ptAggregate_(channels[k]); a.channel = k; a.requests = channels[k].length; return a; })
   };
 }
 
@@ -17690,9 +17909,9 @@ function _ptBuildTracking_() {
       var row = vals[r];
       var quoted = Math.round(_csToNumber_(cell(row, 'COSTO_FINAL_TIQUETES'))) || null;
       var snaps = byId[id];
-      var okCot = snaps.COTIZACION && snaps.COTIZACION.result === 'OK' ? snaps.COTIZACION : null;
-      var okBuy = snaps.COMPRA && snaps.COMPRA.result === 'OK' ? snaps.COMPRA : null;
-      var ref = okBuy || okCot;
+      // #A95: la búsqueda que manda es la más reciente con el equipaje de la tarifa del viaje.
+      var fare = _ptFare_(row, cell, [snaps.COMPRA, snaps.COTIZACION]);
+      var ref = fare.ref;
       var market = ref ? ref.reference : null;
       var same = ref ? ref.sameAirline : null;
       var inv = _ptInvoiced_(row, hm, config);
@@ -17722,7 +17941,8 @@ function _ptBuildTracking_() {
         differencePct: quoted && market ? (quoted - market) / market * 100 : null,
         // Lo ya comprado (#A87): lo facturado, igual que la variación cotizado vs facturado.
         invoiced: inv.invoiced, invoiceCount: inv.count, invoicedIncludesHotel: inv.includesHotel,
-        invoicedVsGoogle: inv.invoiced && !inv.includesHotel && market ? inv.invoiced - market : null
+        invoicedVsGoogle: inv.invoiced && !inv.includesHotel && market ? inv.invoiced - market : null,
+        fare: fare.info
       });
     }
   }
@@ -17732,22 +17952,13 @@ function _ptBuildTracking_() {
     return ra !== rb ? ra - rb : (a.departure < b.departure ? -1 : a.departure > b.departure ? 1 : (a.requestId < b.requestId ? -1 : 1));
   });
 
-  var refOf = function(s) { return s && s.result === 'OK' ? s.reference : null; };
-  var channels = {};
-  items.forEach(function(it) {
-    var k = it.channel || 'Sin registrar';
-    (channels[k] = channels[k] || []).push({ quoted: it.quoted, market: it.market });
-  });
-  var summary = {
-    tracked: items.length,
-    pendingPurchase: items.filter(function(it) { return it.status === 'APROBADO'; }).length,
-    atPurchase: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: refOf(it.atPurchase) }; })),
-    atQuote: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: refOf(it.atQuote) }; })),
-    overall: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.market }; })),
-    sameAirline: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.sameAirline }; })),
-    // Lo facturado frente a Google: solo viajes sin hotel (la factura no separa tiquetes y hotel).
-    invoiced: _ptAggregate_(items.map(function(it) { return { quoted: it.invoicedVsGoogle === null ? null : it.invoiced, market: it.market }; })),
-    byChannel: Object.keys(channels).sort().map(function(k) { var a = _ptAggregate_(channels[k]); a.channel = k; a.requests = channels[k].length; return a; })
+  // Todas las búsquedas (como antes) y, aparte, solo las de la misma tarifa (#A95, «peras con peras»).
+  var summary = _ptSummary_(items, false);
+  summary.sameFare = _ptSummary_(items.filter(function(it) { return it.fare.match === true; }), true);
+  summary.fareCounts = {
+    match: items.filter(function(it) { return it.fare.match === true; }).length,
+    mismatch: items.filter(function(it) { return it.fare.match === false; }).length,
+    unknown: items.filter(function(it) { return it.fare.match === null; }).length
   };
   return { items: items, summary: summary, meta: meta, analysis: analysis };
 }
@@ -17887,6 +18098,12 @@ function _ptBuildDetail_(id) {
       // Quién confirmó los costos: se registra desde #A86; antes, vacío.
       costConfirmedBy: by ? { email: String(by.email || ''), name: _ptUserName_(by.email) } : null,
       reservationRegisteredAt: events.reservationRegistered || '',
+      // #A95: tarifa registrada y la recomendada por el manual.
+      fareType: String(_fareOptionValue_(cell(FARE_TYPE_HEADER)) || ''),
+      fareRecommended: String(_fareOptionValue_(cell(FARE_RECOMMENDED_HEADER)) ||
+        _fareOptionForNights_(_fareNights_(_psDateKey_(cell('FECHA IDA')), _psDateKey_(cell('FECHA VUELTA')), cell('# NOCHES (AUTOMÁTICO)')))),
+      fareName: String(cell(FARE_NAME_HEADER) || ''),
+      fareJustification: String(cell(FARE_JUSTIFICATION_HEADER) || ''),
       invoiced: inv.invoiced, invoiceCount: inv.count, invoicedIncludesHotel: inv.includesHotel, hotelQuoted: inv.hotelQuoted
     };
   }

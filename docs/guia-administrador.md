@@ -136,6 +136,7 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
 1. Panel admin → fila con status `PENDIENTE_OPCIONES`
 2. Abre el detalle → **"Subir imágenes de opciones"**
 3. Para vuelos: sube una imagen por opción (A, B, C…). Si hay ida y vuelta, indica dirección IDA o VUELTA. Para hoteles: sube una imagen por opción.
+   - En vuelos, arriba aparece la **tarifa a cotizar según el manual COM-P-02** (#A95): TIPO 1 para viajes de 0 a 1 noche, TIPO 2 de 2 a 5 y TIPO 3 de 6 o más, con su nombre en cada aerolínea (por ejemplo, TIPO 2 = Avianca Classic, LATAM Light).
 4. Al guardar, el sistema envía automáticamente un correo al solicitante con las imágenes.
 
 ### 5.2 Revisar selección y confirmar costos (PENDIENTE_CONFIRMACION_COSTO → PENDIENTE_APROBACION)
@@ -145,6 +146,7 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
 3. Escribe el costo de los tiquetes y, si aplica, el del hotel, en pesos, con o sin puntos de miles (`889.518` o `889518`). Bajo cada campo aparece cómo se va a registrar. Si no tiene costo (por ejemplo, un apartamento corporativo), escribe `0`; cualquier otro valor debe ser de al menos $10.000. La confirmación avisa si el total queda en $0.
    - **Compra prevista** (#A82): la **aerolínea** (lista o "Otra…") y el **canal**: *Aviatur*, *Directo* (con la aerolínea o, en solo hospedaje, con el hotel) u *Otra agencia*. Son obligatorios; en solo hospedaje no se pide aerolínea.
    - **Regreso con otra aerolínea** (#A85): si la ida es con una aerolínea y el regreso con otra (por ejemplo, LATAM de ida y Avianca de regreso), marca *"El regreso es con otra aerolínea"* y elige la del regreso. Solo aparece en viajes con regreso.
+   - **Tarifa del tiquete** (#A95): viene seleccionada la que recomienda el manual COM-P-02 por las noches del viaje, con el equipaje que incluye. Si vas a comprar otra (por ejemplo, el viajero lleva equipo en bodega), elígela y escribe por qué en *"¿Por qué otra tarifa?"* (mínimo 10 caracteres). Es obligatoria en vuelos; en solo hospedaje no aparece. Ver [manual-com-p-02.md](manual-com-p-02.md).
 4. Al guardar, si el total ≤ $1.2M y no es internacional → pasa a `APROBADO` directo. Si no → pasa a `PENDIENTE_APROBACION` y se envía correo a CEO + CDS + aprobador de área.
 
 **Costos mal digitados antes del 2026-09-14:** con el campo anterior, `889.518` se guardaba como 889 pesos con decimales. **Equitel Viajes → 11. Corregir costos mal digitados** los corrige: muestra una vista previa, pide confirmación, deja una nota en OBSERVACIONES y el detalle en la pestaña "Reporte corrección costos". Los que no se pueden deducir (por ejemplo, costos de $1) solo los lista para revisarlos a mano.
@@ -159,6 +161,7 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
    - **Fecha de compra** (hoy por default)
    - **Archivos de confirmación** (PDF de la aerolínea / hotel — puedes subir varios)
    - **Compra (aerolínea y canal)** (#A82): viene llena con lo previsto al confirmar costos. Cámbiala si se compró por otro canal (por ejemplo, directo con la aerolínea porque Aviatur no ajustó el precio). Es obligatoria al registrar; al corregir una reserva es opcional. Si el regreso se compró con otra aerolínea, marca *"El regreso es con otra aerolínea"* (#A85).
+   - **Tarifa comprada** (#A95): viene con la que se registró al confirmar costos. Cámbiala si al final se compró otra; si no es la recomendada, escribe por qué. Es obligatoria al confirmar la reserva; al corregir o con *"Guardar sin enviar"* solo se revisa si la cambias.
    - **Hotel (nombre y canal)** (#A94): solo en solicitudes con hospedaje. Viene con el hotel que pidió el viajero; cámbialo si reservaste otro y elige el canal (*Aviatur*, *Directo con el hotel* u *Otra agencia*). Es obligatorio al confirmar la reserva; con *"Guardar sin enviar"* puede quedar para después. Si al final no se reservó hotel (lo quitó el aprobador o es un apartamento corporativo), marca *"No se reservó hotel"*. En solo hospedaje este bloque reemplaza al de compra.
 4. Al guardar:
    - La carpeta en Drive se renombra a `SOL-000123 - PNR12345 - TC 1234 - MAY 26`

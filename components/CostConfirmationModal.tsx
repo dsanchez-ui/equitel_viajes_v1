@@ -6,6 +6,8 @@ import { ConfirmationDialog } from './ConfirmationDialog';
 import { validateCostAmount, formatCop } from '../utils/money';
 import { PurchaseForm, checkPurchaseForm, purchaseAirlineLabel, purchaseChannelLabel, purchaseFormFrom } from '../utils/purchase';
 import { PurchaseInfoFields } from './PurchaseInfoFields';
+import { FareFields } from './FareFields';
+import { FareForm, fareFormFrom, fareRecommendation, fareShort, normalizeFare } from '../utils/fare';
 import {
   BirthdatesLoadState, RequestTripCorporateInfo, RequestPassengersHotelInfo, RequestComments, RequestOptionsGallery,
 } from './RequestInfoSections';
@@ -89,6 +91,15 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
   const canSplitReturn = !!request.returnDate && serverHasReturnAirline;
   const purchaseCheck = checkPurchaseForm(purchase, isHotelOnly, canSplitReturn);
 
+  // #A95: tarifa del tiquete según el manual COM-P-02 (recomendada por las noches del
+  // viaje; otra pide justificación). Solo vuelos y si el servidor ya la guarda.
+  const serverHasFare = !isHotelOnly && request.fareRecommended !== undefined;
+  const fareRec = fareRecommendation(request);
+  const [fare, setFare] = useState<FareForm>(() => fareFormFrom(request, fareRec.option));
+  const fareAirline = purchaseCheck.ok ? purchaseCheck.airline : purchase.airline;
+  const fareReturnAirline = purchaseCheck.ok ? purchaseCheck.returnAirline : (purchase.splitReturn ? purchase.returnAirline : '');
+  const fareCheck = normalizeFare(fare.option, fare.justification, fareRec.option, fareAirline, fareReturnAirline);
+
   // Vuelos: tiquetes obligatorio y hotel opcional. Solo hospedaje: hotel obligatorio.
   const ticketsCheck = validateCostAmount(ticketsText, 'de los tiquetes', !isHotelOnly);
   const hotelCheck = validateCostAmount(hotelText, 'del hotel', isHotelOnly);
@@ -102,6 +113,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
       if (!isHotelOnly && !ticketsCheck.ok && ticketsCheck.error) problems.push(ticketsCheck.error);
       if (!hotelCheck.ok && hotelCheck.error) problems.push(hotelCheck.error);
       if (!purchaseCheck.ok && purchaseCheck.error) problems.push(purchaseCheck.error);
+      if (serverHasFare && !fareCheck.ok && fareCheck.error) problems.push(fareCheck.error);
       if (problems.length > 0) {
           setDialog({ isOpen: true, title: 'Validación', message: problems.join('\n\n'), type: 'ALERT', onConfirm: closeDialog });
           return;
@@ -114,6 +126,10 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
           message += "⚠️ Se registrará SIN COSTO (por ejemplo, un apartamento corporativo).\n\n";
       }
       message += `Compra: ${purchaseCheck.airline ? purchaseAirlineLabel(purchaseCheck.airline, purchaseCheck.returnAirline) + ' · ' : ''}${purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)}\n\n`;
+      if (serverHasFare) {
+          message += `Tarifa: ${fareShort(fareCheck.option, fareAirline, fareReturnAirline)}`
+            + (fareCheck.exception ? ` — distinta de la recomendada (TIPO ${fareCheck.recommended}): "${fareCheck.justification}"` : ' (la recomendada)') + '\n\n';
+      }
 
       // Saltar aprobación requiere el permiso (#A77) y una justificación válida.
       if (skipApproval) {
@@ -159,6 +175,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
               purchaseChannel: purchaseCheck.channel,
               // #A85: solo si el servidor la maneja; '' = la misma de ida (o solo ida).
               ...(serverHasReturnAirline ? { purchaseReturnAirline: purchaseCheck.returnAirline } : {}),
+              // #A95: la recomendada la vuelve a calcular el servidor.
+              ...(serverHasFare ? { fareOption: String(fareCheck.option), fareJustification: fareCheck.justification } : {}),
               // Si vamos a saltar aprobación inmediatamente, le decimos al
               // backend que NO envíe correo a los aprobadores en este paso
               // intermedio — nunca van a actuar sobre la solicitud.
@@ -296,6 +314,18 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
                       title="Compra prevista"
                       hint="Si al comprar el canal cambia (por ejemplo, se compra directo porque Aviatur no ajustó el precio), se corrige al registrar la reserva."
                   />
+
+                  {serverHasFare && (
+                      <FareFields
+                          trip={request}
+                          airline={fareAirline}
+                          returnAirline={fareReturnAirline}
+                          value={fare}
+                          onChange={setFare}
+                          showErrors={triedSubmit}
+                          title="Tarifa del tiquete (manual COM-P-02) *"
+                      />
+                  )}
 
                   {canSkipApproval && (
                     <div className="mt-3 p-3 border border-amber-200 bg-amber-50 rounded">

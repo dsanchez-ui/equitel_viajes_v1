@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Option, TravelRequest, RequestStatus } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
+import { FareRecommendationNote } from './FareFields';
 
 interface PendingOption {
     tempId: string;
@@ -400,6 +401,10 @@ export const OptionUploadModal = ({ request, onClose, onSuccess }: OptionUploadM
                         <h3 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">
                             Cargar Opciones Visuales - <span className="text-brand-red">{request.requestId}</span>
                         </h3>
+                        {/* #A95: qué tarifa cotizar según el manual COM-P-02 */}
+                        {request.requestMode !== 'HOTEL_ONLY' && (
+                            <div className="-mt-2 mb-3"><FareRecommendationNote trip={request} /></div>
+                        )}
 
                         <div className="flex flex-col lg:flex-row gap-6 h-[70vh]">
 

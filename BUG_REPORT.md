@@ -2085,6 +2085,87 @@ Plan completo y vivo en [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahor
 
 ---
 
+## **#A95 — Tarifa del tiquete según el manual COM-P-02 y comparador «peras con peras»**
+**Fecha:** 2026-10-08 · **Pedido por:** reunión «Doge Supply Chain» del 8-oct (Yurani, Juan Camilo y David) · **Estado:** Implementado, en `main`
+
+**Pedido:**
+- Yurani: la comparación con Google debe hacerse con la tarifa real de compra (básica, clásica o flexible), no contra la más barata, porque el viajero puede necesitar maleta: *«peras con peras»*. Además, la tarifa no se está registrando bien en la hoja.
+- David: que la plataforma le indique a Laura qué tarifa comprar, que permita excepciones con justificación, que todo quede registrado para la trazabilidad y que el comparador use esa tarifa si la API lo permite.
+
+**Qué dice el manual (COM-P-02 v07, página 2):** la tarifa se elige por las noches del viaje.
+
+| Opción | Noches | LATAM | Avianca | Clic | Satena |
+|---|---|---|---|---|---|
+| TIPO 1 | 0 a 1 | Basic | Basic | VeLigera | Z0Basic |
+| TIPO 2 | 2 a 5 | Light | Classic | VeEcono | Z0Econo |
+| TIPO 3 | 6 o más | Full | Classic | VePreferencial | Z0Flexi |
+
+El manual dice «más de 6» para la opción 3; los viajes de 6 noches no caen en ningún rango y se tratan como TIPO 3 (Yurani: *«la tres es de 6 días»*).
+
+**Qué permite la API (SerpApi, pruebas del 8-oct, 5 búsquedas):**
+- En rutas nacionales de Colombia, Google **no trae las tres tarifas por separado**: las opciones de compra solo traen la más barata de cada vendedor, sin nombre de tarifa. No se pueden pedir «las tres tarifas» de una vez.
+- Sí se puede pedir el **equipaje** con el parámetro `bags` (maletas de mano). En Avianca cambia la tarifa: AV 9368 pasó de $265.270 (Basic) a $339.050 (Classic, con maleta de mano y de bodega).
+- En LATAM y Wingo el precio no cambia con `bags`. En Wingo es correcto (su tarifa básica incluye maleta de mano); en LATAM, Google puede mostrar la Basic aunque no la incluya.
+- Google no deja pedir maleta de bodega: en TIPO 3 (LATAM Full) el precio de Google queda por debajo.
+
+**Cambio:**
+- **Regla gemela** `utils/fare.ts` ↔ `Code.gs`:
+  - noches = regreso − ida; sin regreso, las noches de hotel;
+  - TIPO por noches y nombre de la tarifa en cada aerolínea del manual;
+  - es excepción si la tarifa elegida tiene otro nombre que la recomendada (en Avianca, TIPO 2 y 3 son la misma Classic: no es excepción); fuera del manual cuenta el número;
+  - la excepción pide una justificación de 10 a 500 caracteres.
+- **Confirmar costos:** bloque *Tarifa del tiquete (manual COM-P-02)* con la recomendada preseleccionada, el equipaje de cada opción y *¿Por qué otra tarifa?* si se elige otra. Obligatorio en vuelos; solo hospedaje no lo lleva.
+- **Registrar reserva:** el mismo bloque como *Tarifa comprada*, precargado con lo de Confirmar costos. Obligatorio al registrar; al corregir o al guardar sin enviar, solo se valida y se guarda si se cambió (una reserva antigua no queda con la recomendada sin que nadie la eligiera). Se guarda con `setPurchaseInfo`.
+- **Cargar opciones:** un aviso con la tarifa a cotizar y su nombre en cada aerolínea.
+- **Detalle de la solicitud** (administradores): la tarifa y, si es una excepción, el motivo.
+- **Hoja:** la tarifa va en la columna de siempre, `TIPO DE COMPRA DE TKT` (`TIPO 1/2/3`). Columnas nuevas al final: `TARIFA RECOMENDADA` (la calcula el servidor, nunca el navegador), `TARIFA NOMBRE` y `TARIFA JUSTIFICACION`. Las crea el menú 12 o el sistema la primera vez.
+- **Rastreo (`Rastreo.gs`):**
+  - busca con el equipaje de la tarifa registrada: TIPO 1, sin maleta; TIPO 2 o 3, una maleta de mano por pasajero;
+  - si la tarifa aún no está registrada, usa `TARIFA RECOMENDADA` y, si tampoco está, busca sin maleta;
+  - si la tarifa cambia después de una búsqueda, repite esa búsqueda una sola vez;
+  - cada fila de `COMPARATIVO PRECIOS` guarda `TARIFA` y `MALETA DE MANO`.
+- **Dashboard de costos:**
+  - **Selector *Comparar*:** *Con la misma tarifa* (por defecto) o *Todas las búsquedas*. Con la misma tarifa, solo cuentan los viajes cuya búsqueda tiene el equipaje de su tarifa. Los que no tienen tarifa o se buscaron con otro equipaje se muestran con *no cuenta: …*.
+  - El resumen trae la otra vista como referencia.
+  - Cada viaje muestra su tarifa y si se buscó con o sin maleta. El detalle muestra la tarifa, la recomendada y el motivo de la excepción.
+  - El CSV agrega seis columnas de tarifa.
+  - *Proyección de ahorro* tiene el mismo selector (*Viajes comparados*). Por defecto la muestra es solo la misma tarifa.
+  - Los *¿Cómo se calcula?* explican la regla y sus límites.
+
+**Compatibilidad de despliegue:**
+- *App nueva + servidor anterior:* la app solo muestra la tarifa si el servidor manda `fareRecommended`, así que no aparece y todo sigue igual.
+- *Servidor nuevo + app anterior:* la app anterior no manda `fareOption` y el servidor no exige ni toca la tarifa. Una clave `fare` enviada por un cliente siempre se descarta.
+- *Dashboard nuevo + rastreo anterior:* las búsquedas sin la columna `MALETA DE MANO` cuentan como hechas sin maleta, que es como se hicieron.
+- *Rastreo nuevo + `Code.gs` anterior:* las columnas nuevas de `COMPARATIVO PRECIOS` se ignoran.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-fare-rules.cjs` (nuevo):
+  - 61 casos en los que la app y el servidor coinciden: noches, TIPO, nombres, Avianca 2 = 3, aerolíneas fuera del manual, regreso con otra aerolínea y justificación;
+  - 17 verificaciones de guardado en la hoja: la recomendada la calcula el servidor; sin `fareOption` no se toca nada; un `fare` del cliente se descarta; solo hospedaje; errores sin escritura a medias.
+- `tools/check-price-tracking.cjs` (sección 5d) verifica:
+  - las maletas por tarifa y pasajeros;
+  - que sin maleta no se manda `bags`;
+  - que la segunda pasada no repite y que, si cambia la tarifa, se repite una sola vez;
+  - la tarifa en el dashboard, `sameFare` y `fareCounts`;
+  - que una búsqueda con otro equipaje no cuenta.
+- `tools/check-savings-analysis.cjs`: 5 comprobaciones de la muestra por tarifa y de la vista con un `Code.gs` anterior.
+- **Capturas:** dashboard con la base real del 8-oct (3 viajes, ninguno con tarifa: el titular lo dice y remite a *Todas las búsquedas*) y con una variante con tarifas. Modales con la recomendada, con una excepción y con el error.
+
+**Despliegue:**
+1. Pegar `server/Code.gs` y `server/CostsDashboard.html` en Apps Script y crear una versión nueva del web app.
+2. En el proyecto aparte «Equitel · Rastreo de precios»: reemplazar el archivo **Rastreo** con `tools/comparador-precios/apps-script/Rastreo.gs`. `Nucleo` no cambia.
+3. Push del frontend.
+4. Opcional: menú 12 para crear las columnas.
+
+**Pendiente / límites:**
+- Los viajes ya cotizados antes de este cambio no tienen tarifa y no entran en *misma tarifa*; aparecen en *Todas las búsquedas*.
+- LATAM TIPO 2 y todo TIPO 3 quedan por debajo en Google (ver arriba).
+- El manual pide que el formulario COM-F-06 diga si el viajero requiere equipaje de bodega. Queda como propuesta: preguntarlo en el formulario de solicitud.
+- Diferencia con el manual: para tiquetes internacionales pide aprobación del CEO; la plataforma acepta CEO o CDS. Solo se anota; ver [docs/manual-com-p-02.md](docs/manual-com-p-02.md).
+
+---
+
 ## **#A96 — «Failed to fetch dynamically imported module» al crear una solicitud**
 **Fecha:** 2026-10-08 · **Reportado por:** Laura (le pasó a Weimar a las 12:37 p. m.) · **Estado:** Corregido y publicado
 

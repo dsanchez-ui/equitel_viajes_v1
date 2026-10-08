@@ -66,8 +66,18 @@ var RP_ENCABEZADOS = [
   'RESULTADO', 'DETALLE', 'SEGUNDOS', 'CONSULTAS',
   // Formato 2 (#A86). Al final: una pestaña creada antes las recibe al final.
   'FORMATO', 'HORA REGRESO PEDIDA', 'AEROLINEA REGRESO REGISTRADA',
-  'REFERENCIA', 'REFERENCIA A LA HORA', 'REFERENCIA TIPO', 'MISMA AEROLINEA', 'IDA Y VUELTA JUNTOS', 'TRAMOS'
+  'REFERENCIA', 'REFERENCIA A LA HORA', 'REFERENCIA TIPO', 'MISMA AEROLINEA', 'IDA Y VUELTA JUNTOS', 'TRAMOS',
+  // #A95: la tarifa del viaje y con cuántas maletas de mano se buscó.
+  'TARIFA', 'MALETA DE MANO'
 ];
+
+// #A95 (reunión del 8-oct, Yurani: «comparar peras con peras»): se busca con el mismo
+// equipaje de la tarifa del viaje (manual COM-P-02). TIPO 1 (Basic) sin maleta; TIPO 2
+// y 3 con una maleta de mano por pasajero (parámetro bags de Google Flights): en
+// Avianca ese precio es el de la Classic, que también trae bodega. La tarifa es la
+// registrada por el área de viajes (TIPO DE COMPRA DE TKT) o, si falta, la recomendada
+// (TARIFA RECOMENDADA). Sin ninguna, se busca sin maleta como antes. Una búsqueda hecha
+// con otro equipaje se repite una vez si la solicitud sigue en su momento.
 // Se guardan como texto: Sheets convertiría '2026-10-20' o '07:00' en fecha u hora.
 var RP_TEXTO = { 'ID SOLICITUD': 1, 'FECHA IDA': 1, 'FECHA REGRESO': 1, 'HORA PEDIDA': 1, 'SALIDA MAS BARATA': 1,
   'SALIDA CERCA HORA': 1, 'VUELO CERCA HORA': 1, 'RANGO TIPICO': 1, 'HORA REGRESO PEDIDA': 1 };
@@ -144,9 +154,21 @@ function rpEventos_(raw) {
   try { var e = JSON.parse(raw); return e && typeof e === 'object' ? e : {}; } catch (err) { return {}; }
 }
 
+/** TIPO de la tarifa (1, 2 o 3) de un texto como 'TIPO 2'; 0 si no hay. */
+function rpTarifa_(v) {
+  var m = /^(?:tipo|opci[oó]n)?\s*([123])$/i.exec(String(v == null ? '' : v).trim());
+  return m ? Number(m[1]) : 0;
+}
+
+/** ¿Ya se buscó ese 'ID|MOMENTO' con ese equipaje (0 = sin maleta, 1 = con maleta de mano)? */
+function rpHecha_(hechas, clave, nivel) {
+  return !!(hechas[clave] && hechas[clave][nivel]);
+}
+
 /**
- * Claves 'ID|MOMENTO' ya buscadas en el formato actual, y consultas hechas hoy (para
- * el tope diario). Una búsqueda del formato anterior no cuenta como hecha.
+ * Claves 'ID|MOMENTO' ya buscadas en el formato actual, con el equipaje de cada una, y
+ * consultas hechas hoy (para el tope diario). Una búsqueda del formato anterior no
+ * cuenta como hecha.
  */
 function rpLeerHechas_(hoja) {
   var hechas = {};
@@ -159,7 +181,12 @@ function rpLeerHechas_(hoja) {
   for (var r = 1; r < v.length; r++) {
     var id = String(v[r][h['ID SOLICITUD']] || '').trim();
     var formato = h['FORMATO'] === undefined ? 0 : rpNumero_(v[r][h['FORMATO']]);
-    if (id && formato >= RP_FORMATO) hechas[id + '|' + String(v[r][h['MOMENTO']] || '').trim()] = true;
+    if (id && formato >= RP_FORMATO) {
+      var clave = id + '|' + String(v[r][h['MOMENTO']] || '').trim();
+      var nivel = h['MALETA DE MANO'] !== undefined && rpNumero_(v[r][h['MALETA DE MANO']]) > 0 ? 1 : 0;
+      hechas[clave] = hechas[clave] || {};
+      hechas[clave][nivel] = true;
+    }
     if (rpFecha_(v[r][h['FECHA BUSQUEDA']]) === hoy) consultasHoy += rpNumero_(v[r][h['CONSULTAS']]);
   }
   return { hechas: hechas, consultasHoy: consultasHoy };
@@ -199,15 +226,18 @@ function rpCandidatos_(valores, hechas, cfg, ahoraMs) {
       cotizado: rpNumero_(celda(fila, 'COSTO_FINAL_TIQUETES')),
       aerolinea: String(celda(fila, 'AEROLINEA') || '').trim(),
       aerolineaRegreso: String(celda(fila, 'AEROLINEA REGRESO') || '').trim(),
-      canal: String(celda(fila, 'CANAL DE COMPRA') || '').trim()
+      canal: String(celda(fila, 'CANAL DE COMPRA') || '').trim(),
+      tarifa: rpTarifa_(celda(fila, 'TIPO DE COMPRA DE TKT')) || rpTarifa_(celda(fila, 'TARIFA RECOMENDADA'))
     };
-    if (estado === 'PENDIENTE_APROBACION' && !hechas[id + '|COTIZACION'] && cfg.inicio && ev.costConfirmed &&
+    base.maletas = base.tarifa >= 2 ? Number(base.viaje.pasajeros) : 0;
+    var nivel = base.maletas > 0 ? 1 : 0;
+    if (estado === 'PENDIENTE_APROBACION' && !rpHecha_(hechas, id + '|COTIZACION', nivel) && cfg.inicio && ev.costConfirmed &&
         rpFecha_(new Date(ev.costConfirmed)) >= cfg.inicio) {
       out.push(rpCopia_(base, 'COTIZACION'));
     }
     var reservadaHace = ev.reservationRegistered ? ahoraMs - new Date(ev.reservationRegistered).getTime() : null;
     var compra = estado === 'APROBADO' || (estado === 'RESERVADO' && reservadaHace !== null && reservadaHace >= 0 && reservadaHace <= RP_VENTANA_COMPRA_MS);
-    if (compra && !hechas[id + '|COMPRA']) out.push(rpCopia_(base, 'COMPRA'));
+    if (compra && !rpHecha_(hechas, id + '|COMPRA', nivel)) out.push(rpCopia_(base, 'COMPRA'));
   }
   out.sort(function(a, b) {
     if (a.momento !== b.momento) return a.momento === 'COMPRA' ? -1 : 1;
@@ -407,7 +437,8 @@ function rpBuscar_(cand, cfg) {
     'PASAJEROS': Number(v.pasajeros), 'HORA PEDIDA': v.horaIda || '', 'HORA REGRESO PEDIDA': v.horaRegreso || '',
     'COSTO TIQUETES COTIZADO': cand.cotizado || '', 'AEROLINEA REGISTRADA': cand.aerolinea, 'CANAL REGISTRADO': cand.canal,
     'AEROLINEA REGRESO REGISTRADA': cand.aerolineaRegreso || '',
-    'FORMATO': RP_FORMATO, 'CONSULTAS': 0
+    'FORMATO': RP_FORMATO, 'CONSULTAS': 0,
+    'TARIFA': cand.tarifa ? 'TIPO ' + cand.tarifa : '', 'MALETA DE MANO': cand.maletas || 0
   };
   var detalle = [];
   var cerrar = function() {
@@ -428,6 +459,7 @@ function rpBuscar_(cand, cfg) {
   // Un tramo por consulta (solo ida), con la hora y la aerolínea de ese tramo.
   var hechos = tramos.map(function(t) {
     var params = cpParametros({ origen: t.origen, destino: t.destino, ida: t.fecha, pasajeros: v.pasajeros }, cfg.clave, {});
+    if (cand.maletas) params.bags = String(cand.maletas);
     var json = rpConsultar_(params);
     fila['CONSULTAS']++;
     var r = rpResumenTramo_(t.tramo, params, cpResumir(json, { horaIda: t.hora }), t.hora, t.aerolinea, cfg.clave);
@@ -484,6 +516,7 @@ function rpBuscar_(cand, cfg) {
   if (v.regreso && v.internacional) {
     try {
       var pr = cpParametros(v, cfg.clave, {});
+      if (cand.maletas) pr.bags = String(cand.maletas);
       var jr = rpConsultar_(pr);
       fila['CONSULTAS']++;
       var rr = rpResumenTramo_('IDA Y VUELTA', pr, cpResumir(jr, v), v.horaIda, cand.aerolinea, cfg.clave);
@@ -689,6 +722,7 @@ function probarConfiguracion() {
   c.slice(0, 20).forEach(function(x) {
     lineas.push('  ' + x.id + ' ' + x.momento + ' · ' + x.viaje.origen + ' → ' + x.viaje.destino + ' · ida ' + x.viaje.ida +
       (x.viaje.regreso ? ', regreso ' + x.viaje.regreso : '') + ' · ' + x.viaje.pasajeros + ' pasajero(s) · ' +
+      (x.tarifa ? 'TIPO ' + x.tarifa + (x.maletas ? ', con maleta de mano' : ', sin maleta') : 'sin tarifa, sin maleta') + ' · ' +
       rpConsultasNecesarias_(x) + ' consulta(s)');
   });
   lineas.push(cfg.inicio ? 'Estudio: ' + cfg.inicio + ' a ' + (cfg.fin || '(sin fin)') + '.' : 'El estudio aún no está activo: ejecute activarRastreo().');

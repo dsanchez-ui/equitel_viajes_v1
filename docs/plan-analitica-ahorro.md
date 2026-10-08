@@ -346,7 +346,7 @@ Aviatur.
 - Revisar si la caché por fila en Drive de `getData` (§3.1) se puede retirar, ya con la
   caché de respuestas funcionando y medida.
 - Pendientes de decisión con Laura: valor pagado en *Registrar reserva*; marcar si se siguió
-  la recomendación; si la cotización incluye maleta.
+  la recomendación. (Si la cotización incluye maleta ya se sabe por la tarifa, #A95.)
 
 ## 10. Decisiones
 
@@ -361,9 +361,17 @@ Aviatur.
 | 7 | "Viaje con cambios" | La compra es una modificación (`TIPO DE SOLICITUD = MODIFICACION`), contando aparte las con costo |
 | 8 | Dónde guardar lo precalculado | `CacheService`, sin Script Properties (David, 8-oct) |
 | 10 | Toda estimación es verificable | Cada sección con cifras derivadas tiene un *¿Cómo se calcula?* breve (cómo y por qué); la proyección muestra la cuenta de cada mes en pesos y el CSV la trae (David, 8-oct, #A93) |
+| 11 | Qué viajes entran en la muestra | Por defecto, solo los comparados con la misma tarifa (el equipaje de la tarifa registrada); *Todas las búsquedas* queda como opción (reunión del 8-oct, Yurani: «peras con peras», #A95) |
 | 9 | Cómo se nombran las cifras | En palabras de la pregunta que responden (*Precio más barato en Google*, *% de ahorro sobre lo cotizado*, *¿De dónde sale la diferencia?*), nunca con nombres internos ni de columnas; sin recuadros de texto (David, 8-oct, #A92) |
 
 ## 11. Bitácora
+
+- **2026-10-08 (noche)** — Reunión «Doge Supply Chain» (#A95). Yurani pide comparar con la
+  tarifa real de compra, no con la más barata. Por eso:
+  - Laura registra la tarifa del manual COM-P-02 y el rastreo busca con su equipaje.
+  - La muestra de la proyección es, por defecto, solo la misma tarifa.
+  - Con la base del 8-oct, ninguno de los 3 viajes comparados tiene tarifa. La proyección queda vacía hasta que haya viajes con tarifa registrada; *Todas las búsquedas* conserva las cifras anteriores.
+  - Acuerdo de la reunión: revisar las cifras de ahorro con Yurani antes de mostrárselas a Alejandro.
 
 - **2026-10-08 (noche)** — David pide poder sustentar y repetir a mano cada estimación (#A93).
   - Cada sección tiene un *¿Cómo se calcula?* breve.

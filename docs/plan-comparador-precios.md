@@ -1,6 +1,6 @@
 # Plan — Comparador de precios de tiquetes y estudio de sobrecosto
 
-> **Estado (2026-10-07): prueba hecha el 6-oct (demostración para Alejandro). Fase 1 en producción (#A82). Fase 2 activa desde el 7-oct como estudio de 2 semanas, oculto para Laura (#A84); desde #A86 busca cada tramo por separado y el dashboard muestra el detalle de cada viaje.** Pedido de Alejandro
+> **Estado (2026-10-07): prueba hecha el 6-oct (demostración para Alejandro). Fase 1 en producción (#A82). Fase 2 activa desde el 7-oct como estudio de 2 semanas, oculto para Laura (#A84); desde #A86 busca cada tramo por separado y el dashboard muestra el detalle de cada viaje; desde #A95 (8-oct) compara con la misma tarifa del manual.** Pedido de Alejandro
 > Gómez (vicepresidente) a David. La prueba (fase 0) está en
 > [tools/comparador-precios/](../tools/comparador-precios/README.md); las fases 1 a 4
 > esperan su resultado y las decisiones del final.
@@ -127,6 +127,26 @@ va en las propiedades de ese proyecto, nunca en el código ni en la hoja.
 (#A62). Dárselo obliga a volver a autorizar el script, con riesgo para los
 recordatorios y la copia diaria, que corren con la autorización del dueño. Uno aparte
 aísla ese riesgo y se apaga sin tocar la plataforma.
+
+### Misma tarifa: «peras con peras» (implementada: #A95)
+
+En la reunión del 8-oct Yurani pidió comparar con la tarifa real de compra y no con la más
+barata, porque el viajero puede necesitar maleta. Se acordó registrar la tarifa en la
+plataforma y que el comparador la use.
+
+**Lo que da la API** (pruebas del 8-oct):
+- Google no trae las tres tarifas del manual por separado en rutas nacionales.
+- Sí acepta el número de maletas de mano (`bags`). Con ese dato, Avianca pasa a la Classic.
+- En LATAM, pedir maleta de mano no cambia el precio.
+- No se puede pedir maleta de bodega.
+
+**Cómo funciona:**
+- Laura registra la tarifa (TIPO 1, 2 o 3) al confirmar costos y al registrar la reserva.
+- El rastreo busca con su equipaje: TIPO 1 sin maleta; TIPO 2 y 3 con una maleta de mano por pasajero.
+- Si la tarifa cambia después de una búsqueda, esa búsqueda se repite una sola vez.
+- El dashboard compara por defecto solo los viajes buscados con el equipaje de su tarifa. *Todas las búsquedas* queda como referencia.
+
+Reglas del manual y límites: [manual-com-p-02.md](manual-com-p-02.md).
 
 ### Fase 3 — Comparación visible para Laura (después del estudio)
 

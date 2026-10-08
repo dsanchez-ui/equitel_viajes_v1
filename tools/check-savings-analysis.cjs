@@ -270,6 +270,19 @@ function main() {
   const rates = b.saRates(groupSample, 'median', 'ticket', 'all');
   eq('con 5 o más viajes de un tipo, se usa el valor de su grupo; si no, el de todos', [rates.rt, rates.ow], [50000, 50000]);
 
+  // #A95: con «misma tarifa», la muestra solo lleva los viajes buscados en Google con el equipaje de su tarifa.
+  const I = (id, type, match, o) => Object.assign({ requestId: id, quoted: 800000, market: 500000, sameAirline: 600000, passengers: 1, returnDate: '2026-10-20',
+    international: false, fare: { type, match, searchedBags: 0 } }, o);
+  const its = [I('S1', '1', true), I('S2', '2', false), I('S3', '', null), I('S4', '2', true, { international: true }), I('S5', '1', true, { market: null })];
+  b.priceData = { summary: { sameFare: { overall: {} } }, items: its };
+  eq('misma tarifa: solo los buscados con su equipaje (y nacionales con precio)', b.saSample(false, 'same').map((x) => x.it.requestId), ['S1']);
+  eq('todas las búsquedas: también otro equipaje y sin tarifa', b.saSample(false, 'all').map((x) => x.it.requestId), ['S1', 'S2', 'S3']);
+  eq('por qué un viaje no cuenta', [b.ptFareGap(its[0]), b.ptFareGap(its[1]), b.ptFareGap(its[2])],
+    ['', 'Google se buscó sin maleta y la tarifa es TIPO 2', 'falta la tarifa del tiquete']);
+  eq('la vista por defecto es la misma tarifa', b.ptFareMode(), 'same');
+  b.priceData = { summary: { overall: {} }, items: [I('S1', '1', true)].map((x) => { delete x.fare; return x; }) };
+  eq('con un Code.gs anterior (sin tarifas) se ve todo, como antes', [b.ptFareMode(), b.saSample(false, 'same').length], ['all', 1]);
+
   if (failures.length) {
     console.error(`\n✗ Velocidad y análisis de ahorro: ${failures.length} problema(s).\n`);
     failures.forEach((x) => console.error('  · ' + x));
