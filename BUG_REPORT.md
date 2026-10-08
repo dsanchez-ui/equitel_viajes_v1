@@ -2047,7 +2047,7 @@ Plan completo y vivo en [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahor
 **Despliegue:** pegar `server/CostsDashboard.html` y crear una versión nueva del web app. No cambia la app ni `Code.gs`.
 
 ## **#A94 — Registrar reserva: hotel reservado y su canal de compra**
-**Fecha:** 2026-10-08 · **Pedido por:** Laura (área de viajes), aprobado por David · **Estado:** Implementado, en `main`
+**Fecha:** 2026-10-08 · **Pedido por:** Laura (área de viajes), aprobado por David · **Estado:** Desplegado (8-oct, noche)
 
 **Pedido:** Laura propuso incluir el nombre del hotel en *Registrar compra / reserva* cuando aplique. David agregó el canal de compra del hotel (Aviatur, directo u otra agencia). Así queda la trazabilidad de los hospedajes para analizarlos más adelante; por ahora el análisis sigue enfocado en los vuelos.
 
@@ -2086,7 +2086,7 @@ Plan completo y vivo en [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahor
 ---
 
 ## **#A95 — Tarifa del tiquete según el manual COM-P-02 y comparador «peras con peras»**
-**Fecha:** 2026-10-08 · **Pedido por:** reunión «Doge Supply Chain» del 8-oct (Yurani, Juan Camilo y David) · **Estado:** Implementado, en `main`
+**Fecha:** 2026-10-08 · **Pedido por:** reunión «Doge Supply Chain» del 8-oct (Yurani, Juan Camilo y David) · **Estado:** Desplegado (8-oct, noche: `Code.gs`, `CostsDashboard.html`, `Rastreo.gs` y frontend `bab13c9`)
 
 **Pedido:**
 - Yurani: la comparación con Google debe hacerse con la tarifa real de compra (básica, clásica o flexible), no contra la más barata, porque el viajero puede necesitar maleta: *«peras con peras»*. Además, la tarifa no se está registrando bien en la hoja.

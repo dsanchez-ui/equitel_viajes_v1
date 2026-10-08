@@ -548,13 +548,14 @@ autorización) y verificar antes de crear una versión nueva del web app.
   el dashboard** (#A92) y **metodología de cada estimación** (#A93): implementados; pendiente pegar `Code.gs` y `CostsDashboard.html` y crear la
   versión nueva del web app. Lo que sigue está en
   [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §9.
-- **Hotel reservado y su canal en *Registrar reserva*** (#A94, pedido de Laura, 8-oct): implementado; el bloque
-  aparece cuando se pega el `Code.gs` nuevo (versión nueva del web app) y se publica el frontend.
-- **Tarifa del manual y comparador «peras con peras»** (#A95, reunión del 8-oct): implementado. Pendiente:
-  pegar `Code.gs` y `CostsDashboard.html` + versión nueva del web app; pegar `Rastreo.gs` en el proyecto aparte
-  (`Nucleo` no cambia); push del frontend **después** de pegar el `Code.gs` (para que la casilla de bodega se
-  guarde); opcional, menú 12. Internacionales: se queda CEO o CDS (David, 8-oct). Revisar las cifras de ahorro con
-  Yurani antes de mostrarlas a Alejandro.
+- **#A89–#A96 desplegados el 8-oct-2026 (noche):** David pegó `Code.gs`, `CostsDashboard.html` (versión nueva del
+  web app) y `Rastreo.gs` en el proyecto aparte; frontend publicado (`bab13c9`). Incluye hotel reservado (#A94),
+  tarifa del manual con maleta de bodega y comparador «peras con peras» (#A95) y el arreglo de «Failed to fetch
+  dynamically imported module» (#A96, publicado antes, `7000a25`). La vista *misma tarifa* del comparador arranca
+  vacía: se llena con los viajes que Laura confirme desde ahora. Infografía de una hoja: `infografia-tarifas.pdf`.
+  Pendientes sin código: avisarle a Laura del campo de tarifa; revisar las cifras de ahorro con Yurani antes de
+  mostrarlas a Alejandro; pedir a Aviatur el precio de las tres tarifas en cada cotización; borrar
+  `public/assets/EmailGenerator-CHBQuqHQ.js` unos días después (#A96). Internacionales: se queda CEO o CDS.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
   [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).
