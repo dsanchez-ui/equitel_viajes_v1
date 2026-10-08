@@ -6116,8 +6116,14 @@ function createNewRequest(data, emailHtml) {
   }
 
   // Rate-limit counter (solo tras éxito). Si falló validación o inserción,
-  // no cuenta.
-  _recordCreateRequest_(_requesterKey);
+  // no cuenta. La fila ya quedó escrita: si el contador no se puede guardar
+  // (p. ej. Script Properties llenas), no se le muestra un error al usuario
+  // por una solicitud que sí se creó (#A96).
+  try {
+    _recordCreateRequest_(_requesterKey);
+  } catch (rateErr) {
+    console.warn('createNewRequest: no se pudo registrar el contador diario de ' + id + ': ' + rateErr);
+  }
 
   data.approverEmail = approverEmail;
   data.approverName = approverName;

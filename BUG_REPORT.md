@@ -2200,4 +2200,6 @@ El manual dice «más de 6» para la opción 3; los viajes de 6 noches no caen e
 
 **Despliegue:** push a `main`. No toca Apps Script.
 
+**Refuerzo en el servidor (va con el próximo `Code.gs`):** en la revisión de todo lo que corre al crear una solicitud, lo único que podía fallar para todos *después* de escribir la fila era el contador diario de solicitudes (`_recordCreateRequest_`, en Script Properties). Ahora un fallo ahí solo deja un aviso en el registro: la solicitud ya quedó creada y el usuario no ve un error. Los correos ya estaban protegidos.
+
 **Qué hacer con quien tenga el error:** recargar la página (F5). Quien abrió la app antes de las 12:28 del 8-oct necesita recargar una vez; a partir de esta versión no vuelve a pasar.
