@@ -476,6 +476,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **Seguridad:** el remoto de git del PC Linux tiene un token de GitHub en la URL y quedó a la
   vista en una sesión; revocarlo y usar un gestor de credenciales (MIGRACION.md, sección 6).
 
+- **Análisis de ahorro en tiquetes** (pedido de Juan Camilo, 8-oct): propuesta en
+  [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) (volumen de viajes, ahorro
+  observado del comparador y proyección por mes en el dashboard de costos). Esperando las
+  decisiones de su sección 7; nada implementado.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
   [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).
