@@ -253,6 +253,8 @@ return dataAC.map(function(rAC, i) {
 
 ## 1.6 — Lazy-load de `EmailGenerator` en `RequestForm`
 
+> **REVERTIDA el 2026-10-08 (#A96).** La carga bajo demanda hacía fallar la creación de solicitudes en las pestañas abiertas antes de cada publicación («Failed to fetch dynamically imported module»). Ahorraba 10 kB. No volver a aplicarla; lo mismo vale para la propuesta de `React.lazy` más abajo.
+
 **Archivo:** `components/RequestForm.tsx`.
 
 **Problema:** `import { generateTravelRequestEmail } from '../utils/EmailGenerator'` carga 260 líneas en el bundle inicial, aunque la función solo se usa en el submit del form.

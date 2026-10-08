@@ -10,6 +10,11 @@ import { PassportUploadModal } from './PassportUploadModal';
 import { validateWorkOrder, WORK_ORDER_PLACEHOLDER } from '../utils/workOrder';
 import { validateBirthdate, todayIsoLocal } from '../utils/birthdate';
 import { validateOptionalPhone } from '../utils/phone';
+// #A96: import ESTÁTICO a propósito. Antes se cargaba bajo demanda (import()) y cada
+// publicación le cambiaba el nombre al archivo: quien tenía la app abierta desde antes
+// no podía enviar la solicitud ("Failed to fetch dynamically imported module").
+// tools/check-single-bundle.cjs falla si vuelve a aparecer un import() en la app.
+import { generateTravelRequestEmail } from '../utils/EmailGenerator';
 
 interface RequestFormProps {
   userEmail: string;
@@ -1217,14 +1222,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
     // ===== MULTIDESTINO: construir snapshot congelado y ejecutar el loop =====
     if (multiDestino) {
-      // ANTI DOBLE-SUBMIT: setLoading SÍNCRONO antes del primer await (el
-      // import dinámico abre una ventana donde un segundo click construiría
+      // ANTI DOBLE-SUBMIT: setLoading SÍNCRONO antes del primer await (un
+      // await abre una ventana donde un segundo click construiría
       // un segundo snapshot y lanzaría un loop concurrente → duplicados).
       // Mismo patrón de garantía que el camino single-leg.
       setLoading(true);
       try {
         const { costCenterName, approverName, approverEmail } = resolveSharedSubmitFields();
-        const { generateTravelRequestEmail } = await import('../utils/EmailGenerator');
         const legs = buildMultiLegs();
         const itinerary = buildItinerarySummary(legs);
         const variousCostCenters = getVariousCCFormatted();
@@ -1312,9 +1316,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         payload.parentTimestamp = initialData.timestamp;
       }
 
-      // Lazy-load: el generador HTML de correo solo es necesario al enviar.
-      // Cargarlo on-demand evita ~10kB en el bundle inicial (Etapa 1.6).
-      const { generateTravelRequestEmail } = await import('../utils/EmailGenerator');
+      // El generador del correo va en el bundle principal (#A96): nada se descarga al enviar.
       const emailHtml = generateTravelRequestEmail({
         ...payload,
         relatedRequestId: isModification && initialData ? initialData.requestId : undefined,

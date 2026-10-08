@@ -21,7 +21,8 @@
     "check:price-tracking": "node tools/check-price-tracking.cjs",
     "check:savings": "node tools/check-savings-analysis.cjs",
     "check:links": "node tools/check-webapp-links.cjs",
-    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:invoices && npm run check:price-tracking && npm run check:savings && npm run check:links && npm run build"
+    "check:bundle": "node tools/check-single-bundle.cjs",
+    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:invoices && npm run check:price-tracking && npm run check:savings && npm run check:links && npm run build && npm run check:bundle"
   },
   "dependencies": {
     "react": "^19.2.4",

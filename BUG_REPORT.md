@@ -2082,3 +2082,36 @@ Plan completo y vivo en [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahor
 1. Pegar `server/Code.gs` en Apps Script y crear una versión nueva del web app.
 2. El frontend ya quedó publicado con el push. Mientras no se publique el `Code.gs`, el bloque no aparece.
 3. Opcional: menú 12 para crear las columnas. Si no, se crean con la primera reserva que traiga hotel.
+
+---
+
+## **#A96 — «Failed to fetch dynamically imported module» al crear una solicitud**
+**Fecha:** 2026-10-08 · **Reportado por:** Laura (le pasó a Weimar a las 12:37 p. m.) · **Estado:** Corregido y publicado
+
+**Síntoma:** al dar *Crear solicitud* aparecía *«Failed to fetch dynamically imported module: …/assets/EmailGenerator-D9QkH1JV.js»*. La solicitud no se creaba. Le pasaba a cualquiera que tuviera la app abierta desde antes de la última publicación.
+
+**Causa raíz:**
+- Desde la Etapa 1.6 de las optimizaciones (`e3b5b24`, 27-abr-2026), el formulario cargaba el generador del correo **bajo demanda** (`await import('../utils/EmailGenerator')`), justo al enviar.
+- Vite lo pone en un archivo aparte, con un nombre que cambia cuando cambia el resto de la app (`EmailGenerator-<hash>.js`).
+- Cada push a `main` reemplaza **todos** los archivos del servidor, así que el archivo con el nombre anterior desaparece.
+- Una pestaña abierta antes de la publicación pide el nombre viejo. El servidor (`serve -s`) responde con la página principal en vez de un error, y el navegador falla al recibir HTML donde esperaba código.
+- El 8-oct hubo dos publicaciones que cambiaron la app: 10:35 (#A91) y 12:28 (#A94). El error de las 12:37 fue de una pestaña abierta antes de las 12:28.
+- **No era el servidor ni la hoja:** quien recargaba la página podía crear solicitudes. Producción lo confirmó: el archivo vigente (`EmailGenerator-CHBQuqHQ.js`) respondía bien y el viejo devolvía HTML.
+
+**Fix:**
+- El formulario importa el generador del correo **de forma normal**. La app vuelve a ser un solo archivo JavaScript, y enviar una solicitud ya no descarga nada. Una pestaña vieja puede enviar aunque se haya publicado otra versión.
+- `public/assets/EmailGenerator-CHBQuqHQ.js` es una copia del archivo que producción usaba al corregir. Las pestañas abiertas con esa versión siguen pudiendo enviar después de esta publicación. Se puede borrar en unos días.
+- **Prevención:** `tools/check-single-bundle.cjs`, dentro de `npm run verify` (después del build), falla si:
+  - el código vuelve a usar `import()` o `React.lazy`;
+  - la compilación trae más de un `.js` propio.
+
+  Se probó que detecta el `import()` de la versión anterior.
+
+**Verificado:**
+- `npm run verify` en verde, con la verificación nueva.
+- La app compilada arranca en el navegador.
+- Servida localmente, la copia del archivo anterior responde como JavaScript.
+
+**Despliegue:** push a `main`. No toca Apps Script.
+
+**Qué hacer con quien tenga el error:** recargar la página (F5). Quien abrió la app antes de las 12:28 del 8-oct necesita recargar una vez; a partir de esta versión no vuelve a pasar.

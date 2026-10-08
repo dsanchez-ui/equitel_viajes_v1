@@ -1,0 +1,179 @@
+import{g as b}from"./index-DRP6CrIb.js";function o(e){return e?String(e).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;"):""}const $=(e,i)=>{const s=e.requestMode==="HOTEL_ONLY",g=i?"SOLICITUD DE MODIFICACIÓN":s?"GESTIÓN DE HOSPEDAJE":"GESTIÓN DE VIAJES",r=i?"#F59E0B":"#D71920",a=t=>t||"N/A",l=t=>t?`(${t})`:"",x=(e.passengers||[]).map(t=>`<li style="margin-bottom: 4px;">${o(t.name)} <span style="color:#6b7280; font-size:12px;">(${o(t.idNumber)})</span></li>`).join(""),f=e.costCenter==="VARIOS"?`VARIOS: ${o(e.variousCostCenters||e.costCenterName||"")}`:`${o(e.costCenter)} - ${o(e.costCenterName||"")}`,v=e.approverName?`${o(e.approverName)} <span style="color:#6b7280; font-weight:normal;">&lt;${o(e.approverEmail)}&gt;</span>`:o(e.approverEmail)||"Por Definir";let n="";if(i&&e.relatedRequestId&&e.parentTimestamp){const t=b(e.parentTimestamp,new Date);n=`
+      <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 10px; border-radius: 4px; margin-bottom: 10px; font-size: 12px; text-align: center;">
+         <strong>ℹ️ SOLICITUD VINCULADA:</strong><br/>
+         Esta solicitud reemplaza a la solicitud <strong>${o(e.relatedRequestId)}</strong>, creada hace <strong>${t} días</strong>.
+      </div>`}let d="";i&&e.parentWasReserved&&(d=`
+      <div style="background-color: #fee2e2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 4px; margin-bottom: 15px; font-size: 13px; text-align: center; border-left: 4px solid #ef4444;">
+         <strong style="display:block; margin-bottom:4px; font-size:14px;">⚠️ CAMBIO CON COSTO EXTRA</strong>
+         La solicitud original (<strong>${o(e.relatedRequestId)}</strong>) ya tenía ${s?"reserva de hotel":"tiquetes comprados"} (Etapa: RESERVADO).<br/>
+         Este cambio generará penalidades o costos adicionales.
+      </div>`);const m=i?`<div style="background-color: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin-bottom: 20px; border-radius: 4px;">
+         <strong style="color: #92400e; display: block; font-size: 12px; margin-bottom: 5px; text-transform:uppercase;">Motivo del Cambio:</strong>
+         <div style="color: #333; font-style: italic;">"${o(e.changeReason)}"</div>
+       </div>`:"";let p="";if(e.policyViolation&&e.departureDate){const t=e.timestamp?b(e.timestamp,e.departureDate):e.daysInAdvance||0,u=e.isInternational?30:8;p=`<div style="background-color: #fff1f2; border: 1px solid #fecaca; color: #be123c; padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 12px; text-align: center;">
+         <strong style="display:block; margin-bottom:4px;">⚠️ SOLICITUD FUERA DE POLÍTICA DE ANTICIPACIÓN</strong>
+         Esta solicitud se hizo <strong>${t} días</strong> antes ${s?"del check-in":"del vuelo"}. <br/>
+         Por ser ${e.isInternational?"internacional":"nacional"}, debería haberse hecho con al menos <strong>${u} días</strong> de anticipación.
+       </div>`}const c=e.isInternational?'<span style="background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-left: 5px;">Internacional 🌍</span>':"";return`
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      body { font-family: Helvetica, Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 0; color: #333; }
+      .container { max-width: 600px; margin: 20px auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+      .header { background-color: ${r}; color: #ffffff; padding: 30px 20px; text-align: center; }
+      .header h1 { margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 1px; }
+      .header .id { margin-top: 5px; font-size: 14px; opacity: 0.9; }
+      .content { padding: 30px; }
+      .intro { margin-bottom: 25px; color: #4b5563; font-size: 14px; line-height: 1.5; }
+      
+      .route-box { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin-bottom: 20px; text-align: center; }
+      .route-label { font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px; }
+      .route-city { font-size: 18px; font-weight: bold; color: #111827; }
+      .route-arrow { color: #d1d5db; font-size: 20px; vertical-align: middle; padding: 0 10px; }
+
+      .dates-box { display: table; width: 100%; border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 20px; border-collapse: separate; border-spacing: 0; }
+      .date-cell { display: table-cell; width: 50%; padding: 15px; text-align: center; vertical-align: top; }
+      .date-cell:first-child { border-right: 1px solid #e5e7eb; }
+      .date-label { font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-bottom: 5px; }
+      .date-value { font-weight: bold; color: ${r}; font-size: 14px; }
+      .time-value { font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+      .details-section { margin-top: 25px; }
+      .section-title { font-size: 14px; font-weight: bold; color: #374151; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 15px; }
+      .detail-row { display: table; width: 100%; margin-bottom: 8px; font-size: 13px; }
+      .detail-label { display: table-cell; color: #6b7280; width: 40%; }
+      .detail-value { display: table-cell; color: #111827; font-weight: bold; width: 60%; }
+
+      .note-box { background-color: #fefce8; border: 1px solid #fef08a; border-radius: 6px; padding: 15px; margin-top: 20px; }
+      .note-label { font-size: 11px; font-weight: bold; color: #b45309; text-transform: uppercase; margin-bottom: 5px; }
+      .note-text { font-size: 13px; color: #b45309; font-style: italic; }
+
+      .passenger-box { background-color: #eff6ff; border: 1px solid #dbeafe; border-radius: 6px; padding: 15px; margin-top: 15px; }
+      .passenger-label { font-size: 11px; font-weight: bold; color: #1e40af; text-transform: uppercase; margin-bottom: 5px; }
+      .passenger-list { margin: 0; padding-left: 20px; font-size: 13px; color: #1e3a8a; }
+
+      .actions { text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #f3f4f6; }
+      .footer { text-align: center; font-size: 11px; color: #9ca3af; margin-top: 20px; padding-bottom: 20px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- HEADER -->
+      <div class="header">
+        <h1>${g}</h1>
+        <div class="id">ID: {{REQUEST_ID}}</div>
+      </div>
+
+      <!-- CONTENT -->
+      <div class="content">
+        ${d}
+        ${n}
+        ${m}
+        ${p}
+        
+        <div class="intro">
+          Se ha registrado un ${i?"requerimiento de cambio":s?"nuevo requerimiento de hospedaje":"nuevo requerimiento de viaje"} para
+          <strong>${o(e.requesterEmail)}</strong>.
+        </div>
+
+        <!-- ROUTE / LOCATION -->
+        ${s?`
+        <div class="route-box" style="text-align: center;">
+          <div class="route-label">🏨 CIUDAD DEL HOSPEDAJE ${c}</div>
+          <div class="route-city">${o(e.destination)}</div>
+        </div>
+        `:`
+        <div class="route-box">
+          <table width="100%">
+            <tr>
+              <td width="45%" align="left">
+                <div class="route-label">ORIGEN</div>
+                <div class="route-city">${o(e.origin)}</div>
+              </td>
+              <td width="10%" align="center"><span class="route-arrow">&#10142;</span></td>
+              <td width="45%" align="right">
+                <div class="route-label">DESTINO ${c}</div>
+                <div class="route-city">${o(e.destination)}</div>
+              </td>
+            </tr>
+          </table>
+        </div>
+        `}
+
+        <!-- DATES -->
+        <div class="dates-box">
+          <div class="date-cell">
+            <div class="date-label">${s?"CHECK-IN":"FECHA IDA"}</div>
+            <div class="date-value">📅 ${a(e.departureDate)}</div>
+            ${s?"":`<div class="time-value">${l(e.departureTimePreference)}</div>`}
+          </div>
+          <div class="date-cell">
+            <div class="date-label">${s?"CHECK-OUT":"FECHA REGRESO"}</div>
+            <div class="date-value">📅 ${a(e.returnDate)}</div>
+            ${s?"":`<div class="time-value">${l(e.returnTimePreference)}</div>`}
+          </div>
+        </div>
+
+        <!-- DETAILS -->
+        <div class="details-section">
+          <div class="section-title">Detalles del Caso</div>
+          <div class="detail-row">
+            <span class="detail-label">Empresa / Sede:</span>
+            <span class="detail-value">${o(e.company)} - ${o(e.site)}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Unidad de Negocio:</span>
+            <span class="detail-value">${o(e.businessUnit)}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Centro de Costos:</span>
+            <span class="detail-value">${f}</span>
+          </div>
+          ${e.workOrder?`
+          <div class="detail-row">
+            <span class="detail-label">Orden de Trabajo:</span>
+            <span class="detail-value">${o(e.workOrder)}</span>
+          </div>
+          `:""}
+          <div class="detail-row">
+            <span class="detail-label">Hospedaje:</span>
+            <span class="detail-value">${e.requiresHotel?`Sí - ${o(e.hotelName)} (${e.nights} Noches)`:"No"}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Aprobador:</span>
+            <span class="detail-value">${v}</span>
+          </div>
+        </div>
+
+        <!-- OBSERVATIONS -->
+        ${e.comments?`
+        <div class="note-box">
+          <div class="note-label">OBSERVACIONES / NOTAS:</div>
+          <div class="note-text">${o(e.comments)}</div>
+        </div>`:""}
+
+        <!-- PASSENGERS -->
+        <div class="passenger-box">
+          <div class="passenger-label">PASAJERO(S) (${(e.passengers||[]).length}):</div>
+          <ul class="passenger-list">
+            ${x}
+          </ul>
+        </div>
+
+        <!-- ACTIONS -->
+        <div class="actions">
+           {{ACTION_BUTTONS}}
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footer">
+      &copy; ${new Date().getFullYear()} Organización Equitel. Sistema de Tiquetes Equitel.<br>
+      Este es un mensaje automático generado por el Sistema de Tiquetes Equitel.
+    </div>
+  </body>
+  </html>
+  `};export{$ as generateTravelRequestEmail};

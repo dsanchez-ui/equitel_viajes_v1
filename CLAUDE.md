@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A94) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A96) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -28,7 +28,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos y de aerolínea/canal + estadísticas de compra +
    facturas por cerrar y por revisar + rastreo de precios + velocidad y análisis de ahorro +
-   enlaces con dominio + build). Debe salir en verde.
+   enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -45,7 +45,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + facturas por cerrar + rastreo de precios + caché y análisis de ahorro + build  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + facturas por cerrar + rastreo de precios + caché y análisis de ahorro + build + un solo .js  ← antes de cualquier push
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -306,6 +306,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
 
 Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
+- **#A96 — Nada de cargas bajo demanda en la app (`import()`, `React.lazy`).** Cada push a `main`
+  reemplaza todos los archivos del servidor, y los archivos aparte cambian de nombre. Quien tenía la app
+  abierta desde antes pedía el archivo viejo y no podía crear solicitudes («Failed to fetch dynamically
+  imported module», 8-oct-2026). La app es **un solo archivo JavaScript**: `tools/check-single-bundle.cjs`
+  lo verifica en `npm run verify`. `public/assets/` guarda copias de archivos de versiones anteriores para
+  las pestañas abiertas; se pueden borrar unos días después.
 - **#A49 — Silencio en los fetches de bootstrap.** Los errores se tragaban y la app
   mostraba arrays vacíos como si fueran datos válidos. **Nunca silenciar un error de
   fetch**: hay que reintentar y avisar al usuario.
@@ -406,7 +412,7 @@ components/
   Layout.tsx, ConfirmationDialog.tsx
 services/gasService.ts     Cliente HTTP hacia GAS (timeout 30 s + AbortController)
 utils/dateUtils.ts         Parseo/formato de fechas (zona America/Bogota)
-utils/EmailGenerator.ts    Generación de correos HTML (carga diferida)
+utils/EmailGenerator.ts    Generación de correos HTML (import normal, nunca bajo demanda: #A96)
 utils/workOrder.ts         Validación de OT (gemelo de Code.gs, #A66)
 utils/birthdate.ts         Validación de fecha de nacimiento (gemelo de Code.gs, #A70)
 utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #A75)
@@ -429,6 +435,7 @@ tools/check-invoice-review.cjs       Facturas listas para cerrar y por revisar c
 tools/check-price-tracking.cjs       Rastreo de precios: el proyecto aparte y Code.gs juntos sobre una hoja simulada (#A84)
 tools/check-savings-analysis.cjs     Caché del dashboard (alcance, invalidación, trozos, fallas) y cuentas de la proyección de ahorro (#A89, #A90)
 tools/check-webapp-links.cjs         Enlaces a páginas del web app con el dominio de Equitel (#A91)
+tools/check-single-bundle.cjs        La app es un solo archivo JavaScript, sin cargas bajo demanda (#A96)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs)
 tools/comparador-precios/apps-script/  Proyecto de Apps Script APARTE del rastreo de precios (#A84): Rastreo.gs, manifiesto y guía
 scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)
