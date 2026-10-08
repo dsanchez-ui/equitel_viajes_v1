@@ -148,6 +148,27 @@ plataforma y que el comparador la use.
 
 Reglas del manual y límites: [manual-com-p-02.md](manual-com-p-02.md).
 
+**Otras fuentes de las tres tarifas (investigación del 8-oct, pedido de David):**
+
+| Opción | Qué daría | Conclusión |
+|---|---|---|
+| SerpApi y otros lectores de Google Flights | Lo que muestra Google | No resuelve: en las respuestas guardadas del 8-oct ninguna opción de compra trae el nombre de la tarifa. LATAM devuelve un solo precio, marcado «con maleta de mano». |
+| **Duffel** (API de reservas) | Una oferta por tarifa, con nombre y equipaje | Única candidata para probar. Buscar casi no cuesta (unos USD 0,50 al mes por 100 búsquedas), pero pide verificar la empresa y registrar una tarjeta. Sin comprobar: si trae rutas nacionales de Colombia y si sus precios coinciden con los de Aviatur (vende desde fuera de Colombia, en dólares). Antes de integrarla, prueba con unas 20 rutas comparando a mano. |
+| Amadeus, Sabre, Travelport, intermediarios NDC (AirGateway, Verteil, Mystifly), Travelfusion | Las tarifas completas | Piden ser agencia (acreditación IATA o código de agencia) o un contrato comercial. Amadeus Self-Service cerró el 17-jul-2026. |
+| Kiwi, Skyscanner, Travelpayouts | El precio más barato o precios guardados | No traen las tarifas por separado. |
+| Leer avianca.com o latam.com con un robot | Las tarifas | Descartado: ambos sitios rechazaron las consultas automáticas (error 403), y habría que mantenerlo y revisar sus términos de uso. |
+| **Aviatur** | La tarifa, el precio y el equipaje reales | Lo más confiable y sin costo: pedir que cada cotización traiga el precio de las tres tarifas y cuál se compró. La agencia las ve en su sistema de reservas. Yurani ya quedó en pedir el informe por categorías (reunión del 8-oct). |
+
+**¿Una diferencia fija entre tarifas?** No es seguro. Cada tarifa tiene sus propias clases y cupos, así que lo
+esperable es que la diferencia cambie según la ruta, la fecha y la ocupación. Si se quiere usar un factor, primero
+hay que medirlo con una muestra real.
+
+Fuentes: [Duffel, precios](https://duffel.com/pricing) · [Duffel, campos de la oferta](https://duffel.com/docs/api/v2/offers/schema) ·
+[Duffel, aerolíneas](https://duffel.com/flights/airlines) · [SerpApi, opciones de compra](https://serpapi.com/google-flights-booking-options) ·
+[Cierre de Amadeus Self-Service](https://airlabs.co/amadeus-self-service-api-shutdown) · [Sabre, preguntas de agencias](https://developer.sabre.com/guides/travel-agency/faqs) ·
+[Tarifas nacionales de LATAM](https://www.latamairlines.com/co/es/centro-ayuda/preguntas/compras/asistencia/tarifas-pasaje-domestico) ·
+[Tarifas de Avianca (2024)](https://www.valoraanalitik.com/2024/01/25/avianca-lanza-nuevas-tarifas-para-vuelos-nacionales-e-internacionales/)
+
 ### Fase 3 — Comparación visible para Laura (después del estudio)
 
 Por ahora (#A84) la comparación **solo la ven Yurani, Diego y David**, en una sección del
