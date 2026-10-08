@@ -136,18 +136,42 @@
 <p><strong>Lo que SÍ puedes hacer:</strong> agregar ciudades nuevas al final. Columna A = país, Columna B = ciudad.</p>
 <p><strong>Lo que NO debes hacer:</strong> cambiar el nombre de las columnas.</p>
 <h3>MISC</h3>
-<p>Hoja con dos catálogos pequeños:</p>
+<p>Hoja con dos catálogos pequeños y una tabla de permisos:</p>
 <ul>
 <li>Tarjetas de crédito disponibles (las que aparecen en el dropdown cuando registras una reserva)</li>
 <li>Sedes (para el formulario de nueva solicitud)</li>
+<li>Accesos al dashboard de costos: quién puede verlo y de qué unidad de negocio (ver abajo)</li>
 </ul>
 <p><strong>Lo que SÍ puedes hacer:</strong> agregar sedes o tarjetas nuevas al final.</p>
+<h4>Accesos al dashboard de costos</h4>
+<p>Dos columnas normales con los encabezados <code>DASHBOARD COSTOS · CORREO</code> y <code>DASHBOARD COSTOS · UNIDAD DE NEGOCIO</code> en la <strong>fila 1</strong>, que crea el menú 9 para no tener que escribirlos a mano. Los datos van debajo.</p>
+<ul>
+<li><strong>Analistas y superadmins</strong> ven todas las unidades sin estar en la tabla.</li>
+<li><strong>Cada fila da acceso a una persona a una unidad:</strong> el correo con el que entra al portal y la unidad de negocio escrita igual que en las solicitudes. El menú 9 muestra la lista de unidades válidas. Para varias unidades, una fila por unidad; <code>TODAS</code> da acceso a todas.</li>
+<li><strong>Quien no esté en la tabla no puede entrar al dashboard</strong>, aunque sea aprobador.</li>
+<li><strong>La vista “Variación cotizado vs facturado” no depende de esta tabla:</strong> solo la ven Yurani Prieto, Diego Caballero y David Sánchez. Es una regla fija en el código; agregar a alguien aquí, aunque sea con <code>TODAS</code>, no se la muestra. Se comprueba con <strong>Equitel Viajes → 10. Ver administradores y permisos especiales</strong>.</li>
+<li>La tabla se crea y se revisa con <strong>Equitel Viajes → 9. Accesos al dashboard de costos</strong>. La primera vez escribe solo los dos encabezados, al final de MISC y dejando una columna libre. Cada vez que se usa muestra quién ve qué y las unidades válidas, y avisa de errores: correo no registrado en USUARIOS, unidad mal escrita, filas repetidas o incompletas.</li>
+<li>Los cambios aplican la próxima vez que la persona abra el dashboard. No hay que desplegar nada.</li>
+</ul>
+<p><strong>Lo que NO debes hacer:</strong> cambiar los encabezados de esas dos columnas ni escribir las unidades a mano sin revisarlas con el menú 9 (una unidad mal escrita no muestra datos).</p>
 <h3>REGLAS_COAPROBADOR</h3>
 <p>Define reglas especiales de co-aprobación. Por ejemplo: “si alguien internacional tiene a Juan Pérez como aprobador, también debe aprobarlo María García”. Útil para viajes internacionales que requieren doble aprobación.</p>
 <p><strong>Lo que SÍ puedes hacer:</strong> agregar reglas nuevas con la misma estructura.</p>
 <h3>INTEGRANTES_OLD</h3>
 <p>La antigua hoja de usuarios, antes de la migración a USUARIOS. Está ahí como respaldo histórico.</p>
 <p><strong>Lo que NO debes hacer:</strong> borrarla todavía. Déjala al menos 1-2 meses más por si acaso.</p>
+<h3>COMPARATIVO PRECIOS y COMPARATIVO ESTADO (ocultas)</h3>
+<p>Las crea y las escribe el <strong>rastreo de precios</strong> (#A84), un proyecto de Apps Script aparte que
+compara lo cotizado con el precio de Google Flights durante el estudio de dos semanas. Una
+fila por búsqueda, y el estado del rastreo. Desde #A86 cada búsqueda trae la ida y el regreso
+por separado; la columna <code>TRAMOS</code> guarda los vuelos de cada tramo (texto en formato JSON, para
+el dashboard). Desde #A95 cada búsqueda guarda también la tarifa del viaje (<code>TARIFA</code>) y las
+maletas de mano pedidas a Google (<code>MALETA DE MANO</code>: 0 en TIPO 1, una por pasajero en TIPO 2 y 3),
+para comparar con la misma tarifa. El dashboard de costos las lee en la sección
+<em>Comparador de precios</em> (solo Yurani, Diego y David).</p>
+<p>Están ocultas (menú <strong>Ver → Hojas ocultas</strong> para verlas) y avisan si alguien intenta editarlas.
+<strong>No las edites ni las borres mientras el estudio esté activo.</strong> Al terminar se pueden borrar:
+nada de la plataforma depende de ellas.</p>
 <h3>Hojas con <code>_OLD_</code> en el nombre</h3>
 <p>Son respaldos de reorganizaciones anteriores de la hoja principal. <strong>Déjalas quietas</strong> hasta que hayas confirmado que la versión activa funciona bien (usualmente 1-2 semanas) y luego puedes borrarlas.</p>
 <hr>
@@ -274,8 +298,10 @@
 <p>Cuando llega alguien nuevo y necesita acceso inmediato al portal, y tú no estás frente al computador, <strong>no hace falta abrir el Google Sheets</strong>. Hay una página web pensada para el celular que te deja crear usuarios en un minuto.</p>
 <h3>¿Cómo accedes?</h3>
 <p>Abre este enlace desde el navegador de tu teléfono (Safari o Chrome):</p>
-<pre><code>https://script.google.com/macros/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec?action=admin
+<pre><code>https://script.google.com/a/macros/equitel.com.co/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec?action=admin
 </code></pre>
+<p>Usa este enlace, con <code>/a/macros/equitel.com.co/</code>: si el celular tiene varias cuentas de Google abiertas, la versión
+corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53, #A91).</p>
 <p><strong>Recomendación:</strong> guárdalo como atajo en la pantalla de inicio de tu celular para abrirlo de un solo toque como si fuera una app:</p>
 <ul>
 <li><strong>iPhone</strong> (Safari): botón compartir → “Añadir a pantalla de inicio”</li>
@@ -329,6 +355,36 @@
 <p><strong>No.</strong> Los aprobadores pueden seguir aprobando desde sus correos, los solicitantes pueden seguir creando solicitudes, los usuarios nuevos pueden seguir generando su PIN por primera vez — todo al mismo tiempo que tú creas un usuario desde el celular, sin conflictos.</p>
 <p>La única vez que algo espera es si otro admin está creando otro usuario al mismo segundo desde el sidebar del Sheets. En ese caso, tu creación espera 2-3 segundos al otro admin y luego procede. Nada grave.</p>
 <hr>
+<p><strong>Columnas al final que agrega el sistema (2-oct-2026):</strong></p>
+<ul>
+<li>
+<p><code>AEROLINEA</code> y <code>CANAL DE COMPRA</code> (#A82): con qué aerolínea y por qué canal (<em>Aviatur</em>, <em>Directo</em> u <em>Otra agencia</em>) se compró. Las llenan “Confirmar costos” y “Registrar reserva”.</p>
+</li>
+<li>
+<p><code>AEROLINEA REGRESO</code> (#A85, 7-oct-2026): la aerolínea del regreso <strong>solo si es distinta</strong> de la de ida (por ejemplo, <code>AEROLINEA</code> = LATAM y <code>AEROLINEA REGRESO</code> = Avianca). Vacía = la misma aerolínea o viaje solo de ida.</p>
+</li>
+<li>
+<p><code>AVISO FACTURAS OMITIDO</code> (#A83): quién omitió el aviso de facturas incompletas y cuándo. Borrar la celda vuelve a mostrar el aviso en el panel.</p>
+</li>
+<li>
+<p><code>HOTEL RESERVADO</code> y <code>CANAL DE COMPRA HOTEL</code> (#A94, 8-oct-2026): el hotel que reservó el área de viajes (en mayúsculas y sin tildes) y su canal (<em>Aviatur</em>, <em>Directo</em> u <em>Otra agencia</em>). <em>No se reservó</em> = al final no hubo hotel. <code>NOMBRE HOTEL</code> sigue siendo el que pidió el viajero. Las llena “Registrar reserva”.</p>
+</li>
+<li>
+<p><code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code> y <code>TARIFA JUSTIFICACION</code> (#A95, 8-oct-2026): la tarifa que recomienda el manual COM-P-02 por las noches del viaje (<code>TIPO 1</code>, <code>TIPO 2</code> o <code>TIPO 3</code>, la calcula el sistema), su nombre en la aerolínea (por ejemplo, <em>Classic</em>) y, si se compró otra, el motivo. La tarifa comprada sigue en <code>TIPO DE COMPRA DE TKT</code>, que ahora llenan “Confirmar costos” y “Registrar reserva”. Ver <a href="manual-com-p-02.md">manual-com-p-02.md</a>.</p>
+</li>
+<li>
+<p><code>MALETA DE BODEGA</code> (#A95, 8-oct-2026): lo que marcó el viajero en el formulario (<em>¿Lleva maleta de bodega?</em>): <code>SI</code> o <code>NO</code>. Vacía = la solicitud es anterior y no se preguntó. Solo vuelos.</p>
+</li>
+</ul>
+<p>Todas las crea el menú <em>12. Columnas de compra y resumen de facturas</em> (o el sistema, la primera vez que las necesita).</p>
+<h3>12. Columnas de compra y resumen de facturas</h3>
+<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
+<ul>
+<li><strong>listas para cerrar:</strong> viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita</li>
+<li><strong>facturas por revisar:</strong> les faltan facturas o PDF, a partir del día 7 después del viaje</li>
+<li>avisos omitidos y solicitudes en espera</li>
+</ul>
+<p><strong>No cierra nada.</strong> Las dos listas aparecen en el panel del analista, que es donde se cierran (ver la guía de administrador, 5.5).</p>
 <h3>Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)</h3>
 <p>Un item del menú que al hacer click te muestra un diálogo diciendo <strong>qué hoja está leyendo el portal en este momento</strong>. No cambia nada, solo te informa.</p>
 <p>En producción debe decir “Modo activo: USUARIOS”. Si dice “INTEGRANTES” significa que alguien revirtió el flag.</p>

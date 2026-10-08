@@ -111,7 +111,7 @@
 </tr>
 <tr>
 <td><strong>Superadmin (SUPERADMIN)</strong></td>
-<td>Todo lo del analista <strong>más</strong>: saltar la etapa de aprobación, recibir escalamientos cuando los aprobadores no responden, alternar entre vista admin y vista usuario con el botón <strong>VER USUARIO / VER ADMIN</strong>, y modificar cualquier solicitud (no solo las propias).</td>
+<td>Todo lo del analista <strong>más</strong>: recibir escalamientos cuando los aprobadores no responden, alternar entre vista admin y vista usuario con el botón <strong>VER USUARIO / VER ADMIN</strong>, y modificar cualquier solicitud (no solo las propias).</td>
 <td>Igual que analista. El rol se asigna en <code>SUPER_ADMIN_EMAILS</code> (Script Property).</td>
 </tr>
 </tbody>
@@ -318,16 +318,27 @@
 <ol>
 <li>Panel admin → fila con status <code>PENDIENTE_OPCIONES</code></li>
 <li>Abre el detalle → <strong>“Subir imágenes de opciones”</strong></li>
-<li>Para vuelos: sube una imagen por opción (A, B, C…). Si hay ida y vuelta, indica dirección IDA o VUELTA. Para hoteles: sube una imagen por opción.</li>
+<li>Para vuelos: sube una imagen por opción (A, B, C…). Si hay ida y vuelta, indica dirección IDA o VUELTA. Para hoteles: sube una imagen por opción.
+<ul>
+<li>En vuelos, arriba aparece la <strong>tarifa a cotizar según el manual COM-P-02</strong> (#A95): TIPO 1 para viajes de 0 a 1 noche, TIPO 2 de 2 a 5 y TIPO 3 de 6 o más, con su nombre en cada aerolínea (por ejemplo, TIPO 2 = Avianca Classic, LATAM Light).</li>
+</ul>
+</li>
 <li>Al guardar, el sistema envía automáticamente un correo al solicitante con las imágenes.</li>
 </ol>
 <h3>5.2 Revisar selección y confirmar costos (PENDIENTE_CONFIRMACION_COSTO → PENDIENTE_APROBACION)</h3>
 <ol>
 <li>Fila con status <code>PENDIENTE_CONFIRMACION_COSTO</code></li>
-<li>Abre el detalle → verás el texto libre que escribió el usuario (“Opción A, categoría Económica…”)</li>
-<li><strong>“Confirmar costos”</strong> → ingresa <code>finalCostTickets</code> y <code>finalCostHotel</code> (si aplica)</li>
+<li><strong>“Confirmar costos”</strong> abre un modal con todo el detalle de la solicitud a la izquierda (#A81): viaje, datos corporativos y OT, pasajeros con su fecha de nacimiento y celular, hospedaje, observaciones y las imágenes de las opciones. A la derecha, el texto que escribió el usuario (“Opción A, categoría Económica…”) y el formulario. Ya no hace falta abrir la solicitud en otra pestaña.</li>
+<li>Escribe el costo de los tiquetes y, si aplica, el del hotel, en pesos, con o sin puntos de miles (<code>889.518</code> o <code>889518</code>). Bajo cada campo aparece cómo se va a registrar. Si no tiene costo (por ejemplo, un apartamento corporativo), escribe <code>0</code>; cualquier otro valor debe ser de al menos $10.000. La confirmación avisa si el total queda en $0.
+<ul>
+<li><strong>Compra prevista</strong> (#A82): la <strong>aerolínea</strong> (lista o “Otra…”) y el <strong>canal</strong>: <em>Aviatur</em>, <em>Directo</em> (con la aerolínea o, en solo hospedaje, con el hotel) u <em>Otra agencia</em>. Son obligatorios; en solo hospedaje no se pide aerolínea.</li>
+<li><strong>Regreso con otra aerolínea</strong> (#A85): si la ida es con una aerolínea y el regreso con otra (por ejemplo, LATAM de ida y Avianca de regreso), marca <em>“El regreso es con otra aerolínea”</em> y elige la del regreso. Solo aparece en viajes con regreso.</li>
+<li><strong>Tarifa del tiquete</strong> (#A95): viene seleccionada la que recomienda el manual COM-P-02 por las noches del viaje, con el equipaje que incluye. Si vas a comprar otra, elígela y escribe por qué en <em>“¿Por qué otra tarifa?”</em> (mínimo 10 caracteres). Si el viajero marcó <em>maleta de bodega</em> en la solicitud, el bloque lo dice y muestra qué tarifas la incluyen; al elegir una de ellas el motivo se llena solo (puedes cambiarlo), y si eliges una que no la incluye te avisa. Es obligatoria en vuelos; en solo hospedaje no aparece. Ver <a href="manual-com-p-02.md">manual-com-p-02.md</a>.</li>
+</ul>
+</li>
 <li>Al guardar, si el total ≤ $1.2M y no es internacional → pasa a <code>APROBADO</code> directo. Si no → pasa a <code>PENDIENTE_APROBACION</code> y se envía correo a CEO + CDS + aprobador de área.</li>
 </ol>
+<p><strong>Costos mal digitados antes del 2026-09-14:</strong> con el campo anterior, <code>889.518</code> se guardaba como 889 pesos con decimales. <strong>Equitel Viajes → 11. Corregir costos mal digitados</strong> los corrige: muestra una vista previa, pide confirmación, deja una nota en OBSERVACIONES y el detalle en la pestaña “Reporte corrección costos”. Los que no se pueden deducir (por ejemplo, costos de $1) solo los lista para revisarlos a mano.</p>
 <h3>5.3 Registrar reserva (APROBADO → RESERVADO)</h3>
 <ol>
 <li>Fila con status <code>APROBADO</code></li>
@@ -338,6 +349,9 @@
 <li><strong>Tarjeta de crédito</strong> usada (del dropdown)</li>
 <li><strong>Fecha de compra</strong> (hoy por default)</li>
 <li><strong>Archivos de confirmación</strong> (PDF de la aerolínea / hotel — puedes subir varios)</li>
+<li><strong>Compra (aerolínea y canal)</strong> (#A82): viene llena con lo previsto al confirmar costos. Cámbiala si se compró por otro canal (por ejemplo, directo con la aerolínea porque Aviatur no ajustó el precio). Es obligatoria al registrar; al corregir una reserva es opcional. Si el regreso se compró con otra aerolínea, marca <em>“El regreso es con otra aerolínea”</em> (#A85).</li>
+<li><strong>Tarifa comprada</strong> (#A95): viene con la que se registró al confirmar costos. Cámbiala si al final se compró otra; si no es la recomendada, escribe por qué. Es obligatoria al confirmar la reserva; al corregir o con <em>“Guardar sin enviar”</em> solo se revisa si la cambias.</li>
+<li><strong>Hotel (nombre y canal)</strong> (#A94): solo en solicitudes con hospedaje. Viene con el hotel que pidió el viajero; cámbialo si reservaste otro y elige el canal (<em>Aviatur</em>, <em>Directo con el hotel</em> u <em>Otra agencia</em>). Es obligatorio al confirmar la reserva; con <em>“Guardar sin enviar”</em> puede quedar para después. Si al final no se reservó hotel (lo quitó el aprobador o es un apartamento corporativo), marca <em>“No se reservó hotel”</em>. En solo hospedaje este bloque reemplaza al de compra.</li>
 </ul>
 </li>
 <li>Al guardar:
@@ -369,6 +383,21 @@
 <li><strong>“Finalizar solicitud”</strong> → se genera automáticamente el reporte PDF de soporte</li>
 <li>Estado final: <code>PROCESADO</code></li>
 </ol>
+<p><strong>Listas para cerrar y facturas por revisar (#A83).</strong> En el panel del analista aparece una barra con dos cifras: <strong>✅ Listas para cerrar</strong> y <strong>🧾 Facturas por revisar</strong>. Al abrirla se ven las dos listas. <strong>Ninguna solicitud se cierra sola:</strong> tú las revisas y las cierras.</p>
+<p><strong>Listas para cerrar.</strong> Solicitudes <code>RESERVADO</code> que cumplen las tres condiciones:</p>
+<ul>
+<li>el viaje ya terminó (fecha de regreso o, si es solo ida, la de ida, anterior a hoy). Antes no aparecen, porque una solicitud <code>PROCESADO</code> ya no se puede modificar.</li>
+<li>lo facturado es <strong>igual o mayor</strong> que lo cotizado. Una diferencia menor a $1.000 cuenta como igual (redondeo). Facturar de más es normal y no es error.</li>
+<li>hay <strong>al menos un PDF de factura subido por el sistema por cada factura escrita</strong> (los de la reserva no cuentan). Es la misma regla con que avisa el cierre manual, y es necesaria porque con la solicitud <code>PROCESADO</code> ya no se pueden subir soportes desde la app.</li>
+</ul>
+<p>Lo facturado se suma igual que en el dashboard de costos, con las facturas 1 a 6. Cada fila muestra cotizado, facturado y cuántos PDF hay. El botón <strong>Cerrar</strong> es el cierre manual de siempre: pide confirmación (con el resumen “Facturado $X de $Y cotizado; N PDF de M facturas”) y genera el reporte PDF.</p>
+<p><strong>Facturas por revisar.</strong> Viajes terminados hace 7 días o más cuyas facturas suman menos de lo cotizado, no tienen ninguna o no tienen sus PDF subidos. Cada fila muestra cotizado, facturado y lo que falta: el monto, o “Faltan PDF (1 de 2)”. Botones:</p>
+<ul>
+<li><strong>Subir PDF:</strong> abre los soportes de la solicitud. Al subir el que falta y pulsar <strong>↻ Actualizar</strong>, pasa a “Listas para cerrar”.</li>
+<li><strong>Cerrar:</strong> el cierre manual de siempre, aunque falten facturas.</li>
+<li><strong>Omitir aviso:</strong> deja de mostrarla y anota quién y cuándo en la columna <code>AVISO FACTURAS OMITIDO</code>. Si después se completan las facturas y sus PDF, pasa a “Listas para cerrar”. Para volver a ver el aviso, borra esa celda.</li>
+</ul>
+<p>Las listas se consultan al abrir el panel y con <strong>↻ Actualizar</strong>. No envían correos ni cambian nada en la hoja.</p>
 <h3>5.6 Gestionar solicitudes de cambio</h3>
 <p>Cuando un usuario pide modificar una solicitud ya en curso, se crea una solicitud “hija” con status <code>PENDIENTE_ANALISIS_CAMBIO</code>. El correo que te llega tiene botones directos <strong>PASAR A ESTUDIO</strong> y <strong>RECHAZAR CAMBIO</strong>. Pero también puedes gestionarlo desde el panel:</p>
 <ol>
@@ -401,13 +430,14 @@
 <li>Alternativamente, si ya está en <code>PENDIENTE_SELECCION</code>: abre el detalle → botón indigo <strong>“SALTAR SELECCIÓN”</strong> → escribe justificación (≥10 caracteres) → confirma.</li>
 </ol>
 <p>Queda registrado en OBSERVACIONES con tu correo, timestamp y justificación. No se envía correo al solicitante.</p>
-<h3>5.9 Saltar la etapa de APROBACIÓN (solo SUPERADMIN)</h3>
+<h3>5.9 Saltar la etapa de APROBACIÓN (solo Yurani Prieto y David Sánchez)</h3>
+<p><strong>Quién puede:</strong> solo Yurani Prieto y David Sánchez (decisión de Yurani, 2026-09-14). Es una lista fija en el código (<code>SKIP_APPROVAL_ALLOWED</code> en <code>Code.gs</code>), <strong>no un rol</strong>: ningún otro superadmin ni analista puede, aunque tenga acceso de administrador, y para cambiarla hay que modificar el código. Para comprobar quién puede: <strong>Equitel Viajes → 10. Ver administradores y permisos especiales</strong>. A los demás no les aparecen ni el botón ni la casilla, y el sistema rechaza el intento si llegara por otra vía.</p>
 <p>Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin mandar correos a los aprobadores:</p>
 <ol>
 <li>Fila con status <code>PENDIENTE_APROBACION</code> → abre el detalle.</li>
-<li>Aparece un banner ámbar <strong>“⏩ Saltar etapa de aprobación (SUPERADMIN)”</strong> con un botón <strong>“SALTAR APROBACIÓN”</strong>.</li>
+<li>Aparece un banner ámbar <strong>“⏩ Saltar etapa de aprobación (permiso especial)”</strong> con un botón <strong>“SALTAR APROBACIÓN”</strong>.</li>
 <li>Click → justificación (≥10 caracteres) → confirma.</li>
-<li>La solicitud pasa directamente a <code>APROBADO</code>. Las columnas <code>APROBADO POR ÁREA?</code>, <code>APROBADO CDS</code> y <code>APROBADO CEO</code> se marcan con <code>Sí (ETAPA SALTADA por tu.correo)</code>. El usuario sí recibe el correo “Solicitud Aprobada”; los aprobadores no reciben nada.</li>
+<li>La solicitud pasa directamente a <code>APROBADO</code>. Las columnas <code>APROBADO POR ÁREA?</code>, <code>APROBADO CDS</code>, <code>APROBADO CEO</code> y <code>APROBADO PRESUPUESTO</code> se marcan con <code>Sí (ETAPA SALTADA por tu.correo)</code> y la justificación queda en OBSERVACIONES. No se envía correo ni a los aprobadores ni al solicitante; el solicitante recibe el de “Tiquetes Comprados” cuando se registra la reserva.</li>
 </ol>
 <p><strong>Alternativa equivalente durante confirmación de costos:</strong> en el modal <strong>“Confirmar costos”</strong> aparece un checkbox “Saltar etapa de aprobación” con el mismo efecto, útil cuando sabes desde antes que no quieres pasar por aprobadores.</p>
 <h3>5.10 Omitir correo al registrar reserva</h3>
@@ -428,7 +458,7 @@
 <p>Relacionado: si el login del admin falla por un error de red (no por PIN incorrecto), el mensaje ahora lo dice explícitamente y <strong>no</strong> consume un intento del rate-limit.</p>
 <hr>
 <h2>5.bis. Capacidades exclusivas de SUPERADMIN</h2>
-<p>Los <strong>superadmins</strong> (configurados en <code>SUPER_ADMIN_EMAILS</code> — actualmente David y Yurani) tienen capacidades adicionales que un analista normal no tiene:</p>
+<p>Los <strong>superadmins</strong> (configurados en <code>SUPER_ADMIN_EMAILS</code>) tienen capacidades adicionales que un analista normal no tiene. <strong>Saltar la etapa de aprobación ya no es una de ellas</strong> (#A77): solo Yurani Prieto y David Sánchez, ver 5.9.</p>
 <table>
 <thead>
 <tr>
@@ -437,10 +467,6 @@
 </tr>
 </thead>
 <tbody>
-<tr>
-<td><strong>Saltar etapa de aprobación</strong></td>
-<td>Detalle de solicitud en <code>PENDIENTE_APROBACION</code>, o checkbox en confirmar costos.</td>
-</tr>
 <tr>
 <td><strong>Botón VER USUARIO / VER ADMIN</strong></td>
 <td>Header del panel de analista — alternar vistas.</td>
@@ -452,10 +478,6 @@
 <tr>
 <td><strong>Ejecutar helpers de Script Properties</strong></td>
 <td><code>setScriptProperty</code>, <code>deleteScriptProperty</code>, <code>listScriptProperties</code> desde el editor GAS.</td>
-</tr>
-<tr>
-<td><strong>Ejecutar skip de aprobación vía backend</strong></td>
-<td><code>skipApprovalStage(requestId, justification)</code> — solo vía frontend; el endpoint está protegido y valida superadmin en cada request.</td>
 </tr>
 <tr>
 <td><strong>Modificar cualquier solicitud</strong></td>
@@ -562,8 +584,11 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 <p>Únicamente personas cuyo correo esté en la whitelist <code>ANALYST_EMAILS</code> (Script Property). El módulo usa el mismo PIN admin de 8 dígitos que el portal normal. Otros usuarios ven la pantalla de login pero su PIN siempre falla.</p>
 <h3>URL del módulo</h3>
 <p>La misma URL del Web App con el parámetro <code>?action=admin</code> al final:</p>
-<pre><code>https://script.google.com/macros/s/AKfycb.../exec?action=admin
+<pre><code>https://script.google.com/a/macros/equitel.com.co/s/AKfycb.../exec?action=admin
 </code></pre>
+<p>Siempre con <code>/a/macros/equitel.com.co/</code>: sin el dominio, un celular con varias cuentas de Google muestra
+<em>“No se pudo abrir el archivo”</em> (#A53, #A91). Lo mismo para el dashboard de costos (<code>?view=costs-dashboard</code>), que la app ya
+abre así desde el botón <em>Costos por Unidad</em>.</p>
 <p>Recomendación: agregarlo a la pantalla de inicio del celular (iOS Safari → compartir → “Añadir a pantalla de inicio”; Chrome Android → menú → “Añadir a pantalla de inicio”) para acceso de un toque, como si fuera una app nativa.</p>
 <h3>Qué hace</h3>
 <ul>
@@ -603,7 +628,8 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 <p>El único caso donde hay serialización es cuando <strong>dos admins crean usuarios simultáneamente</strong> (uno desde el sidebar y otro desde el móvil): el segundo espera máximo 2-3 segundos al primero. Esto es intencional para evitar que ambos escriban en la misma fila.</p>
 <hr>
 <h2>8. Métricas</h2>
-<p>Panel accesible desde el dashboard admin → botón <strong>Métricas</strong>.</p>
+<p>Panel accesible desde el dashboard admin → botón <strong>Métricas</strong>. Tiene dos pestañas: <strong>Tiempos del flujo</strong> y <strong>Compras y costos</strong>.</p>
+<h3>8.1 Tiempos del flujo</h3>
 <p><strong>Qué muestra:</strong></p>
 <ul>
 <li>Tiempos promedio por etapa (en minutos hábiles):
@@ -631,6 +657,35 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 <li>Usa un cache JSON en Drive (<code>metricas_cache.json</code>) — recalcula solo las solicitudes cuyos eventos cambiaron desde la última carga.</li>
 <li>Solicitudes creadas antes del deploy de métricas no tienen <code>EVENTOS_JSON</code> y aparecen como “sin datos”.</li>
 <li>Horario hábil: L-V 07:00–17:00, Sáb 08:00–12:00. Fuera de horario se excluye.</li>
+</ul>
+<h3>8.2 Compras y costos</h3>
+<p>Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta anticipación (#A80). Sirve para comparar precios con otra agencia sin armar un Excel a mano. Solo la ven los administradores.</p>
+<p><strong>Qué muestra:</strong></p>
+<ul>
+<li>Tarjetas:
+<ul>
+<li>tiquetes comprados (nacionales e internacionales), por día hábil y por mes</li>
+<li>costo promedio del tiquete nacional (y su mediana) y del internacional</li>
+<li>costo por noche en estadías de 1 a 6 noches (las de 7 o más se muestran aparte porque tienen tarifas mucho menores)</li>
+<li>gasto del periodo, proyección anual y cuánto vale cada 1 % de descuento</li>
+<li>porcentaje de tiquetes comprados con 7 días o menos</li>
+</ul>
+</li>
+<li><strong>¿Cuánto cuesta comprar tarde?:</strong> costo por tiquete nacional según la anticipación de la compra, el sobrecosto del periodo y el ahorro si la mitad de esas compras se planeara con 8 días o más.</li>
+<li>Meses, las 10 rutas con más tiquetes (con el precio comprando con 0 a 7 días y con 8 o más) y las 10 ciudades con más solicitudes con hotel.</li>
+<li>Cómo se viaja: pasajeros por viaje, ida y regreso, anticipación, compras en fin de semana, facturado frente a confirmado y cargos de Aviatur y/o IVA de la factura 1.</li>
+<li><strong>Descargar CSV:</strong> todas las tablas en un archivo que abre en Excel.</li>
+</ul>
+<p><strong>Filtro:</strong> fecha de compra (todo, últimos 30 o 90 días, este año o personalizado).</p>
+<p><strong>Cómo se cuenta:</strong></p>
+<ul>
+<li>Solo solicitudes reservadas o procesadas.</li>
+<li>Tiquetes = pasajeros × trayectos: ida y regreso son 2 por persona. Cada tramo de un multidestino es su propia solicitud.</li>
+<li>Noches-habitación = noches × pasajeros, solo con hotel pagado.</li>
+<li>Costos confirmados; los menores a $10.000 no entran en los promedios.</li>
+<li>La fecha de cada compra es la fecha de compra del tiquete, o la de la solicitud si falta.</li>
+<li>Días hábiles: lunes a viernes sin festivos de Colombia.</li>
+<li>El panel no muestra nombres, cédulas ni correos de los pasajeros.</li>
 </ul>
 <hr>
 <h2>9. Triggers programados (4 triggers cada 2h)</h2>

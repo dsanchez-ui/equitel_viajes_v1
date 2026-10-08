@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tarifa del tiquete</title>
+<style>
+  :root {
+    --red: #D71920; --red-dark: #a51218; --ink: #111827; --text: #374151; --muted: #6b7280;
+    --line: #e5e7eb; --bg: #f3f4f6; --paper: #ffffff;
+    --blue: #1e40af; --blue-bg: #eff6ff; --teal: #0f766e; --teal-bg: #f0fdfa; --amber: #92400e; --amber-bg: #fffbeb;
+  }
+  @page { size: letter; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", Helvetica, Arial, sans-serif; }
+  .page { width: 8.5in; height: 11in; margin: 0 auto; background: var(--paper); overflow: hidden; display: flex; flex-direction: column; }
+  @media screen { body { padding: 24px 0; } .page { box-shadow: 0 1px 3px rgba(0,0,0,.12); border-radius: 8px; } }
+  @media print { body { background: var(--paper); } }
+
+  header { background: var(--red); color: #fff; padding: 22px 34px 20px; }
+  .kicker { font-size: 10.5px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; opacity: .85; }
+  h1 { font-size: 25px; line-height: 1.15; margin: 6px 0 6px; font-weight: 800; }
+  .sub { font-size: 13px; line-height: 1.45; opacity: .95; max-width: 640px; }
+
+  main { padding: 18px 34px 0; display: flex; flex-direction: column; gap: 14px; flex: 1; }
+  h2 { font-size: 11px; letter-spacing: 1.1px; text-transform: uppercase; color: var(--red-dark); margin: 0 0 7px; font-weight: 800; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+
+  table.rule { width: 100%; border-collapse: collapse; font-size: 12.8px; }
+  table.rule th { text-align: left; font-size: 10px; letter-spacing: .6px; text-transform: uppercase; color: var(--muted); font-weight: 700; padding: 0 8px 5px; border-bottom: 1px solid var(--line); }
+  table.rule td { padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--ink); }
+  table.rule tr:last-child td { border-bottom: none; }
+  table.rule td.tipo { font-weight: 800; color: var(--red-dark); white-space: nowrap; }
+  table.rule td.noches { color: var(--text); white-space: nowrap; }
+  .note { font-size: 11.6px; color: var(--muted); line-height: 1.45; margin-top: 7px; }
+  .note b { color: var(--text); }
+
+  .who { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 10px; }
+  .who .card { padding: 11px 12px; }
+  .who h3 { margin: 0 0 6px; font-size: 14px; color: var(--ink); display: flex; align-items: center; gap: 6px; }
+  .who .tag { font-size: 9.5px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; margin-bottom: 3px; }
+  .c1 { background: var(--blue-bg); border-color: #bfdbfe; } .c1 .tag { color: var(--blue); }
+  .c2 { background: var(--teal-bg); border-color: #99f6e4; } .c2 .tag { color: var(--teal); }
+  .c3 { background: var(--amber-bg); border-color: #fde68a; } .c3 .tag { color: var(--amber); }
+  ul { margin: 0; padding-left: 16px; font-size: 12.3px; line-height: 1.45; }
+  li { margin: 0 0 4px; }
+  li b { color: var(--ink); }
+  .q { font-style: normal; font-weight: 600; color: var(--ink); }
+
+  .example { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; align-items: stretch; }
+  .step { border-radius: 6px; background: #f9fafb; border: 1px solid var(--line); padding: 8px 9px; font-size: 11.8px; line-height: 1.4; position: relative; }
+  .step .n { display: inline-block; width: 17px; height: 17px; border-radius: 50%; background: var(--red); color: #fff; font-size: 10px; font-weight: 800; text-align: center; line-height: 17px; margin-right: 4px; }
+  .step b { color: var(--ink); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 2px; }
+  .chip { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 10px; background: #f3f4f6; border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; color: var(--ink); }
+  .small { font-size: 11.9px; line-height: 1.48; color: var(--text); }
+  .small b { color: var(--ink); }
+
+  footer { margin-top: auto; padding: 10px 34px 14px; font-size: 9.5px; color: var(--muted); display: flex; justify-content: space-between; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <div class="kicker">Equitel · Plataforma de viajes · Octubre 2026</div>
+    <h1>Tarifa del tiquete según el manual de viajes</h1>
+    <div class="sub">La plataforma recomienda la tarifa que indica el manual COM-P-02, deja comprar otra con su motivo y compara
+      los precios con Google usando la misma tarifa («peras con peras»).</div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>La regla del manual: la tarifa sale de las noches del viaje</h2>
+      <table class="rule">
+        <thead><tr><th>Tarifa</th><th>Noches</th><th>Avianca</th><th>LATAM</th><th>Clic</th><th>Satena</th></tr></thead>
+        <tbody>
+          <tr><td class="tipo">TIPO 1</td><td class="noches">0 a 1</td><td>Basic</td><td>Basic</td><td>VeLigera</td><td>Z0Basic</td></tr>
+          <tr><td class="tipo">TIPO 2</td><td class="noches">2 a 5</td><td>Classic</td><td>Light</td><td>VeEcono</td><td>Z0Econo</td></tr>
+          <tr><td class="tipo">TIPO 3</td><td class="noches">6 o más</td><td>Classic</td><td>Full</td><td>VePreferencial</td><td>Z0Flexi</td></tr>
+        </tbody>
+      </table>
+      <div class="note"><b>Noches</b> = fecha de regreso − fecha de ida (solo ida: las noches de hotel). <b>Equipaje:</b> Basic, solo un
+        artículo pequeño · LATAM Light, más maleta de mano de 10 kg · Avianca Classic y LATAM Full, maleta de mano de 10 kg y bodega de 23 kg.
+        En Avianca, TIPO 2 y 3 son la misma Classic.</div>
+    </section>
+
+    <section>
+      <h2>Qué ve cada quien</h2>
+      <div class="who">
+        <div class="card c1">
+          <div class="tag">Solicitante</div>
+          <h3>👤 Al pedir el viaje</h3>
+          <ul>
+            <li>Nueva casilla <span class="q">«¿Lleva maleta de bodega?»</span> en el formulario (solo vuelos).</li>
+            <li>En el detalle de su solicitud ve la <b>tarifa comprada y el equipaje</b> que incluye.</li>
+          </ul>
+        </div>
+        <div class="card c2">
+          <div class="tag">Área de viajes</div>
+          <h3>🧾 Al cotizar y comprar</h3>
+          <ul>
+            <li><b>Cargar opciones:</b> aviso con la tarifa a cotizar en cada aerolínea.</li>
+            <li><b>Confirmar costos:</b> la tarifa recomendada viene seleccionada. Si se compra otra, el <b>motivo es obligatorio</b>.</li>
+            <li>Si el viajero pidió bodega, lo indica, propone el motivo y avisa si la tarifa elegida no la incluye.</li>
+            <li><b>Registrar reserva:</b> se confirma la tarifa que de verdad se compró.</li>
+          </ul>
+        </div>
+        <div class="card c3">
+          <div class="tag">Dashboard de costos</div>
+          <h3>📊 Al medir</h3>
+          <ul>
+            <li>El comparador busca en Google con <b>el mismo equipaje</b> de la tarifa: TIPO 1 sin maleta, TIPO 2 y 3 con maleta de mano.</li>
+            <li>Selector <span class="q">«Comparar»</span>: misma tarifa o todas las búsquedas.</li>
+            <li>Cada viaje muestra su tarifa, la recomendada y el motivo.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Ejemplo</h2>
+      <div class="example">
+        <div class="step"><span class="n">1</span><b>Bogotá → Medellín</b>, ida y regreso con 1 noche. El viajero marca <b>maleta de bodega</b>.</div>
+        <div class="step"><span class="n">2</span>El manual recomienda <b>TIPO 1 · Basic</b>, que no incluye bodega. La plataforma lo avisa.</div>
+        <div class="step"><span class="n">3</span>Se compra <b>Avianca Classic (TIPO 2)</b>. El motivo se propone solo: <i>«El viajero pidió maleta de bodega»</i>.</div>
+        <div class="step"><span class="n">4</span>Queda registrado y el comparador busca en Google <b>con maleta</b>, la misma tarifa que se compró.</div>
+      </div>
+    </section>
+
+    <div class="cols">
+      <section class="card">
+        <h2>Queda registrado en la base</h2>
+        <div class="chips">
+          <span class="chip">TIPO DE COMPRA DE TKT</span><span class="chip">TARIFA RECOMENDADA</span>
+          <span class="chip">TARIFA NOMBRE</span><span class="chip">TARIFA JUSTIFICACION</span><span class="chip">MALETA DE BODEGA</span>
+        </div>
+        <div class="small" style="margin-top:7px;">Qué tarifa se compró, cuál recomendaba el manual, por qué se eligió otra y si el viajero
+          pidió bodega: la trazabilidad completa de cada tiquete.</div>
+      </section>
+      <section class="card">
+        <h2>Para tener en cuenta</h2>
+        <div class="small">Google Flights no publica las tres tarifas por separado. En <b>Avianca</b> la comparación es exacta (con maleta,
+          Google muestra la Classic); en <b>LATAM</b> es aproximada, y Google no deja pedir bodega. Para la cifra exacta de cada tarifa,
+          lo más confiable es pedirle a <b>Aviatur</b> el precio de las tres en cada cotización.</div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <span>Manual COM-P-02 v07 · Reunión del 8 de octubre de 2026</span>
+    <span>Equitel · Gestión de Viajes</span>
+  </footer>
+</div>
+</body>
+</html>
