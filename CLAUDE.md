@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A90) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A91) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -28,7 +28,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos y de aerolínea/canal + estadísticas de compra +
    facturas por cerrar y por revisar + rastreo de precios + velocidad y análisis de ahorro +
-   build). Debe salir en verde.
+   enlaces con dominio + build). Debe salir en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -298,7 +298,10 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 - **#A61 — Letras de opciones duplicadas.** La siguiente letra se asigna por
   `MAX(letras usadas) + 1`, **nunca por conteo**.
 - **#A53 — El botón APROBAR no abría en Chrome móvil Android** con varias cuentas
-  de Google. Cuidado al tocar los links de aprobación.
+  de Google. Cuidado al tocar los links de aprobación. **Todo enlace a una página del web
+  app que abre una persona va con el dominio** (`script.google.com/a/macros/equitel.com.co/…`):
+  en el servidor, `WEB_APP_URL`; en la app, `webAppPageUrl()` (#A91, botón *Costos por
+  Unidad*). `API_BASE_URL` queda corto solo para las llamadas del API.
 - **#A5 — Links de aprobación firmados con HMAC**, con cutover per-request para no
   invalidar correos en vuelo. No romper esa compatibilidad.
 - **#A62 — La integración con IA (Gemini) fue retirada.** Ver abajo.
@@ -407,6 +410,7 @@ tools/check-purchase-info-rules.cjs  Aerolínea y canal; frontend y backend coin
 tools/check-invoice-review.cjs       Facturas listas para cerrar y por revisar con una hoja sintética; nada se cierra solo (#A83)
 tools/check-price-tracking.cjs       Rastreo de precios: el proyecto aparte y Code.gs juntos sobre una hoja simulada (#A84)
 tools/check-savings-analysis.cjs     Caché del dashboard (alcance, invalidación, trozos, fallas) y cuentas de la proyección de ahorro (#A89, #A90)
+tools/check-webapp-links.cjs         Enlaces a páginas del web app con el dominio de Equitel (#A91)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs)
 tools/comparador-precios/apps-script/  Proyecto de Apps Script APARTE del rastreo de precios (#A84): Rastreo.gs, manifiesto y guía
 scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)

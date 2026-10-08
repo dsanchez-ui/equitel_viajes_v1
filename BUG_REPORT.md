@@ -1965,3 +1965,27 @@ Plan completo y vivo en [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahor
   - lo facturado sale **13 % por encima** de lo cotizado (abril a septiembre, viajes sin hotel).
 
 **Despliegue:** junto con #A89. Con el `Code.gs` anterior, la sección no aparece porque falta `analysis`.
+
+## **#A91 — «Costos por Unidad» no abría en celulares con varias cuentas de Google**
+**Fecha:** 2026-10-08 · **Reportado por:** David · **Estado:** Corregido, en `main`
+
+**Síntoma:** desde el panel del administrador, el botón **Costos por Unidad** abría el dashboard de costos. En un celular con varias cuentas de Google abiertas, Google respondía *"No se pudo acceder al archivo"*. El mismo enlace con el dominio de Equitel sí abría.
+
+**Causa raíz:** es el mismo problema de #A53 (botón APROBAR en Android). El botón armaba el enlace con `API_BASE_URL`, que es la URL corta del web app (`script.google.com/macros/s/…/exec`). Sin el dominio, Google no sabe con qué cuenta abrir la página. #A53 lo había resuelto solo en los correos (`WEB_APP_URL` del servidor); este botón vive en la app React y seguía con la URL corta.
+
+**Fix:**
+- `constants.ts`: `webAppPageUrl(query)` arma los enlaces a **páginas** del web app con el dominio: `script.google.com/a/macros/equitel.com.co/s/…/exec`. Si la URL ya trae el dominio, la deja igual.
+- El botón *Costos por Unidad* (`AdminDashboard.tsx`) la usa.
+- **`API_BASE_URL` no cambia:** la app lo usa para todas sus llamadas al servidor, y esas funcionan con la URL corta.
+- Guías del administrador y de la hoja: el enlace del panel móvil (`?action=admin`) ahora va con el dominio, y se explica por qué.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-webapp-links.cjs`, nuevo en `verify`:
+  - el botón genera exactamente el enlace con dominio que David confirmó que abre;
+  - una URL que ya trae el dominio no cambia;
+  - el API sigue con la URL corta;
+  - ningún componente abre una página con `API_BASE_URL`.
+- Defecto introducido a propósito (volver a la URL corta en el botón): detectado.
+
+**Despliegue:** solo frontend (push a `main`). No toca Apps Script.

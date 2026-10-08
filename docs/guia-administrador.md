@@ -361,8 +361,12 @@ Las validaciones se ejecutan también en el `Guardar`, por si el admin pega un v
 La misma URL del Web App con el parámetro `?action=admin` al final:
 
 ```
-https://script.google.com/macros/s/AKfycb.../exec?action=admin
+https://script.google.com/a/macros/equitel.com.co/s/AKfycb.../exec?action=admin
 ```
+
+Siempre con `/a/macros/equitel.com.co/`: sin el dominio, un celular con varias cuentas de Google muestra
+*"No se pudo abrir el archivo"* (#A53, #A91). Lo mismo para el dashboard de costos (`?view=costs-dashboard`), que la app ya
+abre así desde el botón *Costos por Unidad*.
 
 Recomendación: agregarlo a la pantalla de inicio del celular (iOS Safari → compartir → "Añadir a pantalla de inicio"; Chrome Android → menú → "Añadir a pantalla de inicio") para acceso de un toque, como si fuera una app nativa.
 

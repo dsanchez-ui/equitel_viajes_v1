@@ -276,8 +276,11 @@ Cuando llega alguien nuevo y necesita acceso inmediato al portal, y tú no está
 Abre este enlace desde el navegador de tu teléfono (Safari o Chrome):
 
 ```
-https://script.google.com/macros/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec?action=admin
+https://script.google.com/a/macros/equitel.com.co/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec?action=admin
 ```
+
+Usa este enlace, con `/a/macros/equitel.com.co/`: si el celular tiene varias cuentas de Google abiertas, la versión
+corta (sin el dominio) muestra *"No se pudo abrir el archivo"* (#A53, #A91).
 
 **Recomendación:** guárdalo como atajo en la pantalla de inicio de tu celular para abrirlo de un solo toque como si fuera una app:
 - **iPhone** (Safari): botón compartir → "Añadir a pantalla de inicio"

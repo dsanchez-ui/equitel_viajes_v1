@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { TravelRequest, RequestStatus, Integrant, APPROVER_ROLE_LABELS } from '../types';
-import { API_BASE_URL } from '../constants';
+import { webAppPageUrl } from '../constants';
 import { OptionUploadModal } from './OptionUploadModal';
 import { SupportUploadModal } from './SupportUploadModal';
 import { ReservationModal } from './ReservationModal';
@@ -429,8 +429,8 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
           </button>
           <button
             onClick={() => {
-              const sep = API_BASE_URL.indexOf('?') > -1 ? '&' : '?';
-              window.open(API_BASE_URL + sep + 'view=costs-dashboard', '_blank', 'noopener,noreferrer');
+              // #A91: con el dominio en la URL, para que abra en celulares con varias cuentas de Google.
+              window.open(webAppPageUrl('view=costs-dashboard'), '_blank', 'noopener,noreferrer');
             }}
             disabled={isLoading}
             className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 gap-2"
