@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A88) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A90) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -27,7 +27,8 @@ archivos; Gmail para notificaciones.
 2. **Verificar siempre antes de proponer un push:** `npm run verify` (typecheck +
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos y de aerolínea/canal + estadísticas de compra +
-   facturas por cerrar y por revisar + rastreo de precios + build). Debe salir en verde.
+   facturas por cerrar y por revisar + rastreo de precios + velocidad y análisis de ahorro +
+   build). Debe salir en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -44,7 +45,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + facturas por cerrar + rastreo de precios + build  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + facturas por cerrar + rastreo de precios + caché y análisis de ahorro + build  ← antes de cualquier push
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -261,6 +262,18 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     aerolínea); los de escala se listan al final en gris. Si ese día no hay directos, cuentan
     los de escala. El enlace y lo facturado están **solo en el dashboard de costos**, nunca en la
     app de Laura.
+- **Dashboard de costos: la velocidad es el pilar** (#A89, David, 2026-10-08: *"si no es rápido,
+  nadie lo va a utilizar"*). Todas las secciones se piden **en paralelo** y sus respuestas se guardan
+  en **`CacheService`** (`_dashCached_`), con una llave que lleva el alcance del usuario y una versión
+  de datos. `dispatch` la cambia en cada escritura, y la entrada vence a los 10 min; *⟳ Actualizar
+  datos* recalcula. **Nunca guardar nada en Script Properties** (decisión de David). Toda visual
+  nueva sale de un payload en caché, lee la hoja una sola vez y no encadena llamadas; los controles
+  interactivos calculan en el navegador. Ver [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §3.
+- **Proyección de ahorro** (#A90, pedido de Juan Camilo, 2026-10-08): sección del dashboard de costos
+  con volumen de viajes, ahorro observado del comparador (partido en canal y vuelo) y proyección
+  por mes con método elegible y un rango prudente–probable. Mismo permiso que el comparador. Es un
+  **plan vivo**: [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md), donde se anotan los
+  pedidos e ideas nuevas (§9) y la bitácora (§11).
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -393,6 +406,7 @@ tools/check-purchase-stats.cjs    Estadísticas de compra con una hoja sintétic
 tools/check-purchase-info-rules.cjs  Aerolínea y canal; frontend y backend coinciden (#A82)
 tools/check-invoice-review.cjs       Facturas listas para cerrar y por revisar con una hoja sintética; nada se cierra solo (#A83)
 tools/check-price-tracking.cjs       Rastreo de precios: el proyecto aparte y Code.gs juntos sobre una hoja simulada (#A84)
+tools/check-savings-analysis.cjs     Caché del dashboard (alcance, invalidación, trozos, fallas) y cuentas de la proyección de ahorro (#A89, #A90)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs)
 tools/comparador-precios/apps-script/  Proyecto de Apps Script APARTE del rastreo de precios (#A84): Rastreo.gs, manifiesto y guía
 scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)
@@ -476,10 +490,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **Seguridad:** el remoto de git del PC Linux tiene un token de GitHub en la URL y quedó a la
   vista en una sesión; revocarlo y usar un gestor de credenciales (MIGRACION.md, sección 6).
 
-- **Análisis de ahorro en tiquetes** (pedido de Juan Camilo, 8-oct): propuesta en
-  [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) (volumen de viajes, ahorro
-  observado del comparador y proyección por mes en el dashboard de costos). Esperando las
-  decisiones de su sección 7; nada implementado.
+- **Análisis de ahorro y velocidad del dashboard** (#A89, #A90, 8-oct): implementados; pendiente
+  pegar `Code.gs` y `CostsDashboard.html` y crear la versión nueva del web app. Lo que sigue está en
+  [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §9.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
   [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).

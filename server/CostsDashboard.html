@@ -533,6 +533,23 @@
     .pt-link { color: var(--blue); font-weight: 600; text-decoration: none; white-space: nowrap; }
     .pt-link:hover { text-decoration: underline; }
     .pt-note-box { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
+    /* ===== PROYECCIÓN DE AHORRO (#A90) ===== */
+    #savingsSection { display: none; }
+    .sa-controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+    .sa-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 10.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+    .sa-controls select, .sa-controls input[type="text"] { padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; background: #fff; color: var(--text); text-transform: none; letter-spacing: 0; font-weight: 400; }
+    .sa-controls input[type="text"] { width: 120px; }
+    .sa-controls .sa-check { flex-direction: row; align-items: center; gap: 6px; text-transform: none; font-size: 12px; font-weight: 600; color: var(--text); letter-spacing: 0; }
+    table.variance.sa-table th, table.variance.sa-table td { padding: 6px 8px; }
+    table.variance.sa-table th.num { text-align: right; }
+    table.variance.sa-table td:first-child, table.variance.sa-table th:first-child { position: sticky; left: 0; background: #fff; z-index: 1; }
+    table.variance.sa-table th:first-child { background: #f9fafb; }
+    table.variance.sa-table tr.sa-group td { background: #f3f4f6; font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--muted); }
+    table.variance.sa-table td.sa-total { font-weight: 700; }
+    .sa-note { font-size: 11.5px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+    .sa-warn { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; border-radius: 6px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; }
+    .sa-pos { color: var(--green); font-weight: 700; }
+    .sa-neg { color: var(--red); font-weight: 700; }
     /* En celular la tabla es más ancha que la pantalla: el detalle se queda del ancho visible
        y solo sus tablas se desplazan de lado. */
     @media (max-width: 760px) {
@@ -768,6 +785,7 @@
       </div>
       <div class="header-actions">
         <span class="email" id="loggedEmail"></span>
+        <button id="btnRefresh" class="btn-ghost" title="Recalcula todo sin usar los datos guardados">⟳ Actualizar datos</button>
         <button id="btnConfig" class="btn-ghost" style="display: none;">⚙️ Configuración</button>
         <button id="btnLogout" class="btn-ghost">Salir</button>
       </div>
@@ -1248,9 +1266,118 @@
       </div>
     </div>
 
+    <!-- ============================================================== -->
+    <!-- PROYECCIÓN DE AHORRO (#A90) — mismo acceso que el comparador    -->
+    <!-- Plan: docs/plan-analitica-ahorro.md                             -->
+    <!-- ============================================================== -->
+    <div id="savingsSection" class="view-section">
+      <div class="view-title">
+        📈 Proyección de ahorro
+        <span class="badge-admin">Prueba · solo administradores</span>
+        <span class="view-subtitle">¿cuánto se habría ahorrado comprando lo que recomienda el comparador?</span>
+      </div>
+
+      <div class="sa-controls">
+        <label>Desde <select id="saFrom"></select></label>
+        <label>Hasta <select id="saTo"></select></label>
+        <label>Método
+          <select id="saMethod">
+            <option value="median|ticket">Mediana por tiquete</option>
+            <option value="mean|ticket">Promedio por tiquete</option>
+            <option value="p25|ticket">Percentil 25 por tiquete</option>
+            <option value="min|ticket">Mínimo por tiquete</option>
+            <option value="median|trip">Mediana por viaje</option>
+            <option value="min|trip">Mínimo por viaje</option>
+            <option value="median|pct">Mediana como % del cotizado</option>
+            <option value="min|pct">Mínimo como % del cotizado</option>
+            <option value="fixed|trip">Valor fijo por viaje…</option>
+            <option value="fixed|ticket">Valor fijo por tiquete…</option>
+            <option value="fixed|pct">% fijo del cotizado…</option>
+          </select>
+        </label>
+        <label id="saFixedWrap" style="display: none;"><span id="saFixedLabel">Valor fijo</span> <input type="text" id="saFixed" inputmode="numeric" value="150.000" /></label>
+        <label>Qué ahorro cuenta
+          <select id="saKind">
+            <option value="all">Todo (canal + vuelo)</option>
+            <option value="channel">Solo canal (misma aerolínea)</option>
+          </select>
+        </label>
+        <label>Equipaje por tiquete <input type="text" id="saBaggage" inputmode="numeric" value="0" title="Pesos que se restan al ahorro de cada tiquete: Google muestra la tarifa sin maleta" /></label>
+        <label>Adopción
+          <select id="saAdoption">
+            <option value="100">100 % de los viajes</option>
+            <option value="75">75 %</option>
+            <option value="50">50 %</option>
+            <option value="25">25 %</option>
+          </select>
+        </label>
+        <label class="sa-check"><input type="checkbox" id="saIntl" /> Incluir internacionales</label>
+      </div>
+
+      <div class="pt-headline" id="saHeadline">Cargando…</div>
+
+      <details class="pt-legend">
+        <summary>¿Cómo se lee?</summary>
+        <dl>
+          <dt>De dónde sale</dt>
+          <dd>El ahorro por viaje sale de la muestra del comparador (lo cotizado frente a lo más barato en Google). Se convierte a
+            ahorro por tiquete o a % de lo cotizado y se aplica a todos los viajes en avión comprados de cada mes.</dd>
+          <dt>Prudente y probable</dt>
+          <dd><b>Prudente:</b> solo lo que se ahorra comprando con la misma aerolínea (no le cambia nada al viajero).
+            <b>Probable:</b> todo el ahorro, incluido escoger otro vuelo u otra aerolínea. Ambos con la mediana por tiquete.</dd>
+          <dt>Muestra</dt>
+          <dd>Con pocos viajes comparados, las cifras son un indicio, no una conclusión. El estudio va del 7 al 21 de octubre.</dd>
+          <dt>Ojo</dt>
+          <dd>Google muestra la tarifa más económica, normalmente sin maleta ni cambios; use «Equipaje por tiquete» para descontarlo.
+            Los meses pasados se proyectan con el patrón del estudio: los precios cambian por temporada y anticipación.
+            Los filtros de empresa y unidad de arriba sí aplican aquí.</dd>
+        </dl>
+      </details>
+
+      <div class="card">
+        <h2>Volumen de viajes <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;">viajes en avión comprados (reservados o procesados), por mes de compra</span></h2>
+        <div class="kpi-grid" id="saVolumeKpis"></div>
+        <div class="chart-wrap" style="height: 260px;"><canvas id="saVolumeChart"></canvas></div>
+        <div class="variance-table-wrap" style="margin-top: 14px; max-height: none;">
+          <table class="variance sa-table" id="saVolumeTable"></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Ahorro observado <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;">viajes ya comparados con Google Flights</span></h2>
+        <div id="saSampleWarn"></div>
+        <div class="kpi-grid" id="saSampleKpis"></div>
+        <div class="variance-table-wrap" style="max-height: none;">
+          <table class="variance sa-table" id="saSampleTable"></table>
+        </div>
+        <p class="sa-note"><b>Canal</b> = cotizado − la misma aerolínea en Google (comprar lo mismo por otro lado).
+          <b>Vuelo</b> = la misma aerolínea − lo más barato (escoger otro vuelo u otra aerolínea).</p>
+      </div>
+
+      <div class="card">
+        <h2>Proyección por mes</h2>
+        <div class="chart-wrap" style="height: 260px;"><canvas id="saProjChart"></canvas></div>
+        <div class="variance-table-wrap" style="margin-top: 14px; max-height: none;">
+          <table class="variance sa-table" id="saProjTable"></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Cotizado frente a facturado <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;">viajes sin hotel que ya tienen facturas</span></h2>
+        <div class="variance-table-wrap" style="max-height: none;">
+          <table class="variance sa-table" id="saInvoiceTable"></table>
+        </div>
+      </div>
+
+      <div class="export-bar" style="justify-content: flex-start; margin-top: 0;">
+        <button id="btnExportSavingsCsv" class="btn-secondary">📥 Exportar proyección (CSV)</button>
+      </div>
+    </div>
+
     <!-- META INFO -->
     <div class="card" style="font-size: 11px; color: var(--muted);">
       <div id="metaInfo"></div>
+      <div id="loadInfo" style="margin-top: 4px;"></div>
     </div>
 
     <!-- EXPORT BUTTONS -->
@@ -1436,7 +1563,9 @@ var charts = {
   annualDonutDist: null,
   monthlyDonut: null,
   periodDonut: null,
-  varianceChart: null
+  varianceChart: null,
+  saVolume: null,
+  saProj: null
 };
 
 // Reporte de variación (solo admin) — datos crudos del backend.
@@ -1477,9 +1606,38 @@ function initFilters() {
 // El backend retorna TODOS los datos del año (sin filtros de empresa/
 // unidad/toggles aplicados). Los filtros se aplican localmente en JS.
 // =====================================================================
-function loadDashboard() {
+// =====================================================================
+// VELOCIDAD (#A89): todas las secciones se piden a la vez y cada respuesta trae
+// si salió de la caché del servidor, de cuándo es y cuánto tardó.
+// =====================================================================
+var loadTimes = {};
+function noteLoad(name, t0, data) {
+  var c = (data && data._cache) || {};
+  loadTimes[name] = { ms: Date.now() - t0, serverMs: c.serverMs, fromCache: !!c.fromCache, cachedAt: c.cachedAt };
+  renderLoadInfo();
+}
+function renderLoadInfo() {
+  var el = document.getElementById('loadInfo');
+  if (!el) return;
+  var names = { data: 'Datos generales', variance: 'Variación', price: 'Comparador y proyección' };
+  var parts = Object.keys(names).filter(function(k) { return loadTimes[k]; }).map(function(k) {
+    var t = loadTimes[k];
+    return names[k] + ' ' + (t.ms / 1000).toFixed(1).replace('.', ',') + ' s' +
+      (t.fromCache ? ' (datos guardados ' + ptAgo(t.cachedAt) + ')' : ' (recién calculado)');
+  });
+  el.textContent = parts.length ? '⏱ ' + parts.join(' · ') + '. «⟳ Actualizar datos» recalcula todo.' : '';
+}
+
+function loadDashboard(fresh) {
   if (!session) return;
+  fresh = fresh === true;
+  loadTimes = {};
   showStatus('dashStatus', 'Cargando datos del año...', 'info');
+  // Variación y comparador se piden YA, en paralelo con los datos generales: el
+  // servidor responde "restringido" a quien no tiene permiso y la sección no aparece.
+  loadVarianceReport(fresh);
+  loadPriceTracking(fresh);
+  var t0 = Date.now();
   google.script.run
     .withSuccessHandler(function(data) {
       hideStatus('dashStatus');
@@ -1499,24 +1657,24 @@ function loadDashboard() {
         return;
       }
       fullYearData = data.data;
+      noteLoad('data', t0, fullYearData);
       canEditConfig = !!(fullYearData.meta && fullYearData.meta.access && fullYearData.meta.access.canConfig);
       document.getElementById('btnConfig').style.display = canEditConfig ? '' : 'none';
       populateCompanyUnitDropdowns();
       refreshView();
-      // Variación cotizado vs facturado (#A78): solo si el backend lo autoriza
-      // (lista fija en Code.gs, no el rol). El backend lo revalida al pedirla.
-      if (fullYearData.meta && fullYearData.meta.access && fullYearData.meta.access.canViewVariance === true) {
-        loadVarianceReport();
-      } else {
+      // Variación (#A78) y comparador (#A84) ya se pidieron en paralelo; si el
+      // backend dice que este usuario no los ve, se ocultan.
+      var acc = (fullYearData.meta && fullYearData.meta.access) || {};
+      if (acc.canViewVariance !== true) {
         varianceData = null;
         document.getElementById('varianceSection').style.display = 'none';
+      } else if (varianceData) {
+        renderVarianceView();
       }
-      // Comparador de precios (#A84): mismas personas que la variación; el backend lo revalida.
-      if (fullYearData.meta && fullYearData.meta.access && fullYearData.meta.access.canViewPriceTracking === true) {
-        loadPriceTracking();
-      } else {
+      if (acc.canViewPriceTracking !== true) {
         priceData = null;
         document.getElementById('priceSection').style.display = 'none';
+        document.getElementById('savingsSection').style.display = 'none';
       }
     })
     .withFailureHandler(function(err) {
@@ -1528,6 +1686,7 @@ function loadDashboard() {
       }
     })
     .costsDashboard_getData({
+      fresh: fresh,
       filters: {
         year: parseInt(document.getElementById('f_year').value, 10),
         // SIN fromMonth/toMonth/companies/businessUnits — todo se filtra en cliente.
@@ -1556,6 +1715,7 @@ function refreshView() {
   renderFilterSummary();
   // Variance: si ya hay datos cargados, refrescar con los nuevos filtros client-side.
   if (varianceData) renderVarianceView();
+  if (priceData && priceData.analysis) renderSavings();
 }
 
 /**
@@ -2532,12 +2692,11 @@ function csvTopTravelersLines(title, rows) {
 // Solo lo carga quien el backend autoriza (meta.access.canViewVariance: la
 // lista fija COSTS_VARIANCE_ALLOWED de Code.gs). El backend lo revalida.
 
-function loadVarianceReport() {
-  // BUGFIX (2026-06-02): usar 'block' explícito, no ''. La regla CSS
-  // `#varianceSection { display: none }` deja la sección oculta si JS
-  // pone style.display='' (porque eso remueve el override inline y cae
-  // al CSS, que sigue siendo display:none). 'block' fuerza override.
-  document.getElementById('varianceSection').style.display = 'block';
+function loadVarianceReport(fresh) {
+  // La sección se muestra cuando llega la respuesta (#A89: se pide en paralelo y,
+  // para quien no tiene permiso, nunca aparece). 'block' explícito: la regla CSS
+  // `#varianceSection { display: none }` la dejaría oculta con display=''.
+  var t0 = Date.now();
   google.script.run
     .withSuccessHandler(function(response) {
       if (!response || !response.success) {
@@ -2551,7 +2710,10 @@ function loadVarianceReport() {
         return;
       }
       varianceData = response.data;
-      renderVarianceView();
+      noteLoad('variance', t0, varianceData);
+      document.getElementById('varianceSection').style.display = 'block';
+      // Los filtros de empresa y unidad salen de los datos generales; si aún no llegan, se pinta al llegar.
+      if (fullYearData) renderVarianceView();
     })
     .withFailureHandler(function(err) {
       var msg = (err && err.message) || 'Error de conexión.';
@@ -2559,6 +2721,7 @@ function loadVarianceReport() {
       // Sin afectar el resto del dashboard.
     })
     .costsDashboard_getVarianceReport({
+      fresh: fresh === true,
       filters: {
         year: parseInt(document.getElementById('f_year').value, 10)
         // companies/units se filtran client-side a partir de varianceData.rows
@@ -2905,8 +3068,8 @@ var PT_LEVEL = { low: 'bajo', typical: 'normal', high: 'alto', bajo: 'bajo', nor
 /** Opción de referencia de un tramo: a la hora pedida o, si no hubo, la más barata del día. */
 function ptLegRef(l) { return l ? (l.referenceIsNear ? l.near : l.cheapest) : null; }
 
-function loadPriceTracking() {
-  document.getElementById('priceSection').style.display = 'block';
+function loadPriceTracking(fresh) {
+  var t0 = Date.now();
   google.script.run
     .withSuccessHandler(function(response) {
       if (!response || !response.success) {
@@ -2915,20 +3078,29 @@ function loadPriceTracking() {
           document.getElementById('priceSection').style.display = 'none';
           return;
         }
+        document.getElementById('priceSection').style.display = 'block';
         var h = document.getElementById('ptHealth');
         h.className = 'pt-health warn';
         h.textContent = 'No se pudo cargar el comparador de precios: ' + errMsg;
         return;
       }
       priceData = response.data;
+      noteLoad('price', t0, priceData);
+      ptDetails = {};
+      document.getElementById('priceSection').style.display = 'block';
       renderPriceTracking();
+      if (priceData.analysis) {
+        document.getElementById('savingsSection').style.display = 'block';
+        renderSavings();
+      }
     })
     .withFailureHandler(function(err) {
+      document.getElementById('priceSection').style.display = 'block';
       var h = document.getElementById('ptHealth');
       h.className = 'pt-health warn';
       h.textContent = 'No se pudo cargar el comparador de precios: ' + ((err && err.message) || 'error de conexión') + '.';
     })
-    .costsDashboard_getPriceTracking({ userEmail: session.email, sessionToken: session.token });
+    .costsDashboard_getPriceTracking({ userEmail: session.email, sessionToken: session.token, fresh: fresh === true });
 }
 
 function _ptRenderHealth(meta) {
@@ -3386,6 +3558,462 @@ function exportPriceCsv() {
   setTimeout(function() { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
+// =====================================================================
+// PROYECCIÓN DE AHORRO (#A90) — plan en docs/plan-analitica-ahorro.md
+// =====================================================================
+// Todo se calcula aquí, con la tabla compacta que llega junto al comparador (una
+// sola llamada, guardada en la caché del servidor): mover un control no va al
+// servidor. Mismas reglas que las estadísticas de compra (#A80).
+
+var SA_START = '2026-04';   // la plataforma arrancó en abril de 2026
+var SA_MIN_COST = 10000;    // costos menores no son reales (#A79/#A80)
+var SA_MIN_GROUP = 5;       // viajes de un tipo para usar el valor de su grupo
+var SA_SMALL_SAMPLE = 15;   // por debajo, la muestra es "un indicio"
+var SA_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+var SA_METHOD_LABEL = {
+  'median|ticket': 'la mediana por tiquete', 'mean|ticket': 'el promedio por tiquete', 'p25|ticket': 'el percentil 25 por tiquete',
+  'min|ticket': 'el mínimo por tiquete', 'median|trip': 'la mediana por viaje', 'min|trip': 'el mínimo por viaje',
+  'median|pct': 'la mediana como % del cotizado', 'min|pct': 'el mínimo como % del cotizado',
+  'fixed|trip': 'un valor fijo por viaje', 'fixed|ticket': 'un valor fijo por tiquete', 'fixed|pct': 'un % fijo del cotizado'
+};
+
+function saMonthLabel(mk) { return SA_MONTHS[Number(mk.slice(5, 7)) - 1] + ' ' + mk.slice(0, 4); }
+function saShortMonth(mk) { return SA_MONTHS[Number(mk.slice(5, 7)) - 1] + ' ' + mk.slice(2, 4); }
+/** '$31,4 M' para millones; si no, '$850.000'. */
+function saM(n) {
+  if (n === null || n === undefined || isNaN(n)) return '—';
+  var a = Math.abs(n);
+  var t = a >= 1e6 ? '$' + (a / 1e6).toFixed(1).replace('.', ',') + ' M' : fmtMoney(Math.round(a));
+  return (n < 0 ? '−' : '') + t;
+}
+function saPct(x) { return x === null || x === undefined || isNaN(x) ? '—' : Math.round(x * 100) + ' %'; }
+function saNum(x, dec) { return x === null || x === undefined || isNaN(x) ? '—' : (dec ? x.toFixed(dec).replace('.', ',') : String(Math.round(x))); }
+function saParseMoney(v) { var n = Number(String(v || '').replace(/[^\d]/g, '')); return isFinite(n) ? n : 0; }
+function saTickets(pax, rt) { return pax * (rt ? 2 : 1); }
+
+/** Mínimo, percentil 25, mediana, promedio o máximo de una lista (ignora vacíos). */
+function saStat(values, how) {
+  var v = values.filter(function(x) { return x !== null && x !== undefined && !isNaN(x); }).sort(function(a, b) { return a - b; });
+  if (!v.length) return null;
+  if (how === 'min') return v[0];
+  if (how === 'max') return v[v.length - 1];
+  if (how === 'mean') return v.reduce(function(s, x) { return s + x; }, 0) / v.length;
+  var pos = (v.length - 1) * (how === 'p25' ? 0.25 : 0.5), lo = Math.floor(pos), hi = Math.ceil(pos);
+  return v[lo] + (v[hi] - v[lo]) * (pos - lo);
+}
+
+/** Viajes del análisis, con los filtros de empresa y unidad de arriba del dashboard. */
+function saTrips() {
+  var a = priceData && priceData.analysis;
+  if (!a || !a.rows) return [];
+  var ix = {};
+  a.columns.forEach(function(c, i) { ix[c] = i; });
+  var norm = function(x) { return String(x || '').toLowerCase().trim(); };
+  var company = norm((document.getElementById('f_company') || {}).value);
+  var unit = norm((document.getElementById('f_unit') || {}).value);
+  return a.rows.map(function(r) {
+    return {
+      month: r[ix.mes], reqMonth: r[ix.mesSolicitud], st: r[ix.estado], flight: r[ix.vuelo] === 1, rt: r[ix.idaVuelta] === 1,
+      pax: r[ix.pasajeros] || 1, intl: r[ix.internacional] === 1, hotel: r[ix.hotel] === 1, mod: r[ix.cambio] === 1,
+      modCost: r[ix.cambioConCosto] === 1, multi: r[ix.multidestino] === 1, quoted: r[ix.cotizadoTiquetes] || 0,
+      invoiced: r[ix.facturado] || 0, lead: r[ix.anticipacion], channel: r[ix.canal] || '',
+      company: r[ix.empresa] >= 0 ? a.companies[r[ix.empresa]] : '', unit: r[ix.unidad] >= 0 ? a.units[r[ix.unidad]] : ''
+    };
+  }).filter(function(t) {
+    return (!company || norm(t.company) === company) && (!unit || norm(t.unit) === unit);
+  });
+}
+
+/** Llena Desde/Hasta con los meses que hay (desde abril de 2026), conservando lo elegido. */
+function saFillMonths(trips) {
+  var set = {};
+  trips.forEach(function(t) { if (t.month >= SA_START) set[t.month] = true; if (t.reqMonth >= SA_START) set[t.reqMonth] = true; });
+  var months = Object.keys(set).sort();
+  var now = new Date();
+  var current = now.getFullYear() + '-' + ('0' + (now.getMonth() + 1)).slice(-2);
+  var closed = months.filter(function(m) { return m < current; });
+  var fill = function(id, def) {
+    var sel = document.getElementById(id);
+    var prev = sel.value;
+    sel.innerHTML = months.map(function(m) { return '<option value="' + m + '">' + saMonthLabel(m) + (m === current ? ' (en curso)' : '') + '</option>'; }).join('');
+    sel.value = months.indexOf(prev) !== -1 ? prev : def;
+  };
+  fill('saFrom', months[0] || '');
+  fill('saTo', closed.length ? closed[closed.length - 1] : (months[months.length - 1] || ''));
+  return months;
+}
+
+/** Totales por mes. Embudo por mes de la solicitud; lo comprado por mes de compra. */
+function saVolume(trips, months) {
+  var by = {};
+  months.forEach(function(m) {
+    by[m] = { requests: 0, annulled: 0, denied: 0, bought: 0, flights: 0, hotelOnly: 0, oneway: 0, roundtrip: 0, multi: 0, intl: 0, hotel: 0,
+      pax1: 0, pax2: 0, pax3: 0, mod: 0, modCost: 0, tickets: 0, spend: 0, ticketsWithCost: 0,
+      lead03: 0, lead47: 0, lead814: 0, lead15: 0, leadNA: 0, chA: 0, chD: 0, chO: 0, chNone: 0 };
+  });
+  trips.forEach(function(t) {
+    var rq = by[t.reqMonth];
+    if (rq) { rq.requests++; if (t.st === 'A') rq.annulled++; if (t.st === 'D') rq.denied++; }
+    if (t.st !== 'C') return;
+    var c = by[t.month];
+    if (!c) return;
+    c.bought++;
+    if (!t.flight) { c.hotelOnly++; return; }
+    c.flights++;
+    if (t.rt) c.roundtrip++; else c.oneway++;
+    if (t.multi) c.multi++;
+    if (t.intl) c.intl++;
+    if (t.hotel) c.hotel++;
+    if (t.pax === 1) c.pax1++; else if (t.pax === 2) c.pax2++; else c.pax3++;
+    if (t.mod) c.mod++;
+    if (t.modCost) c.modCost++;
+    var tk = saTickets(t.pax, t.rt);
+    c.tickets += tk;
+    if (t.quoted >= SA_MIN_COST) { c.spend += t.quoted; c.ticketsWithCost += tk; }
+    if (t.lead === null || t.lead === undefined || t.lead < 0) c.leadNA++;
+    else if (t.lead <= 3) c.lead03++;
+    else if (t.lead <= 7) c.lead47++;
+    else if (t.lead <= 14) c.lead814++;
+    else c.lead15++;
+    if (t.channel === 'A') c.chA++; else if (t.channel === 'D') c.chD++; else if (t.channel === 'O') c.chO++; else c.chNone++;
+  });
+  return by;
+}
+
+/** La muestra del comparador: cotizado frente a Google, con la partición canal / vuelo. */
+function saSample(includeIntl) {
+  return ((priceData && priceData.items) || []).filter(function(it) {
+    return it.quoted && it.market && (includeIntl || !it.international);
+  }).map(function(it) {
+    var tk = saTickets(it.passengers || 1, !!it.returnDate);
+    var diff = it.quoted - it.market;
+    var ch = it.sameAirline ? it.quoted - it.sameAirline : null;
+    return {
+      it: it, tickets: tk, rt: !!it.returnDate, diff: diff, perTicket: diff / tk, pct: diff / it.quoted,
+      channel: ch, channelPerTicket: ch === null ? null : ch / tk, channelPct: ch === null ? null : ch / it.quoted,
+      flightPart: it.sameAirline ? it.sameAirline - it.market : null
+    };
+  });
+}
+
+/** Valor del método para viajes de ida y vuelta (rt) y de solo ida (ow): el del grupo si hay al menos 5. */
+function saRates(sample, how, base, kind) {
+  var key = (kind === 'channel'
+    ? { ticket: 'channelPerTicket', trip: 'channel', pct: 'channelPct' }
+    : { ticket: 'perTicket', trip: 'diff', pct: 'pct' })[base];
+  var pick = function(rt) {
+    var grp = sample.filter(function(x) { return x.rt === rt && x[key] !== null; });
+    var use = grp.length >= SA_MIN_GROUP ? grp : sample;
+    return saStat(use.map(function(x) { return x[key]; }), how);
+  };
+  return { rt: pick(true), ow: pick(false) };
+}
+
+/** Ahorro proyectado por mes con un método. null si el método necesita muestra y no hay. */
+function saProject(trips, months, sample, opts) {
+  var rates = opts.how === 'fixed' ? null : saRates(sample, opts.how, opts.base, opts.kind);
+  var cap = saStat(sample.map(function(x) { return x.pct; }), 'max');
+  var out = {};
+  var any = false;
+  months.forEach(function(m) { out[m] = 0; });
+  trips.forEach(function(t) {
+    if (t.st !== 'C' || !t.flight || out[t.month] === undefined || t.quoted < SA_MIN_COST) return;
+    if (t.intl && !opts.intl) return;
+    var tk = saTickets(t.pax, t.rt);
+    var v;
+    if (opts.how === 'fixed') {
+      v = opts.base === 'ticket' ? opts.fixed * tk : opts.base === 'trip' ? opts.fixed : opts.fixed / 100 * t.quoted;
+    } else {
+      var r = rates[t.rt ? 'rt' : 'ow'];
+      if (r === null) return;
+      v = opts.base === 'ticket' ? r * tk : opts.base === 'trip' ? r : r * t.quoted;
+    }
+    v -= opts.baggage * tk;
+    if (cap !== null && cap > 0 && v > t.quoted * cap) v = t.quoted * cap;
+    out[t.month] += v * opts.adoption;
+    any = true;
+  });
+  return any || opts.how === 'fixed' ? out : null;
+}
+
+function saOptions() {
+  var parts = document.getElementById('saMethod').value.split('|');
+  var fixedRaw = document.getElementById('saFixed').value;
+  return {
+    how: parts[0], base: parts[1], kind: document.getElementById('saKind').value,
+    fixed: parts[1] === 'pct' ? Number(String(fixedRaw).replace(',', '.').replace(/[^\d.]/g, '')) || 0 : saParseMoney(fixedRaw),
+    baggage: saParseMoney(document.getElementById('saBaggage').value),
+    adoption: Number(document.getElementById('saAdoption').value) / 100,
+    intl: document.getElementById('saIntl').checked
+  };
+}
+
+var saLast = null; // lo último calculado, para el CSV
+
+function renderSavings() {
+  if (!priceData || !priceData.analysis) return;
+  var all = saTrips();
+  var monthsAll = saFillMonths(all);
+  var from = document.getElementById('saFrom').value, to = document.getElementById('saTo').value;
+  if (from > to) { var tmp = from; from = to; to = tmp; }
+  var months = monthsAll.filter(function(m) { return m >= from && m <= to; });
+  var opts = saOptions();
+  var fixedWrap = document.getElementById('saFixedWrap');
+  fixedWrap.style.display = opts.how === 'fixed' ? '' : 'none';
+  document.getElementById('saFixedLabel').textContent = opts.base === 'pct' ? '% fijo' : opts.base === 'ticket' ? 'Pesos por tiquete' : 'Pesos por viaje';
+
+  var vol = saVolume(all, months);
+  var sample = saSample(opts.intl);
+  var proj = saProject(all, months, sample, opts);
+  var prudent = saProject(all, months, sample, { how: 'median', base: 'ticket', kind: 'channel', fixed: 0, baggage: opts.baggage, adoption: opts.adoption, intl: opts.intl });
+  var probable = saProject(all, months, sample, { how: 'median', base: 'ticket', kind: 'all', fixed: 0, baggage: opts.baggage, adoption: opts.adoption, intl: opts.intl });
+  saLast = { months: months, vol: vol, sample: sample, proj: proj, prudent: prudent, probable: probable, opts: opts, from: from, to: to };
+
+  _saRenderHeadline(saLast);
+  _saRenderVolume(vol, months);
+  _saRenderSample(sample);
+  _saRenderProjection(saLast);
+  _saRenderInvoices(all, months, opts);
+}
+
+function _saSum(obj, months) { return months.reduce(function(s, m) { return s + (obj ? obj[m] || 0 : 0); }, 0); }
+
+function _saRenderHeadline(st) {
+  var box = document.getElementById('saHeadline');
+  var n = st.sample.length, months = st.months;
+  if (!months.length) { box.className = 'pt-headline'; box.innerHTML = 'No hay meses con viajes para el periodo elegido.'; return; }
+  var last = months[months.length - 1];
+  var spendLast = st.vol[last] ? st.vol[last].spend : 0;
+  var parts = [];
+  if (!st.proj) {
+    parts.push('Todavía no hay viajes comparados para proyectar con ' + SA_METHOD_LABEL[st.opts.how + '|' + st.opts.base] +
+      '. Elija un <b>valor fijo</b> en «Método» o espere a que el comparador acumule viajes. El volumen de abajo ya está completo.');
+  } else {
+    var total = _saSum(st.proj, months), avg = total / months.length;
+    parts.push('Con ' + escHtml(SA_METHOD_LABEL[st.opts.how + '|' + st.opts.base]) + (st.opts.kind === 'channel' ? ' (solo canal)' : '') +
+      ', en <b>' + saMonthLabel(last) + '</b> se habrían ahorrado unos <strong class="pt-under">' + saM(st.proj[last]) + '</strong>' +
+      (spendLast ? ' (' + saPct(st.proj[last] / spendLast) + ' de lo gastado en tiquetes)' : '') + '.');
+    parts.push(' Entre ' + saMonthLabel(months[0]) + ' y ' + saMonthLabel(last) + ': <b>' + saM(total) + '</b>, unos <b>' + saM(avg * 12) + ' al año</b>.');
+    if (st.prudent && st.probable) {
+      parts.push(' Rango por mes, en promedio: prudente <b>' + saM(_saSum(st.prudent, months) / months.length) + '</b> · probable <b>' +
+        saM(_saSum(st.probable, months) / months.length) + '</b>.');
+    }
+  }
+  var note = 'Muestra: ' + ptPlural(n, 'viaje comparado', 'viajes comparados') + (n < SA_SMALL_SAMPLE ? ' (pequeña: tome las cifras como un indicio)' : '') + '.';
+  if (st.opts.adoption < 1) note += ' Con ' + Math.round(st.opts.adoption * 100) + ' % de adopción.';
+  if (st.opts.baggage) note += ' Descontando ' + fmtMoney(st.opts.baggage) + ' de equipaje por tiquete.';
+  box.className = 'pt-headline ' + (st.proj && _saSum(st.proj, months) > 0 ? 'under' : '');
+  box.innerHTML = parts.join('') + '<div class="pt-note">' + escHtml(note) + '</div>';
+}
+
+function _saRenderVolume(vol, months) {
+  var tot = {};
+  months.forEach(function(m) { Object.keys(vol[m]).forEach(function(k) { tot[k] = (tot[k] || 0) + vol[m][k]; }); });
+  var n = months.length || 1;
+  var kpi = function(label, value, extra) {
+    return '<div class="kpi"><div class="label">' + escHtml(label) + '</div><div class="value">' + escHtml(value) + '</div><div class="extra">' + escHtml(extra) + '</div></div>';
+  };
+  var flights = tot.flights || 0;
+  document.getElementById('saVolumeKpis').innerHTML =
+    kpi('Viajes en avión al mes', saNum((tot.flights || 0) / n, 1), (tot.flights || 0) + ' en ' + ptPlural(months.length, 'mes', 'meses')) +
+    kpi('Tiquetes al mes', saNum((tot.tickets || 0) / n, 1), (tot.tickets || 0) + ' en total (pasajeros × tramos)') +
+    kpi('Gasto en tiquetes al mes', saM((tot.spend || 0) / n), saM(tot.spend || 0) + ' en total (cotizado)') +
+    kpi('Costo por tiquete', tot.ticketsWithCost ? fmtMoney(Math.round(tot.spend / tot.ticketsWithCost)) : '—',
+      (flights ? saPct(tot.roundtrip / flights) + ' ida y vuelta · ' + saPct(tot.pax1 / flights) + ' de un pasajero' : '—'));
+
+  // Columnas por mes: solo ida / ida y vuelta (dos series, una escala).
+  var canvas = document.getElementById('saVolumeChart');
+  if (charts.saVolume) { charts.saVolume.destroy(); charts.saVolume = null; }
+  if (canvas && typeof Chart !== 'undefined') {
+    charts.saVolume = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: months.map(saShortMonth),
+        datasets: [
+          { label: 'Ida y vuelta', data: months.map(function(m) { return vol[m].roundtrip; }), backgroundColor: '#2563eb', borderRadius: 4, borderSkipped: 'bottom', stack: 'v' },
+          { label: 'Solo ida', data: months.map(function(m) { return vol[m].oneway; }), backgroundColor: '#d97706', borderRadius: 4, borderSkipped: 'bottom', stack: 'v' }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { position: 'bottom' }, tooltip: { mode: 'index', intersect: false,
+          callbacks: { footer: function(items) { var m = months[items[0].dataIndex]; return 'Total: ' + vol[m].flights + ' viajes · ' + vol[m].tickets + ' tiquetes'; } } } },
+        scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 }, title: { display: true, text: 'Viajes en avión' } } }
+      }
+    });
+  }
+
+  // Tabla: métricas en filas, meses en columnas.
+  var rows = [
+    ['g', 'Embudo (por mes de la solicitud)'],
+    ['requests', 'Solicitudes'], ['annulled', 'Anuladas'], ['denied', 'Denegadas'],
+    ['g', 'Comprado (por mes de compra)'],
+    ['bought', 'Compradas'], ['flights', 'Viajes en avión'], ['hotelOnly', 'Solo hospedaje'],
+    ['g', 'Tipo de viaje'],
+    ['oneway', 'Solo ida'], ['roundtrip', 'Ida y vuelta'], ['multi', 'Tramo de un multidestino'], ['intl', 'Internacional'], ['hotel', 'Con hotel'],
+    ['g', 'Pasajeros'],
+    ['pax1', '1 pasajero'], ['pax2', '2 pasajeros'], ['pax3', '3 o más'],
+    ['g', 'Cambios'],
+    ['mod', 'Con cambios (modificación)'], ['modCost', '… con costo'],
+    ['g', 'Tiquetes y gasto'],
+    ['tickets', 'Tiquetes'], ['spend', 'Gasto en tiquetes (cotizado)'], ['perTicket', 'Costo por tiquete'],
+    ['g', 'Anticipación de la compra'],
+    ['lead03', '0 a 3 días'], ['lead47', '4 a 7 días'], ['lead814', '8 a 14 días'], ['lead15', '15 o más'], ['leadNA', 'Sin dato'],
+    ['g', 'Canal de compra (se registra desde el 2-oct)'],
+    ['chA', 'Aviatur'], ['chD', 'Directo con la aerolínea'], ['chO', 'Otra agencia'], ['chNone', 'Sin registrar']
+  ];
+  var cell = function(key, c) {
+    if (key === 'spend') return saM(c.spend);
+    if (key === 'perTicket') return c.ticketsWithCost ? fmtMoney(Math.round(c.spend / c.ticketsWithCost)) : '—';
+    return String(c[key] || 0);
+  };
+  var avgCell = function(key) {
+    if (key === 'spend') return saM(tot.spend / n);
+    if (key === 'perTicket') return tot.ticketsWithCost ? fmtMoney(Math.round(tot.spend / tot.ticketsWithCost)) : '—';
+    return saNum((tot[key] || 0) / n, 1);
+  };
+  var head = '<thead><tr><th>Indicador</th>' + months.map(function(m) { return '<th class="num">' + saShortMonth(m) + '</th>'; }).join('') +
+    '<th class="num">Promedio</th><th class="num">Total</th></tr></thead>';
+  var body = rows.map(function(r) {
+    if (r[0] === 'g') return '<tr class="sa-group"><td colspan="' + (months.length + 3) + '">' + escHtml(r[1]) + '</td></tr>';
+    return '<tr><td>' + escHtml(r[1]) + '</td>' + months.map(function(m) { return '<td class="num">' + cell(r[0], vol[m]) + '</td>'; }).join('') +
+      '<td class="num">' + avgCell(r[0]) + '</td><td class="num sa-total">' + (r[0] === 'perTicket' ? avgCell(r[0]) : cell(r[0], tot)) + '</td></tr>';
+  }).join('');
+  document.getElementById('saVolumeTable').innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function _saRenderSample(sample) {
+  var n = sample.length;
+  document.getElementById('saSampleWarn').innerHTML = n < SA_SMALL_SAMPLE
+    ? '<div class="sa-warn">' + (n ? 'Solo ' + ptPlural(n, 'viaje comparado', 'viajes comparados') + ': tome las cifras como un indicio. ' : 'Aún no hay viajes comparados. ') +
+      'El estudio va del 7 al 21 de octubre y debería llegar a unos 30.</div>'
+    : '';
+  var kpi = function(label, value, extra) {
+    return '<div class="kpi"><div class="label">' + escHtml(label) + '</div><div class="value">' + escHtml(value) + '</div><div class="extra">' + escHtml(extra) + '</div></div>';
+  };
+  var cheaper = sample.filter(function(x) { return x.diff >= 1000; }).length;
+  document.getElementById('saSampleKpis').innerHTML =
+    kpi('Viajes comparados', String(n), n ? 'Google más barato en ' + cheaper + ' de ' + n : '—') +
+    kpi('Ahorro por viaje', saM(saStat(sample.map(function(x) { return x.diff; }), 'median')), 'mediana · mínimo ' + saM(saStat(sample.map(function(x) { return x.diff; }), 'min'))) +
+    kpi('Ahorro por tiquete', saM(saStat(sample.map(function(x) { return x.perTicket; }), 'median')), 'mediana · mínimo ' + saM(saStat(sample.map(function(x) { return x.perTicket; }), 'min'))) +
+    kpi('% de lo cotizado', saPct(saStat(sample.map(function(x) { return x.pct; }), 'median')), 'mediana · solo canal ' + saPct(saStat(sample.map(function(x) { return x.channelPct; }), 'median')));
+  var sign = function(v) { return v === null ? '—' : '<span class="' + (v >= 0 ? 'sa-pos' : 'sa-neg') + '">' + saM(v) + '</span>'; };
+  document.getElementById('saSampleTable').innerHTML = '<thead><tr><th>Solicitud</th><th>Ruta</th><th class="num">Tiquetes</th><th class="num">Cotizado</th>' +
+    '<th class="num">Más barato en Google</th><th class="num">Diferencia</th><th class="num">Por tiquete</th><th class="num">% del cotizado</th>' +
+    '<th class="num">Canal</th><th class="num">Vuelo</th></tr></thead><tbody>' +
+    (n ? sample.map(function(x) {
+      return '<tr><td class="pt-id">' + escHtml(x.it.requestId) + '</td><td>' + escHtml(x.it.origin + ' → ' + x.it.destination) + (x.rt ? ' (ida y vuelta)' : ' (solo ida)') + '</td>' +
+        '<td class="num">' + x.tickets + '</td><td class="num">' + fmtMoney(x.it.quoted) + '</td><td class="num">' + fmtMoney(x.it.market) + '</td>' +
+        '<td class="num">' + sign(x.diff) + '</td><td class="num">' + sign(x.perTicket) + '</td><td class="num">' + saPct(x.pct) + '</td>' +
+        '<td class="num">' + sign(x.channel) + '</td><td class="num">' + sign(x.flightPart) + '</td></tr>';
+    }).join('') : '<tr><td colspan="10" style="color: var(--muted);">Sin viajes comparados todavía.</td></tr>') + '</tbody>';
+}
+
+function _saRenderProjection(st) {
+  var months = st.months;
+  var canvas = document.getElementById('saProjChart');
+  if (charts.saProj) { charts.saProj.destroy(); charts.saProj = null; }
+  if (canvas && typeof Chart !== 'undefined' && months.length) {
+    var datasets = [];
+    if (st.proj) datasets.push({ label: 'Método elegido', data: months.map(function(m) { return Math.round(st.proj[m]); }), backgroundColor: '#059669', borderRadius: 4, borderSkipped: 'bottom', barPercentage: 0.6, grouped: false, order: 2 });
+    if (st.prudent && st.probable) {
+      datasets.push({ label: 'Rango prudente – probable', data: months.map(function(m) { return [Math.round(Math.min(st.prudent[m], st.probable[m])), Math.round(Math.max(st.prudent[m], st.probable[m]))]; }),
+        backgroundColor: 'rgba(17, 24, 39, 0.45)', barPercentage: 0.12, grouped: false, order: 1 });
+    }
+    charts.saProj = new Chart(canvas, {
+      type: 'bar',
+      data: { labels: months.map(saShortMonth), datasets: datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: function(ctx) {
+          var v = ctx.raw;
+          return Array.isArray(v) ? 'Prudente ' + saM(v[0]) + ' · probable ' + saM(v[1]) : ctx.dataset.label + ': ' + saM(v);
+        } } } },
+        scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { callback: function(v) { return saM(v); } }, title: { display: true, text: 'Ahorro proyectado (pesos)' } } }
+      }
+    });
+  }
+  var rows = months.map(function(m) {
+    var c = st.vol[m];
+    return '<tr><td>' + saMonthLabel(m) + '</td><td class="num">' + c.flights + '</td><td class="num">' + c.tickets + '</td><td class="num">' + saM(c.spend) + '</td>' +
+      '<td class="num">' + (st.prudent ? saM(st.prudent[m]) : '—') + '</td><td class="num">' + (st.probable ? saM(st.probable[m]) : '—') + '</td>' +
+      '<td class="num sa-total">' + (st.proj ? saM(st.proj[m]) : '—') + '</td><td class="num">' + (st.proj && c.spend ? saPct(st.proj[m] / c.spend) : '—') + '</td></tr>';
+  });
+  var n = months.length || 1;
+  var tSpend = months.reduce(function(s, m) { return s + st.vol[m].spend; }, 0);
+  var foot = function(label, f, isTotal) {
+    return '<tr class="sa-group"><td>' + label + '</td><td class="num">' + f(function(m) { return st.vol[m].flights; }, 0) + '</td><td class="num">' + f(function(m) { return st.vol[m].tickets; }, 0) + '</td>' +
+      '<td class="num">' + saM(f(function(m) { return st.vol[m].spend; }, 1)) + '</td>' +
+      '<td class="num">' + (st.prudent ? saM(f(function(m) { return st.prudent[m]; }, 1)) : '—') + '</td>' +
+      '<td class="num">' + (st.probable ? saM(f(function(m) { return st.probable[m]; }, 1)) : '—') + '</td>' +
+      '<td class="num">' + (st.proj ? saM(f(function(m) { return st.proj[m]; }, 1)) : '—') + '</td>' +
+      '<td class="num">' + (st.proj && tSpend ? saPct(_saSum(st.proj, months) / tSpend) : '—') + '</td></tr>';
+  };
+  var total = function(get, money) { var v = months.reduce(function(s, m) { return s + get(m); }, 0); return money ? v : String(v); };
+  var avg = function(get, money) { var v = months.reduce(function(s, m) { return s + get(m); }, 0) / n; return money ? v : saNum(v, 1); };
+  var year = function(get, money) { var v = months.reduce(function(s, m) { return s + get(m); }, 0) / n * 12; return money ? v : saNum(v, 0); };
+  document.getElementById('saProjTable').innerHTML = '<thead><tr><th>Mes</th><th class="num">Viajes</th><th class="num">Tiquetes</th><th class="num">Gasto en tiquetes</th>' +
+    '<th class="num">Prudente</th><th class="num">Probable</th><th class="num">Método elegido</th><th class="num">% del gasto</th></tr></thead><tbody>' +
+    rows.join('') + foot('Total del periodo', total, true) + foot('Promedio por mes', avg) + foot('Equivalente a un año', year) + '</tbody>';
+}
+
+function _saRenderInvoices(trips, months, opts) {
+  var by = {};
+  months.forEach(function(m) { by[m] = { n: 0, quoted: 0, invoiced: 0 }; });
+  trips.forEach(function(t) {
+    if (t.st !== 'C' || !t.flight || t.hotel || !by[t.month] || t.invoiced <= 0 || t.quoted < SA_MIN_COST) return;
+    if (t.intl && !opts.intl) return;
+    var c = by[t.month];
+    c.n++; c.quoted += t.quoted; c.invoiced += t.invoiced;
+  });
+  var tot = { n: 0, quoted: 0, invoiced: 0 };
+  var row = function(label, c, cls) {
+    var d = c.invoiced - c.quoted;
+    return '<tr' + (cls ? ' class="' + cls + '"' : '') + '><td>' + label + '</td><td class="num">' + c.n + '</td><td class="num">' + saM(c.quoted) + '</td><td class="num">' + saM(c.invoiced) +
+      '</td><td class="num">' + (c.n ? '<span class="' + (d > 0 ? 'sa-neg' : 'sa-pos') + '">' + saM(d) + '</span>' : '—') + '</td><td class="num">' + (c.quoted ? saPct(d / c.quoted) : '—') + '</td></tr>';
+  };
+  var body = months.map(function(m) { var c = by[m]; tot.n += c.n; tot.quoted += c.quoted; tot.invoiced += c.invoiced; return row(saMonthLabel(m), c); }).join('');
+  document.getElementById('saInvoiceTable').innerHTML = '<thead><tr><th>Mes</th><th class="num">Viajes</th><th class="num">Cotizado</th><th class="num">Facturado</th>' +
+    '<th class="num">Facturado − cotizado</th><th class="num">%</th></tr></thead><tbody>' + body + row('Total', tot, 'sa-group') + '</tbody>';
+}
+
+function exportSavingsCsv() {
+  if (!saLast) return;
+  var st = saLast;
+  var q = function(v) {
+    var t = String(v === null || v === undefined ? '' : v);
+    if (typeof v === 'string' && /^[=+\-@]/.test(t)) t = "'" + t;
+    return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  var r = function(n) { return n === null || n === undefined || isNaN(n) ? '' : Math.round(n); };
+  var lines = [];
+  lines.push(['Proyección de ahorro', 'Generado ' + new Date().toLocaleString('es-CO')].map(q).join(';'));
+  lines.push(['Parámetros', 'Método: ' + SA_METHOD_LABEL[st.opts.how + '|' + st.opts.base], 'Qué cuenta: ' + (st.opts.kind === 'channel' ? 'solo canal' : 'todo'),
+    st.opts.how === 'fixed' ? 'Valor fijo: ' + st.opts.fixed : '', 'Equipaje por tiquete: ' + st.opts.baggage, 'Adopción: ' + Math.round(st.opts.adoption * 100) + '%',
+    'Internacionales: ' + (st.opts.intl ? 'sí' : 'no'), 'Periodo: ' + st.from + ' a ' + st.to].map(q).join(';'));
+  lines.push('');
+  lines.push(['Mes', 'Viajes en avión', 'Solo ida', 'Ida y vuelta', 'Tiquetes', 'Gasto en tiquetes', 'Con hotel', 'Internacional', '1 pasajero', '2 pasajeros', '3 o más',
+    'Con cambios', 'Solicitudes', 'Anuladas', 'Denegadas', 'Ahorro prudente', 'Ahorro probable', 'Ahorro método elegido'].map(q).join(';'));
+  st.months.forEach(function(m) {
+    var c = st.vol[m];
+    lines.push([m, c.flights, c.oneway, c.roundtrip, c.tickets, r(c.spend), c.hotel, c.intl, c.pax1, c.pax2, c.pax3, c.mod, c.requests, c.annulled, c.denied,
+      st.prudent ? r(st.prudent[m]) : '', st.probable ? r(st.probable[m]) : '', st.proj ? r(st.proj[m]) : ''].map(q).join(';'));
+  });
+  lines.push('');
+  lines.push(['Muestra: solicitud', 'Origen', 'Destino', 'Tiquetes', 'Cotizado', 'Más barato en Google', 'Diferencia', 'Por tiquete', '% del cotizado', 'Canal', 'Vuelo'].map(q).join(';'));
+  st.sample.forEach(function(x) {
+    lines.push([x.it.requestId, x.it.origin, x.it.destination, x.tickets, x.it.quoted, x.it.market, r(x.diff), r(x.perTicket), (x.pct * 100).toFixed(1).replace('.', ','),
+      x.channel === null ? '' : r(x.channel), x.flightPart === null ? '' : r(x.flightPart)].map(q).join(';'));
+  });
+  var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'proyeccion-ahorro-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
 function escHtml(s) {
   if (s === null || s === undefined) return '';
   return String(s)
@@ -3713,11 +4341,12 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
   document.getElementById('btnExportPDF').addEventListener('click', exportPDF);
   document.getElementById('btnConfig').addEventListener('click', openConfig);
+  document.getElementById('btnRefresh').addEventListener('click', function() { loadDashboard(true); });
   document.getElementById('btnConfigSave').addEventListener('click', saveConfig);
   document.getElementById('btnConfigReset').addEventListener('click', resetConfig);
 
   // Cambio de AÑO → re-fetch al backend (única operación lenta)
-  document.getElementById('f_year').addEventListener('change', loadDashboard);
+  document.getElementById('f_year').addEventListener('change', function() { loadDashboard(false); });
 
   // Cambios de empresa, unidad, toggles → filtro local instantáneo
   ['f_company', 'f_unit', 'f_includeEstimated', 'f_includeNoPresupuesto'].forEach(function(id) {
@@ -3780,6 +4409,32 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   var ptCsvBtn = document.getElementById('btnExportPriceCsv');
   if (ptCsvBtn) ptCsvBtn.addEventListener('click', exportPriceCsv);
+
+  // PROYECCIÓN DE AHORRO (#A90): los controles recalculan en el navegador.
+  // Al elegir un método fijo, un valor de partida razonable (los "150 mil por solicitud" de la reunión del 8-oct).
+  var saMethodSel = document.getElementById('saMethod');
+  if (saMethodSel) saMethodSel.addEventListener('change', function() {
+    var f = document.getElementById('saFixed');
+    var defaults = { 'fixed|trip': '150.000', 'fixed|ticket': '75.000', 'fixed|pct': '25' };
+    if (defaults[saMethodSel.value]) f.value = defaults[saMethodSel.value];
+  });
+  ['saFrom', 'saTo', 'saMethod', 'saKind', 'saAdoption', 'saIntl'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', function() { if (priceData) renderSavings(); });
+  });
+  var saTimer = null;
+  ['saFixed', 'saBaggage'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', function() { clearTimeout(saTimer); saTimer = setTimeout(function() { if (priceData) renderSavings(); }, 250); });
+    el.addEventListener('blur', function() {
+      if (id === 'saFixed' && document.getElementById('saMethod').value === 'fixed|pct') return;
+      var n = saParseMoney(el.value);
+      el.value = n ? n.toLocaleString('es-CO') : '0';
+    });
+  });
+  var saCsv = document.getElementById('btnExportSavingsCsv');
+  if (saCsv) saCsv.addEventListener('click', exportSavingsCsv);
 
   // Bootstrap: si hay sesión guardada, entrar directo
   session = loadSession();

@@ -1868,3 +1868,100 @@ Pasos en Apps Script: pegar `Code.gs`, `AdminSidebar.html` y `AdminMobile.html` 
 - Chrome sin ventana con vuelos de escala más baratos en los datos: la referencia sigue siendo el directo y los de escala aparecen al final, en gris y con la nota.
 
 **Despliegue:** igual que #A86 y #A87. Si ya se había pegado el `Rastreo.gs` de #A86, las solicitudes que siguen por comprar se buscan una vez más (unas 2 consultas cada una).
+
+## **#A89 — Dashboard de costos: carga en paralelo y respuestas en caché (velocidad)**
+**Fecha:** 2026-10-08 · **Reportado por:** David (el comparador tardaba de 30 a 40 s en aparecer; *"si el dashboard no es rápido y no es fácil de consultar, nadie lo va a utilizar"*) · **Estado:** Implementado, pendiente de pegar `Code.gs` y `CostsDashboard.html`
+
+**Síntoma:** el comparador de precios tardaba de 30 a 40 s en aparecer.
+
+**Causa raíz:**
+- **Llamadas en cadena.** La variación y el comparador se pedían **solo cuando llegaban** los datos generales, y los tiempos se sumaban, cada uno con su arranque de Apps Script.
+- **Todo se recalculaba en cada carga.** `getData` lee la hoja completa, calcula un MD5 por solicitud y **lee y reescribe un archivo de caché en Drive** de cientos de KB, con candado.
+
+**Cambio:**
+- **En el navegador:**
+  - los datos generales, la variación y el comparador se piden **a la vez**; cada sección aparece cuando llega su parte;
+  - a quien no tiene permiso, el servidor le responde *"restringido"* y la sección no aparece;
+  - botón **⟳ Actualizar datos** en el encabezado, que recalcula todo;
+  - al pie, cuánto tardó cada sección y si los datos venían guardados (*"datos guardados hace 3 min"*).
+- **En el servidor**, caché de respuestas en `CacheService` (`_dashCached_`):
+  - Guarda los datos generales, la variación, el comparador y el detalle de un viaje.
+  - **Nunca en Script Properties** (decisión de David: su límite es pequeño y, excedido, bloquea la consola del proyecto).
+  - **Llave:** sección + filtros + alcance del usuario (todas las unidades, o las de ese líder) + una **versión de datos**.
+  - **Se invalida sola:**
+    - con cada escritura de la app, porque `dispatch` cambia la versión;
+    - al guardar o restaurar la configuración del dashboard;
+    - para el comparador y el detalle, cuando el rastreo escribe búsquedas nuevas (número de filas de su pestaña);
+    - y vence a los 10 minutos, por lo que se edite a mano en la hoja.
+  - Las respuestas grandes se guardan en trozos de 40.000 caracteres (el límite es de 100 KB por valor). Si falta un trozo, se recalcula.
+  - **Permisos:** se revisan **antes** de mirar la caché. Los de cada persona (`meta.access`) se agregan **después** de leer lo guardado, así que no viajan en la caché.
+  - **Si la caché falla o se vacía, se calcula como antes:** nunca es un error.
+  - Las llaves son un hash en JavaScript: no llaman a ningún servicio.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-savings-analysis.cjs`, sobre una hoja simulada:
+  - la segunda consulta sale de la caché, con el mismo contenido; *Actualizar* recalcula;
+  - una escritura de la app y una búsqueda nueva del rastreo invalidan;
+  - un líder no recibe la respuesta de otro alcance, y Laura usa la caché de David con **sus propios** permisos;
+  - el rol que devuelve la variación es el de quien consulta;
+  - trozos, trozo faltante, caché caída y sin `CacheService`;
+  - un entorno donde Script Properties lanza error.
+- Defectos introducidos a propósito: detectados todos menos uno, que no cambia nada (un trozo faltante igual rompe la lectura y se recalcula).
+- Con la base real del 8-oct, en simulación local: el comparador más el análisis se calculan en unos 70 ms y la segunda consulta sale de la caché en 2 ms. Respuesta de 52 KB, en 2 trozos.
+- **No medido aquí:** los tiempos reales en Apps Script. El pie del dashboard los muestra desde la primera carga.
+
+**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` y crear la versión nueva del web app. Las dos combinaciones con versiones anteriores funcionan:
+- Con el HTML anterior, el servidor nuevo responde igual, más un campo `_cache` que el HTML anterior ignora.
+- Con el servidor anterior, el HTML nuevo pide en paralelo y no recibe `_cache` (el pie no muestra tiempos).
+
+## **#A90 — Proyección de ahorro: volumen de viajes, ahorro observado y proyección por mes**
+**Fecha:** 2026-10-08 · **Reportado por:** Juan Camilo Pineda (8-oct, al ver el comparador) · **Estado:** Implementado, pendiente de pegar `Code.gs` y `CostsDashboard.html`
+
+**Pedido:** Juan Camilo pidió dos cosas:
+- **Analíticas de volumen:** viajes por mes, totales y promedios; de ida y de ida y vuelta, con cambios, por número de pasajeros y con hospedaje.
+- **Una proyección:** aplicar el ahorro que ve el comparador (promedio, mínimo, *"150 mil por solicitud"*…) a los viajes de un mes, para estimar cuánto se habría ahorrado.
+
+Plan completo y vivo en [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md).
+
+**Cambio:**
+- **`Code.gs`:** el comparador trae además `analysis`, una tabla compacta con una fila por solicitud (`_saTrips_`, `SA_COLUMNS`). Lleva:
+  - mes de compra y de solicitud, y estado (comprado, anulado, denegado o en curso);
+  - si es vuelo, ida y vuelta, pasajeros, internacional, hotel;
+  - si es modificación (y con costo) o tramo de un multidestino;
+  - cotizado en tiquetes, facturado, anticipación y canal;
+  - empresa y unidad como índices de un diccionario.
+
+  Sale de la **misma lectura** de la hoja que ya hacía el comparador, con las reglas de #A80 y #A87, y queda en la caché de #A89. Sin nombres, cédulas, correos ni observaciones. El comparador también dice si cada viaje es internacional.
+- **`CostsDashboard.html`**, sección **📈 Proyección de ahorro** debajo del comparador, con el mismo permiso:
+  - **Controles** que recalculan en el navegador, sin ir al servidor: periodo, método (mínimo, percentil 25, mediana o promedio por tiquete, por viaje o como % del cotizado, o un valor fijo, con los 150 mil por viaje por defecto), qué ahorro cuenta (todo o solo canal), equipaje por tiquete, adopción e internacionales. También aplican los filtros de empresa y unidad de arriba.
+  - **Frase** con el ahorro del último mes, el total del periodo, el equivalente a un año y el rango prudente (solo canal) – probable (todo). Ambos con la mediana por tiquete.
+  - **Volumen:**
+    - indicadores al mes;
+    - columnas de solo ida e ida y vuelta;
+    - tabla por mes con el embudo, los tipos de viaje, pasajeros, cambios, tiquetes y gasto, anticipación y canal, con promedio y total.
+  - **Ahorro observado:** indicadores y tabla por viaje con la partición **canal** y **vuelo**; aviso si la muestra es menor de 15.
+  - **Proyección por mes:** columnas del método elegido con la marca del rango, y tabla con el total, el promedio y el equivalente a un año.
+  - **Cotizado frente a facturado** por mes, en viajes sin hotel con facturas.
+  - **CSV** con los parámetros usados.
+- **Cálculo:**
+  - Ahorro por tiquete × tiquetes del viaje, o % × cotizado, o valor fijo.
+  - Se usa el valor del grupo (solo ida o ida y vuelta) si tiene al menos 5 viajes.
+  - Se resta el equipaje.
+  - Tope: el % más alto observado.
+  - Se aplica la adopción.
+  - Sin muestra, un método que la necesita no inventa cifras.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-savings-analysis.cjs`:
+  - columnas y valores de la tabla compacta: comprado, anulado, denegado y en curso, solo hospedaje, modificación con costo, multidestino, internacional, anticipación, canal y diccionarios;
+  - sin datos personales;
+  - las cuentas del navegador, sacadas del mismo `CostsDashboard.html`: estadísticos, volumen por mes, cada método, tope, equipaje, adopción, internacionales, valor por grupo y sin muestra.
+- Defectos introducidos a propósito (tope, adopción, internacionales, grupo, embudo): todos detectados.
+- Con la base real del 8-oct, en Chrome sin ventana:
+  - 68,2 viajes en avión al mes, 125,3 tiquetes, $60,0 M y $479.921 por tiquete, igual que el cálculo aparte del plan;
+  - con la mediana por tiquete, septiembre da $28,9 M (38 %) sin internacionales;
+  - lo facturado sale **13 % por encima** de lo cotizado (abril a septiembre, viajes sin hotel).
+
+**Despliegue:** junto con #A89. Con el `Code.gs` anterior, la sección no aparece porque falta `analysis`.

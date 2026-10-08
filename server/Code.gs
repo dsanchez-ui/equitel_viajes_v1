@@ -778,13 +778,13 @@ function dispatch(action, payload) {
       // DASHBOARD DE COSTOS (cualquier sesión válida puede leer; solo SUPERADMIN
       // puede modificar config — el check superadmin ya pasó arriba en
       // superAdminOnlyActions para los set/reset).
-      case 'getCostsDashboard': result = getCostsDashboard(payload.filters, currentUserEmail); break;
+      case 'getCostsDashboard': result = getCostsDashboard(payload.filters, currentUserEmail, payload.fresh === true); break;
       case 'getCostsDashboardConfig': result = getCostsDashboardConfig(currentUserEmail); break;
       case 'setCostsDashboardConfig': result = setCostsDashboardConfig(payload.config, currentUserEmail); break;
       case 'resetCostsDashboardConfig': result = resetCostsDashboardConfig(currentUserEmail); break;
-      case 'getCostsVarianceReport': result = getCostsVarianceReport(payload.filters, currentUserEmail); break;
-      case 'getPriceTracking': result = getPriceTracking(currentUserEmail); break;
-      case 'getPriceTrackingDetail': result = getPriceTrackingDetail(currentUserEmail, payload.requestId); break;
+      case 'getCostsVarianceReport': result = getCostsVarianceReport(payload.filters, currentUserEmail, payload.fresh === true); break;
+      case 'getPriceTracking': result = getPriceTracking(currentUserEmail, payload.fresh === true); break;
+      case 'getPriceTrackingDetail': result = getPriceTrackingDetail(currentUserEmail, payload.requestId, payload.fresh === true); break;
       case 'getMonthlyBudgetUsage': result = getMonthlyBudgetUsage(payload.empresa, payload.unidad); break;
 
       // PASSPORT VALIDATION (internacional). Cualquier sesión válida puede
@@ -825,6 +825,7 @@ function dispatch(action, payload) {
     
     if (isWriteAction) {
       SpreadsheetApp.flush();
+      _dashInvalidate_(); // #A89: el dashboard de costos recalcula en la próxima consulta
     }
 
     return { success: true, data: result };
@@ -16949,11 +16950,15 @@ function menuAccesosDashboardCostos() {
  * El caller (dispatch) ya validó sesión + email. Esta función vuelve
  * a chequear acceso por defensa en profundidad.
  */
-function getCostsDashboard(filters, currentUserEmail) {
+function getCostsDashboard(filters, currentUserEmail, fresh) {
   var access = _csResolveAccess_(currentUserEmail);
   if (!access.canView) throw new Error(COSTS_ACCESS_DENIED_MSG);
-  // Un líder solo recibe sus unidades: el filtro va DENTRO del cálculo (#A76).
-  var data = _csBuildData_(filters, access.allUnits ? null : access.units);
+  // Un líder solo recibe sus unidades: el filtro va DENTRO del cálculo (#A76), y la
+  // llave de la caché lleva su alcance (#A89): nunca recibe la respuesta de otro.
+  var scope = access.allUnits ? 'ALL' : access.units.slice().sort().join(',');
+  var data = _dashCached_(['getData', JSON.stringify(filters || {}), scope], fresh, function() {
+    return _csBuildData_(filters, access.allUnits ? null : access.units);
+  });
   data.meta.access = {
     canView: access.canView,
     canConfig: access.canConfig,
@@ -17008,6 +17013,7 @@ function setCostsDashboardConfig(config, currentUserEmail) {
   }
   PropertiesService.getScriptProperties().setProperty(COSTS_DASHBOARD_CONFIG_KEY, JSON.stringify(config));
   _CS_CONFIG_CACHE = null; // invalidar cache per-ejecución tras escribir
+  _dashInvalidate_(); // #A89
   return { success: true, savedAt: new Date().toISOString() };
 }
 
@@ -17020,6 +17026,7 @@ function resetCostsDashboardConfig(currentUserEmail) {
   if (!access.canConfig) throw new Error('Solo SUPERADMIN puede restaurar la configuración.');
   PropertiesService.getScriptProperties().deleteProperty(COSTS_DASHBOARD_CONFIG_KEY);
   _CS_CONFIG_CACHE = null; // invalidar cache per-ejecución tras borrar
+  _dashInvalidate_(); // #A89
   return { success: true, restoredAt: new Date().toISOString() };
 }
 
@@ -17043,7 +17050,7 @@ function resetCostsDashboardConfig(currentUserEmail) {
  * Retorna { rows[], totals, meta } ordenado por |variancePct| descendente
  * (las desviaciones más extremas primero).
  */
-function getCostsVarianceReport(filters, currentUserEmail) {
+function getCostsVarianceReport(filters, currentUserEmail, fresh) {
   filters = filters || {};
 
   // Defensa en profundidad: dispatch ya lo valida (#A78).
@@ -17051,6 +17058,13 @@ function getCostsVarianceReport(filters, currentUserEmail) {
     throw new Error(_costsVarianceDeniedMsg_());
   }
   var access = _csResolveAccess_(currentUserEmail);
+  var res = _dashCached_(['variance', JSON.stringify(filters)], fresh, function() { return _csBuildVarianceReport_(filters, access); });
+  if (res && res.meta) res.meta.access = { role: access.role };
+  return res;
+}
+
+/** Cálculo de la variación cotizado vs facturado (sin caché; lo envuelve getCostsVarianceReport). */
+function _csBuildVarianceReport_(filters, access) {
 
   var config = _csLoadConfig_();
   var now = new Date();
@@ -17247,6 +17261,129 @@ function _csEmptyVariance_(year, fromMonth, toMonth, access) {
 }
 
 // =====================================================================
+// CACHÉ DE RESPUESTAS DEL DASHBOARD DE COSTOS (#A89)
+// =====================================================================
+// Velocidad, pedido de David (8-oct): el comparador tardaba de 30 a 40 s. Cada
+// sección del dashboard (datos generales, variación, comparador, detalle de un
+// viaje) guarda su respuesta ya calculada en CacheService, la memoria rápida de
+// Apps Script: leerla toma milisegundos. NUNCA en Script Properties (decisión de
+// David: su límite es pequeño y, excedido, bloquea la consola del proyecto).
+//
+// La llave lleva la sección, sus filtros, el alcance del usuario y una VERSIÓN DE
+// DATOS que cambia cada vez que la app escribe en la base (dispatch). Además cada
+// entrada vence a los DASH_CACHE_TTL_S segundos, por lo que se edite a mano en la
+// hoja, y el dashboard puede pedir un cálculo nuevo con fresh=true ("Actualizar").
+// Si la caché falla o se vacía, se calcula como siempre: nunca es un error.
+// Detalle y razones en docs/plan-analitica-ahorro.md §3.
+
+var DASH_CACHE_TTL_S = 600;
+var DASH_CACHE_VERSION_KEY = 'DASH_DATA_VERSION';
+var DASH_CACHE_CHUNK = 40000;    // caracteres por trozo: < 100 KB por valor aun con tildes
+var DASH_CACHE_MAX_CHUNKS = 60;  // más de ~2,4 MB no se guarda
+
+function _dashCacheStore_() {
+  try { return CacheService.getScriptCache(); } catch (e) { return null; }
+}
+
+/** Versión de los datos de la base. Cambia con cada escritura de la app (_dashInvalidate_). */
+function _dashDataVersion_() {
+  var c = _dashCacheStore_();
+  if (!c) return 'sin-cache';
+  try {
+    var v = c.get(DASH_CACHE_VERSION_KEY);
+    if (!v) {
+      v = String(Date.now());
+      c.put(DASH_CACHE_VERSION_KEY, v, 21600);
+    }
+    return v;
+  } catch (e) {
+    return 'sin-cache';
+  }
+}
+
+/** Deja viejas todas las respuestas guardadas: la próxima consulta recalcula. */
+function _dashInvalidate_() {
+  var c = _dashCacheStore_();
+  if (!c) return;
+  try { c.put(DASH_CACHE_VERSION_KEY, String(Date.now()) + '-' + Math.floor(Math.random() * 1e6), 21600); } catch (e) { /* no crítico */ }
+}
+
+/** Llave corta y estable (dos hash FNV-1a de 32 bits): sin llamar a ningún servicio. */
+function _dashKey_(parts) {
+  var text = parts.join('|');
+  var h1 = 0x811c9dc5, h2 = 0x01000193 ^ text.length;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 16777619) >>> 0;
+    h2 = Math.imul(h2 ^ text.charCodeAt(text.length - 1 - i), 2246822519) >>> 0;
+  }
+  return 'DASH_' + ('0000000' + h1.toString(16)).slice(-8) + ('0000000' + h2.toString(16)).slice(-8) + '_' + text.length;
+}
+
+function _dashCacheGet_(key) {
+  var c = _dashCacheStore_();
+  if (!c) return null;
+  try {
+    var head = c.get(key);
+    if (!head) return null;
+    var m = /^CHUNKS:(\d+)$/.exec(head);
+    if (!m) return JSON.parse(head);
+    var keys = [];
+    for (var i = 0; i < Number(m[1]); i++) keys.push(key + '#' + i);
+    var parts = c.getAll(keys);
+    var text = '';
+    for (var j = 0; j < keys.length; j++) {
+      if (parts[keys[j]] === undefined || parts[keys[j]] === null) return null;
+      text += parts[keys[j]];
+    }
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+}
+
+function _dashCachePut_(key, obj) {
+  var c = _dashCacheStore_();
+  if (!c) return;
+  try {
+    var text = JSON.stringify(obj);
+    if (text.length <= DASH_CACHE_CHUNK) { c.put(key, text, DASH_CACHE_TTL_S); return; }
+    var n = Math.ceil(text.length / DASH_CACHE_CHUNK);
+    if (n > DASH_CACHE_MAX_CHUNKS) return;
+    var map = {};
+    for (var i = 0; i < n; i++) map[key + '#' + i] = text.slice(i * DASH_CACHE_CHUNK, (i + 1) * DASH_CACHE_CHUNK);
+    c.putAll(map, DASH_CACHE_TTL_S);
+    c.put(key, 'CHUNKS:' + n, DASH_CACHE_TTL_S);
+  } catch (e) {
+    console.warn('Caché del dashboard: no se pudo guardar: ' + e);
+  }
+}
+
+/**
+ * Devuelve la respuesta guardada o la calcula con compute() y la guarda. Agrega
+ * `_cache` ({fromCache, cachedAt, serverMs}) para que el dashboard muestre de
+ * cuándo son los datos y cuánto tardó el servidor.
+ */
+function _dashCached_(parts, fresh, compute) {
+  var t0 = Date.now();
+  var key = _dashKey_([_dashDataVersion_()].concat(parts));
+  if (!fresh) {
+    var hit = _dashCacheGet_(key);
+    if (hit && hit.value) {
+      hit.value._cache = { fromCache: true, cachedAt: hit.at, serverMs: Date.now() - t0 };
+      return hit.value;
+    }
+  }
+  var value = compute();
+  var at = new Date().toISOString();
+  if (value && typeof value === 'object') {
+    _dashCachePut_(key, { at: at, value: value });
+    value._cache = { fromCache: false, cachedAt: at, serverMs: Date.now() - t0 };
+  }
+  return value;
+}
+
+// =====================================================================
 // RASTREO DE PRECIOS DE TIQUETES (#A84) — SOLO LECTURA
 // =====================================================================
 // Estudio pedido por Alejandro Gómez (vicepresidente), 2026-10: durante unas dos
@@ -17406,10 +17543,21 @@ function _ptAggregate_(pairs) {
  * Datos de la sección «Comparador de precios» del dashboard de costos (#A84).
  * Solo lee: la pestaña del rastreo, su estado y la hoja de solicitudes.
  */
-function getPriceTracking(currentUserEmail) {
+function getPriceTracking(currentUserEmail, fresh) {
   if (!_canViewCostsVariance_(currentUserEmail)) {
     throw new Error('El comparador de precios está restringido a ' + _costsVarianceViewersLabel_() + '.');
   }
+  // Las búsquedas nuevas del rastreo (otro proyecto) cambian el número de filas de su pestaña.
+  return _dashCached_(['priceTracking', _ptTrackerStamp_()], fresh, _ptBuildTracking_);
+}
+
+/** Huella barata de la pestaña del rastreo: si escribe búsquedas nuevas, cambia. */
+function _ptTrackerStamp_() {
+  var tab = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(PRICE_TRACKING_SHEET);
+  return tab ? String(tab.getLastRow()) : '0';
+}
+
+function _ptBuildTracking_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var tab = ss.getSheetByName(PRICE_TRACKING_SHEET);
   var state = {};
@@ -17429,7 +17577,15 @@ function getPriceTracking(currentUserEmail) {
     firstSearchAt: '', lastSearchAt: '',
     generatedAt: new Date().toISOString()
   };
-  if (!searches.length) return { items: [], summary: null, meta: meta };
+  // Una sola lectura de la hoja de solicitudes para el comparador y el análisis (#A90).
+  var reqSheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  var vals = reqSheet && reqSheet.getLastRow() > 1 ? reqSheet.getRange(1, 1, reqSheet.getLastRow(), reqSheet.getLastColumn()).getValues() : [];
+  var hm = {};
+  (vals[0] || []).forEach(function(h, i) { var k = String(h == null ? '' : h).trim(); if (k && hm[k] === undefined) hm[k] = i; });
+  var cell = function(row, k) { return hm[k] === undefined ? '' : row[hm[k]]; };
+  var config = _csLoadConfig_();
+  var analysis = _saTrips_(vals, hm, config);
+  if (!searches.length) return { items: [], summary: null, meta: meta, analysis: analysis };
 
   // Última búsqueda por solicitud y momento.
   var byId = {};
@@ -17445,14 +17601,8 @@ function getPriceTracking(currentUserEmail) {
   });
 
   // Datos actuales de cada solicitud rastreada.
-  var reqSheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   var items = [];
-  if (reqSheet && reqSheet.getLastRow() > 1) {
-    var vals = reqSheet.getRange(1, 1, reqSheet.getLastRow(), reqSheet.getLastColumn()).getValues();
-    var hm = {};
-    vals[0].forEach(function(h, i) { var k = String(h == null ? '' : h).trim(); if (k && hm[k] === undefined) hm[k] = i; });
-    var cell = function(row, k) { return hm[k] === undefined ? '' : row[hm[k]]; };
-    var config = _csLoadConfig_();
+  if (vals.length > 1) {
     for (var r = 1; r < vals.length; r++) {
       var id = String(cell(vals[r], 'ID RESPUESTA') || '').trim();
       if (!id || !byId[id]) continue;
@@ -17474,6 +17624,7 @@ function getPriceTracking(currentUserEmail) {
         departureTime: _ptHour_(cell(row, 'HORA LLEGADA VUELO IDA')),   // hora pedida por el viajero (#A86)
         returnTime: _ptHour_(cell(row, 'HORA LLEGADA VUELO VUELTA')),
         passengers: Math.max(1, Math.round(_csToNumber_(cell(row, '# PERSONAS QUE VIAJAN'))) || 1),
+        international: String(cell(row, 'ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI', // #A90
         company: String(cell(row, 'EMPRESA') || '').trim(),
         unit: String(cell(row, 'UNIDAD DE NEGOCIO') || '').trim(),
         status: String(cell(row, 'STATUS') || '').trim(),
@@ -17517,7 +17668,64 @@ function getPriceTracking(currentUserEmail) {
     invoiced: _ptAggregate_(items.map(function(it) { return { quoted: it.invoicedVsGoogle === null ? null : it.invoiced, market: it.market }; })),
     byChannel: Object.keys(channels).sort().map(function(k) { var a = _ptAggregate_(channels[k]); a.channel = k; a.requests = channels[k].length; return a; })
   };
-  return { items: items, summary: summary, meta: meta };
+  return { items: items, summary: summary, meta: meta, analysis: analysis };
+}
+
+// =====================================================================
+// ANÁLISIS DE AHORRO: VOLUMEN DE VIAJES (#A90)
+// =====================================================================
+// Una fila compacta por solicitud para la sección «Proyección de ahorro» del
+// dashboard (docs/plan-analitica-ahorro.md). Los totales por mes, los filtros y la
+// proyección se calculan en el navegador, así los controles responden al instante.
+// Mismas reglas que las estadísticas de compra (#A80): comprado = RESERVADO o
+// PROCESADO; el mes es el de la compra (o el de la solicitud); tiquetes = pasajeros
+// × tramos. Sin nombres, cédulas, correos ni observaciones.
+var SA_COLUMNS = ['mes', 'mesSolicitud', 'estado', 'vuelo', 'idaVuelta', 'pasajeros', 'internacional', 'hotel',
+  'cambio', 'cambioConCosto', 'multidestino', 'cotizadoTiquetes', 'facturado', 'anticipacion', 'canal', 'empresa', 'unidad'];
+
+function _saTrips_(vals, hm, config) {
+  var out = { columns: SA_COLUMNS, rows: [], companies: [], units: [], generatedAt: new Date().toISOString() };
+  if (!vals || vals.length < 2) return out;
+  var cell = function(row, k) { return hm[k] === undefined ? '' : row[hm[k]]; };
+  var dict = function(list, index, v) {
+    var k = String(v || '').trim();
+    if (!k) return -1;
+    if (index[k] === undefined) { index[k] = list.length; list.push(k); }
+    return index[k];
+  };
+  var coIdx = {}, unIdx = {};
+  var channels = { 'Aviatur': 'A', 'Directo': 'D', 'Otra agencia': 'O' };
+  for (var r = 1; r < vals.length; r++) {
+    var row = vals[r];
+    if (!String(cell(row, 'ID RESPUESTA') || '').trim()) continue;
+    var status = String(cell(row, 'STATUS') || '').trim();
+    var reqKey = _psDateKey_(cell(row, 'FECHA SOLICITUD'));
+    var buyKey = _psDateKey_(cell(row, 'FECHA DE COMPRA DE TIQUETE'));
+    var depKey = _psDateKey_(cell(row, 'FECHA IDA'));
+    var month = (buyKey || reqKey || depKey).slice(0, 7);
+    if (!month) continue;
+    var inv = _invoiceTotalsForClose_(row, hm, config);
+    out.rows.push([
+      month,
+      (reqKey || month).slice(0, 7),
+      PS_COUNTABLE_STATUSES.indexOf(status) !== -1 ? 'C' : status === 'ANULADO' ? 'A' : status === 'DENEGADO' ? 'D' : 'P',
+      String(cell(row, 'MODO_SOLICITUD') || '').trim() === 'SOLO_HOSPEDAJE' ? 0 : 1,
+      _psDateKey_(cell(row, 'FECHA VUELTA')) ? 1 : 0,
+      Math.max(1, Math.round(_csToNumber_(cell(row, '# PERSONAS QUE VIAJAN'))) || 1),
+      String(cell(row, 'ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI' ? 1 : 0,
+      _csToNumber_(cell(row, 'COSTO_FINAL_HOTEL')) >= COST_MIN_PESOS ? 1 : 0,
+      String(cell(row, 'TIPO DE SOLICITUD') || '').trim() === 'MODIFICACION' ? 1 : 0,
+      String(cell(row, 'ES_CAMBIO_CON_COSTO') || '').trim().toUpperCase() === 'SI' ? 1 : 0,
+      String(cell(row, 'OBSERVACIONES') || '').indexOf('[MULTIDESTINO]') !== -1 ? 1 : 0,
+      Math.round(_csToNumber_(cell(row, 'COSTO_FINAL_TIQUETES'))) || 0,
+      Math.round(inv.total) || 0,
+      buyKey && depKey ? _psDayNumber_(depKey) - _psDayNumber_(buyKey) : null,
+      channels[String(cell(row, 'CANAL DE COMPRA') || '').trim()] || '',
+      dict(out.companies, coIdx, cell(row, 'EMPRESA')),
+      dict(out.units, unIdx, cell(row, 'UNIDAD DE NEGOCIO'))
+    ]);
+  }
+  return out;
 }
 
 /** Nombre en USUARIOS de un correo ('' si no está). */
@@ -17539,12 +17747,16 @@ function _ptUserName_(email) {
  * cada tramo. Solo lectura; mismas personas que getPriceTracking. Sin datos de los
  * pasajeros ni del solicitante.
  */
-function getPriceTrackingDetail(currentUserEmail, requestId) {
+function getPriceTrackingDetail(currentUserEmail, requestId, fresh) {
   if (!_canViewCostsVariance_(currentUserEmail)) {
     throw new Error('El comparador de precios está restringido a ' + _costsVarianceViewersLabel_() + '.');
   }
   var id = String(requestId || '').trim();
   if (!id) throw new Error('Falta la solicitud.');
+  return _dashCached_(['priceDetail', id, _ptTrackerStamp_()], fresh, function() { return _ptBuildDetail_(id); });
+}
+
+function _ptBuildDetail_(id) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var latest = { COTIZACION: null, COMPRA: null };
   var counts = { COTIZACION: 0, COMPRA: 0 };

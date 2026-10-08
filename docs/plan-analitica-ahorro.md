@@ -313,16 +313,25 @@ Aviatur.
 
 **Hoy, 8-oct, para la reunión de las 2 p. m.**, en este orden:
 
-- [ ] **P0 Velocidad:** llamadas en paralelo; caché de respuestas en `CacheService` con
-  versión de datos, vencimiento de 10 min y *Actualizar ahora*; tiempos visibles al pie.
-  Aplica a datos generales, variación, comparador y detalle de un viaje.
-- [ ] **P1 Datos del análisis** en el mismo payload del comparador, compactos y en caché.
-- [ ] **P1 Sección A (volumen)** y **C (proyección)** con sus controles.
-- [ ] **P2 Sección B (ahorro observado)** con la partición canal/vuelo.
-- [ ] **P2 Sección D (facturado)** y **E (CSV)**.
-- [ ] **Prueba automática** (`npm run verify`): conteos, mes de cada viaje, cuentas de cada
-  método, caché (llave por alcance, invalidación al escribir, vencimiento) y permisos.
-- [ ] **Documentación:** `BUG_REPORT.md`, `CLAUDE.md`, push e instrucciones de qué pegar.
+- [x] **P0 Velocidad (#A89):** llamadas en paralelo; caché de respuestas en `CacheService`
+  con versión de datos, vencimiento de 10 min y *⟳ Actualizar datos*; tiempos al pie. Aplica
+  a datos generales, variación, comparador y detalle de un viaje.
+- [x] **P1 Datos del análisis (#A90)** en el mismo payload del comparador, compactos y en
+  caché (52 KB con la base real).
+- [x] **P1 Sección A (volumen)** y **C (proyección)** con sus controles.
+- [x] **P2 Sección B (ahorro observado)** con la partición canal/vuelo.
+- [x] **P2 Sección D (facturado)** y **E (CSV)**.
+- [x] **Prueba automática:** `tools/check-savings-analysis.cjs` (36 comprobaciones), dentro de
+  `npm run verify`.
+- [x] **Documentación:** `BUG_REPORT.md` (#A89, #A90) y `CLAUDE.md`.
+- [ ] **David:** pegar `Code.gs` y `CostsDashboard.html` y crear la versión nueva del web app
+  antes de la reunión. Luego mirar al pie del dashboard los tiempos reales.
+
+**Siguiente, con lo que se vea en la reunión o con más muestra:**
+- Decidir el método por defecto. Con la base real, *por tiquete* da % altos en meses de
+  tiquetes baratos (abril: 50 % del gasto) y *% del cotizado* da lo mismo todos los meses.
+  Mostrar los dos en la reunión.
+- Valor por tipo de viaje con la muestra completa (al menos 5 viajes por grupo).
 
 **Después:**
 - Gráfico de puntos de la muestra (un punto por viaje) cuando haya más de 10 viajes.
@@ -349,6 +358,13 @@ Aviatur.
 
 ## 11. Bitácora
 
+- **2026-10-08 (mañana)** — Implementados P0 (#A89) y P1/P2 (#A90). Con la base real:
+  - 68,2 viajes al mes, $60,0 M y $479.921 por tiquete;
+  - con la mediana por tiquete, septiembre da $28,9 M sin internacionales;
+  - lo facturado sale 13 % por encima de lo cotizado.
+
+  La caché se probó con datos reales en simulación: 70 ms calculando y 2 ms desde la caché.
+  Los tiempos reales en Apps Script se ven al pie del dashboard.
 - **2026-10-08** — Pedido de Juan Camilo. Plan inicial con las cifras de la base del día. David
   pide que la velocidad sea el pilar (hoy el comparador tarda de 30 a 40 s), guardar lo
   precalculado sin Script Properties, y tener todo listo para las 2 p. m. Diagnóstico de la
