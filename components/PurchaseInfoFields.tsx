@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PURCHASE_AIRLINES, PURCHASE_CHANNELS, PurchaseForm, checkPurchaseForm, purchaseChannelLabel, purchaseKey } from '../utils/purchase';
+import { HOTEL_NAME_MAX, HotelForm, PURCHASE_AIRLINES, PURCHASE_CHANNELS, PurchaseForm, checkHotelForm, checkPurchaseForm, purchaseChannelLabel, purchaseKey } from '../utils/purchase';
 
 const OTHER = '__OTRA__';
 
@@ -126,6 +126,72 @@ export const PurchaseInfoFields: React.FC<PurchaseInfoFieldsProps> = ({ isHotelO
             </div>
             {showErrors && !check.ok && <p className="text-xs text-red-600 mt-2" data-purchase-error>{check.error}</p>}
             {hint && <p className="text-[11px] text-sky-800 mt-2">{hint}</p>}
+        </div>
+    );
+};
+
+interface HotelPurchaseFieldsProps {
+    isHotelOnly: boolean;
+    value: HotelForm;
+    onChange: (next: HotelForm) => void;
+    /** Mostrar el error de validación (después de intentar guardar). */
+    showErrors: boolean;
+    title: string;
+    hint?: string;
+}
+
+/**
+ * Hotel reservado y su canal de compra (#A94, pedido de Laura). Lo usa
+ * "Registrar reserva" cuando la solicitud lleva hospedaje. En solo hospedaje
+ * reemplaza al bloque de compra: su canal es el de la solicitud.
+ */
+export const HotelPurchaseFields: React.FC<HotelPurchaseFieldsProps> = ({ isHotelOnly, value, onChange, showErrors, title, hint }) => {
+    const check = checkHotelForm(value, isHotelOnly);
+    const notBooked = !isHotelOnly && value.notBooked;
+    return (
+        <div className="p-3 border border-indigo-200 bg-indigo-50 rounded" data-hotel-fields>
+            <div className="text-xs font-bold text-indigo-900 uppercase mb-2">{title}</div>
+            {!notBooked && (
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+                    <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1">Hotel reservado *</label>
+                        <input
+                            type="text"
+                            data-hotel-name
+                            maxLength={HOTEL_NAME_MAX}
+                            placeholder="Nombre del hotel"
+                            className="w-full border border-gray-300 rounded p-2 text-sm bg-white text-gray-900 uppercase"
+                            value={value.name}
+                            onChange={(e) => onChange({ ...value, name: e.target.value.toUpperCase() })}
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-xs font-bold text-gray-700 mb-1">Canal de compra del hotel *</label>
+                        <select
+                            data-hotel-channel
+                            className="w-full border border-gray-300 rounded p-2 text-sm bg-white text-gray-900"
+                            value={PURCHASE_CHANNELS.find(c => purchaseKey(c) === purchaseKey(value.channel)) || ''}
+                            onChange={(e) => onChange({ ...value, channel: e.target.value })}
+                        >
+                            <option value="">Seleccione…</option>
+                            {PURCHASE_CHANNELS.map(c => <option key={c} value={c}>{purchaseChannelLabel(c, true)}</option>)}
+                        </select>
+                    </div>
+                </div>
+            )}
+            {!isHotelOnly && (
+                <label className="flex items-center gap-2 mt-2 text-xs text-gray-700 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        data-hotel-not-booked
+                        checked={value.notBooked}
+                        onChange={(e) => onChange({ ...value, notBooked: e.target.checked })}
+                    />
+                    No se reservó hotel (p. ej. lo quitó el aprobador o es un apartamento corporativo)
+                </label>
+            )}
+            {showErrors && !check.ok && <p className="text-xs text-red-600 mt-2" data-hotel-error>{check.error}</p>}
+            {hint && !notBooked && <p className="text-[11px] text-indigo-800 mt-2">{hint}</p>}
         </div>
     );
 };

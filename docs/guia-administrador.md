@@ -159,6 +159,7 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
    - **Fecha de compra** (hoy por default)
    - **Archivos de confirmación** (PDF de la aerolínea / hotel — puedes subir varios)
    - **Compra (aerolínea y canal)** (#A82): viene llena con lo previsto al confirmar costos. Cámbiala si se compró por otro canal (por ejemplo, directo con la aerolínea porque Aviatur no ajustó el precio). Es obligatoria al registrar; al corregir una reserva es opcional. Si el regreso se compró con otra aerolínea, marca *"El regreso es con otra aerolínea"* (#A85).
+   - **Hotel (nombre y canal)** (#A94): solo en solicitudes con hospedaje. Viene con el hotel que pidió el viajero; cámbialo si reservaste otro y elige el canal (*Aviatur*, *Directo con el hotel* u *Otra agencia*). Es obligatorio al confirmar la reserva; con *"Guardar sin enviar"* puede quedar para después. Si al final no se reservó hotel (lo quitó el aprobador o es un apartamento corporativo), marca *"No se reservó hotel"*. En solo hospedaje este bloque reemplaza al de compra.
 4. Al guardar:
    - La carpeta en Drive se renombra a `SOL-000123 - PNR12345 - TC 1234 - MAY 26`
    - Se envía correo al usuario con el PNR y los archivos adjuntos

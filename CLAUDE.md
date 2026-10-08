@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A93) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A94) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -216,6 +216,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     `AEROLINEA REGRESO` solo se llena si es distinta (vacía = la misma). Solo se toca si la clave
     viene en el payload (`purchaseReturnAirline` / `returnAirline`), así una app anterior no la
     borra; la app solo ofrece la casilla si el servidor manda `purchaseReturnAirline`.
+  - **Hotel reservado y su canal** (#A94, pedido de Laura, 2026-10-08): bloque *Hotel* en *Registrar reserva*,
+    solo con hospedaje. Columnas `HOTEL RESERVADO` (mayúsculas sin tildes; `NOMBRE HOTEL` sigue siendo el que pidió
+    el viajero) y `CANAL DE COMPRA HOTEL` (*Aviatur*, *Directo*, *Otra agencia* o *No se reservó*). Obligatorio al
+    confirmar la reserva, con la casilla *No se reservó hotel* (no en solo hospedaje, donde el bloque reemplaza al de
+    compra y su canal es también `CANAL DE COMPRA`). Gemelo `normalizeHotelPurchase` ↔ `_normalizeHotelPurchase_`.
+    Solo se toca si viene `hotelChannel`; la app solo muestra el bloque si el servidor manda `purchaseHotelChannel`.
 - **Facturas listas para cerrar y por revisar** (#A83, acordado con Laura el 2026-10-01, reglas
   de David del 2026-10-02). **Ninguna solicitud se cierra sola** (David: *"es más seguro"*): el
   panel del analista las muestra y el área de viajes las cierra con el cierre manual de siempre.
@@ -324,7 +330,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83) y `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -385,7 +391,7 @@ components/
   OptionUploadModal.tsx    Subir imágenes de vuelo/hotel
   CostConfirmationModal.tsx  Confirmar costos finales, con el detalle completo (#A81) y la compra prevista (#A82)
   RequestInfoSections.tsx  Secciones de solo lectura del detalle (las usan el detalle y Confirmar costos, #A81)
-  PurchaseInfoFields.tsx   Aerolínea y canal de compra (Confirmar costos y Registrar reserva, #A82)
+  PurchaseInfoFields.tsx   Aerolínea y canal de compra (Confirmar costos y Registrar reserva, #A82) y hotel reservado (#A94)
   InvoiceReviewPanel.tsx   Barra "Listas para cerrar" y "Facturas por revisar" del panel del analista (#A83)
   ReservationModal.tsx     Registrar reserva (+ guardado parcial, #A57)
   SupportUploadModal.tsx   Soportes post-aprobación
@@ -405,7 +411,7 @@ utils/workOrder.ts         Validación de OT (gemelo de Code.gs, #A66)
 utils/birthdate.ts         Validación de fecha de nacimiento (gemelo de Code.gs, #A70)
 utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #A75)
 utils/money.ts             Costos en pesos: formato y mínimo (gemelo de Code.gs, #A79)
-utils/purchase.ts          Aerolínea y canal de compra (gemelo de Code.gs, #A82)
+utils/purchase.ts          Aerolínea, canal de compra y hotel reservado (gemelo de Code.gs, #A82, #A94)
 server/
   Code.gs                  Backend completo (~14.400 líneas)
   AdminSidebar.html        Sidebar de administración del Sheets
@@ -510,6 +516,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
   el dashboard** (#A92) y **metodología de cada estimación** (#A93): implementados; pendiente pegar `Code.gs` y `CostsDashboard.html` y crear la
   versión nueva del web app. Lo que sigue está en
   [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §9.
+- **Hotel reservado y su canal en *Registrar reserva*** (#A94, pedido de Laura, 8-oct): implementado; el bloque
+  aparece cuando se pega el `Code.gs` nuevo (versión nueva del web app) y se publica el frontend.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
   [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).

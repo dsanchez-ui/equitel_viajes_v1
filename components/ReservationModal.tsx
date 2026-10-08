@@ -3,8 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { TravelRequest, SupportFile, RequestStatus, APPROVER_ROLE_LABELS } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
-import { PurchaseInfoFields } from './PurchaseInfoFields';
-import { PurchaseForm, checkPurchaseForm, purchaseAirlineLabel, purchaseChannelLabel, purchaseFormFrom } from '../utils/purchase';
+import { HotelPurchaseFields, PurchaseInfoFields } from './PurchaseInfoFields';
+import { HotelForm, PurchaseForm, checkHotelForm, checkPurchaseForm, hotelFormFrom, hotelPurchaseLabel, purchaseAirlineLabel, purchaseChannelLabel, purchaseFormFrom } from '../utils/purchase';
 
 interface ReservationModalProps {
     request: TravelRequest;
@@ -67,27 +67,54 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
     const [triedPurchase, setTriedPurchase] = useState(false);
     const serverHasReturnAirline = request.purchaseReturnAirline !== undefined;
     const canSplitReturn = !!request.returnDate && serverHasReturnAirline;
-    const purchaseCheck = checkPurchaseForm(purchase, isHotelOnly, canSplitReturn);
-    const purchaseTouched = !!(purchase.airline.trim() || purchase.channel.trim() || purchase.splitReturn);
+
+    // #A94 (pedido de Laura): hotel reservado y su canal, si la solicitud lleva
+    // hospedaje y el servidor ya los guarda (manda la clave purchaseHotelChannel).
+    // En solo hospedaje este bloque reemplaza al de compra: su canal es el del hotel.
+    const showHotel = (!!request.requiresHotel || isHotelOnly) && request.purchaseHotelChannel !== undefined;
+    const hotelReplacesPurchase = isHotelOnly && showHotel;
+    const [initialHotel] = useState<HotelForm>(() => hotelFormFrom(request, isHotelOnly));
+    const [hotel, setHotel] = useState<HotelForm>(initialHotel);
+    const [triedHotel, setTriedHotel] = useState(false);
+    const hotelCheck = checkHotelForm(hotel, isHotelOnly);
+    const hotelChanged = JSON.stringify(hotel) !== JSON.stringify(initialHotel);
+
+    const effectivePurchase = hotelReplacesPurchase ? { ...purchase, channel: hotel.channel } : purchase;
+    const purchaseCheck = checkPurchaseForm(effectivePurchase, isHotelOnly, canSplitReturn);
+    const purchaseTouched = hotelReplacesPurchase
+        ? hotelChanged
+        : !!(purchase.airline.trim() || purchase.channel.trim() || purchase.splitReturn);
 
     /**
-     * Guarda aerolínea y canal si cambiaron. Con un backend anterior (que no conoce
-     * la acción) sigue sin guardarlos y devuelve una nota; otro error se lanza.
+     * Guarda aerolínea, canal y hotel si cambiaron. Con un backend anterior (que no
+     * conoce la acción) sigue sin guardarlos y devuelve una nota; otro error se lanza.
      */
     const savePurchaseInfoIfNeeded = async (): Promise<string> => {
-        if (!purchaseCheck.ok) return '';
-        if (purchaseCheck.airline === (request.purchaseAirline || '') && purchaseCheck.channel === (request.purchaseChannel || '')
-            && (!serverHasReturnAirline || purchaseCheck.returnAirline === (request.purchaseReturnAirline || ''))) return '';
+        const purchaseChanged = purchaseCheck.ok && !(purchaseCheck.airline === (request.purchaseAirline || '')
+            && purchaseCheck.channel === (request.purchaseChannel || '')
+            && (!serverHasReturnAirline || purchaseCheck.returnAirline === (request.purchaseReturnAirline || '')));
+        const hotelNeedsSave = showHotel && hotelCheck.ok && !(hotelCheck.hotelName === (request.purchaseHotelName || '')
+            && hotelCheck.hotelChannel === (request.purchaseHotelChannel || ''));
+        if (!purchaseChanged && !hotelNeedsSave) return '';
+        const info: { airline?: string; channel?: string; returnAirline?: string; hotelName?: string; hotelChannel?: string } = {};
+        if (purchaseChanged) {
+            info.airline = purchaseCheck.airline;
+            info.channel = purchaseCheck.channel;
+            if (serverHasReturnAirline) info.returnAirline = purchaseCheck.returnAirline;
+        }
+        if (hotelNeedsSave) {
+            info.hotelName = hotelCheck.hotelName;
+            info.hotelChannel = hotelCheck.hotelChannel;
+        }
         try {
-            await gasService.setPurchaseInfo(request.requestId, purchaseCheck.airline, purchaseCheck.channel,
-                serverHasReturnAirline ? purchaseCheck.returnAirline : undefined);
+            await gasService.setPurchaseInfo(request.requestId, info);
             return '';
         } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             if (/Acción desconocida/i.test(msg)) {
                 return '\n\nNota: la aerolínea y el canal no se guardaron porque falta publicar la nueva versión del servidor.';
             }
-            throw new Error('No se pudo guardar la aerolínea y el canal de compra: ' + msg);
+            throw new Error('No se pudo guardar la compra (aerolínea, canal u hotel): ' + msg);
         }
     };
 
@@ -197,6 +224,21 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             });
             return;
         }
+        // #A94: el hotel, obligatorio al registrar si la solicitud lleva hospedaje
+        // (o marcar «No se reservó hotel»); al corregir, solo si se cambió.
+        if (showHotel) {
+            setTriedHotel(true);
+            if ((!isEditMode || hotelChanged) && !hotelCheck.ok) {
+                setDialog({
+                    isOpen: true,
+                    title: 'Campo Requerido',
+                    message: hotelCheck.error || 'Revise el hotel y su canal de compra.',
+                    type: 'ALERT',
+                    onConfirm: closeDialog
+                });
+                return;
+            }
+        }
         // #A82: obligatorio al registrar; al corregir, solo si se escribió algo.
         setTriedPurchase(true);
         if ((!isEditMode || purchaseTouched) && !purchaseCheck.ok) {
@@ -248,13 +290,19 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
 
     const promptFinalConfirm = () => {
         const deleteCount = filesToDelete.size;
+        const buyText = [
+            purchaseCheck.ok && !hotelReplacesPurchase
+                ? (purchaseCheck.airline ? purchaseAirlineLabel(purchaseCheck.airline, purchaseCheck.returnAirline) + ' · ' : '') + purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)
+                : '',
+            showHotel && hotelCheck.ok ? 'hotel: ' + hotelPurchaseLabel(hotelCheck.hotelName, hotelCheck.hotelChannel) : ''
+        ].filter(Boolean).join('; ');
         const confirmMsg = isEditMode
             ? `Se actualizará la reserva a ${reservationNumber} con tarjeta ${creditCard}.`
               + (deleteCount > 0 ? `\nSe eliminarán ${deleteCount} archivo(s) de Drive.` : '')
               + (newFiles.length > 0 ? `\nSe subirán ${newFiles.length} archivo(s) nuevo(s).` : '')
               + `\nSe enviará correo de corrección al usuario.\n\n¿Desea continuar?`
             : `Se registrará la reserva ${reservationNumber} con la tarjeta ${creditCard}`
-              + (purchaseCheck.ok ? ` (compra: ${purchaseCheck.airline ? purchaseAirlineLabel(purchaseCheck.airline, purchaseCheck.returnAirline) + ' · ' : ''}${purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)})` : '')
+              + (buyText ? ` (compra: ${buyText})` : '')
               + `, se subirán ${newFiles.length} archivo(s)`
               + (sendUserNotification ? ' y se notificará al usuario.' : ' (SIN notificación al usuario).')
               + '\n\n¿Desea continuar?';
@@ -333,6 +381,18 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
 
     // --- RESERVA PARCIAL: "Guardar sin enviar" (solo modo NEW / APROBADO) ---
     const handleSaveDraft = () => {
+        // #A94: el hotel puede faltar (se compra después), pero si se cambió debe estar bien.
+        if (showHotel && hotelChanged && !hotelCheck.ok) {
+            setTriedHotel(true);
+            setDialog({
+                isOpen: true,
+                title: 'Revise el hotel',
+                message: hotelCheck.error || 'Revise el hotel y su canal de compra.',
+                type: 'ALERT',
+                onConfirm: closeDialog
+            });
+            return;
+        }
         if (newFiles.length === 0) {
             setDialog({
                 isOpen: true,
@@ -493,18 +553,34 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                 )}
                             </div>
 
-                            {/* #A82: aerolínea y canal con que se compró */}
-                            <PurchaseInfoFields
-                                isHotelOnly={isHotelOnly}
-                                canSplit={canSplitReturn}
-                                value={purchase}
-                                onChange={setPurchase}
-                                showErrors={triedPurchase && (!isEditMode || purchaseTouched)}
-                                title={isEditMode ? 'Compra (aerolínea y canal)' : 'Compra (aerolínea y canal) *'}
-                                hint={request.purchaseChannel
-                                    ? 'Viene de lo previsto al confirmar costos. Cámbielo si se compró por otro canal.'
-                                    : undefined}
-                            />
+                            {/* #A82: aerolínea y canal con que se compró (en solo hospedaje, el bloque del hotel) */}
+                            {!hotelReplacesPurchase && (
+                                <PurchaseInfoFields
+                                    isHotelOnly={isHotelOnly}
+                                    canSplit={canSplitReturn}
+                                    value={purchase}
+                                    onChange={setPurchase}
+                                    showErrors={triedPurchase && (!isEditMode || purchaseTouched)}
+                                    title={isEditMode ? 'Compra (aerolínea y canal)' : 'Compra (aerolínea y canal) *'}
+                                    hint={request.purchaseChannel
+                                        ? 'Viene de lo previsto al confirmar costos. Cámbielo si se compró por otro canal.'
+                                        : undefined}
+                                />
+                            )}
+
+                            {/* #A94: hotel reservado y su canal de compra */}
+                            {showHotel && (
+                                <HotelPurchaseFields
+                                    isHotelOnly={isHotelOnly}
+                                    value={hotel}
+                                    onChange={setHotel}
+                                    showErrors={triedHotel && (!isEditMode || hotelChanged)}
+                                    title={isEditMode ? 'Hotel (nombre y canal)' : 'Hotel (nombre y canal) *'}
+                                    hint={!request.purchaseHotelChannel && request.hotelName
+                                        ? 'Viene del hotel que pidió el viajero. Cámbielo si se reservó otro.'
+                                        : undefined}
+                                />
+                            )}
 
                             {/* Existing reservation files: en RESERVADO = la reserva;
                                 en APROBADO = lo guardado como reserva parcial. */}

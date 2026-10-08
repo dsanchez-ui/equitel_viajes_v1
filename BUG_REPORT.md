@@ -2045,3 +2045,40 @@ Plan completo y vivo en [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahor
 - Capturas con la base del 8-oct en escritorio y celular.
 
 **Despliegue:** pegar `server/CostsDashboard.html` y crear una versión nueva del web app. No cambia la app ni `Code.gs`.
+
+## **#A94 — Registrar reserva: hotel reservado y su canal de compra**
+**Fecha:** 2026-10-08 · **Pedido por:** Laura (área de viajes), aprobado por David · **Estado:** Implementado, en `main`
+
+**Pedido:** Laura propuso incluir el nombre del hotel en *Registrar compra / reserva* cuando aplique. David agregó el canal de compra del hotel (Aviatur, directo u otra agencia). Así queda la trazabilidad de los hospedajes para analizarlos más adelante; por ahora el análisis sigue enfocado en los vuelos.
+
+**Cambio:**
+- **Bloque *Hotel (nombre y canal)*** en *Registrar reserva*, solo si la solicitud lleva hospedaje.
+  - Viene con el hotel que pidió el viajero; Laura lo cambia si reservó otro y elige el canal.
+  - Es obligatorio al *Confirmar reserva y enviar*. Con *Guardar sin enviar* puede quedar para después (si se cambió, debe estar bien).
+  - Si al final no hubo hotel (lo quitó el aprobador o es un apartamento corporativo), se marca *No se reservó hotel*.
+  - Al corregir una reserva, solo se valida si se cambió.
+  - En **solo hospedaje** reemplaza al bloque de compra: su canal es también el de la solicitud (`CANAL DE COMPRA`), así que no hay dos campos de canal. No ofrece *No se reservó hotel*.
+- **Columnas nuevas al final:** `HOTEL RESERVADO` (en mayúsculas y sin tildes, como el formulario de solicitudes) y `CANAL DE COMPRA HOTEL` (*Aviatur*, *Directo*, *Otra agencia* o *No se reservó*). `NOMBRE HOTEL` no se toca: sigue siendo el que pidió el viajero, para poder comparar. Las crea el menú 12 o el sistema la primera vez.
+- **Regla gemela:** `normalizeHotelPurchase` (`utils/purchase.ts`) ↔ `_normalizeHotelPurchase_` (`Code.gs`). Nombre obligatorio de hasta 120 caracteres, solo letras, números, espacios y `. , & ' / ( ) # -`; no puede empezar por un signo (evita fórmulas en la hoja).
+- **`setPurchaseInfo`** recibe `hotelName` y `hotelChannel`:
+  - el hotel solo se toca si viene `hotelChannel`;
+  - sin `channel`, guarda solo el hotel (útil al corregir una reserva antigua sin aerolínea);
+  - valida todo antes de escribir: un hotel inválido no deja la compra a medias.
+- El detalle de la solicitud muestra *Hotel: …* a los administradores.
+
+**Compatibilidad de despliegue:**
+- *App nueva + servidor anterior:* la app solo muestra el bloque si el servidor manda `purchaseHotelChannel`, así que no aparece y todo sigue igual.
+- *Servidor nuevo + app anterior:* la app anterior no manda el hotel y el servidor no lo toca.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-purchase-info-rules.cjs` ahora prueba la aerolínea, el canal y el hotel:
+  - 22 casos de hotel en los que la app y el servidor coinciden;
+  - 34 verificaciones de guardado en la hoja: la app anterior no crea ni borra el hotel; aerolínea, canal y hotel juntos o solo el hotel; *no se reservó*; solo hospedaje; errores sin escritura a medias; la solicitud trae el hotel;
+  - 10 casos del formulario y de la precarga.
+- El modal se revisó en cuatro casos: vuelo con hotel, solo hospedaje, vuelo sin hotel y servidor anterior. También con una captura con los estilos de la app.
+
+**Despliegue:**
+1. Pegar `server/Code.gs` en Apps Script y crear una versión nueva del web app.
+2. El frontend ya quedó publicado con el push. Mientras no se publique el `Code.gs`, el bloque no aparece.
+3. Opcional: menú 12 para crear las columnas. Si no, se crean con la primera reserva que traiga hotel.

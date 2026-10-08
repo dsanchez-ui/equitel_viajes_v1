@@ -190,6 +190,10 @@ export interface TravelRequest {
   // Aerolínea del regreso si es distinta de la de ida (#A85). undefined = el
   // servidor aún no la maneja (la app no ofrece la opción).
   purchaseReturnAirline?: string;
+  // Hotel reservado y su canal de compra (#A94): 'Aviatur' | 'Directo' |
+  // 'Otra agencia' | 'No se reservó'. undefined = el servidor aún no los maneja.
+  purchaseHotelName?: string;
+  purchaseHotelChannel?: string;
 
   // EFFECTIVE approval status (computed by backend, mirrors the dedup rules
   // applied in sendApprovalRequestEmail / processApprovalFromEmail).

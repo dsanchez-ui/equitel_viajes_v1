@@ -265,7 +265,9 @@ const HEADERS_REQUESTS = [
   "AEROLINEA", // Aerolínea del tiquete (#A82) — al confirmar costos y al registrar la reserva
   "CANAL DE COMPRA", // 'Aviatur' | 'Directo' | 'Otra agencia' (#A82)
   "AVISO FACTURAS OMITIDO", // Quién omitió el aviso de facturas incompletas y cuándo (#A83)
-  "AEROLINEA REGRESO" // Aerolínea del regreso solo si es distinta de la de ida (#A85)
+  "AEROLINEA REGRESO", // Aerolínea del regreso solo si es distinta de la de ida (#A85)
+  "HOTEL RESERVADO", // Hotel que reservó el área de viajes (#A94); NOMBRE HOTEL sigue siendo el que pidió el viajero
+  "CANAL DE COMPRA HOTEL" // 'Aviatur' | 'Directo' | 'Otra agencia' | 'No se reservó' (#A94)
 ];
 
 // =====================================================================
@@ -687,7 +689,7 @@ function dispatch(action, payload) {
       // Estadísticas de compra de tiquetes y hospedaje (#A80). Solo administradores (adminOnlyActions).
       case 'getPurchaseStats': result = getPurchaseStats(payload.filters || {}); break;
       // Aerolínea y canal de compra (#A82) y facturas por revisar (#A83). Solo administradores.
-      case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline); break;
+      case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline, payload.hotelName, payload.hotelChannel); break;
       case 'getInvoiceReview': result = getInvoiceReview(); break;
       case 'dismissInvoiceAlert': result = dismissInvoiceAlert(payload.requestId, currentUserEmail); break;
       // SECURITY: Server-side analyst check
@@ -3383,21 +3385,94 @@ function _writePurchaseInfo_(sheet, rowNumber, info) {
 
 var PURCHASE_RETURN_AIRLINE_NOTE = 'Aerolínea del regreso (#A85), solo si es distinta de la de ida (AEROLINEA). Vacía = la misma aerolínea o viaje solo de ida.';
 
+// ---------------------------------------------------------------------
+// HOTEL RESERVADO Y SU CANAL DE COMPRA (#A94, pedido de Laura, 2026-10-08)
+// ---------------------------------------------------------------------
+// Al registrar la reserva, el área de viajes anota qué hotel reservó y por qué
+// canal (Aviatur, directo con el hotel u otra agencia), para tener la
+// trazabilidad de los hospedajes. NOMBRE HOTEL no se toca: es el que pidió el
+// viajero. HOTEL_NOT_BOOKED = al final no se reservó hotel (p. ej. lo quitó el
+// aprobador o fue un apartamento corporativo); no aplica a solo hospedaje.
+// ⚠️ GEMELO: normalizeHotelPurchase en utils/purchase.ts.
+var PURCHASE_HOTEL_HEADER = 'HOTEL RESERVADO';
+var PURCHASE_HOTEL_CHANNEL_HEADER = 'CANAL DE COMPRA HOTEL';
+var HOTEL_NOT_BOOKED = 'No se reservó';
+var HOTEL_NAME_MAX = 120;
+var PURCHASE_HOTEL_NOTE = 'Hotel que reservó el área de viajes (#A94), en mayúsculas y sin tildes. NOMBRE HOTEL es el que pidió el viajero.';
+var PURCHASE_HOTEL_CHANNEL_NOTE = 'Canal de compra del hotel (#A94): Aviatur, Directo (con el hotel) u Otra agencia. «No se reservó» = al final no hubo hotel.';
+
+/**
+ * Valida y normaliza el hotel reservado y su canal.
+ * @returns {{ok: boolean, hotelName: string, hotelChannel: string, error?: string}}
+ */
+function _normalizeHotelPurchase_(hotelName, hotelChannel, isHotelOnly) {
+  var chKey = _purchaseKey_(hotelChannel);
+  if (chKey && chKey === _purchaseKey_(HOTEL_NOT_BOOKED)) {
+    if (isHotelOnly) return { ok: false, hotelName: '', hotelChannel: '', error: 'En una solicitud de solo hospedaje indique el hotel reservado y su canal de compra.' };
+    return { ok: true, hotelName: '', hotelChannel: HOTEL_NOT_BOOKED };
+  }
+  var n = String(hotelName == null ? '' : hotelName).normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/\s+/g, ' ').trim();
+  if (!n) return { ok: false, hotelName: '', hotelChannel: '', error: 'Indique el nombre del hotel.' };
+  if (n.length > HOTEL_NAME_MAX) {
+    return { ok: false, hotelName: '', hotelChannel: '', error: 'El nombre del hotel es demasiado largo (máximo ' + HOTEL_NAME_MAX + ' caracteres).' };
+  }
+  if (!/^[A-Z0-9][A-Z0-9 .,&'\/()#-]*$/.test(n)) {
+    return { ok: false, hotelName: '', hotelChannel: '', error: 'El nombre del hotel solo puede tener letras, números, espacios y los signos . , & \' / ( ) # -' };
+  }
+  if (!chKey) return { ok: false, hotelName: n, hotelChannel: '', error: 'Indique el canal de compra del hotel.' };
+  var ch = '';
+  for (var i = 0; i < PURCHASE_CHANNELS.length; i++) {
+    if (_purchaseKey_(PURCHASE_CHANNELS[i]) === chKey) ch = PURCHASE_CHANNELS[i];
+  }
+  if (!ch) return { ok: false, hotelName: n, hotelChannel: '', error: 'Canal de compra del hotel no válido. Opciones: Aviatur, Directo u Otra agencia.' };
+  return { ok: true, hotelName: n, hotelChannel: ch };
+}
+
+/** Escribe el hotel reservado y su canal (crea las columnas al final si faltan). */
+function _writeHotelPurchase_(sheet, rowNumber, info) {
+  var colName = _ensureRequestColumn_(PURCHASE_HOTEL_HEADER, PURCHASE_HOTEL_NOTE);
+  var colChannel = _ensureRequestColumn_(PURCHASE_HOTEL_CHANNEL_HEADER, PURCHASE_HOTEL_CHANNEL_NOTE);
+  sheet.getRange(rowNumber, colName).setValue(safeSheetValue_(info.hotelName || ''));
+  sheet.getRange(rowNumber, colChannel).setValue(safeSheetValue_(info.hotelChannel || ''));
+}
+
 /**
  * Guarda aerolínea y canal de una solicitud (registro de la reserva o corrección).
  * returnAirline (#A85): undefined = no tocar la guardada (app anterior).
+ * hotelName / hotelChannel (#A94): hotel reservado y su canal; solo se tocan si
+ * hotelChannel viene. Si channel no viene, solo se guarda el hotel. Todo se valida
+ * antes de escribir: un error no deja nada a medias.
  * Solo administradores (adminOnlyActions).
  */
-function setPurchaseInfo(requestId, airline, channel, returnAirline) {
+function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, hotelChannel) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   var rowNumber = _getRowByRequestId_(requestId);
   if (!sheet || rowNumber === -1) throw new Error('Solicitud no encontrada.');
-  var withReturn = returnAirline !== undefined && returnAirline !== null;
-  var r = _normalizePurchaseInfo_(airline, channel, _rowIsHotelOnly_(sheet, rowNumber),
-    withReturn && _rowHasReturn_(sheet, rowNumber) ? returnAirline : '');
-  if (!r.ok) throw new Error(r.error);
-  _writePurchaseInfo_(sheet, rowNumber, { airline: r.airline, channel: r.channel, returnAirline: withReturn ? r.returnAirline : undefined });
-  return { airline: r.airline, channel: r.channel, returnAirline: r.returnAirline };
+  var hotelOnly = _rowIsHotelOnly_(sheet, rowNumber);
+  var withPurchase = channel !== undefined && channel !== null;
+  var withHotel = hotelChannel !== undefined && hotelChannel !== null;
+  var r = null, h = null;
+  if (withPurchase || !withHotel) {
+    var withReturn = returnAirline !== undefined && returnAirline !== null;
+    r = _normalizePurchaseInfo_(airline, channel, hotelOnly, withReturn && _rowHasReturn_(sheet, rowNumber) ? returnAirline : '');
+    if (!r.ok) throw new Error(r.error);
+    r.writeReturn = withReturn;
+  }
+  if (withHotel) {
+    h = _normalizeHotelPurchase_(hotelName, hotelChannel, hotelOnly);
+    if (!h.ok) throw new Error(h.error);
+  }
+  var out = {};
+  if (r) {
+    _writePurchaseInfo_(sheet, rowNumber, { airline: r.airline, channel: r.channel, returnAirline: r.writeReturn ? r.returnAirline : undefined });
+    out.airline = r.airline; out.channel = r.channel; out.returnAirline = r.returnAirline;
+  }
+  if (h) {
+    _writeHotelPurchase_(sheet, rowNumber, h);
+    out.hotelName = h.hotelName; out.hotelChannel = h.hotelChannel;
+  }
+  return out;
 }
 
 // =====================================================================
@@ -3562,6 +3637,8 @@ function _ensureA82A83Columns_() {
     { header: PURCHASE_CHANNEL_HEADER, col: _ensureRequestColumn_(PURCHASE_CHANNEL_HEADER,
       'Canal de compra (#A82): Aviatur, Directo (aerolínea u hotel) u Otra agencia. Se registra al confirmar costos y al registrar la reserva.') },
     { header: PURCHASE_RETURN_AIRLINE_HEADER, col: _ensureRequestColumn_(PURCHASE_RETURN_AIRLINE_HEADER, PURCHASE_RETURN_AIRLINE_NOTE) },
+    { header: PURCHASE_HOTEL_HEADER, col: _ensureRequestColumn_(PURCHASE_HOTEL_HEADER, PURCHASE_HOTEL_NOTE) },
+    { header: PURCHASE_HOTEL_CHANNEL_HEADER, col: _ensureRequestColumn_(PURCHASE_HOTEL_CHANNEL_HEADER, PURCHASE_HOTEL_CHANNEL_NOTE) },
     { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
       'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
   ];
@@ -8009,7 +8086,11 @@ function mapRowToRequest(row, lite) {
     purchaseChannel: String(get("CANAL DE COMPRA") || ''),
     // Aerolínea del regreso si es distinta (#A85). Que la clave venga le dice a la
     // app que este servidor ya la guarda.
-    purchaseReturnAirline: String(get("AEROLINEA REGRESO") || '')
+    purchaseReturnAirline: String(get("AEROLINEA REGRESO") || ''),
+    // Hotel reservado y su canal (#A94). Igual que el regreso: que la clave venga
+    // le dice a la app que este servidor ya los guarda.
+    purchaseHotelName: String(get("HOTEL RESERVADO") || ''),
+    purchaseHotelChannel: String(get("CANAL DE COMPRA HOTEL") || '')
   };
 
   // Compute and attach the EFFECTIVE approval status (mirrors the rules in

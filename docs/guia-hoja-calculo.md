@@ -345,12 +345,13 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 - `AEROLINEA` y `CANAL DE COMPRA` (#A82): con qué aerolínea y por qué canal (*Aviatur*, *Directo* u *Otra agencia*) se compró. Las llenan "Confirmar costos" y "Registrar reserva".
 - `AEROLINEA REGRESO` (#A85, 7-oct-2026): la aerolínea del regreso **solo si es distinta** de la de ida (por ejemplo, `AEROLINEA` = LATAM y `AEROLINEA REGRESO` = Avianca). Vacía = la misma aerolínea o viaje solo de ida.
 - `AVISO FACTURAS OMITIDO` (#A83): quién omitió el aviso de facturas incompletas y cuándo. Borrar la celda vuelve a mostrar el aviso en el panel.
+- `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94, 8-oct-2026): el hotel que reservó el área de viajes (en mayúsculas y sin tildes) y su canal (*Aviatur*, *Directo* u *Otra agencia*). *No se reservó* = al final no hubo hotel. `NOMBRE HOTEL` sigue siendo el que pidió el viajero. Las llena "Registrar reserva".
 
 Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
 
 ### 12. Columnas de compra y resumen de facturas
 
-Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
+Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
 - **listas para cerrar:** viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita
 - **facturas por revisar:** les faltan facturas o PDF, a partir del día 7 después del viaje
 - avisos omitidos y solicitudes en espera

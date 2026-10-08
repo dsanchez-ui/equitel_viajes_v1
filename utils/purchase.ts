@@ -4,7 +4,7 @@
  *
  * ⚠️ ESTE ARCHIVO TIENE UN GEMELO EN EL BACKEND.
  * La misma lógica vive en `server/Code.gs` (`_normalizePurchaseInfo_`,
- * `_purchaseAirlineName_`, `PURCHASE_CHANNELS`, `PURCHASE_AIRLINES`). Si cambias
+ * `_purchaseAirlineName_`, `_normalizeHotelPurchase_`, `PURCHASE_CHANNELS`, `PURCHASE_AIRLINES`). Si cambias
  * las reglas o los mensajes aquí, cámbialos allá:
  * `tools/check-purchase-info-rules.cjs` compara ambos lados dentro de
  * `npm run verify` y falla si se separan.
@@ -84,8 +84,82 @@ export function purchaseAirlineLabel(airline: string, returnAirline?: string): s
 }
 
 // ---------------------------------------------------------------------------
+// Hotel reservado y su canal de compra (#A94, pedido de Laura, 2026-10-08).
+// Gemelo de `_normalizeHotelPurchase_` en Code.gs. El nombre se guarda como el
+// del formulario de solicitudes: en mayúsculas y sin tildes. HOTEL_NOT_BOOKED
+// marca que al final no se reservó hotel (no aplica a solo hospedaje).
+// ---------------------------------------------------------------------------
+
+export const HOTEL_NOT_BOOKED = 'No se reservó';
+export const HOTEL_NAME_MAX = 120;
+
+export interface HotelPurchaseCheck {
+  ok: boolean;
+  hotelName: string;
+  hotelChannel: string;
+  error?: string;
+}
+
+export function normalizeHotelPurchase(hotelName: unknown, hotelChannel: unknown, isHotelOnly: boolean): HotelPurchaseCheck {
+  const chKey = purchaseKey(hotelChannel);
+  if (chKey && chKey === purchaseKey(HOTEL_NOT_BOOKED)) {
+    if (isHotelOnly) return { ok: false, hotelName: '', hotelChannel: '', error: 'En una solicitud de solo hospedaje indique el hotel reservado y su canal de compra.' };
+    return { ok: true, hotelName: '', hotelChannel: HOTEL_NOT_BOOKED };
+  }
+  const n = String(hotelName == null ? '' : hotelName).normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase().replace(/\s+/g, ' ').trim();
+  if (!n) return { ok: false, hotelName: '', hotelChannel: '', error: 'Indique el nombre del hotel.' };
+  if (n.length > HOTEL_NAME_MAX) {
+    return { ok: false, hotelName: '', hotelChannel: '', error: 'El nombre del hotel es demasiado largo (máximo ' + HOTEL_NAME_MAX + ' caracteres).' };
+  }
+  if (!/^[A-Z0-9][A-Z0-9 .,&'\/()#-]*$/.test(n)) {
+    return { ok: false, hotelName: '', hotelChannel: '', error: 'El nombre del hotel solo puede tener letras, números, espacios y los signos . , & \' / ( ) # -' };
+  }
+  if (!chKey) return { ok: false, hotelName: n, hotelChannel: '', error: 'Indique el canal de compra del hotel.' };
+  let ch = '';
+  for (const c of PURCHASE_CHANNELS) if (purchaseKey(c) === chKey) ch = c;
+  if (!ch) return { ok: false, hotelName: n, hotelChannel: '', error: 'Canal de compra del hotel no válido. Opciones: Aviatur, Directo u Otra agencia.' };
+  return { ok: true, hotelName: n, hotelChannel: ch };
+}
+
+/** Texto del hotel para mostrar: «HOTEL DANN · Directo con el hotel» o «No se reservó hotel». */
+export function hotelPurchaseLabel(hotelName: string, hotelChannel: string): string {
+  if (purchaseKey(hotelChannel) === purchaseKey(HOTEL_NOT_BOOKED)) return 'No se reservó hotel';
+  return [hotelName, hotelChannel ? purchaseChannelLabel(hotelChannel, true) : ''].filter(Boolean).join(' · ');
+}
+
+// ---------------------------------------------------------------------------
 // Formulario (solo pantalla, sin gemelo en el backend)
 // ---------------------------------------------------------------------------
+
+/** Lo que se edita en el bloque «Hotel» de «Registrar reserva» (#A94). */
+export interface HotelForm {
+  name: string;
+  channel: string;
+  /** Casilla «No se reservó hotel» (no aplica a solo hospedaje). */
+  notBooked: boolean;
+}
+
+/**
+ * Precarga: lo ya guardado; si no hay, el hotel que pidió el viajero y, en solo
+ * hospedaje, el canal previsto al confirmar costos (ese canal es el del hotel).
+ */
+export function hotelFormFrom(
+  req: { purchaseHotelName?: string; purchaseHotelChannel?: string; hotelName?: string; purchaseChannel?: string },
+  isHotelOnly: boolean
+): HotelForm {
+  const saved = req.purchaseHotelChannel || '';
+  if (saved && purchaseKey(saved) === purchaseKey(HOTEL_NOT_BOOKED)) return { name: req.hotelName || '', channel: '', notBooked: true };
+  return {
+    name: req.purchaseHotelName || req.hotelName || '',
+    channel: saved || (isHotelOnly ? req.purchaseChannel || '' : ''),
+    notBooked: false,
+  };
+}
+
+export function checkHotelForm(form: HotelForm, isHotelOnly: boolean): HotelPurchaseCheck {
+  return normalizeHotelPurchase(form.name, !isHotelOnly && form.notBooked ? HOTEL_NOT_BOOKED : form.channel, isHotelOnly);
+}
 
 /** Lo que se edita en «Compra prevista» y en «Registrar reserva». */
 export interface PurchaseForm {

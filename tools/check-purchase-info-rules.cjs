@@ -13,6 +13,11 @@
  *
  * #A85: aerolínea del regreso opcional (4.º argumento). Mismas reglas de
  * escritura; vacía o igual a la de ida se guarda vacía; solo hospedaje la ignora.
+ *
+ * #A94: hotel reservado y su canal (`_normalizeHotelPurchase_` / `normalizeHotelPurchase`).
+ * Nombre obligatorio, en mayúsculas y sin tildes, máximo 120 caracteres, solo letras,
+ * números, espacios y . , & ' / ( ) # -; canal Aviatur, Directo u Otra agencia; o
+ * «No se reservó» (sin hotel), que no aplica a solo hospedaje.
  */
 
 const fs = require('fs');
@@ -36,13 +41,15 @@ function extract(source, name, kind) {
 function loadBackend() {
   const gs = fs.readFileSync(path.join(ROOT, 'server', 'Code.gs'), 'utf8');
   const code = [extract(gs, 'PURCHASE_CHANNELS', 'var'), extract(gs, 'PURCHASE_AIRLINES', 'var'), extract(gs, 'PURCHASE_AIRLINE_MAX', 'var'),
-    extract(gs, '_purchaseKey_'), extract(gs, '_purchaseAirlineName_'), extract(gs, '_normalizePurchaseInfo_')].join('\n');
+    extract(gs, 'HOTEL_NOT_BOOKED', 'var'), extract(gs, 'HOTEL_NAME_MAX', 'var'),
+    extract(gs, '_purchaseKey_'), extract(gs, '_purchaseAirlineName_'), extract(gs, '_normalizePurchaseInfo_'), extract(gs, '_normalizeHotelPurchase_')].join('\n');
   const ctx = {};
   vm.createContext(ctx);
   new vm.Script(code, { filename: 'Code.gs (extracto compra)' }).runInContext(ctx);
   return {
     channels: vm.runInContext('PURCHASE_CHANNELS', ctx), airlines: vm.runInContext('PURCHASE_AIRLINES', ctx),
     check: (a, c, h, r) => { ctx.__a = [a, c, h, r]; return vm.runInContext('_normalizePurchaseInfo_(__a[0], __a[1], __a[2], __a[3])', ctx); },
+    hotel: (n, c, h) => { ctx.__a = [n, c, h]; return vm.runInContext('_normalizeHotelPurchase_(__a[0], __a[1], __a[2])', ctx); },
   };
 }
 
@@ -55,7 +62,8 @@ function loadFrontend() {
   const e = mod.exports;
   if (typeof e.normalizePurchaseInfo !== 'function') throw new Error('utils/purchase.ts no exporta normalizePurchaseInfo()');
   return { channels: e.PURCHASE_CHANNELS, airlines: e.PURCHASE_AIRLINES, check: e.normalizePurchaseInfo,
-    form: e.checkPurchaseForm, formFrom: e.purchaseFormFrom, label: e.purchaseAirlineLabel };
+    form: e.checkPurchaseForm, formFrom: e.purchaseFormFrom, label: e.purchaseAirlineLabel,
+    hotel: e.normalizeHotelPurchase, hotelForm: e.checkHotelForm, hotelFormFrom: e.hotelFormFrom, hotelLabel: e.hotelPurchaseLabel };
 }
 
 // [aerolínea, canal, soloHospedaje, ok esperado, aerolínea guardada, canal guardado]
@@ -107,6 +115,32 @@ const RETURN_CASES = [
   ['LATAM', 'Aviatur', false, 'A'.repeat(41), false],
   ['LATAM', 'Aviatur', false, 'A'.repeat(40), true, 'LATAM', 'Aviatur', 'A'.repeat(40)],
   ['=x', 'Aviatur', false, 'Avianca', false],
+];
+
+// #A94: [hotel, canal, soloHospedaje, ok esperado, hotel guardado, canal guardado]
+const HOTEL_CASES = [
+  ['Hotel Estelar La Fontana', 'Aviatur', false, true, 'HOTEL ESTELAR LA FONTANA', 'Aviatur'],
+  ['  hotel   dann  carlton ', 'directo', false, true, 'HOTEL DANN CARLTON', 'Directo'],
+  ['Hôtel Médellín', 'otra agencia', true, true, 'HOTEL MEDELLIN', 'Otra agencia'],
+  ['Ibis Bogotá Museo #93', 'Aviatur', false, true, 'IBIS BOGOTA MUSEO #93', 'Aviatur'],
+  ["Hilton Garden Inn (Barranquilla) - Torre 2, B&B / O'Neil.", 'Directo', false, true, "HILTON GARDEN INN (BARRANQUILLA) - TORRE 2, B&B / O'NEIL.", 'Directo'],
+  ['Año Nuevo', 'Aviatur', false, true, 'ANO NUEVO', 'Aviatur'],
+  ['A'.repeat(120), 'Aviatur', false, true, 'A'.repeat(120), 'Aviatur'],
+  ['', 'No se reservó', false, true, '', 'No se reservó'],
+  ['Hilton', 'no se reservo', false, true, '', 'No se reservó'],
+  ['', 'No se reservó', true, false],
+  ['', 'Aviatur', false, false],
+  ['   ', 'Aviatur', true, false],
+  [null, 'Aviatur', false, false],
+  ['Hilton', '', false, false],
+  ['Hilton', undefined, false, false],
+  ['Hilton', 'Booking', false, false],
+  ['=HYPERLINK("x")', 'Aviatur', false, false],
+  ['-Hilton', 'Aviatur', false, false],
+  ['+57 Hotel', 'Aviatur', false, false],
+  ['@hotel', 'Aviatur', false, false],
+  ['Hilton<script>', 'Aviatur', false, false],
+  ['A'.repeat(121), 'Aviatur', false, false],
 ];
 
 // ------------------------------------------------------------------ guardado en la hoja (#A85)
@@ -209,7 +243,33 @@ function checkBackendWrites(failures) {
 
   const mapped = ctx.mapRowToRequest(base.data.find((r) => r[0] === 'SOL-1'));
   eq('la solicitud que recibe la app trae el regreso', [mapped.purchaseAirline, mapped.purchaseReturnAirline], ['LATAM', 'Avianca']);
-  eq('la acción setPurchaseInfo pasa el regreso', gs.includes('setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline)'), true);
+  eq('la acción setPurchaseInfo pasa el regreso y el hotel',
+    gs.includes('setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline, payload.hotelName, payload.hotelChannel)'), true);
+
+  // #A94: hotel reservado y su canal.
+  const hotelPair = (id) => [cell(id, 'HOTEL RESERVADO'), cell(id, 'CANAL DE COMPRA HOTEL')];
+  set('SOL-1', 'LATAM', 'Aviatur', 'Avianca');
+  eq('app anterior: no crea las columnas del hotel', hotelPair('SOL-1'), ['(sin columna)', '(sin columna)']);
+  eq('aerolínea, canal y hotel juntos', set('SOL-1', 'LATAM', 'Aviatur', 'Avianca', 'hotel dann carlton', 'directo'),
+    { airline: 'LATAM', channel: 'Aviatur', returnAirline: 'Avianca', hotelName: 'HOTEL DANN CARLTON', hotelChannel: 'Directo' });
+  eq('el hotel queda en sus columnas', [trio('SOL-1'), hotelPair('SOL-1')], [['LATAM', 'Aviatur', 'Avianca'], ['HOTEL DANN CARLTON', 'Directo']]);
+  eq('las columnas del hotel quedan al final', base.data[0].slice(-2), ['HOTEL RESERVADO', 'CANAL DE COMPRA HOTEL']);
+  set('SOL-1', 'Wingo', 'Directo');
+  eq('app anterior al registrar: no borra el hotel', [trio('SOL-1')[0], hotelPair('SOL-1')], ['Wingo', ['HOTEL DANN CARLTON', 'Directo']]);
+  eq('solo el hotel, sin tocar la compra', set('SOL-1', undefined, undefined, undefined, 'Ibis Museo', 'Aviatur'), { hotelName: 'IBIS MUSEO', hotelChannel: 'Aviatur' });
+  eq('la compra no cambia', [trio('SOL-1')[0], trio('SOL-1')[1], hotelPair('SOL-1')], ['Wingo', 'Directo', ['IBIS MUSEO', 'Aviatur']]);
+  set('SOL-1', undefined, undefined, undefined, 'IBIS MUSEO', 'No se reservó');
+  eq('no se reservó hotel', hotelPair('SOL-1'), ['', 'No se reservó']);
+  set('SOL-3', '', 'Directo', undefined, 'Hotel Sonesta', 'Directo');
+  eq('solo hospedaje: canal de la solicitud y del hotel', [trio('SOL-3')[1], hotelPair('SOL-3')], ['Directo', ['HOTEL SONESTA', 'Directo']]);
+  const antesHotel = JSON.stringify(base.data);
+  eq('solo hospedaje no acepta «no se reservó»', /solo hospedaje/.test(throws(() => set('SOL-3', '', 'Directo', undefined, '', 'No se reservó'))), true);
+  eq('hotel inválido: error claro', /hotel/.test(throws(() => set('SOL-1', 'LATAM', 'Aviatur', undefined, '=HYPERLINK("x")', 'Aviatur'))), true);
+  eq('sin canal del hotel: se rechaza', /canal de compra del hotel/.test(throws(() => set('SOL-1', undefined, undefined, undefined, 'Hilton', ''))), true);
+  eq('sin compra ni hotel: se rechaza', /canal/.test(throws(() => set('SOL-1'))), true);
+  eq('un hotel inválido no deja la compra a medias', JSON.stringify(base.data) === antesHotel, true);
+  const mappedHotel = ctx.mapRowToRequest(base.data.find((r) => r[0] === 'SOL-3'));
+  eq('la solicitud que recibe la app trae el hotel', [mappedHotel.purchaseHotelName, mappedHotel.purchaseHotelChannel], ['HOTEL SONESTA', 'Directo']);
 
   // #A86: confirmar costos por la API deja quién lo hizo (lo muestra el comparador de precios).
   ctx._clearReqHeadersCache_();
@@ -259,6 +319,16 @@ function main() {
     }
     if (JSON.stringify(b) !== JSON.stringify(f)) failures.push(`${tag}: frontend y backend no coinciden (${JSON.stringify(b)} / ${JSON.stringify(f)})`);
   }
+  for (const [n, c, h, ok, name, channel] of HOTEL_CASES) {
+    const b = back.hotel(n, c, h), f = front.hotel(n, c, h);
+    const tag = 'hotel ' + JSON.stringify([n, c, h]);
+    for (const [side, x] of [['backend', b], ['frontend', f]]) {
+      if (x.ok !== ok) failures.push(`${tag}: ${side} ${x.ok ? 'acepta' : 'rechaza'} y se esperaba lo contrario`);
+      else if (ok && (x.hotelName !== name || x.hotelChannel !== channel)) failures.push(`${tag}: ${side} guarda ${JSON.stringify([x.hotelName, x.hotelChannel])}`);
+      else if (!ok && !x.error) failures.push(`${tag}: ${side} rechaza sin mensaje`);
+    }
+    if (JSON.stringify(b) !== JSON.stringify(f)) failures.push(`${tag}: frontend y backend no coinciden (${JSON.stringify(b)} / ${JSON.stringify(f)})`);
+  }
   let writeChecks = 0;
   try { writeChecks = checkBackendWrites(failures); } catch (e) { failures.push('guardado: ' + (e && e.stack || e)); }
 
@@ -288,12 +358,41 @@ function main() {
     failures.push('purchaseAirlineLabel: ' + front.label('LATAM', 'Avianca'));
   }
 
+  // Bloque «Hotel» de «Registrar reserva» (#A94, solo pantalla).
+  const H = (o) => Object.assign({ name: 'HOTEL DANN', channel: 'Aviatur', notBooked: false }, o);
+  const hotelForms = [
+    // [formulario, soloHospedaje, ok, hotel guardado, canal guardado]
+    [H({}), false, true, 'HOTEL DANN', 'Aviatur'],
+    [H({ notBooked: true, channel: '' }), false, true, '', 'No se reservó'],
+    [H({ notBooked: true }), true, true, 'HOTEL DANN', 'Aviatur'],
+    [H({ channel: '' }), false, false],
+    [H({ name: '' }), false, false],
+  ];
+  hotelForms.forEach(([form, h, ok, name, channel], i) => {
+    const r = front.hotelForm(form, h);
+    if (r.ok !== ok) failures.push(`hotel formulario #${i + 1}: ${r.ok ? 'acepta' : 'rechaza'} y se esperaba lo contrario (${r.error || ''})`);
+    else if (ok && (r.hotelName !== name || r.hotelChannel !== channel)) failures.push(`hotel formulario #${i + 1}: ${JSON.stringify([r.hotelName, r.hotelChannel])}`);
+  });
+  const hf = (req, h) => JSON.stringify(front.hotelFormFrom(req, h));
+  const hotelFrom = [
+    [hf({ hotelName: 'HOTEL PEDIDO' }, false), { name: 'HOTEL PEDIDO', channel: '', notBooked: false }, 'precarga el hotel que pidió el viajero'],
+    [hf({ hotelName: 'HOTEL PEDIDO', purchaseHotelName: 'HOTEL RESERVADO', purchaseHotelChannel: 'Directo' }, false),
+      { name: 'HOTEL RESERVADO', channel: 'Directo', notBooked: false }, 'precarga lo ya guardado'],
+    [hf({ hotelName: 'HOTEL PEDIDO', purchaseHotelChannel: 'No se reservó' }, false), { name: 'HOTEL PEDIDO', channel: '', notBooked: true }, 'marca «no se reservó»'],
+    [hf({ hotelName: 'HOTEL PEDIDO', purchaseChannel: 'Directo' }, true), { name: 'HOTEL PEDIDO', channel: 'Directo', notBooked: false }, 'solo hospedaje: canal previsto'],
+    [hf({ hotelName: 'HOTEL PEDIDO', purchaseChannel: 'Aviatur' }, false), { name: 'HOTEL PEDIDO', channel: '', notBooked: false }, 'con vuelo: el canal previsto es del tiquete, no se usa'],
+  ];
+  hotelFrom.forEach(([got, want, name]) => { if (got !== JSON.stringify(want)) failures.push(`hotelFormFrom (${name}): ${got}`); });
+  if (front.hotelLabel('HOTEL DANN', 'Directo') !== 'HOTEL DANN · Directo con el hotel' || front.hotelLabel('', 'No se reservó') !== 'No se reservó hotel') {
+    failures.push('hotelPurchaseLabel: ' + front.hotelLabel('HOTEL DANN', 'Directo'));
+  }
+
   if (failures.length) {
     console.error(`\n✗ Aerolínea y canal: ${failures.length} problema(s).\n`);
     failures.forEach((x) => console.error('  · ' + x));
     process.exit(1);
   }
-  console.log(`Aerolínea y canal: ${CASES.length + RETURN_CASES.length} casos OK (${RETURN_CASES.length} con aerolínea de regreso) y ${formCases.length} del formulario; frontend y backend coinciden. Guardado en la hoja: ${writeChecks} verificaciones OK.`);
+  console.log(`Aerolínea, canal y hotel: ${CASES.length + RETURN_CASES.length + HOTEL_CASES.length} casos OK (${RETURN_CASES.length} con aerolínea de regreso, ${HOTEL_CASES.length} de hotel) y ${formCases.length + hotelForms.length + hotelFrom.length} del formulario; frontend y backend coinciden. Guardado en la hoja: ${writeChecks} verificaciones OK.`);
 }
 
 main();
