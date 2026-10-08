@@ -66,7 +66,7 @@ export function fareName(airline: unknown, option: number): string {
 export function fareLabel(option: number, airline: unknown, returnAirline?: unknown): string {
   const ida = fareName(airline, option);
   const back = returnAirline ? fareName(returnAirline, option) : '';
-  if (back && back !== ida) return (ida || 'TIPO ' + option) + ' (ida) y ' + back + ' (regreso)';
+  if (returnAirline && (ida || back) && back !== ida) return (ida || 'TIPO ' + option) + ' (ida) y ' + (back || 'TIPO ' + option) + ' (regreso)';
   return ida;
 }
 
@@ -76,9 +76,9 @@ export function fareLabel(option: number, airline: unknown, returnAirline?: unkn
  */
 export function fareIsException(option: number, recommended: number, airlines: unknown[]): boolean {
   if (option === recommended) return false;
-  const known = airlines.filter((a) => fareName(a, 1));
-  if (!known.length) return true;
-  return known.some((a) => fareName(a, option) !== fareName(a, recommended));
+  if (!airlines.length) return true;
+  // En una aerolínea del manual cuenta el nombre (Avianca 2 = 3 = Classic); fuera del manual, el número.
+  return airlines.some((a) => !fareName(a, 1) || fareName(a, option) !== fareName(a, recommended));
 }
 
 export interface FareCheck {

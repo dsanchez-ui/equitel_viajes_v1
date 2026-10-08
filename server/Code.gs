@@ -3506,15 +3506,15 @@ function _fareName_(airline, option) {
 function _fareLabel_(option, airline, returnAirline) {
   var ida = _fareName_(airline, option);
   var back = returnAirline ? _fareName_(returnAirline, option) : '';
-  if (back && back !== ida) return (ida || 'TIPO ' + option) + ' (ida) y ' + back + ' (regreso)';
+  if (returnAirline && (ida || back) && back !== ida) return (ida || 'TIPO ' + option) + ' (ida) y ' + (back || 'TIPO ' + option) + ' (regreso)';
   return ida;
 }
 
 function _fareIsException_(option, recommended, airlines) {
   if (option === recommended) return false;
-  var known = airlines.filter(function(a) { return _fareName_(a, 1); });
-  if (!known.length) return true;
-  return known.some(function(a) { return _fareName_(a, option) !== _fareName_(a, recommended); });
+  if (!airlines.length) return true;
+  // En una aerolínea del manual cuenta el nombre (Avianca 2 = 3 = Classic); fuera del manual, el número.
+  return airlines.some(function(a) { return !_fareName_(a, 1) || _fareName_(a, option) !== _fareName_(a, recommended); });
 }
 
 /** Acepta 2, '2', 'TIPO 2', 'Opción 2'; 0 si no es válida. */
@@ -3557,7 +3557,7 @@ function _fareRecommendedForRow_(sheet, rowNumber) {
 function _normalizeFarePayload_(requestId, inner) {
   var out = {};
   Object.keys(inner).forEach(function(k) { if (k !== 'fare') out[k] = inner[k]; });
-  if (inner.fareOption === undefined) return out;
+  if (inner.fareOption === undefined || inner.fareOption === null) return out;
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   var rowNumber = _getRowByRequestId_(requestId);
   if (!sheet || rowNumber === -1) throw new Error('ID no encontrado');
@@ -3625,6 +3625,12 @@ function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, 
     if (!f.ok) throw new Error(f.error);
   }
   var out = {};
+  // La tarifa va primero: si la hoja rechazara el valor (p. ej. una lista desplegable),
+  // no quedan la aerolínea o el hotel guardados sin ella.
+  if (f) {
+    _writeFare_(sheet, rowNumber, f);
+    out.fareType = String(f.option); out.fareRecommended = String(f.recommended); out.fareName = f.name; out.fareJustification = f.justification;
+  }
   if (r) {
     _writePurchaseInfo_(sheet, rowNumber, { airline: r.airline, channel: r.channel, returnAirline: r.writeReturn ? r.returnAirline : undefined });
     out.airline = r.airline; out.channel = r.channel; out.returnAirline = r.returnAirline;
@@ -3632,10 +3638,6 @@ function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, 
   if (h) {
     _writeHotelPurchase_(sheet, rowNumber, h);
     out.hotelName = h.hotelName; out.hotelChannel = h.hotelChannel;
-  }
-  if (f) {
-    _writeFare_(sheet, rowNumber, f);
-    out.fareType = String(f.option); out.fareRecommended = String(f.recommended); out.fareName = f.name; out.fareJustification = f.justification;
   }
   return out;
 }
@@ -5267,6 +5269,16 @@ function renderMessagePage(title, message, color) {
 
 // --- DATA ACCESS ---
 
+/**
+ * Tarifa recomendada y motivo de una excepción (#A95): solo para administradores.
+ * Al solicitante le llegan vacíos (las claves se quedan: la app las usa para saber
+ * que el servidor maneja la tarifa). La tarifa comprada y su nombre sí le llegan.
+ */
+function _hideFareInternals_(req) {
+  if (req) { req.fareRecommended = ''; req.fareJustification = ''; }
+  return req;
+}
+
 function getRequestsByEmail(email) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -5295,7 +5307,8 @@ function getRequestsByEmail(email) {
       }
   });
   
-  return Array.from(uniqueRequests.values()).map(mapRowToRequest).reverse();
+  // Solo las del solicitante: sin los datos internos de la tarifa (#A95).
+  return Array.from(uniqueRequests.values()).map(function(row) { return _hideFareInternals_(mapRowToRequest(row)); }).reverse();
 }
 
 function getAllRequests() {
@@ -5385,8 +5398,9 @@ function getMyRequestsLite(email) {
     if (!uniqueRequests.has(id)) uniqueRequests.set(id, row);
   });
 
+  // Solo las del solicitante: sin los datos internos de la tarifa (#A95).
   return Array.from(uniqueRequests.values())
-    .map(function(row) { return mapRowToRequest(row, true); })
+    .map(function(row) { return _hideFareInternals_(mapRowToRequest(row, true)); })
     .reverse();
 }
 
@@ -5416,6 +5430,8 @@ function getRequestById(requestId, withPassengerAdminInfo) {
     } catch (e) {
       console.warn('getRequestById: sin datos de pasajeros para ' + requestId + ': ' + e);
     }
+  } else {
+    _hideFareInternals_(result); // #A95: la recomendada y el motivo, solo administradores
   }
   return result;
 }
@@ -17828,6 +17844,18 @@ function _ptFare_(row, cell, snaps) {
   };
 }
 
+/**
+ * La búsqueda que se muestra de un momento (#A95): la más reciente que salió bien con
+ * el equipaje de la tarifa; si no hay, la más reciente que salió bien; si no, la más
+ * reciente. Así una búsqueda nueva que falla no tapa una anterior que sí trajo precio.
+ */
+function _ptPickSnap_(list, level) {
+  var sorted = (list || []).slice().sort(function(a, b) { return a.at < b.at ? 1 : (a.at > b.at ? -1 : 0); });
+  var ok = sorted.filter(function(x) { return x && x.result === 'OK'; });
+  var sameLevel = level === null || level === undefined ? [] : ok.filter(function(x) { return (x.bags > 0 ? 1 : 0) === level; });
+  return sameLevel[0] || ok[0] || sorted[0] || null;
+}
+
 /** Totales del comparador. Con levelAware, cada momento solo cuenta si se buscó con el equipaje de la tarifa (#A95). */
 function _ptSummary_(items, levelAware) {
   var refOf = function(it, s) {
@@ -17936,8 +17964,8 @@ function _ptBuildTracking_() {
     var s = _ptSnapshot_(r);
     if (s.at && (!meta.firstSearchAt || s.at < meta.firstSearchAt)) meta.firstSearchAt = s.at;
     if (s.at && s.at > meta.lastSearchAt) meta.lastSearchAt = s.at;
-    var e = byId[id] || (byId[id] = { COTIZACION: null, COMPRA: null });
-    if (!e[moment] || s.at >= e[moment].at) e[moment] = s;
+    var e = byId[id] || (byId[id] = { COTIZACION: [], COMPRA: [] });
+    e[moment].push(s); // #A95: todas; la que se muestra se elige con la tarifa del viaje
   });
 
   // Datos actuales de cada solicitud rastreada.
@@ -17949,8 +17977,10 @@ function _ptBuildTracking_() {
       var row = vals[r];
       var quoted = Math.round(_csToNumber_(cell(row, 'COSTO_FINAL_TIQUETES'))) || null;
       var snaps = byId[id];
-      // #A95: la búsqueda que manda es la más reciente con el equipaje de la tarifa del viaje.
-      var fare = _ptFare_(row, cell, [snaps.COMPRA, snaps.COTIZACION]);
+      // #A95: la búsqueda que manda es la más reciente con el equipaje de la tarifa del viaje
+      // (primero las de compra); una búsqueda que falló no tapa una anterior que salió bien.
+      var byRecency = function(list) { return list.slice().sort(function(a, b) { return a.at < b.at ? 1 : (a.at > b.at ? -1 : 0); }); };
+      var fare = _ptFare_(row, cell, byRecency(snaps.COMPRA).concat(byRecency(snaps.COTIZACION)));
       var ref = fare.ref;
       var market = ref ? ref.reference : null;
       var same = ref ? ref.sameAirline : null;
@@ -17972,8 +18002,8 @@ function _ptBuildTracking_() {
         airline: String(cell(row, 'AEROLINEA') || '').trim(),
         returnAirline: String(cell(row, 'AEROLINEA REGRESO') || '').trim(), // #A85
         channel: String(cell(row, 'CANAL DE COMPRA') || '').trim(),
-        atQuote: snaps.COTIZACION,
-        atPurchase: snaps.COMPRA,
+        atQuote: _ptPickSnap_(snaps.COTIZACION, fare.level),
+        atPurchase: _ptPickSnap_(snaps.COMPRA, fare.level),
         market: market,
         marketMoment: ref ? ref.moment : '',
         sameAirline: same,
@@ -17998,7 +18028,10 @@ function _ptBuildTracking_() {
   summary.fareCounts = {
     match: items.filter(function(it) { return it.fare.match === true; }).length,
     mismatch: items.filter(function(it) { return it.fare.match === false; }).length,
-    unknown: items.filter(function(it) { return it.fare.match === null; }).length
+    unknown: items.filter(function(it) { return it.fare.match === null; }).length,
+    // unknown = noFare (sin tarifa registrada) + noResult (con tarifa, sin búsqueda que trajera precio)
+    noFare: items.filter(function(it) { return it.fare.match === null && !it.fare.type; }).length,
+    noResult: items.filter(function(it) { return it.fare.match === null && !!it.fare.type; }).length
   };
   return { items: items, summary: summary, meta: meta, analysis: analysis };
 }
@@ -18090,15 +18123,14 @@ function getPriceTrackingDetail(currentUserEmail, requestId, fresh) {
 
 function _ptBuildDetail_(id) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var latest = { COTIZACION: null, COMPRA: null };
+  var all = { COTIZACION: [], COMPRA: [] };
   var counts = { COTIZACION: 0, COMPRA: 0 };
   _ptRows_(ss.getSheetByName(PRICE_TRACKING_SHEET)).forEach(function(r) {
     if (String(r['ID SOLICITUD'] || '').trim() !== id) return;
     var m = String(r['MOMENTO'] || '').trim();
     if (m !== 'COTIZACION' && m !== 'COMPRA') return;
     counts[m]++;
-    var snap = _ptSnapshot_(r, true);
-    if (!latest[m] || snap.at >= latest[m].at) latest[m] = snap;
+    all[m].push(_ptSnapshot_(r, true));
   });
   if (!counts.COTIZACION && !counts.COMPRA) throw new Error('La solicitud ' + id + ' no tiene búsquedas en el comparador.');
 
@@ -18148,6 +18180,9 @@ function _ptBuildDetail_(id) {
       invoiced: inv.invoiced, invoiceCount: inv.count, invoicedIncludesHotel: inv.includesHotel, hotelQuoted: inv.hotelQuoted
     };
   }
+  // #A95: por momento, la búsqueda con el equipaje de la tarifa del viaje (igual que la lista).
+  var level = request.fareType ? (Number(request.fareType) >= 2 ? 1 : 0) : null;
+  var latest = { COTIZACION: _ptPickSnap_(all.COTIZACION, level), COMPRA: _ptPickSnap_(all.COMPRA, level) };
   return { request: request, searches: latest, searchCount: counts };
 }
 

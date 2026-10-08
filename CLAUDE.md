@@ -232,7 +232,8 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   `TARIFA NOMBRE` y `TARIFA JUSTIFICACION`. Gemelo `utils/fare.ts` ↔ `_normalizeFare_`; la app solo muestra
   el bloque si el servidor manda `fareRecommended`, y el servidor descarta cualquier `fare` que mande un
   cliente. El detalle muestra la tarifa y su equipaje **también al viajero** (le dice qué equipaje lleva); la
-  recomendada y el motivo, solo a los administradores. **Maleta de bodega** (David, 8-oct): casilla en el formulario,
+  recomendada y el motivo, solo a los administradores, y el servidor no se los envía al solicitante
+  (`_hideFareInternals_`). **Maleta de bodega** (David, 8-oct): casilla en el formulario,
   solo vuelos, columna `MALETA DE BODEGA` (`SI`/`NO`, vacía = no se preguntó; la clave `checkedBaggage` presente
   activa la regla). No cambia la recomendación: si Laura elige una tarifa con bodega por eso, el motivo se propone
   solo; si elige una sin bodega, se le avisa. Las reglas del manual y lo que la plataforma no cubre: [docs/manual-com-p-02.md](docs/manual-com-p-02.md).

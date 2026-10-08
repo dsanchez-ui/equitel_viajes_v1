@@ -416,13 +416,24 @@ function main() {
   eq('dashboard: la tarifa y si se buscó con su equipaje', ['SOL-50', 'SOL-51', 'SOL-52', 'SOL-53'].map((id) => [fOf(id).type, fOf(id).searchedBags, fOf(id).match]),
     [['2', 2, true], ['2', 1, true], ['', 1, null], ['', 0, null]]);
   eq('dashboard: la recomendada se lee de la hoja o se calcula por las noches', [fOf('SOL-50').recommended, fOf('SOL-53').recommended], ['2', '1']);
-  eq('resumen con la misma tarifa: solo SOL-50 y SOL-51', [pf.summary.sameFare.overall.n, pf.summary.overall.n, pf.summary.fareCounts], [2, 4, { match: 2, mismatch: 0, unknown: 2 }]);
+  eq('resumen con la misma tarifa: solo SOL-50 y SOL-51', [pf.summary.sameFare.overall.n, pf.summary.overall.n, pf.summary.fareCounts], [2, 4, { match: 2, mismatch: 0, unknown: 2, noFare: 2, noResult: 0 }]);
   // Si la búsqueda con maleta falta (p. ej. aún no corre), la de sin maleta no se toma como la misma tarifa.
   const cp = t.ss.sheets['COMPARATIVO PRECIOS'].data, iId = cp[0].indexOf('ID SOLICITUD'), iBags = cp[0].indexOf('MALETA DE MANO');
   cp.splice(cp.findIndex((r, i) => i > 0 && r[iId] === 'SOL-51' && r[iBags] === 1), 1);
   const pf2 = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
   const f51 = pf2.items.find((i) => i.requestId === 'SOL-51');
   eq('sin búsqueda con su equipaje: no se compara', [f51.fare.match, f51.fare.searchedBags, pf2.summary.fareCounts.mismatch, pf2.summary.sameFare.overall.n], [false, 0, 1, 1]);
+  // Una búsqueda más reciente que falla no tapa la anterior que sí trajo precio (revisión del 8-oct).
+  const iRes = cp[0].indexOf('RESULTADO'), iFecha = cp[0].indexOf('FECHA BUSQUEDA');
+  const ok50 = cp.find((r, i) => i > 0 && r[iId] === 'SOL-50' && r[iRes] === 'OK');
+  const before50 = pf2.items.find((i) => i.requestId === 'SOL-50');
+  const failed = ok50.slice(); failed[iRes] = 'SIN_RESULTADOS'; failed[iFecha] = new Date(Date.now() + 3600000);
+  cp.push(failed);
+  const pf3 = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
+  const after50 = pf3.items.find((i) => i.requestId === 'SOL-50');
+  eq('una búsqueda nueva que falla no borra el precio de la anterior', [after50.market, after50.fare.match, after50.atPurchase.result], [before50.market, true, 'OK']);
+  const det50 = loadPlatform(t.ss).getPriceTrackingDetail('dsanchez@equitel.com.co', 'SOL-50');
+  eq('el detalle también muestra la búsqueda que sí trajo precio', [det50.searches.COMPRA && det50.searches.COMPRA.result, det50.searchCount.COMPRA >= 2], ['OK', true]);
 
   // 6. Desactivar
   t = loadTracker();

@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-    FARE_CHECKED_BAG_REASON, FareForm, FareTrip, fareBaggage, fareBaggageLabel, fareCheckedOptionsText, fareIncludesChecked,
+    FARE_CHECKED_BAG_REASON, FareForm, FareTrip, fareBaggage, fareBaggageLabel, fareCheckedOptionsText, fareDateKey, fareIncludesChecked,
     fareIsException, fareLabel, fareRecommendation, fareShort, normalizeFare,
 } from '../utils/fare';
 
@@ -19,8 +19,8 @@ interface FareFieldsProps {
 }
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-const shortDay = (key: string) => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(key || '');
+const shortDay = (value: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(fareDateKey(value));
     return m ? Number(m[3]) + '-' + MONTHS[Number(m[2]) - 1] : '';
 };
 

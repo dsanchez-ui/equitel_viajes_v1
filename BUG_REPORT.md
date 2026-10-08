@@ -2164,6 +2164,25 @@ El manual dice «más de 6» para la opción 3; los viajes de 6 noches no caen e
 3. Push del frontend (después del paso 1, para que la casilla de bodega se guarde desde el primer momento).
 4. Opcional: menú 12 para crear las columnas.
 
+**Revisión antes de desplegar (8-oct, tres revisiones independientes: servidor, dashboard y rastreo, y app).** Nada bloqueante. Se corrigió:
+- **Comparador:** una búsqueda nueva que fallara (p. ej. la repetida con maleta sin resultados) tapaba la anterior que sí trajo precio, y el viaje se quedaba sin precio de Google. Ahora se guardan todas por momento y se muestra la más reciente que salió bien con el equipaje de la tarifa (`_ptPickSnap_`, también en el detalle). Prueba nueva en `check-price-tracking.cjs`, que falla sin el arreglo.
+- **Privacidad:** la recomendada y el motivo llegaban al navegador del solicitante, aunque no se mostraran. Ahora el servidor los manda vacíos a quien no es administrador (`_hideFareInternals_` en `getMyRequestsLite`, `getRequestsByEmail` y `getRequestById`). La tarifa comprada y su nombre sí le llegan.
+- **Regla gemela:** con la ida en una aerolínea del manual y el regreso en otra que no está (Avianca + Wingo), no se pedía motivo. Ahora en la de fuera del manual cuenta el número, y el nombre guardado incluye los dos tramos (*Classic (ida) y TIPO 3 (regreso)*).
+- **Corregir reserva:**
+  - si cambia la aerolínea de una tarifa ya registrada, la tarifa se revisa y se guarda otra vez;
+  - en reservas anteriores a este cambio la tarifa aparece en *Seleccione…*, en vez de la recomendada como si ya estuviera registrada.
+- **`setPurchaseInfo`:** escribe la tarifa antes que la aerolínea y el hotel. Si la hoja la rechazara, no queda nada a medias. Se revisó la columna `TIPO DE COMPRA DE TKT` en el export del 8-oct: no tiene lista desplegable, y sus valores ya son `TIPO 1/2/3`.
+- **Detalles del dashboard:**
+  - el conteo separa *sin tarifa registrada* de *con tarifa pero sin precio de Google todavía*;
+  - la tarjeta de viajes cuenta con la misma base en todas sus cifras;
+  - el CSV de la proyección dice qué viajes se usaron.
+- **Prueba con la base real del 8-oct** (servicios de Google simulados, nada sale del PC):
+  - se crean solicitudes con la app actual y con la nueva, también solo hospedaje;
+  - se confirman costos sin tarifa (app actual) y con tarifa;
+  - una tarifa sin motivo se rechaza, una tarifa «falsa» enviada desde el navegador se descarta y un solicitante no puede ponerla;
+  - se registra la reserva;
+  - se leen las 635 solicitudes.
+
 **Pendiente / límites:**
 - Los viajes ya cotizados antes de este cambio no tienen tarifa y no entran en *misma tarifa*; aparecen en *Todas las búsquedas*.
 - LATAM TIPO 2 y todo TIPO 3 quedan por debajo en Google (ver arriba).

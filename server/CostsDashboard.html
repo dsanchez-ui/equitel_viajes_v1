@@ -3230,9 +3230,11 @@ function _ptRenderHeadline(s, items, mode) {
 function _ptFareCountsText() {
   var c = priceData && priceData.summary && priceData.summary.fareCounts;
   if (!c) return '';
+  var noFare = c.noFare === undefined ? c.unknown : c.noFare;
   return [c.match ? ptPlural(c.match, 'viaje con la misma tarifa', 'viajes con la misma tarifa') : '',
     c.mismatch ? ptPlural(c.mismatch, 'buscado con otro equipaje', 'buscados con otro equipaje') : '',
-    c.unknown ? c.unknown + ' sin tarifa registrada (no se comparan)' : ''].filter(Boolean).join(' · ') + '.';
+    noFare ? noFare + ' sin tarifa registrada (no se comparan)' : '',
+    c.noResult ? c.noResult + ' con tarifa pero sin precio de Google todavía' : ''].filter(Boolean).join(' · ') + '.';
 }
 
 function renderPriceTracking() {
@@ -3252,7 +3254,8 @@ function renderPriceTracking() {
     ['ptTrackedExtra', 'ptQuotedExtra', 'ptMarketExtra', 'ptDiffExtra'].forEach(function(id) { setText(id, '—'); });
     document.getElementById('ptSummaryBody').innerHTML = '';
   } else {
-    var waiting = items.filter(function(it) { return it.status === 'PENDIENTE_APROBACION'; }).length;
+    // Mismo grupo de viajes que las demás cifras de la tarjeta (#A95).
+    var waiting = items.filter(function(it) { return it.status === 'PENDIENTE_APROBACION' && (mode !== 'same' || (it.fare && it.fare.match === true)); }).length;
     setText('ptTracked', String(s.overall.n));
     setText('ptTrackedExtra', [mode === 'same' ? 'con la misma tarifa, de ' + ptPlural(all.tracked, 'buscado', 'buscados') : ptPlural(all.tracked, 'buscado', 'buscados'),
       s.pendingPurchase ? s.pendingPurchase + ' por comprar' : '', waiting ? waiting + ' esperando aprobación' : ''].filter(Boolean).join(' · '));
@@ -4251,7 +4254,8 @@ function exportSavingsCsv() {
   lines.push(['Parámetros', 'Cómo calcular: ' + SA_METHOD_LABEL[st.opts.how + '|' + st.opts.base] +
     (st.detail.rates ? ' = ' + saRatesText(st.detail.rates, st.opts.base) : ''), 'Tope por viaje: ' + (st.detail.cap ? saPct1(st.detail.cap) + ' del cotizado' : 'sin tope'), 'Ahorro a contar: ' + (st.opts.kind === 'channel' ? 'solo con la misma aerolínea' : 'todo'),
     st.opts.how === 'fixed' ? 'Valor fijo: ' + st.opts.fixed : '', 'Maleta por tiquete: ' + st.opts.baggage, 'Viajes que siguen el ahorro: ' + Math.round(st.opts.adoption * 100) + '%',
-    'Internacionales: ' + (st.opts.intl ? 'sí' : 'no'), 'Periodo: ' + st.from + ' a ' + st.to].map(q).join(';'));
+    'Internacionales: ' + (st.opts.intl ? 'sí' : 'no'), 'Periodo: ' + st.from + ' a ' + st.to,
+    'Viajes comparados: ' + (st.opts.fare === 'same' ? 'solo con la misma tarifa' : 'todas las búsquedas, sin distinguir tarifa')].map(q).join(';'));
   lines.push('');
   lines.push(['Mes', 'Viajes en avión', 'Solo ida', 'Ida y vuelta', 'Tiquetes', 'Gasto en tiquetes', 'Con hotel', 'Internacional', '1 pasajero', '2 pasajeros', '3 o más',
     'Con cambios', 'Solicitudes', 'Anuladas', 'Denegadas', 'Ahorro solo con la misma aerolínea', 'Todo el ahorro', 'Ahorro proyectado',

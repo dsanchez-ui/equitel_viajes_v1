@@ -84,7 +84,9 @@ const NAMES = [
 const EXC = [
   [2, 2, ['Avianca'], false], [3, 2, ['Avianca'], false], [2, 3, ['Avianca'], false], [1, 2, ['Avianca'], true],
   [3, 2, ['LATAM'], true], [2, 2, ['Wingo'], false], [3, 2, ['Wingo'], true], [3, 2, [], true],
-  [3, 2, ['Avianca', 'LATAM'], true], [3, 2, ['Avianca', 'Wingo'], false], [2, 1, ['Satena'], true],
+  [3, 2, ['Avianca', 'LATAM'], true], [2, 1, ['Satena'], true],
+  // Ida en una aerolínea del manual y regreso en otra que no está: en esa cuenta el número (revisión del 8-oct).
+  [3, 2, ['Avianca', 'Wingo'], true], [3, 3, ['Avianca', 'Wingo'], false], [2, 3, ['Avianca'], false],
 ];
 const J = 'El viajero lleva equipo de medición en bodega';
 // [opción, justificación, recomendada, aerolínea, regreso, ok, opción guardada, nombre, excepción, justificación guardada]
@@ -197,6 +199,14 @@ function checkWrites(gs, failures) {
   const legacy = ctx.mapRowToRequest(['SOL-9', 'RESERVADO', 'VIAJE', '', '', '', '', '', '', 'TIIPO 2']);
   eq('un valor histórico mal escrito no se toma como tarifa', legacy.fareType, '');
   eq('la acción pasa la tarifa', gs.includes('payload.fareOption, payload.fareJustification); break;'), true);
+  // La recomendada y el motivo solo llegan a los administradores (revisión del 8-oct).
+  ctx._clearRequestRowCache_ && ctx._clearRequestRowCache_();
+  const asOwner = ctx.getRequestById('SOL-1', false), asAdmin = ctx.getRequestById('SOL-1', true);
+  eq('getRequestById: el solicitante recibe la tarifa pero no la recomendada ni el motivo',
+    [asOwner.fareType, asOwner.fareName, asOwner.fareRecommended, asOwner.fareJustification], ['1', 'Basic', '', '']);
+  eq('getRequestById: el administrador recibe todo', [asAdmin.fareRecommended, asAdmin.fareJustification], ['2', J]);
+  const mine = ctx.getMyRequestsLite('viajero@ejemplo.test').concat(ctx.getRequestsByEmail('viajero@ejemplo.test'));
+  eq('las listas del solicitante tampoco los traen', [mine.length > 0, mine.every((r) => r.fareRecommended === '' && r.fareJustification === '')], [true, true]);
   // Maleta de bodega del formulario de solicitud (#A95).
   eq('maleta de bodega: lo que escribe la solicitud (solo vuelos y si el formulario la pregunta)',
     [{ checkedBaggage: true }, { checkedBaggage: false }, {}, { requestMode: 'HOTEL_ONLY', checkedBaggage: true }, { checkedBaggage: 'true' }].map((d) => ctx._checkedBaggageValue_(d)),
@@ -236,6 +246,9 @@ function main() {
   if (rec({ departureDate: '2026-10-20', returnDate: '2026-10-23' }) !== JSON.stringify({ nights: 3, option: 2, byDates: true })) failures.push('fareRecommendation ida/regreso: ' + rec({ departureDate: '2026-10-20', returnDate: '2026-10-23' }));
   if (rec({ departureDate: '20-10-2026', nights: 7 }) !== JSON.stringify({ nights: 7, option: 3, byDates: false })) failures.push('fareRecommendation solo ida: ' + rec({ departureDate: '20-10-2026', nights: 7 }));
   if (front.short(2, 'Avianca') !== 'TIPO 2 · Classic' || front.short(2, 'Wingo') !== 'TIPO 2') failures.push('fareShort: ' + front.short(2, 'Avianca'));
+  // El nombre guardado incluye los dos tramos aunque uno sea de una aerolínea fuera del manual; igual en los dos lados.
+  [[3, 'Avianca', 'Wingo', 'Classic (ida) y TIPO 3 (regreso)'], [2, 'Wingo', 'LATAM', 'TIPO 2 (ida) y Light (regreso)'], [2, 'Wingo', 'JetSMART', ''], [2, 'Avianca', 'Avianca', 'Classic']]
+    .forEach(([o, a, r, want]) => { const b = back.label(o, a, r); same('nombre ' + [o, a, r], b, front.label(o, a, r)); if (b !== want) failures.push(`nombre ${[o, a, r]}: «${b}», se esperaba «${want}»`); });
   if (JSON.stringify(front.formFrom({}, 2)) !== JSON.stringify({ option: '2', justification: '' })) failures.push('fareFormFrom sin registro');
   if (JSON.stringify(front.formFrom({ fareType: '1', fareJustification: J }, 2)) !== JSON.stringify({ option: '1', justification: J })) failures.push('fareFormFrom con registro');
   // Maleta de bodega según el manual: Avianca desde Classic, LATAM solo Full, Clic siempre, Satena nunca.
