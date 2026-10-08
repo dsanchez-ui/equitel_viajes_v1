@@ -39,4 +39,6 @@ CHECKLIST_PENDIENTES.md
 
 # Comparador de precios (prueba): clave de SerpApi y resultados locales
 tools/comparador-precios/.serpapi-key
+# Prueba de Ignav (#A95): clave local, nunca al repositorio
+tools/comparador-precios/.ignav-key
 resultados-comparador/

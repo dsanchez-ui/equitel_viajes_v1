@@ -1,0 +1,29 @@
+{
+  "_nota": "EJEMPLO CON DATOS INVENTADOS para --demo (formato de la API de Ignav: /api/fares/one-way y /api/fares/booking-links). Los precios y vuelos no son reales; muestran el caso que buscamos: con maleta, Avianca pasa a la Classic y LATAM a la Light o la Full.",
+  "sin": { "itineraries": [
+    { "price": { "amount": 265270, "currency": "COP", "status": "verified" }, "cabin_class": "economy", "bags": { "carry_on": 0, "checked": 0 }, "ignav_id": "ej_av_sin",
+      "outbound": { "carrier": "Avianca", "segments": [{ "marketing_carrier_code": "AV", "flight_number": "9368", "operating_carrier_name": "Avianca", "departure_airport": "BOG", "departure_time_local": "2026-10-27T06:00:00", "arrival_airport": "MDE", "arrival_time_local": "2026-10-27T07:02:00" }] } },
+    { "price": { "amount": 154600, "currency": "COP", "status": "verified" }, "cabin_class": "economy", "bags": { "carry_on": 0, "checked": 0 }, "ignav_id": "ej_la_sin",
+      "outbound": { "carrier": "LATAM", "segments": [{ "marketing_carrier_code": "LA", "flight_number": "4003", "operating_carrier_name": "LATAM Airlines Colombia", "departure_airport": "BOG", "departure_time_local": "2026-10-27T05:50:00", "arrival_airport": "MDE", "arrival_time_local": "2026-10-27T06:50:00" }] } }
+  ] },
+  "mano": { "itineraries": [
+    { "price": { "amount": 339050, "currency": "COP", "status": "verified" }, "cabin_class": "economy", "bags": { "carry_on": 1, "checked": 1 }, "ignav_id": "ej_av_mano",
+      "outbound": { "carrier": "Avianca", "segments": [{ "marketing_carrier_code": "AV", "flight_number": "9368", "operating_carrier_name": "Avianca", "departure_airport": "BOG", "departure_time_local": "2026-10-27T06:00:00", "arrival_airport": "MDE", "arrival_time_local": "2026-10-27T07:02:00" }] } },
+    { "price": { "amount": 198300, "currency": "COP", "status": "verified" }, "cabin_class": "economy", "bags": { "carry_on": 1, "checked": 0 }, "ignav_id": "ej_la_mano",
+      "outbound": { "carrier": "LATAM", "segments": [{ "marketing_carrier_code": "LA", "flight_number": "4003", "operating_carrier_name": "LATAM Airlines Colombia", "departure_airport": "BOG", "departure_time_local": "2026-10-27T05:50:00", "arrival_airport": "MDE", "arrival_time_local": "2026-10-27T06:50:00" }] } }
+  ] },
+  "bodega": { "itineraries": [
+    { "price": { "amount": 339050, "currency": "COP", "status": "verified" }, "cabin_class": "economy", "bags": { "carry_on": 1, "checked": 1 }, "ignav_id": "ej_av_bodega",
+      "outbound": { "carrier": "Avianca", "segments": [{ "marketing_carrier_code": "AV", "flight_number": "9368", "operating_carrier_name": "Avianca", "departure_airport": "BOG", "departure_time_local": "2026-10-27T06:00:00", "arrival_airport": "MDE", "arrival_time_local": "2026-10-27T07:02:00" }] } },
+    { "price": { "amount": 301900, "currency": "COP", "status": "verified" }, "cabin_class": "economy", "bags": { "carry_on": 1, "checked": 1 }, "ignav_id": "ej_la_bodega",
+      "outbound": { "carrier": "LATAM", "segments": [{ "marketing_carrier_code": "LA", "flight_number": "4003", "operating_carrier_name": "LATAM Airlines Colombia", "departure_airport": "BOG", "departure_time_local": "2026-10-27T05:50:00", "arrival_airport": "MDE", "arrival_time_local": "2026-10-27T06:50:00" }] } }
+  ] },
+  "opciones_av": {
+    "booking_options": [{ "legs": ["outbound"], "links": [
+      { "provider_name": "Avianca", "provider_type": "airline", "fare_name": "Basic", "specificity": "exact_flight", "price": { "amount": 265270, "currency": "COP", "status": "verified" }, "url": "https://www.avianca.com/..." },
+      { "provider_name": "Avianca", "provider_type": "airline", "fare_name": "Classic", "specificity": "exact_flight", "price": { "amount": 339050, "currency": "COP", "status": "verified" }, "url": "https://www.avianca.com/..." },
+      { "provider_name": "Avianca", "provider_type": "airline", "fare_name": "Flex", "specificity": "exact_flight", "price": { "amount": 512400, "currency": "COP", "status": "verified" }, "url": "https://www.avianca.com/..." },
+      { "provider_name": "Despegar", "provider_type": "third_party", "specificity": "exact_flight", "price": { "amount": 282760, "currency": "COP", "status": "verified" }, "url": "https://www.despegar.com.co/..." }
+    ] }]
+  }
+}
