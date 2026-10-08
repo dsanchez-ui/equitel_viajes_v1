@@ -168,6 +168,18 @@ deployment de **prueba** y apuntando `.env.local` ahí.
 
 ## 6. Nota de seguridad sobre credenciales de git
 
+**Decisión de David (2026-10-08): se sube a GitHub por SSH, sin tokens.** El PC Linux ya
+quedó así: llave `~/.ssh/id_ed25519` registrada en la cuenta `dsanchez-ui` y remoto
+`git@github.com:dsanchez-ui/equitel_viajes_v1.git`. En otra máquina:
+
+```bash
+ssh -T git@github.com            # debe responder "Hi dsanchez-ui!"
+git remote set-url origin git@github.com:dsanchez-ui/equitel_viajes_v1.git
+```
+
+Si `ssh -T` no saluda, crear una llave (`ssh-keygen -t ed25519 -C "correo"`) y agregar la
+`.pub` en GitHub → Settings → SSH and GPG keys.
+
 Si clonaste con un token embebido en la URL del remote
 (`https://usuario:ghp_xxx@github.com/...`), ese token queda **en texto plano** en
 `.git/config` de cada máquina. No viaja con el repo (`.git/config` no se versiona),

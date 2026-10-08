@@ -509,8 +509,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
   (`Comparador de precios de tiquetes - demostracion 2026-10-06.docx`) quedó en Descargas del
   PC Linux, y los resultados crudos de la prueba del 6-oct en `resultados-comparador/` (no se
   versiona). Ver [MIGRACION.md](MIGRACION.md).
-- **Seguridad:** el remoto de git del PC Linux tiene un token de GitHub en la URL y quedó a la
-  vista en una sesión; revocarlo y usar un gestor de credenciales (MIGRACION.md, sección 6).
+- **Git por SSH, sin tokens** (David, 8-oct): el PC Linux ya sube por SSH (cuenta `dsanchez-ui`); el token
+  viejo de la URL quedó fuera del remoto y ya no es válido. En el Mac, revisar con `ssh -T git@github.com`
+  (MIGRACION.md, sección 6).
 
 - **Análisis de ahorro y velocidad del dashboard** (#A89, #A90, 8-oct), **lenguaje simple en todo
   el dashboard** (#A92) y **metodología de cada estimación** (#A93): implementados; pendiente pegar `Code.gs` y `CostsDashboard.html` y crear la
