@@ -541,6 +541,10 @@
     .pt-q-exact { background: #dcfce7; color: #166534; }
     .pt-q-approx { background: #fef3c7; color: #92400e; }
     .pt-q-no { background: #f3f4f6; color: #4b5563; }
+    /* Qué dice la comparación de un viaje, en palabras (#A98). */
+    .pt-reading { border-left: 4px solid #2563eb; background: #eff6ff; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+    .pt-reading ul { margin: 4px 0 0; padding-left: 18px; }
+    .pt-reading li { margin: 3px 0; line-height: 1.45; }
     /* ===== PROYECCIÓN DE AHORRO (#A90) ===== */
     #savingsSection { display: none; }
     .sa-controls { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
@@ -1244,11 +1248,12 @@
             viaje: TIPO 1 de 0 a 1 noche, TIPO 2 de 2 a 5, TIPO 3 de 6 o más. Google se busca con su equipaje: TIPO 1 sin maleta, TIPO 2 y 3
             con maleta de mano por pasajero.</dd>
           <dt>Qué tan comparable</dt>
-          <dd><b>Exacta:</b> TIPO 1 (lo más barato de Google es la tarifa básica); TIPO 2 con Avianca, JetSMART, Wingo o Clic (con maleta,
-            Google trae la tarifa que la incluye); TIPO 3 con Avianca (su Classic incluye bodega). <b>Aproximada:</b> LATAM, porque Google no
-            distingue Basic, Light y Full, y TIPO 3 fuera de Avianca, porque no se puede pedir bodega; ahí el precio de Google puede quedar por
-            debajo. <b>No comparable:</b> Google se buscó con otro equipaje. Se probó el 9-oct en Bogotá–Medellín: con maleta, Avianca subía
-            $73.780 en 25 de 25 vuelos y LATAM no cambiaba.</dd>
+          <dd><b>Exacta:</b> TIPO 1 (lo más barato de Google es la tarifa básica); TIPO 2 con Avianca, JetSMART o Wingo (con maleta, Google
+            trae la tarifa que la incluye); TIPO 3 con Avianca (su Classic incluye bodega). <b>Aproximada:</b> LATAM, porque Google no distingue
+            Basic, Light y Full; Clic, porque Google trae su tarifa más baja (VeLigera) y el manual pide VeEcono o VePreferencial; TIPO 3 fuera de
+            Avianca y cuando el viajero pidió bodega, porque Google no la deja pedir. Ahí el precio de Google puede quedar por debajo.
+            <b>No comparable:</b> Google se buscó con otro equipaje. Se probó el 9-oct en Bogotá–Medellín: con maleta, Avianca subía $73.780 en
+            25 de 25 vuelos y LATAM no cambiaba.</dd>
           <dt>Precio con la misma aerolínea</dt>
           <dd>Lo más barato en Google con la misma aerolínea con que se cotizó.</dd>
           <dt>Diferencia</dt>
@@ -3194,7 +3199,7 @@ var PT_FARE_MODES = {
   same: { key: 'sameFare', label: 'Con la tarifa del manual (peras con peras)', short: 'con la tarifa del manual',
     sub: 'la registrada o, si falta, la que corresponde por noches, buscada con su equipaje', lead: 'Con la tarifa del manual' },
   exact: { key: 'exact', label: 'Solo comparaciones exactas', short: 'en comparaciones exactas',
-    sub: 'TIPO 1, o con maleta donde Google trae esa tarifa (Avianca, JetSMART, Wingo, Clic)', lead: 'En comparaciones exactas' },
+    sub: 'TIPO 1, o con maleta donde Google trae esa tarifa (Avianca, JetSMART, Wingo)', lead: 'En comparaciones exactas' },
   all: { key: null, label: 'Todas las búsquedas, sin distinguir tarifa', short: '',
     sub: 'como antes: puede comparar una tarifa con maleta contra una sin maleta', lead: '' }
 };
@@ -3553,6 +3558,9 @@ function _ptDetailHtml(it) {
   var reg = legs.filter(function(l) { return l.leg === 'REGRESO'; })[0];
   var rt = legs.filter(function(l) { return l.leg === 'IDA Y VUELTA'; })[0];
 
+  // 2b. Qué dice esta comparación, en palabras (#A98).
+  if (snap.result === 'OK') html += _ptReadingHtml(it, r, snap, ida, reg, rt);
+
   // 3. Armando el viaje: ida + regreso
   if (snap.result === 'OK') {
     var quoted = r.quoted || it.quoted;
@@ -3612,14 +3620,23 @@ function _ptDetailHtml(it) {
  * Dos precios por vuelo (#A97): sin maleta y con maleta de mano, vuelo por vuelo, y lo que
  * se deduce de cada aerolínea (Avianca: Basic → Classic; LATAM: Google no la distingue).
  */
+var PT_PAIR_HOURS = 3; // #A98: los dos precios de un vuelo solo se comparan si se buscaron con menos de 3 h de diferencia
 function _ptTwoLevelsHtml(a, b) {
   var sin = a.bags > 0 ? b : a, con = a.bags > 0 ? a : b;
   var legsOf = function(s) { var m = {}; (s.legs || []).forEach(function(l) { if (l.leg === 'IDA' || l.leg === 'REGRESO') m[l.leg] = l; }); return m; };
   var ls = legsOf(sin), lc = legsOf(con);
   var key = function(o) { return o.airline + '|' + o.flights + '|' + o.departs; };
-  var html = '<div class="pt-box"><div class="pt-box-title">Precio de cada vuelo sin maleta y con maleta de mano</div>' +
-    '<div class="pt-muted" style="margin-bottom: 6px;">Google da un solo precio por vuelo. Buscando con los dos equipajes se ve cuánto sube cada uno y ' +
-    'qué tarifa es (búsquedas del ' + escHtml(ptWhen(sin.at)) + ' y del ' + escHtml(ptWhen(con.at)) + '). Solo vuelos directos.</div>';
+  var horas = Math.abs(new Date(sin.at).getTime() - new Date(con.at).getTime()) / 3600000;
+  var html = '<div class="pt-box"><div class="pt-box-title">Precio de cada vuelo sin maleta y con maleta de mano</div>';
+  if (!(horas <= PT_PAIR_HOURS)) {
+    // Búsquedas de momentos distintos: la diferencia mezclaría el cambio de precio con la maleta.
+    return html + '<div class="pt-muted">La búsqueda sin maleta es del ' + escHtml(ptWhen(sin.at)) + ' y la de con maleta del ' + escHtml(ptWhen(con.at)) +
+      ' (' + Math.round(horas) + ' horas de diferencia). Los precios cambian con el tiempo, así que no se comparan aquí. Mientras el viaje siga ' +
+      'por comprar, el rastreo repite la búsqueda para tener las dos del mismo momento.</div></div>';
+  }
+  var cuando = ptWhen(sin.at) === ptWhen(con.at) ? ptWhen(sin.at) : ptWhen(sin.at) + ' y ' + ptWhen(con.at);
+  html += '<div class="pt-muted" style="margin-bottom: 6px;">Google da un solo precio por vuelo, el más barato. Buscando con los dos equipajes en el mismo momento ' +
+    '(' + escHtml(cuando) + ') se ve cuánto sube cada vuelo con maleta y qué tarifa es. Solo vuelos directos.</div>';
   ['IDA', 'REGRESO'].forEach(function(name) {
     if (!ls[name] && !lc[name]) return;
     var rows = {};
@@ -3627,7 +3644,8 @@ function _ptTwoLevelsHtml(a, b) {
     ((lc[name] && lc[name].options) || []).forEach(function(o) { if (o.stops || !o.price) return; var k = key(o); (rows[k] = rows[k] || { o: o }).con = o.price; });
     var list = Object.keys(rows).map(function(k) { return rows[k]; }).sort(function(x, y) { return x.o.departs < y.o.departs ? -1 : (x.o.departs > y.o.departs ? 1 : 0); });
     if (!list.length) return;
-    html += '<div class="pt-scroll"><table class="pt-mini"><thead><tr><th>' + (name === 'IDA' ? '🛫 Ida' : '🛬 Regreso') + '</th><th>Sale</th>' +
+    html += _ptAirlineSummaryHtml(name, list) +
+      '<div class="pt-scroll"><table class="pt-mini"><thead><tr><th>' + (name === 'IDA' ? '🛫 Ida' : '🛬 Regreso') + '</th><th>Sale</th>' +
       '<th class="num">Sin maleta</th><th class="num">Con maleta de mano</th><th>Qué se ve</th></tr></thead><tbody>' +
       list.map(function(r) {
         return '<tr><td>' + escHtml(r.o.airline + ' · ' + r.o.flights) + '</td><td>' + escHtml(r.o.departs) + '</td>' +
@@ -3643,11 +3661,106 @@ function ptDeduce(airline, sin, con) {
   if (sin && con) {
     var d = con - sin;
     if (d > PT_SAME) return /avianca/.test(a) ? 'Basic → Classic (+' + fmtMoney(d) + ')' : 'con maleta cuesta ' + fmtMoney(d) + ' más';
+    if (d < -PT_SAME) return 'con maleta sale ' + fmtMoney(-d) + ' más barato (otra tarifa u oferta de Google)';
     if (/latam/.test(a)) return 'mismo precio: Google no distingue Basic, Light y Full';
     if (/wingo/.test(a)) return 'mismo precio: ya incluye la maleta de mano';
     return 'mismo precio';
   }
   return sin ? 'solo aparece sin maleta' : 'solo aparece con maleta';
+}
+
+/** Resumen por aerolínea de un tramo: en cuántos vuelos sube con maleta y cuánto, típicamente (#A98). */
+function _ptAirlineSummaryHtml(name, list) {
+  var by = {};
+  list.forEach(function(r) {
+    var a = r.o.airline || '¿?';
+    var g = by[a] = by[a] || { n: 0, up: [], same: 0, down: 0, onlySin: 0, onlyCon: 0 };
+    if (!r.sin || !r.con) { if (r.sin) g.onlySin++; else g.onlyCon++; return; }
+    g.n++;
+    var d = r.con - r.sin;
+    if (d > PT_SAME) g.up.push(d); else if (d < -PT_SAME) g.down++; else g.same++;
+  });
+  var names = Object.keys(by).sort(function(x, y) { return (by[y].n - by[x].n) || (by[y].onlyCon + by[y].onlySin - by[x].onlyCon - by[x].onlySin); });
+  if (!names.length) return '';
+  var median = function(v) { var s = v.slice().sort(function(x, y) { return x - y; }); return s[Math.floor((s.length - 1) / 2)]; };
+  var items = names.map(function(a) {
+    var g = by[a], low = a.toLowerCase();
+    var t = '<b>' + escHtml(a) + ':</b> ';
+    if (!g.n) {
+      return '<li>' + t + (g.onlyCon ? 'solo aparece con maleta (' + ptPlural(g.onlyCon, 'vuelo', 'vuelos') + ')' : '') +
+        (g.onlyCon && g.onlySin ? '; ' : '') + (g.onlySin ? 'solo aparece sin maleta (' + ptPlural(g.onlySin, 'vuelo', 'vuelos') + ')' : '') + '</li>';
+    }
+    if (g.up.length) {
+      t += 'con maleta sube en ' + g.up.length + ' de ' + g.n + ' vuelos (lo típico, +' + fmtMoney(median(g.up)) +
+        (/avianca/.test(low) ? ': de Basic a Classic' : '') + ')';
+      if (g.same) t += '; igual en ' + g.same;
+    } else {
+      t += 'mismo precio en ' + g.same + ' de ' + g.n + ' vuelos' + (/latam/.test(low) ? ' (Google no distingue sus tarifas)'
+        : /wingo/.test(low) ? ' (ya incluye la maleta de mano)' : '');
+    }
+    if (g.down) t += '; más barato con maleta en ' + g.down;
+    return '<li>' + t + '</li>';
+  }).join('');
+  return '<div class="pt-muted" style="margin: 2px 0 6px;"><b>' + (name === 'IDA' ? 'Ida' : 'Regreso') + ', por aerolínea:</b>' +
+    '<ul style="margin: 2px 0 0; padding-left: 18px;">' + items + '</ul></div>';
+}
+
+/**
+ * Qué dice la comparación de un viaje, en palabras (#A98): frente a la misma aerolínea,
+ * de dónde sale la diferencia, aeropuerto, bodega, anticipación y qué tan comparable es.
+ */
+function _ptReadingHtml(it, r, snap, ida, reg, rt) {
+  var quoted = r.quoted || it.quoted;
+  if (!quoted || !snap.reference) return '';
+  var lines = [];
+  var tramos = [ida, reg].filter(Boolean);
+  var refs = tramos.map(ptLegRef);
+  var low = function(x) { return String(x || '').toLowerCase(); };
+  var tipo = Number(r.fareType || r.fareRecommended || (it.fare && it.fare.effective)) || 0;
+  // 1. Frente a la misma aerolínea que registró el área de viajes.
+  var same = tramos.map(function(l) { return l.sameNear || l.sameDay; });
+  if (r.airline && tramos.length && same.every(Boolean)) {
+    var tot = same.reduce(function(t, o) { return t + (o.price || 0); }, 0);
+  }
+  if (tot > 0) {
+    var vs = ptVerdict(quoted - tot, (quoted - tot) / tot * 100);
+    lines.push('<b>Con ' + (r.returnAirline && reg ? 'las mismas aerolíneas' : 'la misma aerolínea') + '</b> (' +
+      escHtml(r.returnAirline && reg ? r.airline + ' / ' + r.returnAirline : r.airline) + '), Google daba ' +
+      fmtMoney(tot) + ': lo cotizado es <b>' + escHtml(vs.main) + '</b>' + (vs.cls === 'equal' ? '' : ' (' + escHtml(vs.sub) + ')') + '.');
+  }
+  // 2. De dónde sale la diferencia con lo más barato.
+  var regIda = low(r.airline), regReg = low(r.returnAirline || r.airline);
+  var cambios = [];
+  if (refs[0] && regIda && low(refs[0].airline).indexOf(regIda.split(' ')[0]) === -1) cambios.push(refs[0].airline + ' de ida');
+  if (refs[1] && regReg && low(refs[1].airline).indexOf(regReg.split(' ')[0]) === -1) cambios.push(refs[1].airline + ' de regreso');
+  if (cambios.length && snap.referenceKind !== 'IDA Y VUELTA' && snap.reference < quoted - PT_SAME) {
+    lines.push('<b>La diferencia con lo más barato sale de cambiar de aerolínea:</b> ' + escHtml(cambios.join(' y ')) + '.');
+  }
+  // 3. Aeropuerto: en Medellín, Clic y Satena salen de Olaya Herrera.
+  var medellin = tramos.some(function(l) { return /EOH/.test(String(l.from) + String(l.to)); });
+  if (medellin && refs.some(function(o) { return o && /clic|satena|easyfly/.test(low(o.airline)); })) {
+    lines.push('<b>Aeropuerto:</b> en Medellín, Clic y Satena operan desde Olaya Herrera (EOH), no desde Rionegro (MDE).');
+  }
+  // 4. Bodega: con maleta de mano, Wingo, JetSMART y LATAM no la traen; la Classic de Avianca sí
+  // (prueba del 9-oct). Importa en TIPO 3, si el viajero la pidió o si se cotizó Avianca.
+  var sinBodega = refs.filter(function(o) { return o && /wingo|jetsmart|latam/.test(low(o.airline)); })
+    .map(function(o) { return o.airline; }).filter(function(v, i, s) { return s.indexOf(v) === i; });
+  if (tipo >= 2 && sinBodega.length && (tipo >= 3 || r.checkedBaggage === true || /avianca/.test(regIda + ' ' + regReg))) {
+    lines.push('<b>Bodega:</b> con ' + escHtml(sinBodega.join(' y ')) + ' el precio con maleta de mano no incluye maleta de bodega; la Classic de Avianca sí' +
+      (r.checkedBaggage === true ? '. El viajero pidió bodega' : '') + '.');
+  }
+  // 5. Anticipación: con pocos días, los precios suben.
+  var dep = String(r.departure || it.departure || '');
+  var dias = dep && snap.at ? Math.round((new Date(dep + 'T12:00:00-05:00').getTime() - new Date(snap.at).getTime()) / 86400000) : null;
+  var minimo = r.international ? 30 : 8;
+  if (dias !== null && dias >= 0 && dias < minimo) {
+    lines.push('<b>Anticipación:</b> se buscó ' + ptPlural(dias, 'día', 'días') + ' antes del viaje (la política pide ' + minimo + '); con poca anticipación los precios suben.');
+  }
+  // 6. Qué tan comparable.
+  var f = it.fare || {};
+  if (f.quality) lines.push(ptQualityHtml(f) + ' <span class="pt-muted">' + escHtml(f.qualityReason || '') + '</span>');
+  if (!lines.length) return '';
+  return '<div class="pt-reading"><b>Qué dice esta comparación</b><ul>' + lines.map(function(l) { return '<li>' + l + '</li>'; }).join('') + '</ul></div>';
 }
 
 /** «TIPO 2 · Classic, la recomendada» o la excepción con su motivo (#A95). */
@@ -4149,7 +4262,7 @@ function _saRenderHow(st) {
       ? 'Solo viajes con la tarifa del manual (la registrada o, si falta, la que corresponde por noches), buscados en Google con su equipaje ' +
         '(TIPO 1 sin maleta, TIPO 2 y 3 con maleta de mano). '
       : o.fare === 'exact'
-        ? 'Solo comparaciones exactas: TIPO 1, o con maleta donde Google trae esa tarifa (Avianca, JetSMART, Wingo, Clic). '
+        ? 'Solo comparaciones exactas: TIPO 1, o con maleta donde Google trae esa tarifa (Avianca, JetSMART, Wingo). '
         : 'Todas las búsquedas, sin distinguir tarifa. ') + (o.scope === 'tipo1' ? 'Solo viajes TIPO 1. ' : '') +
       'Por cada viaje comparado: diferencia = valor cotizado − precio más barato en Google; por tiquete = diferencia ÷ tiquetes; ' +
       '% de ahorro = diferencia ÷ valor cotizado. Se parte en lo que se ahorra con la misma aerolínea (cotizado − su precio en Google) y ' +

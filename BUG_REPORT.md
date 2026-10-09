@@ -2284,3 +2284,61 @@ El manual dice «más de 6» para la opción 3; los viajes de 6 noches no caen e
 No hay push: la app no cambia.
 
 **Cupo:** quedan 187 búsquedas este mes. Con el ritmo del estudio alcanza hasta el 21-oct; si no, `DOS_NIVELES` = `no` en las propiedades del proyecto del rastreo.
+
+## **#A98 — Comparador: los dos precios de un vuelo, del mismo momento, y la lectura de cada viaje en palabras**
+**Fecha:** 2026-10-09 · **Pedido por:** David (*"Procede con todo lo que haya que corregir o mejorar para que la info sea lo más clara posible"*) · **Estado:** Implementado en el dashboard de costos y el rastreo. La app de Laura no cambia.
+
+**Síntoma (análisis de SOL-000633, Bogotá–Medellín, TIPO 2, Avianca):**
+- La tabla «Precio de cada vuelo sin maleta y con maleta de mano» juntaba una búsqueda sin maleta del 8-oct (2:45 p. m.) con una con maleta del 9-oct (10:13 a. m.). La diferencia mezclaba el cambio de precio de casi 20 horas con el efecto de la maleta.
+- Cuando el vuelo con maleta salía más barato (porque el precio bajó entre una búsqueda y otra), la tabla decía «mismo precio».
+- Clic salía como comparación **exacta** en TIPO 2, pero Google trae su tarifa más baja (VeLigera) y el manual pide VeEcono (TIPO 2) o VePreferencial (TIPO 3).
+- Para entender el viaje había que leer cuatro tablas: no había una conclusión en palabras.
+
+**Causa raíz:**
+- El rastreo (#A97) buscaba el otro equipaje una sola vez por momento. Si después repetía la búsqueda principal (por ejemplo, porque cambió la tarifa), el par quedaba de días distintos. El detalle tomaba la búsqueda del otro equipaje más reciente, no la más cercana a la que se muestra.
+- `ptDeduce` solo distinguía «sube» de «no sube».
+- `_ptQuality_` contaba a Clic con las aerolíneas que, con maleta, traen la tarifa del manual.
+
+**Fix:**
+- **`Rastreo.gs`:** guarda la hora de la última búsqueda de cada equipaje. Si la del otro equipaje tiene más de 3 horas frente a la principal (`RP_PAR_MS`), la repite una vez para tener el par del mismo momento. No hay más consultas cuando el par ya está junto.
+- **`Code.gs`:**
+  - `_ptBuildDetail_`: el otro equipaje es la búsqueda **más cercana en el tiempo** a la que se muestra.
+  - `_ptQuality_`: Clic queda **aproximada**, con su porqué. Si el viajero pidió maleta de bodega, solo la Classic de Avianca es exacta en TIPO 2 y 3; el resto queda aproximada, porque Google no deja pedir bodega.
+- **`CostsDashboard.html`:**
+  - Los dos precios se comparan solo si las búsquedas tienen 3 horas o menos de diferencia. Si no, se dice de cuándo es cada una y que el rastreo la repite mientras el viaje siga por comprar.
+  - Resumen por aerolínea en cada tramo: *«Avianca: con maleta sube en 23 de 23 vuelos (lo típico, +$73.780: de Basic a Classic)»*, *«LATAM: mismo precio en 16 de 16 (Google no distingue sus tarifas)»*, *«Clic: solo aparece con maleta»*.
+  - Un vuelo más barato con maleta dice *«con maleta sale $X más barato»*, nunca «mismo precio».
+  - Recuadro **«Qué dice esta comparación»** en el detalle de cada viaje, con hasta seis líneas:
+    - lo cotizado frente a la misma aerolínea en Google;
+    - si la diferencia con lo más barato sale de cambiar de aerolínea;
+    - el aeropuerto: en Medellín, Clic y Satena operan desde Olaya Herrera;
+    - la bodega: con maleta de mano, Wingo, JetSMART y LATAM no la traen y la Classic de Avianca sí;
+    - la anticipación, si se buscó con menos días de los que pide la política;
+    - qué tan comparable es y por qué.
+  - Leyenda, selector *Comparar* y metodología de la proyección: Clic sale de las exactas y se agrega la regla de la bodega pedida.
+
+**Compatibilidad:**
+- *Dashboard nuevo + `Code.gs` anterior:* funciona igual; el par puede ser el más reciente en vez del más cercano, y el dashboard igual lo descarta si tiene más de 3 horas.
+- *`Code.gs` nuevo + rastreo anterior:* sin pares nuevos. Los viajes con el par de otro día muestran la nota en vez de la tabla.
+- La app de Laura no cambia.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `check-price-tracking.cjs`:
+  - Clic aproximada y dice qué tarifa pide el manual;
+  - bodega pedida: Wingo aproximada, Avianca exacta, TIPO 1 aproximada;
+  - una búsqueda del otro equipaje de 20 h antes se repite una sola vez (luego nada nuevo);
+  - el detalle empareja la búsqueda más cercana (10 min), no la más reciente.
+- Capturas con las búsquedas reales del 9-oct:
+  - par del mismo momento: resumen por aerolínea y tabla;
+  - par de 19 horas: la nota en lugar de la tabla;
+  - recuadro «Qué dice esta comparación» en un viaje Avianca TIPO 2.
+
+**Despliegue:**
+1. Pegar `server/Code.gs` y `server/CostsDashboard.html` y crear la versión nueva del web app.
+2. En el proyecto «Equitel · Rastreo de precios», reemplazar **Rastreo** por `tools/comparador-precios/apps-script/Rastreo.gs`.
+3. En el dashboard, *⟳ Actualizar datos*.
+
+No hay push: la app no cambia.
+
+**Cupo:** como mucho, una consulta más por tramo de cada viaje que tenga el par de otro momento, y solo mientras siga por comprar.

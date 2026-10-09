@@ -50,6 +50,9 @@ var RP_FUNCION = 'rastrearPrecios';
 var RP_MINUTOS = 15;
 var RP_DIAS_ESTUDIO = 14;
 var RP_VENTANA_COMPRA_MS = 6 * 60 * 60 * 1000;
+// #A98: los dos precios de un vuelo (sin maleta / con maleta) solo se comparan si se buscaron
+// con menos de 3 horas de diferencia: los precios cambian con el tiempo.
+var RP_PAR_MS = 3 * 60 * 60 * 1000;
 var RP_TIEMPO_MAX_MS = 270000;
 // Formato 2 (#A86): un tramo por consulta y la lista de vuelos de cada tramo en
 // TRAMOS. Formato 3 (#A88): solo cuentan los vuelos directos si los hay. Las
@@ -184,6 +187,19 @@ function rpHecha_(hechas, clave, nivel) {
   return !!(hechas[clave] && hechas[clave][nivel]);
 }
 
+/** Cuándo fue la última búsqueda de ese 'ID|MOMENTO' con ese equipaje (milisegundos; 0 si no hay). */
+function rpUltima_(hechas, clave, nivel) {
+  var v = hechas[clave] && hechas[clave][nivel];
+  return typeof v === 'number' ? v : (v ? 1 : 0);
+}
+
+/** Fecha de la hoja → milisegundos (0 si no se entiende). */
+function rpMs_(v) {
+  if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v.getTime()) ? 0 : v.getTime();
+  var t = Date.parse(String(v || ''));
+  return isFinite(t) ? t : 0;
+}
+
 /**
  * Claves 'ID|MOMENTO' ya buscadas en el formato actual, con el equipaje de cada una, y
  * consultas hechas hoy (para el tope diario). Una búsqueda del formato anterior no
@@ -204,7 +220,8 @@ function rpLeerHechas_(hoja) {
       var clave = id + '|' + String(v[r][h['MOMENTO']] || '').trim();
       var nivel = h['MALETA DE MANO'] !== undefined && rpNumero_(v[r][h['MALETA DE MANO']]) > 0 ? 1 : 0;
       hechas[clave] = hechas[clave] || {};
-      hechas[clave][nivel] = true;
+      // La más reciente de cada equipaje (#A98); 1 si la fecha no se entiende (cuenta como hecha).
+      hechas[clave][nivel] = Math.max(hechas[clave][nivel] || 0, rpMs_(v[r][h['FECHA BUSQUEDA']]) || 1);
     }
     if (rpFecha_(v[r][h['FECHA BUSQUEDA']]) === hoy) consultasHoy += rpNumero_(v[r][h['CONSULTAS']]);
   }
@@ -254,10 +271,16 @@ function rpCandidatos_(valores, hechas, cfg, ahoraMs) {
     base.maletas = base.tarifa >= 2 ? Number(base.viaje.pasajeros) : 0;
     var nivel = base.maletas > 0 ? 1 : 0;
     // #A97: además, el otro equipaje (dos precios por vuelo) en los momentos de DOS_NIVELES.
+    // #A98: los dos tienen que ser del mismo momento: si la del otro equipaje es más de 3 h
+    // anterior a la del equipaje de la tarifa (o a ahora, si esa aún no se hace), se repite.
     var agregar = function(momento) {
-      if (!rpHecha_(hechas, id + '|' + momento, nivel)) out.push(rpCopia_(base, momento));
+      var clave = id + '|' + momento;
+      var principalHecha = rpHecha_(hechas, clave, nivel);
+      if (!principalHecha) out.push(rpCopia_(base, momento));
       var dos = cfg.dosNiveles === 'ambos' || cfg.dosNiveles === momento.toLowerCase();
-      if (dos && !rpHecha_(hechas, id + '|' + momento, 1 - nivel)) {
+      var referencia = principalHecha ? rpUltima_(hechas, clave, nivel) : ahoraMs;
+      var otra = rpUltima_(hechas, clave, 1 - nivel);
+      if (dos && (!otra || otra < referencia - RP_PAR_MS)) {
         var extra = rpCopia_(base, momento);
         extra.maletas = nivel ? 0 : Number(base.viaje.pasajeros);
         extra.otroNivel = true;

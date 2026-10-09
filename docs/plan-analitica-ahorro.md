@@ -367,6 +367,11 @@ Aviatur.
 
 ## 11. Bitácora
 
+- **2026-10-09 (tarde)** — Claridad del comparador (#A98), tras revisar SOL-000633:
+  - los dos precios de un vuelo solo se comparan si se buscaron en el mismo momento (3 horas o menos);
+  - cada viaje abre con «Qué dice esta comparación»;
+  - Clic pasa a aproximada, así que la vista «solo comparaciones exactas» de la proyección ya no la cuenta.
+
 - **2026-10-09** — Ideas de David (#A97). Lo que se hizo:
   - **Cuántos viajes son TIPO 1.** Nacionales de abril a octubre: 44 % de los viajes, 38 % de los tiquetes y 39 % del gasto; en los de ida y vuelta, 29 %. TIPO 2 es el grupo más grande (45 % de los viajes, 51 % del gasto). Ahora el volumen se separa por TIPO, y la proyección puede limitarse a TIPO 1, donde la comparación es exacta.
   - **¿Un mismo vuelo con varios precios?** No: Google da un precio por vuelo (0 repetidos en 59 + 63 resultados de SerpApi y 161 de Ignav). Los precios distintos de un vuelo solo aparecen en sus opciones de compra, y son de distintos vendedores, no de distintas tarifas.

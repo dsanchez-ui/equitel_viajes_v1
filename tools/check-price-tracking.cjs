@@ -442,6 +442,11 @@ function main() {
     q._ptQuality_(2, snapCon('Avianca', 0), false).quality, q._ptQuality_(2, null, false).quality],
     ['exacta', 'exacta', 'aproximada', 'exacta', 'exacta', 'aproximada', 'no comparable', '']);
   eq('LATAM en TIPO 2 dice por qué es aproximada', /LATAM: Google no distingue/.test(q._ptQuality_(2, snapCon('LATAM', 1), true).reason), true);
+  // #A98: Clic queda aproximada (Google trae VeLigera); con bodega pedida, solo la Classic de Avianca es exacta.
+  eq('Clic y bodega pedida', [q._ptQuality_(2, snapCon('Clic', 1), true).quality, q._ptQuality_(2, snapCon('Wingo', 1), true, true).quality,
+    q._ptQuality_(2, snapCon('Avianca', 1), true, true).quality, q._ptQuality_(1, snapCon('Avianca', 0), true, true).quality],
+    ['aproximada', 'aproximada', 'exacta', 'aproximada']);
+  eq('Clic dice qué tarifa pide el manual', /VeEcono/.test(q._ptQuality_(2, snapCon('Clic', 1), true).reason), true);
   // Una búsqueda más reciente que falla no tapa la anterior que sí trajo precio (revisión del 8-oct).
   const iRes = cp[0].indexOf('RESULTADO'), iFecha = cp[0].indexOf('FECHA BUSQUEDA');
   const ok50 = cp.find((r, i) => i > 0 && r[iId] === 'SOL-50' && r[iRes] === 'OK');
@@ -469,6 +474,23 @@ function main() {
   eq('el comparador usa la búsqueda con el equipaje de la tarifa', [it60.fare.match, it60.fare.searchedBags, it60.atPurchase.bags], [true, 1, 1]);
   const d60 = p60.getPriceTrackingDetail('dsanchez@equitel.com.co', 'SOL-60');
   eq('el detalle trae también la del otro equipaje', [d60.searches.COMPRA.bags, d60.otherLevel.COMPRA && d60.otherLevel.COMPRA.bags, d60.otherLevel.COTIZACION], [1, 0, null]);
+  // #A98: si la búsqueda del otro equipaje es de otro momento (más de 3 h antes), se repite una vez para tener el par.
+  const cpp = t.ss.sheets['COMPARATIVO PRECIOS'].data, iF = cpp[0].indexOf('FECHA BUSQUEDA'), iI = cpp[0].indexOf('ID SOLICITUD'), iM = cpp[0].indexOf('MALETA DE MANO');
+  cpp.find((r, i) => i > 0 && r[iI] === 'SOL-60' && r[iM] === 0)[iF] = new Date(Date.now() - 20 * 3600000);
+  t.ctx.rastrearPrecios();
+  const sol60 = rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).filter((r) => r['ID SOLICITUD'] === 'SOL-60').map((r) => r['MALETA DE MANO']).sort();
+  eq('par de otro momento: se repite el otro equipaje una vez', sol60, [0, 0, 1]);
+  t.ctx.rastrearPrecios();
+  eq('y después nada nuevo', rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).length, 5);
+  // El detalle muestra junto a la búsqueda principal la del otro equipaje más cercana en el tiempo, no la más reciente.
+  const r60 = cpp.filter((r, i) => i > 0 && r[iI] === 'SOL-60');
+  const main60 = r60.find((r) => r[iM] === 1), others60 = r60.filter((r) => r[iM] === 0);
+  main60[iF] = new Date(Date.now() - 10 * 3600000);
+  others60[0][iF] = new Date(Date.now() - 10 * 3600000 + 10 * 60000);
+  others60[1][iF] = new Date(Date.now());
+  const d60b = loadPlatform(t.ss).getPriceTrackingDetail('dsanchez@equitel.com.co', 'SOL-60');
+  eq('el par del detalle es la búsqueda más cercana en el tiempo',
+    Math.round((new Date(d60b.otherLevel.COMPRA.at) - new Date(d60b.searches.COMPRA.at)) / 60000), 10);
   t = loadTracker({ props: { INICIO_ESTUDIO: today, DOS_NIVELES: 'no' }, rows: [HF, conTarifa('SOL-62', 'TIPO 1', '', { STATUS: 'APROBADO', 'FECHA VUELTA': '' })] });
   t.ctx.rastrearPrecios();
   eq('con DOS_NIVELES = no, solo el equipaje de la tarifa', rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).map((r) => r['MALETA DE MANO']), [0]);

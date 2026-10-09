@@ -17835,7 +17835,9 @@ function _ptFare_(row, cell, snaps) {
   var ok = snaps.filter(function(s) { return s && s.result === 'OK'; });
   var match = ok.filter(function(s) { return lvl(s) === level; })[0] || null;
   var ref = match || ok[0] || null;
-  var q = _ptQuality_(eff, ref, !!match);
+  // #A98: si el viajero pidió maleta de bodega, Google no la deja pedir (salvo la Classic de Avianca, que la trae).
+  var needsChecked = _checkedBaggageFromCell_(cell(row, CHECKED_BAG_HEADER)) === true;
+  var q = _ptQuality_(eff, ref, !!match, needsChecked);
   return {
     ref: ref,
     level: level,
@@ -17846,6 +17848,7 @@ function _ptFare_(row, cell, snaps) {
       name: String(cell(row, FARE_NAME_HEADER) || ''), justification: String(cell(row, FARE_JUSTIFICATION_HEADER) || ''),
       searchedBags: ref ? ref.bags : null,
       match: !ref ? null : !!match,
+      needsChecked: needsChecked,
       quality: q.quality, qualityReason: q.reason
     }
   };
@@ -17866,31 +17869,40 @@ function _ptRefAirlines_(snap) {
 }
 
 /**
- * Qué tan comparable es el precio de Google con la tarifa del viaje (#A97). Prueba del
- * 9-oct (Bogotá–Medellín, sin maleta y con maleta de mano): Avianca pasa de Basic a
+ * Qué tan comparable es el precio de Google con la tarifa del viaje (#A97, #A98). Prueba
+ * del 9-oct (Bogotá–Medellín, sin maleta y con maleta de mano): Avianca pasa de Basic a
  * Classic (+$73.780 en 25 de 25 vuelos), JetSMART suma la maleta, Wingo ya la incluye y
  * LATAM no cambia (Google no distingue Basic, Light ni Full). Google no deja pedir bodega.
- *   exacta:        TIPO 1 sin maleta; TIPO 2 con maleta en Avianca, JetSMART, Wingo o Clic;
+ *   exacta:        TIPO 1 sin maleta; TIPO 2 con maleta en Avianca, JetSMART o Wingo;
  *                  TIPO 3 con maleta solo en Avianca (su Classic incluye bodega).
- *   aproximada:    TIPO 2 o 3 con LATAM u otra aerolínea; TIPO 3 fuera de Avianca.
+ *   aproximada:    LATAM; Clic (Google trae su tarifa más baja, VeLigera, y el manual pide
+ *                  VeEcono o VePreferencial); TIPO 3 fuera de Avianca; o el viajero pidió
+ *                  maleta de bodega y la tarifa de Google no la trae (#A98).
  *   no comparable: la búsqueda tiene otro equipaje que la tarifa.
  */
-function _ptQuality_(tipo, ref, matches) {
+function _ptQuality_(tipo, ref, matches, needsChecked) {
   if (!ref) return { quality: '', reason: 'sin precio de Google todavía' };
   if (!matches) {
     return { quality: 'no comparable', reason: tipo >= 2
       ? 'Google se buscó sin maleta y la tarifa TIPO ' + tipo + ' incluye maleta'
       : 'Google se buscó con maleta y la tarifa TIPO 1 no la incluye' };
   }
-  if (tipo <= 1) return { quality: 'exacta', reason: 'TIPO 1: lo más barato de Google es la tarifa básica, la del manual' };
   var airlines = _ptRefAirlines_(ref).map(function(a) { return a.toLowerCase(); });
   var has = function(re) { return airlines.length > 0 && airlines.every(function(a) { return re.test(a); }); };
-  if (tipo === 2 && has(/avianca|jetsmart|wingo|clic|easyfly/)) {
+  var any = function(re) { return airlines.some(function(a) { return re.test(a); }); };
+  if (needsChecked && !(tipo >= 2 && has(/avianca/))) {
+    return { quality: 'aproximada', reason: 'el viajero pidió maleta de bodega y Google no deja pedirla; el precio puede quedar por debajo' };
+  }
+  if (tipo <= 1) return { quality: 'exacta', reason: 'TIPO 1: lo más barato de Google es la tarifa básica, la del manual' };
+  if (tipo === 2 && has(/avianca|jetsmart|wingo/)) {
     return { quality: 'exacta', reason: 'con maleta de mano, Google trae la tarifa que la incluye' };
   }
   if (tipo >= 3 && has(/avianca/)) return { quality: 'exacta', reason: 'la Classic de Avianca incluye maleta de bodega' };
-  if (airlines.some(function(a) { return /latam/.test(a); })) {
+  if (any(/latam/)) {
     return { quality: 'aproximada', reason: 'LATAM: Google no distingue Basic, Light y Full; el precio puede quedar por debajo' };
+  }
+  if (any(/clic|easyfly/)) {
+    return { quality: 'aproximada', reason: 'Clic: Google trae su tarifa más baja (VeLigera) y el manual pide ' + (tipo >= 3 ? 'VePreferencial' : 'VeEcono') };
   }
   return { quality: 'aproximada', reason: tipo >= 3
     ? 'Google no deja pedir maleta de bodega; el precio puede quedar por debajo'
@@ -18250,13 +18262,16 @@ function _ptBuildDetail_(id) {
   var level = eff ? (eff >= 2 ? 1 : 0) : null;
   var latest = { COTIZACION: _ptPickSnap_(all.COTIZACION, level), COMPRA: _ptPickSnap_(all.COMPRA, level) };
   // #A97: la búsqueda del otro equipaje (si se hizo), para ver los dos precios de cada vuelo.
-  var other = function(list) {
+  // #A98: la más cercana en el tiempo a la que se muestra; si no hay esa, la más reciente.
+  var ms = function(x) { var t = new Date(x && x.at).getTime(); return isNaN(t) ? 0 : t; };
+  var other = function(list, main) {
     if (level === null) return null;
+    var base = main ? ms(main) : 0;
     var ok = (list || []).filter(function(x) { return x && x.result === 'OK' && (x.bags > 0 ? 1 : 0) !== level; })
-      .sort(function(a, b) { return a.at < b.at ? 1 : (a.at > b.at ? -1 : 0); });
+      .sort(function(a, b) { return base ? Math.abs(ms(a) - base) - Math.abs(ms(b) - base) : ms(b) - ms(a); });
     return ok[0] || null;
   };
-  var otherLevel = { COTIZACION: other(all.COTIZACION), COMPRA: other(all.COMPRA) };
+  var otherLevel = { COTIZACION: other(all.COTIZACION, latest.COTIZACION), COMPRA: other(all.COMPRA, latest.COMPRA) };
   return { request: request, searches: latest, otherLevel: otherLevel, searchCount: counts };
 }
 

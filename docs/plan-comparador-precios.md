@@ -200,7 +200,7 @@ Solo el dashboard de costos y el rastreo. La app de Laura no cambia: falta la au
 **Qué se construye:**
 - **Tarifa por noches cuando no está registrada.** El comparador usa la tarifa que registró el área de viajes y, si falta, la que corresponde por las noches del viaje. Los viajes TIPO 1 se comparan con lo más barato de Google. El rastreo busca con ese mismo equipaje.
 - **Qué tan comparable es cada viaje:**
-  - **Exacta:** TIPO 1 sin maleta; TIPO 2 con maleta de mano cuando el vuelo de referencia es de Avianca, JetSMART, Wingo o Clic; TIPO 3 solo con Avianca, porque su Classic incluye bodega.
+  - **Exacta:** TIPO 1 sin maleta; TIPO 2 con maleta de mano cuando el vuelo de referencia es de Avianca, JetSMART o Wingo; TIPO 3 solo con Avianca, porque su Classic incluye bodega. (Clic se pasó a aproximada en #A98: Google trae su VeLigera y el manual pide VeEcono o VePreferencial.)
   - **Aproximada:** LATAM en TIPO 2 o 3, porque Google no la distingue, y cualquier TIPO 3 que no sea Avianca, porque no se puede pedir bodega. El precio de Google puede quedar por debajo.
   - **No comparable:** Google se buscó con otro equipaje que el de la tarifa.
 
@@ -212,6 +212,30 @@ Solo el dashboard de costos y el rastreo. La app de Laura no cambia: falta la au
   - la muestra se puede limitar a comparaciones exactas.
 
 **Cupo de SerpApi:** quedan 187 búsquedas este mes. Con el ritmo del estudio (unas 6 al día) y la búsqueda extra al comprar, alcanza hasta el 21-oct. Si no alcanzara, se apaga con `DOS_NIVELES` = `no`.
+
+### Claridad: los dos precios del mismo momento y cada viaje en palabras (#A98, 9-oct)
+
+Al revisar SOL-000633 salieron tres problemas:
+- la tabla de dos precios juntaba búsquedas con casi 20 horas de diferencia;
+- una baja de precio salía como «mismo precio»;
+- Clic contaba como exacta.
+
+**Qué cambió:**
+- **Pares del mismo momento:**
+  - los dos precios de un vuelo solo se comparan si las búsquedas tienen 3 horas o menos de diferencia;
+  - si no, el detalle dice de cuándo es cada una;
+  - el rastreo repite una vez la del otro equipaje mientras el viaje siga por comprar.
+- **Resumen por aerolínea en cada tramo:** en cuántos vuelos sube con maleta y cuánto, típicamente.
+- **«Qué dice esta comparación»:** cinco o seis líneas al abrir un viaje:
+  - lo cotizado frente a la misma aerolínea;
+  - de dónde sale la diferencia;
+  - el aeropuerto: en Medellín, Clic y Satena operan desde Olaya Herrera, no desde Rionegro;
+  - la bodega: con maleta de mano, Wingo, JetSMART y LATAM no la traen y la Classic de Avianca sí;
+  - la anticipación;
+  - qué tan comparable es.
+- **Calidad:**
+  - Clic queda aproximada;
+  - si el viajero pidió bodega, solo Avianca es exacta en TIPO 2 y 3.
 
 ### Fase 3 — Comparación visible para Laura (después del estudio)
 
