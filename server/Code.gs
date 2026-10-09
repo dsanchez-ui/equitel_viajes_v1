@@ -17819,29 +17819,82 @@ function _ptSnapshot_(r, withOptions) {
 
 /**
  * Tarifa de una solicitud del comparador (#A95, «peras con peras»). TIPO 1 se compara
- * con una búsqueda sin maleta y TIPO 2 o 3 con una con maleta de mano. match: true si
- * la búsqueda usada tiene el equipaje de la tarifa, false si no, null si la tarifa no
- * está registrada (no se puede comparar) o no hay búsqueda.
+ * con una búsqueda sin maleta y TIPO 2 o 3 con una con maleta de mano. La tarifa es la
+ * registrada por el área de viajes y, si falta, la que corresponde por las noches del
+ * viaje según el manual (#A97, basis 'recomendada'). match: true si la búsqueda usada
+ * tiene el equipaje de la tarifa, false si no, null si no hay búsqueda con precio.
+ * quality: qué tan comparable es el precio de Google con esa tarifa (_ptQuality_).
  */
 function _ptFare_(row, cell, snaps) {
   var type = _fareOptionValue_(cell(row, FARE_TYPE_HEADER));
   var rec = _fareOptionValue_(cell(row, FARE_RECOMMENDED_HEADER)) ||
     _fareOptionForNights_(_fareNights_(_psDateKey_(cell(row, 'FECHA IDA')), _psDateKey_(cell(row, 'FECHA VUELTA')), cell(row, '# NOCHES (AUTOMÁTICO)')));
-  var level = type ? (type >= 2 ? 1 : 0) : null;
+  var eff = type || rec;
+  var level = eff >= 2 ? 1 : 0;
   var lvl = function(s) { return s && s.bags > 0 ? 1 : 0; };
   var ok = snaps.filter(function(s) { return s && s.result === 'OK'; });
-  var match = level === null ? null : ok.filter(function(s) { return lvl(s) === level; })[0] || null;
+  var match = ok.filter(function(s) { return lvl(s) === level; })[0] || null;
   var ref = match || ok[0] || null;
+  var q = _ptQuality_(eff, ref, !!match);
   return {
     ref: ref,
     level: level,
     info: {
       type: type ? String(type) : '', recommended: String(rec),
+      // La tarifa con que se compara: la registrada o, si falta, la que corresponde por noches (#A97).
+      effective: String(eff), basis: type ? 'registrada' : 'recomendada',
       name: String(cell(row, FARE_NAME_HEADER) || ''), justification: String(cell(row, FARE_JUSTIFICATION_HEADER) || ''),
       searchedBags: ref ? ref.bags : null,
-      match: level === null || !ref ? null : !!match
+      match: !ref ? null : !!match,
+      quality: q.quality, qualityReason: q.reason
     }
   };
+}
+
+/** Aerolíneas del vuelo de referencia de una búsqueda (el que se usa para comparar). */
+function _ptRefAirlines_(snap) {
+  if (!snap) return [];
+  var legs = snap.legs || [];
+  var pick = function(l) { var o = l && (l.referenceIsNear ? l.near : l.cheapest); return o && o.airline ? [o.airline] : []; };
+  if (snap.format >= 2 && legs.length) {
+    var rt = legs.filter(function(l) { return l.leg === 'IDA Y VUELTA'; })[0];
+    if (snap.referenceKind === 'IDA Y VUELTA' && rt) return pick(rt);
+    return legs.filter(function(l) { return l.leg === 'IDA' || l.leg === 'REGRESO'; }).reduce(function(a, l) { return a.concat(pick(l)); }, []);
+  }
+  var joined = snap.referenceIsNear ? snap.nearAirline : snap.cheapestAirline;
+  return String(joined || '').split('/').map(function(x) { return x.trim(); }).filter(Boolean);
+}
+
+/**
+ * Qué tan comparable es el precio de Google con la tarifa del viaje (#A97). Prueba del
+ * 9-oct (Bogotá–Medellín, sin maleta y con maleta de mano): Avianca pasa de Basic a
+ * Classic (+$73.780 en 25 de 25 vuelos), JetSMART suma la maleta, Wingo ya la incluye y
+ * LATAM no cambia (Google no distingue Basic, Light ni Full). Google no deja pedir bodega.
+ *   exacta:        TIPO 1 sin maleta; TIPO 2 con maleta en Avianca, JetSMART, Wingo o Clic;
+ *                  TIPO 3 con maleta solo en Avianca (su Classic incluye bodega).
+ *   aproximada:    TIPO 2 o 3 con LATAM u otra aerolínea; TIPO 3 fuera de Avianca.
+ *   no comparable: la búsqueda tiene otro equipaje que la tarifa.
+ */
+function _ptQuality_(tipo, ref, matches) {
+  if (!ref) return { quality: '', reason: 'sin precio de Google todavía' };
+  if (!matches) {
+    return { quality: 'no comparable', reason: tipo >= 2
+      ? 'Google se buscó sin maleta y la tarifa TIPO ' + tipo + ' incluye maleta'
+      : 'Google se buscó con maleta y la tarifa TIPO 1 no la incluye' };
+  }
+  if (tipo <= 1) return { quality: 'exacta', reason: 'TIPO 1: lo más barato de Google es la tarifa básica, la del manual' };
+  var airlines = _ptRefAirlines_(ref).map(function(a) { return a.toLowerCase(); });
+  var has = function(re) { return airlines.length > 0 && airlines.every(function(a) { return re.test(a); }); };
+  if (tipo === 2 && has(/avianca|jetsmart|wingo|clic|easyfly/)) {
+    return { quality: 'exacta', reason: 'con maleta de mano, Google trae la tarifa que la incluye' };
+  }
+  if (tipo >= 3 && has(/avianca/)) return { quality: 'exacta', reason: 'la Classic de Avianca incluye maleta de bodega' };
+  if (airlines.some(function(a) { return /latam/.test(a); })) {
+    return { quality: 'aproximada', reason: 'LATAM: Google no distingue Basic, Light y Full; el precio puede quedar por debajo' };
+  }
+  return { quality: 'aproximada', reason: tipo >= 3
+    ? 'Google no deja pedir maleta de bodega; el precio puede quedar por debajo'
+    : 'no se sabe si la tarifa de Google incluye la maleta' };
 }
 
 /**
@@ -17860,7 +17913,8 @@ function _ptPickSnap_(list, level) {
 function _ptSummary_(items, levelAware) {
   var refOf = function(it, s) {
     if (!s || s.result !== 'OK') return null;
-    if (levelAware && (!it.fare || it.fare.type === '' || (s.bags > 0 ? 1 : 0) !== (Number(it.fare.type) >= 2 ? 1 : 0))) return null;
+    var eff = it.fare ? Number(it.fare.effective || it.fare.type) : 0;
+    if (levelAware && (!eff || (s.bags > 0 ? 1 : 0) !== (eff >= 2 ? 1 : 0))) return null;
     return s.reference;
   };
   var channels = {};
@@ -18025,13 +18079,19 @@ function _ptBuildTracking_() {
   // Todas las búsquedas (como antes) y, aparte, solo las de la misma tarifa (#A95, «peras con peras»).
   var summary = _ptSummary_(items, false);
   summary.sameFare = _ptSummary_(items.filter(function(it) { return it.fare.match === true; }), true);
+  // Solo las comparaciones exactas (#A97): TIPO 1, o con maleta en aerolíneas donde Google trae esa tarifa.
+  summary.exact = _ptSummary_(items.filter(function(it) { return it.fare.quality === 'exacta'; }), true);
+  var count = function(f) { return items.filter(f).length; };
   summary.fareCounts = {
-    match: items.filter(function(it) { return it.fare.match === true; }).length,
-    mismatch: items.filter(function(it) { return it.fare.match === false; }).length,
-    unknown: items.filter(function(it) { return it.fare.match === null; }).length,
-    // unknown = noFare (sin tarifa registrada) + noResult (con tarifa, sin búsqueda que trajera precio)
-    noFare: items.filter(function(it) { return it.fare.match === null && !it.fare.type; }).length,
-    noResult: items.filter(function(it) { return it.fare.match === null && !!it.fare.type; }).length
+    match: count(function(it) { return it.fare.match === true; }),
+    mismatch: count(function(it) { return it.fare.match === false; }),
+    unknown: count(function(it) { return it.fare.match === null; }),
+    noFare: 0, // desde #A97 se compara con la tarifa por noches cuando no está registrada
+    noResult: count(function(it) { return it.fare.match === null; }),
+    // Con la misma tarifa, por qué base y qué tan comparable (#A97).
+    byRecommendation: count(function(it) { return it.fare.match === true && it.fare.basis === 'recomendada'; }),
+    exact: count(function(it) { return it.fare.quality === 'exacta'; }),
+    approx: count(function(it) { return it.fare.quality === 'aproximada'; })
   };
   return { items: items, summary: summary, meta: meta, analysis: analysis };
 }
@@ -18046,7 +18106,9 @@ function _ptBuildTracking_() {
 // PROCESADO; el mes es el de la compra (o el de la solicitud); tiquetes = pasajeros
 // × tramos. Sin nombres, cédulas, correos ni observaciones.
 var SA_COLUMNS = ['mes', 'mesSolicitud', 'estado', 'vuelo', 'idaVuelta', 'pasajeros', 'internacional', 'hotel',
-  'cambio', 'cambioConCosto', 'multidestino', 'cotizadoTiquetes', 'facturado', 'anticipacion', 'canal', 'empresa', 'unidad'];
+  'cambio', 'cambioConCosto', 'multidestino', 'cotizadoTiquetes', 'facturado', 'anticipacion', 'canal', 'empresa', 'unidad',
+  // #A97: la tarifa del manual por las noches del viaje (1, 2 o 3; 0 en solo hospedaje).
+  'tarifa'];
 
 function _saTrips_(vals, hm, config) {
   var out = { columns: SA_COLUMNS, rows: [], companies: [], units: [], generatedAt: new Date().toISOString() };
@@ -18087,7 +18149,9 @@ function _saTrips_(vals, hm, config) {
       buyKey && depKey ? _psDayNumber_(depKey) - _psDayNumber_(buyKey) : null,
       channels[String(cell(row, 'CANAL DE COMPRA') || '').trim()] || '',
       dict(out.companies, coIdx, cell(row, 'EMPRESA')),
-      dict(out.units, unIdx, cell(row, 'UNIDAD DE NEGOCIO'))
+      dict(out.units, unIdx, cell(row, 'UNIDAD DE NEGOCIO')),
+      String(cell(row, 'MODO_SOLICITUD') || '').trim() === 'SOLO_HOSPEDAJE' ? 0
+        : _fareOptionForNights_(_fareNights_(depKey, _psDateKey_(cell(row, 'FECHA VUELTA')), cell(row, '# NOCHES (AUTOMÁTICO)')))
     ]);
   }
   return out;
@@ -18180,10 +18244,20 @@ function _ptBuildDetail_(id) {
       invoiced: inv.invoiced, invoiceCount: inv.count, invoicedIncludesHotel: inv.includesHotel, hotelQuoted: inv.hotelQuoted
     };
   }
-  // #A95: por momento, la búsqueda con el equipaje de la tarifa del viaje (igual que la lista).
-  var level = request.fareType ? (Number(request.fareType) >= 2 ? 1 : 0) : null;
+  // #A95: por momento, la búsqueda con el equipaje de la tarifa del viaje (igual que la lista):
+  // la registrada o, si falta, la que corresponde por noches (#A97).
+  var eff = Number(request.fareType || request.fareRecommended) || 0;
+  var level = eff ? (eff >= 2 ? 1 : 0) : null;
   var latest = { COTIZACION: _ptPickSnap_(all.COTIZACION, level), COMPRA: _ptPickSnap_(all.COMPRA, level) };
-  return { request: request, searches: latest, searchCount: counts };
+  // #A97: la búsqueda del otro equipaje (si se hizo), para ver los dos precios de cada vuelo.
+  var other = function(list) {
+    if (level === null) return null;
+    var ok = (list || []).filter(function(x) { return x && x.result === 'OK' && (x.bags > 0 ? 1 : 0) !== level; })
+      .sort(function(a, b) { return a.at < b.at ? 1 : (a.at > b.at ? -1 : 0); });
+    return ok[0] || null;
+  };
+  var otherLevel = { COTIZACION: other(all.COTIZACION), COMPRA: other(all.COMPRA) };
+  return { request: request, searches: latest, otherLevel: otherLevel, searchCount: counts };
 }
 
 // ---------- HELPER DE DIAGNÓSTICO (ejecutable desde editor GAS) ----------

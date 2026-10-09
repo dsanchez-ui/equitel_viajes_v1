@@ -156,6 +156,7 @@ Si el rastreo ya está instalado:
 |---|---|---|
 | `INICIO_ESTUDIO` | el día de `activarRastreo` | Solo busca *al cotizar* si los costos se confirmaron desde esta fecha |
 | `FIN_ESTUDIO` | inicio + 14 días | Después de esta fecha no busca |
+| `DOS_NIVELES` | `compra` | `compra`, `cotizacion`, `ambos` o `no`: en ese momento busca también con el otro equipaje (sin maleta / con maleta de mano), para ver los dos precios de cada vuelo en el dashboard (#A97). Gasta 1 consulta más por tramo |
 | `VENDEDORES` | `no` | `compra`, `cotizacion` o `ambos`: además busca quién vende el vuelo de referencia de cada tramo (Aviatur, la aerolínea, otras agencias). Gasta 1 consulta más por tramo |
 | `MAX_POR_EJECUCION` | `8` | Búsquedas por pasada; lo demás queda para la siguiente |
 | `MAX_BUSQUEDAS_DIA` | `40` | Tope de consultas a SerpApi por día |

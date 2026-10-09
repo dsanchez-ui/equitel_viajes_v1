@@ -37,6 +37,9 @@
  *   RESERVA_MINIMA     nunca deja a la cuenta con menos búsquedas que esto (15)
  *   VENDEDORES         no | cotizacion | compra | ambos (no). Cada búsqueda con
  *                      vendedores gasta 1 o 2 consultas más.
+ *   DOS_NIVELES        compra | ambos | no (compra). En ese momento se busca también con el
+ *                      otro equipaje (sin maleta / con maleta de mano), para ver los dos
+ *                      precios de cada vuelo en el dashboard (#A97). Una consulta más por tramo.
  */
 
 var RP_HOJA_SOLICITUDES = 'Nueva Base Solicitudes';
@@ -96,7 +99,8 @@ function rpConfig_() {
     maxPorEjecucion: num('MAX_POR_EJECUCION', 8),
     maxDia: num('MAX_BUSQUEDAS_DIA', 40),
     reserva: num('RESERVA_MINIMA', 15),
-    vendedores: get('VENDEDORES', 'no').toLowerCase()
+    vendedores: get('VENDEDORES', 'no').toLowerCase(),
+    dosNiveles: get('DOS_NIVELES', 'compra').toLowerCase()
   };
 }
 
@@ -158,6 +162,21 @@ function rpEventos_(raw) {
 function rpTarifa_(v) {
   var m = /^(?:tipo|opci[oó]n)?\s*([123])$/i.exec(String(v == null ? '' : v).trim());
   return m ? Number(m[1]) : 0;
+}
+
+/**
+ * Tarifa del manual por las noches del viaje (#A97), igual que la plataforma: TIPO 1 de 0
+ * a 1 noche, TIPO 2 de 2 a 5, TIPO 3 de 6 o más. Sin regreso, las noches de hotel.
+ */
+function rpTarifaPorNoches_(ida, regreso, nochesHotel) {
+  var noches = 0;
+  if (ida && regreso) {
+    var a = ida.split('-').map(Number), b = regreso.split('-').map(Number);
+    noches = Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86400000);
+  } else {
+    noches = Math.round(rpNumero_(nochesHotel));
+  }
+  return !(noches > 1) ? 1 : noches <= 5 ? 2 : 3;
 }
 
 /** ¿Ya se buscó ese 'ID|MOMENTO' con ese equipaje (0 = sin maleta, 1 = con maleta de mano)? */
@@ -227,19 +246,34 @@ function rpCandidatos_(valores, hechas, cfg, ahoraMs) {
       aerolinea: String(celda(fila, 'AEROLINEA') || '').trim(),
       aerolineaRegreso: String(celda(fila, 'AEROLINEA REGRESO') || '').trim(),
       canal: String(celda(fila, 'CANAL DE COMPRA') || '').trim(),
-      tarifa: rpTarifa_(celda(fila, 'TIPO DE COMPRA DE TKT')) || rpTarifa_(celda(fila, 'TARIFA RECOMENDADA'))
+      // La registrada por el área de viajes; si falta, la recomendada; si tampoco, la que
+      // corresponde por las noches del viaje (#A97), como la compara el dashboard.
+      tarifa: rpTarifa_(celda(fila, 'TIPO DE COMPRA DE TKT')) || rpTarifa_(celda(fila, 'TARIFA RECOMENDADA')) ||
+        rpTarifaPorNoches_(ida, rpFecha_(celda(fila, 'FECHA VUELTA')), celda(fila, '# NOCHES (AUTOMÁTICO)'))
     };
     base.maletas = base.tarifa >= 2 ? Number(base.viaje.pasajeros) : 0;
     var nivel = base.maletas > 0 ? 1 : 0;
-    if (estado === 'PENDIENTE_APROBACION' && !rpHecha_(hechas, id + '|COTIZACION', nivel) && cfg.inicio && ev.costConfirmed &&
-        rpFecha_(new Date(ev.costConfirmed)) >= cfg.inicio) {
-      out.push(rpCopia_(base, 'COTIZACION'));
+    // #A97: además, el otro equipaje (dos precios por vuelo) en los momentos de DOS_NIVELES.
+    var agregar = function(momento) {
+      if (!rpHecha_(hechas, id + '|' + momento, nivel)) out.push(rpCopia_(base, momento));
+      var dos = cfg.dosNiveles === 'ambos' || cfg.dosNiveles === momento.toLowerCase();
+      if (dos && !rpHecha_(hechas, id + '|' + momento, 1 - nivel)) {
+        var extra = rpCopia_(base, momento);
+        extra.maletas = nivel ? 0 : Number(base.viaje.pasajeros);
+        extra.otroNivel = true;
+        out.push(extra);
+      }
+    };
+    if (estado === 'PENDIENTE_APROBACION' && cfg.inicio && ev.costConfirmed && rpFecha_(new Date(ev.costConfirmed)) >= cfg.inicio) {
+      agregar('COTIZACION');
     }
     var reservadaHace = ev.reservationRegistered ? ahoraMs - new Date(ev.reservationRegistered).getTime() : null;
     var compra = estado === 'APROBADO' || (estado === 'RESERVADO' && reservadaHace !== null && reservadaHace >= 0 && reservadaHace <= RP_VENTANA_COMPRA_MS);
-    if (compra && !rpHecha_(hechas, id + '|COMPRA', nivel)) out.push(rpCopia_(base, 'COMPRA'));
+    if (compra) agregar('COMPRA');
   }
   out.sort(function(a, b) {
+    // Primero lo que se compara (el equipaje de la tarifa); el otro equipaje, al final.
+    if (!!a.otroNivel !== !!b.otroNivel) return a.otroNivel ? 1 : -1;
     if (a.momento !== b.momento) return a.momento === 'COMPRA' ? -1 : 1;
     return a.viaje.ida < b.viaje.ida ? -1 : a.viaje.ida > b.viaje.ida ? 1 : (a.id < b.id ? -1 : 1);
   });
@@ -717,12 +751,13 @@ function probarConfiguracion() {
   var hoja = abierto.ss.getSheetByName(RP_HOJA);
   var hechas = rpLeerHechas_(hoja).hechas;
   var valores = abierto.base.getRange(1, 1, abierto.base.getLastRow(), abierto.base.getLastColumn()).getValues();
-  var c = rpCandidatos_(valores, hechas, { inicio: cfg.inicio || rpHoy_() }, Date.now());
+  var c = rpCandidatos_(valores, hechas, { inicio: cfg.inicio || rpHoy_(), dosNiveles: cfg.dosNiveles }, Date.now());
   lineas.push('Buscaría ahora ' + c.length + ' solicitud(es):');
   c.slice(0, 20).forEach(function(x) {
     lineas.push('  ' + x.id + ' ' + x.momento + ' · ' + x.viaje.origen + ' → ' + x.viaje.destino + ' · ida ' + x.viaje.ida +
       (x.viaje.regreso ? ', regreso ' + x.viaje.regreso : '') + ' · ' + x.viaje.pasajeros + ' pasajero(s) · ' +
-      (x.tarifa ? 'TIPO ' + x.tarifa + (x.maletas ? ', con maleta de mano' : ', sin maleta') : 'sin tarifa, sin maleta') + ' · ' +
+      (x.tarifa ? 'TIPO ' + x.tarifa + (x.maletas ? ', con maleta de mano' : ', sin maleta') : 'sin tarifa, sin maleta') +
+      (x.otroNivel ? ' (otro equipaje, para los dos precios por vuelo)' : '') + ' · ' +
       rpConsultasNecesarias_(x) + ' consulta(s)');
   });
   lineas.push(cfg.inicio ? 'Estudio: ' + cfg.inicio + ' a ' + (cfg.fin || '(sin fin)') + '.' : 'El estudio aún no está activo: ejecute activarRastreo().');

@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A96) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A97) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -289,6 +289,15 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     buscados con el equipaje de su tarifa (`summary.sameFare`); *Todas las búsquedas* queda como
     referencia. Google no trae las tres tarifas por separado ni deja pedir bodega: en LATAM TIPO 2 y en
     TIPO 3 su precio queda por debajo. Nunca volver a comparar contra la más barata sin decirlo.
+  - **Tarifa por noches, qué tan comparable y dos precios por vuelo** (#A97, idea de David, 9-oct; **solo el
+    dashboard y el rastreo**, la app de Laura no cambia sin autorización de Yurani). Sin tarifa registrada se usa la
+    que corresponde por noches (`fare.basis` = `recomendada`). Cada viaje dice si la comparación es **exacta** (TIPO 1;
+    TIPO 2 con maleta en Avianca, JetSMART, Wingo o Clic; TIPO 3 solo Avianca), **aproximada** (LATAM; TIPO 3 fuera de
+    Avianca) o **no comparable** (otro equipaje): `_ptQuality_`, probada el 9-oct con dos búsquedas reales. El selector
+    *Comparar* y la proyección tienen «solo comparaciones exactas»; la proyección, «solo TIPO 1». Google da **un solo
+    precio por vuelo** (comprobado: ningún vuelo repetido en 59 + 63 + 161 resultados); por eso el rastreo busca también
+    el otro equipaje al comprar (`DOS_NIVELES`, por defecto `compra`) y el detalle muestra los dos precios (Avianca: Basic
+    → Classic; LATAM: Google no la distingue).
 - **Dashboard de costos: la velocidad es el pilar** (#A89, David, 2026-10-08: *"si no es rápido,
   nadie lo va a utilizar"*). Todas las secciones se piden **en paralelo** y sus respuestas se guardan
   en **`CacheService`** (`_dashCached_`), con una llave que lleva el alcance del usuario y una versión

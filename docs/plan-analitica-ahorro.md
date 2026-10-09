@@ -362,9 +362,16 @@ Aviatur.
 | 8 | Dónde guardar lo precalculado | `CacheService`, sin Script Properties (David, 8-oct) |
 | 10 | Toda estimación es verificable | Cada sección con cifras derivadas tiene un *¿Cómo se calcula?* breve (cómo y por qué); la proyección muestra la cuenta de cada mes en pesos y el CSV la trae (David, 8-oct, #A93) |
 | 11 | Qué viajes entran en la muestra | Por defecto, solo los comparados con la misma tarifa (el equipaje de la tarifa registrada); *Todas las búsquedas* queda como opción (reunión del 8-oct, Yurani: «peras con peras», #A95) |
+| 12 | Proyección por tarifa | Volumen separado por TIPO; *«Viajes a proyectar: solo TIPO 1»* proyecta solo donde lo más barato de Google es la tarifa del manual; *«Viajes comparados: solo comparaciones exactas»* (David, 9-oct, #A97) |
 | 9 | Cómo se nombran las cifras | En palabras de la pregunta que responden (*Precio más barato en Google*, *% de ahorro sobre lo cotizado*, *¿De dónde sale la diferencia?*), nunca con nombres internos ni de columnas; sin recuadros de texto (David, 8-oct, #A92) |
 
 ## 11. Bitácora
+
+- **2026-10-09** — Ideas de David (#A97). Lo que se hizo:
+  - **Cuántos viajes son TIPO 1.** Nacionales de abril a octubre: 44 % de los viajes, 38 % de los tiquetes y 39 % del gasto; en los de ida y vuelta, 29 %. TIPO 2 es el grupo más grande (45 % de los viajes, 51 % del gasto). Ahora el volumen se separa por TIPO, y la proyección puede limitarse a TIPO 1, donde la comparación es exacta.
+  - **¿Un mismo vuelo con varios precios?** No: Google da un precio por vuelo (0 repetidos en 59 + 63 resultados de SerpApi y 161 de Ignav). Los precios distintos de un vuelo solo aparecen en sus opciones de compra, y son de distintos vendedores, no de distintas tarifas.
+  - **Dos precios por vuelo.** Con maleta, Avianca sube de Basic a Classic (+$73.780 en 25 de 25 vuelos) y LATAM no cambia. El rastreo busca ambos equipajes al comprar.
+  - **Calidad de cada comparación.** Cada viaje dice si es exacta, aproximada o no comparable, y hay vistas de «solo exactas».
 
 - **2026-10-08 (noche)** — Reunión «Doge Supply Chain» (#A95). Yurani pide comparar con la
   tarifa real de compra, no con la más barata. Por eso:

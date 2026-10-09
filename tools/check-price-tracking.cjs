@@ -116,7 +116,8 @@ function loadTracker(opts = {}) {
   const base = makeSheet('Nueva Base Solicitudes', opts.rows || solicitudes());
   const ss = makeSpreadsheet([base]);
   const log = { search: [], account: 0, triggers: [], quedan: opts.quedan ?? 200, fallar: opts.fallar || {}, factor: 1, factorIdaYVuelta: 1, consola: [] };
-  const props = Object.assign({ SERPAPI_KEY: KEY, SPREADSHEET_ID: 'HOJA-ID' }, opts.props || {});
+  // DOS_NIVELES 'no' en las pruebas de siempre; la búsqueda del otro equipaje (#A97) se prueba aparte.
+  const props = Object.assign({ SERPAPI_KEY: KEY, SPREADSHEET_ID: 'HOJA-ID', DOS_NIVELES: 'no' }, opts.props || {});
   const resp = (code, obj) => ({ getResponseCode: () => code, getContentText: () => (typeof obj === 'string' ? obj : JSON.stringify(obj)) });
   const ctx = {
     console: { log: (...a) => log.consola.push(a.join(' ')), warn: (...a) => log.consola.push(a.join(' ')), error: (...a) => log.consola.push(a.join(' ')) },
@@ -401,7 +402,8 @@ function main() {
   const bagsOf = (dest, fecha) => t.log.search.filter((p) => p.outbound_date === fecha && !p.booking_token).map((p) => p.bags);
   eq('TIPO 2 con 2 pasajeros: ida y regreso con 2 maletas de mano', bagsOf('', plus(14)).slice(0, 1).concat(bagsOf('', plus(16))), ['2', '2']);
   const ft = Object.fromEntries(rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).map((r) => [r['ID SOLICITUD'], [r['TARIFA'], r['MALETA DE MANO']]]));
-  eq('cada búsqueda guarda la tarifa y las maletas', [ft['SOL-50'], ft['SOL-51'], ft['SOL-52'], ft['SOL-53']], [['TIPO 2', 2], ['TIPO 1', 0], ['TIPO 3', 1], ['', 0]]);
+  // SOL-53 no tiene tarifa: se busca con la que corresponde por noches (solo ida sin hotel = TIPO 1, #A97).
+  eq('cada búsqueda guarda la tarifa y las maletas', [ft['SOL-50'], ft['SOL-51'], ft['SOL-52'], ft['SOL-53']], [['TIPO 2', 2], ['TIPO 1', 0], ['TIPO 3', 1], ['TIPO 1', 0]]);
   eq('sin maleta no se manda el parámetro', t.log.search.filter((p) => !p.bags).length, 2);
   t.ctx.rastrearPrecios();
   eq('segunda pasada: nada nuevo', rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).length, 4);
@@ -413,16 +415,33 @@ function main() {
   eq('cambió la tarifa: se repite una vez con maleta', r51, [0, 1]);
   const pf = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
   const fOf = (id) => pf.items.find((i) => i.requestId === id).fare;
+  // #A97: sin tarifa registrada se compara con la que corresponde por noches (SOL-52: TIPO 3; SOL-53: TIPO 1).
   eq('dashboard: la tarifa y si se buscó con su equipaje', ['SOL-50', 'SOL-51', 'SOL-52', 'SOL-53'].map((id) => [fOf(id).type, fOf(id).searchedBags, fOf(id).match]),
-    [['2', 2, true], ['2', 1, true], ['', 1, null], ['', 0, null]]);
+    [['2', 2, true], ['2', 1, true], ['', 1, true], ['', 0, true]]);
+  eq('dashboard: la tarifa con que se compara y de dónde sale', ['SOL-50', 'SOL-51', 'SOL-52', 'SOL-53'].map((id) => [fOf(id).effective, fOf(id).basis]),
+    [['2', 'registrada'], ['2', 'registrada'], ['3', 'recomendada'], ['1', 'recomendada']]);
+  eq('dashboard: qué tan comparable (TIPO 1 exacta; TIPO 3 fuera de Avianca aproximada)', ['SOL-50', 'SOL-52', 'SOL-53'].map((id) => fOf(id).quality),
+    ['exacta', 'aproximada', 'exacta']);
   eq('dashboard: la recomendada se lee de la hoja o se calcula por las noches', [fOf('SOL-50').recommended, fOf('SOL-53').recommended], ['2', '1']);
-  eq('resumen con la misma tarifa: solo SOL-50 y SOL-51', [pf.summary.sameFare.overall.n, pf.summary.overall.n, pf.summary.fareCounts], [2, 4, { match: 2, mismatch: 0, unknown: 2, noFare: 2, noResult: 0 }]);
+  eq('resumen con la misma tarifa: las 4 (2 por noches) y solo exactas: 3', [pf.summary.sameFare.overall.n, pf.summary.exact.overall.n, pf.summary.overall.n, pf.summary.fareCounts],
+    [4, 3, 4, { match: 4, mismatch: 0, unknown: 0, noFare: 0, noResult: 0, byRecommendation: 2, exact: 3, approx: 1 }]);
   // Si la búsqueda con maleta falta (p. ej. aún no corre), la de sin maleta no se toma como la misma tarifa.
   const cp = t.ss.sheets['COMPARATIVO PRECIOS'].data, iId = cp[0].indexOf('ID SOLICITUD'), iBags = cp[0].indexOf('MALETA DE MANO');
   cp.splice(cp.findIndex((r, i) => i > 0 && r[iId] === 'SOL-51' && r[iBags] === 1), 1);
   const pf2 = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
   const f51 = pf2.items.find((i) => i.requestId === 'SOL-51');
-  eq('sin búsqueda con su equipaje: no se compara', [f51.fare.match, f51.fare.searchedBags, pf2.summary.fareCounts.mismatch, pf2.summary.sameFare.overall.n], [false, 0, 1, 1]);
+  eq('sin búsqueda con su equipaje: no se compara', [f51.fare.match, f51.fare.searchedBags, f51.fare.quality, pf2.summary.fareCounts.mismatch, pf2.summary.sameFare.overall.n],
+    [false, 0, 'no comparable', 1, 3]);
+  // #A97: la regla de cada aerolínea (prueba del 9-oct con SerpApi) y la búsqueda del otro equipaje en el detalle.
+  const q = loadPlatform(t.ss);
+  const snapCon = (airline, bags) => ({ result: 'OK', bags, format: 3, referenceKind: 'TRAMOS', legs: [{ leg: 'IDA', referenceIsNear: true, near: { airline } }] });
+  eq('calidad por aerolínea y tarifa', [
+    q._ptQuality_(1, snapCon('LATAM', 0), true).quality, q._ptQuality_(2, snapCon('Avianca', 1), true).quality,
+    q._ptQuality_(2, snapCon('LATAM', 1), true).quality, q._ptQuality_(2, snapCon('JetSMART', 1), true).quality,
+    q._ptQuality_(3, snapCon('Avianca', 1), true).quality, q._ptQuality_(3, snapCon('Wingo', 1), true).quality,
+    q._ptQuality_(2, snapCon('Avianca', 0), false).quality, q._ptQuality_(2, null, false).quality],
+    ['exacta', 'exacta', 'aproximada', 'exacta', 'exacta', 'aproximada', 'no comparable', '']);
+  eq('LATAM en TIPO 2 dice por qué es aproximada', /LATAM: Google no distingue/.test(q._ptQuality_(2, snapCon('LATAM', 1), true).reason), true);
   // Una búsqueda más reciente que falla no tapa la anterior que sí trajo precio (revisión del 8-oct).
   const iRes = cp[0].indexOf('RESULTADO'), iFecha = cp[0].indexOf('FECHA BUSQUEDA');
   const ok50 = cp.find((r, i) => i > 0 && r[iId] === 'SOL-50' && r[iRes] === 'OK');
@@ -434,6 +453,25 @@ function main() {
   eq('una búsqueda nueva que falla no borra el precio de la anterior', [after50.market, after50.fare.match, after50.atPurchase.result], [before50.market, true, 'OK']);
   const det50 = loadPlatform(t.ss).getPriceTrackingDetail('dsanchez@equitel.com.co', 'SOL-50');
   eq('el detalle también muestra la búsqueda que sí trajo precio', [det50.searches.COMPRA && det50.searches.COMPRA.result, det50.searchCount.COMPRA >= 2], ['OK', true]);
+
+  // 5e. Dos precios por vuelo (#A97): con DOS_NIVELES = compra, al comprar se busca también el otro equipaje.
+  t = loadTracker({ props: { INICIO_ESTUDIO: today, DOS_NIVELES: 'compra' }, rows: [HF,
+    conTarifa('SOL-60', 'TIPO 2', 'TIPO 2', { STATUS: 'APROBADO', 'FECHA VUELTA': '', AEROLINEA: 'Avianca' }),
+    conTarifa('SOL-61', '', '', { STATUS: 'APROBADO', 'FECHA VUELTA': '' })] });
+  eq('probarConfiguracion avisa la búsqueda del otro equipaje', /SOL-60 COMPRA .*otro equipaje/.test(t.ctx.probarConfiguracion()), true);
+  t.ctx.rastrearPrecios();
+  const dos = rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).map((r) => r['ID SOLICITUD'] + ' ' + r['MALETA DE MANO']).sort();
+  eq('cada viaje se busca con los dos equipajes (el de la tarifa primero)', dos, ['SOL-60 0', 'SOL-60 1', 'SOL-61 0', 'SOL-61 1']);
+  t.ctx.rastrearPrecios();
+  eq('segunda pasada: nada nuevo', rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).length, 4);
+  const p60 = loadPlatform(t.ss);
+  const it60 = p60.getPriceTracking('dsanchez@equitel.com.co').items.find((i) => i.requestId === 'SOL-60');
+  eq('el comparador usa la búsqueda con el equipaje de la tarifa', [it60.fare.match, it60.fare.searchedBags, it60.atPurchase.bags], [true, 1, 1]);
+  const d60 = p60.getPriceTrackingDetail('dsanchez@equitel.com.co', 'SOL-60');
+  eq('el detalle trae también la del otro equipaje', [d60.searches.COMPRA.bags, d60.otherLevel.COMPRA && d60.otherLevel.COMPRA.bags, d60.otherLevel.COTIZACION], [1, 0, null]);
+  t = loadTracker({ props: { INICIO_ESTUDIO: today, DOS_NIVELES: 'no' }, rows: [HF, conTarifa('SOL-62', 'TIPO 1', '', { STATUS: 'APROBADO', 'FECHA VUELTA': '' })] });
+  t.ctx.rastrearPrecios();
+  eq('con DOS_NIVELES = no, solo el equipaje de la tarifa', rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).map((r) => r['MALETA DE MANO']), [0]);
 
   // 6. Desactivar
   t = loadTracker();

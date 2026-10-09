@@ -2222,3 +2222,65 @@ El manual dice «más de 6» para la opción 3; los viajes de 6 noches no caen e
 **Refuerzo en el servidor (va con el próximo `Code.gs`):** en la revisión de todo lo que corre al crear una solicitud, lo único que podía fallar para todos *después* de escribir la fila era el contador diario de solicitudes (`_recordCreateRequest_`, en Script Properties). Ahora un fallo ahí solo deja un aviso en el registro: la solicitud ya quedó creada y el usuario no ve un error. Los correos ya estaban protegidos.
 
 **Qué hacer con quien tenga el error:** recargar la página (F5). Quien abrió la app antes de las 12:28 del 8-oct necesita recargar una vez; a partir de esta versión no vuelve a pasar.
+
+---
+
+## **#A97 — Comparador: tarifa por noches, qué tan comparable es cada viaje y dos precios por vuelo**
+**Fecha:** 2026-10-09 · **Pedido por:** David · **Estado:** Implementado en el dashboard de costos y el rastreo. La app de Laura no cambia: no hay autorización de Yurani.
+
+**Pedido:**
+1. Ver qué porcentaje de los viajes es TIPO 1. En esos viajes lo más barato de Google sí es la tarifa del manual, así que se puede sugerir y medir el ahorro con exactitud. En TIPO 2 y 3, decir claramente que el precio de Google puede no ser el de la tarifa a comprar.
+2. Si un mismo vuelo aparece con varios precios, deducir de ahí las tarifas de la aerolínea.
+
+**Qué se encontró:**
+- **Histórico (base del 8-oct, 421 viajes comprados):**
+  - nacionales: TIPO 1 = 44 % de los viajes y 39 % del gasto; TIPO 2 = 45 % y 51 %; TIPO 3 = 11 % y 10 %;
+  - en los de ida y vuelta, TIPO 1 = 29 %.
+- **Un precio por vuelo.** Google devuelve un solo precio por vuelo (0 repetidos en 59 y 63 resultados de SerpApi y en 161 de Ignav). Los precios distintos de un vuelo están en sus opciones de compra y son de distintos vendedores (Avianca, Despegar, eDreams…), no de distintas tarifas. La idea 2, tal como se planteó, no es posible.
+- **Lo que sí se puede: buscar el mismo vuelo con otro equipaje.** Prueba del 9-oct, Bogotá–Medellín, 2 búsquedas:
+  - Avianca sube de Basic a Classic: +$73.780 en 25 de 25 vuelos;
+  - JetSMART suma la maleta (+$83.300);
+  - LATAM y Wingo no cambian;
+  - Clic solo aparece con maleta.
+
+**Cambio:**
+- **`Code.gs` (solo funciones del dashboard):**
+  - `_ptFare_`: sin tarifa registrada, compara con la que corresponde por noches (`basis: 'recomendada'`).
+  - `_ptQuality_` y `_ptRefAirlines_`: cada viaje queda *exacta*, *aproximada* o *no comparable*, con su porqué.
+  - `summary.exact`: solo las comparaciones exactas. `fareCounts` cuenta exactas, aproximadas y por noches.
+  - El detalle trae `otherLevel`: la búsqueda del otro equipaje.
+  - El análisis de ahorro trae la columna `tarifa` (TIPO por noches).
+- **`Rastreo.gs`:**
+  - Sin tarifa, busca con el equipaje de la que corresponde por noches.
+  - Nueva propiedad `DOS_NIVELES` (`compra` por defecto): al comprar, busca también el otro equipaje. Es 1 consulta más por tramo.
+- **`CostsDashboard.html`:**
+  - *Comparar*: con la tarifa del manual / solo comparaciones exactas / todas las búsquedas.
+  - Cada viaje lleva una etiqueta (✓ exacta, ≈ aproximada, ✗ no comparable) con el porqué.
+  - El detalle muestra «Precio de cada vuelo sin maleta y con maleta de mano», con lo que se deduce (Avianca: Basic → Classic; LATAM: Google no la distingue).
+  - Volumen por TIPO y un indicador «Viajes TIPO 1».
+  - Proyección: *Viajes a proyectar: solo TIPO 1* y *Viajes comparados: solo exactas*.
+  - Metodología y CSV actualizados.
+
+**Compatibilidad:**
+- *Dashboard nuevo + `Code.gs` anterior:* sin `summary.exact` el selector vuelve a «con la tarifa del manual»; sin `quality` no hay etiquetas.
+- *`Code.gs` nuevo + rastreo anterior:* todo funciona, pero sin los dos precios por vuelo y con los viajes sin tarifa buscados sin maleta (salen «no comparable» si son TIPO 2 o 3).
+- La app de Laura no cambia.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `check-price-tracking.cjs`:
+  - la tarifa por noches y la calidad por aerolínea (8 casos);
+  - los dos equipajes al comprar y que la segunda pasada no repite;
+  - que con `DOS_NIVELES = no` no hay búsqueda extra;
+  - que el detalle trae el otro nivel.
+- `check-savings-analysis.cjs`: la columna `tarifa`, la muestra «solo exactas» y «solo TIPO 1», y la proyección solo TIPO 1 (49 comprobaciones).
+- Capturas con la base real del 8-oct más las dos búsquedas reales de hoy: los 3 viajes del estudio salen «no comparable», porque son TIPO 2 y se buscaron sin maleta.
+
+**Despliegue:**
+1. Pegar `server/Code.gs` y `server/CostsDashboard.html` y crear la versión nueva del web app.
+2. En el proyecto «Equitel · Rastreo de precios», reemplazar **Rastreo** por `tools/comparador-precios/apps-script/Rastreo.gs`.
+3. En el dashboard, *⟳ Actualizar datos*.
+
+No hay push: la app no cambia.
+
+**Cupo:** quedan 187 búsquedas este mes. Con el ritmo del estudio alcanza hasta el 21-oct; si no, `DOS_NIVELES` = `no` en las propiedades del proyecto del rastreo.

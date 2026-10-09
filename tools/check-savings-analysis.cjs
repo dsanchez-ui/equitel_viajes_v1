@@ -210,8 +210,10 @@ function main() {
   // 3. La tabla compacta del análisis
   const a = r1.data.analysis;
   eq('columnas del análisis', a.columns, ['mes', 'mesSolicitud', 'estado', 'vuelo', 'idaVuelta', 'pasajeros', 'internacional', 'hotel', 'cambio', 'cambioConCosto',
-    'multidestino', 'cotizadoTiquetes', 'facturado', 'anticipacion', 'canal', 'empresa', 'unidad']);
+    'multidestino', 'cotizadoTiquetes', 'facturado', 'anticipacion', 'canal', 'empresa', 'unidad', 'tarifa']);
   const byIdx = (i) => a.rows[i];
+  // #A97: la tarifa del manual por noches: SOL-1 (2 noches) TIPO 2; SOL-2 (solo ida sin hotel) TIPO 1; solo hospedaje 0.
+  eq('tarifa por noches en el análisis', [byIdx(0)[17], byIdx(1)[17], byIdx(3)[17]], [2, 1, 0]);
   eq('SOL-1: comprado en sep, ida y vuelta, con hotel, factura, 2 días, Aviatur', byIdx(0).slice(0, 15), ['2026-09', '2026-09', 'C', 1, 1, 1, 0, 1, 0, 0, 0, 600000, 950000, 2, 'A']);
   eq('SOL-2: solo ida, 2 pasajeros, internacional, modificación con costo, multidestino, Directo', byIdx(1).slice(2, 15), ['C', 1, 0, 2, 1, 0, 1, 1, 1, 3000000, 0, 20, 'D']);
   eq('anulada, solo hospedaje, denegada y en curso', [byIdx(2)[2], byIdx(3).slice(0, 4), byIdx(4)[2], byIdx(5)[2]], ['A', ['2026-10', '2026-10', 'C', 0], 'D', 'P']);
@@ -282,6 +284,19 @@ function main() {
   eq('la vista por defecto es la misma tarifa', b.ptFareMode(), 'same');
   b.priceData = { summary: { overall: {} }, items: [I('S1', '1', true)].map((x) => { delete x.fare; return x; }) };
   eq('con un Code.gs anterior (sin tarifas) se ve todo, como antes', [b.ptFareMode(), b.saSample(false, 'same').length], ['all', 1]);
+  // #A97: solo comparaciones exactas, solo TIPO 1, y la proyección solo de los viajes TIPO 1.
+  const Q = (id, eff, match, quality) => I(id, eff, match, { fare: { type: '', effective: eff, match, quality, searchedBags: 0 } });
+  b.priceData = { summary: { sameFare: { overall: {} }, exact: { overall: {} } },
+    items: [Q('E1', '1', true, 'exacta'), Q('E2', '2', true, 'aproximada'), Q('E3', '2', true, 'exacta'), Q('E4', '2', false, 'no comparable')] };
+  eq('muestra: con la tarifa del manual / solo exactas / solo TIPO 1', [b.saSample(false, 'same').map((x) => x.it.requestId),
+    b.saSample(false, 'exact').map((x) => x.it.requestId), b.saSample(false, 'all', 'tipo1').map((x) => x.it.requestId)],
+    [['E1', 'E2', 'E3'], ['E1', 'E3'], ['E1']]);
+  eq('por qué no cuenta en «solo exactas»', [b.ptFareGap(b.priceData.items[1], 'exact'), b.ptFareGap(b.priceData.items[0], 'exact')], ['comparación aproximada', '']);
+  const tripsTipo = [T({ tipo: 1 }), T({ tipo: 2, quoted: 900000 }), T({ tipo: 1, rt: false, quoted: 400000 })];
+  const sTipo = [S(200000, 600000, 100000)];
+  const pTodos = b.saProject(tripsTipo, ['2026-09'], sTipo, Object.assign({}, base, { how: 'fixed', base: 'trip', fixed: 100000 }));
+  const pT1 = b.saProject(tripsTipo, ['2026-09'], sTipo, Object.assign({}, base, { how: 'fixed', base: 'trip', fixed: 100000, scope: 'tipo1' }));
+  eq('proyección: todos los viajes o solo TIPO 1', [pTodos['2026-09'], pT1['2026-09']], [300000, 200000]);
 
   if (failures.length) {
     console.error(`\n✗ Velocidad y análisis de ahorro: ${failures.length} problema(s).\n`);

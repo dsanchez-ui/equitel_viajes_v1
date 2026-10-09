@@ -170,6 +170,49 @@ Fuentes: [Duffel, precios](https://duffel.com/pricing) · [Duffel, campos de la 
 [Tarifas nacionales de LATAM](https://www.latamairlines.com/co/es/centro-ayuda/preguntas/compras/asistencia/tarifas-pasaje-domestico) ·
 [Tarifas de Avianca (2024)](https://www.valoraanalitik.com/2024/01/25/avianca-lanza-nuevas-tarifas-para-vuelos-nacionales-e-internacionales/)
 
+### Tarifa por noches, qué tan comparable y dos precios por vuelo (#A97, 9-oct, idea de David)
+
+Solo el dashboard de costos y el rastreo. La app de Laura no cambia: falta la autorización de Yurani.
+
+**1. ¿Cuántos viajes son TIPO 1?** Base del 8-oct: 421 viajes comprados de abril a octubre.
+
+| Nacionales | Viajes | Tiquetes | Gasto |
+|---|---|---|---|
+| TIPO 1 (0 a 1 noche) | 44 % | 38 % | 39 % |
+| TIPO 2 (2 a 5 noches) | 45 % | 51 % | 51 % |
+| TIPO 3 (6 o más) | 11 % | 11 % | 10 % |
+
+- En los de ida y vuelta, TIPO 1 es el 29 %.
+- Los de solo ida son TIPO 1 en el 80 %, porque sin regreso se cuentan las noches de hotel y 85 de 116 no tienen.
+
+**Conclusión:** TIPO 1 no es la mayoría, pero pesa un 40 % del gasto, y en TIPO 1 lo más barato de Google **es** la tarifa del manual.
+
+**2. Dos precios por vuelo.** El 9-oct se buscó Bogotá–Medellín sin maleta y con 1 maleta de mano (2 búsquedas):
+
+| Aerolínea | Al pedir maleta de mano | Qué se deduce |
+|---|---|---|
+| Avianca | sube en 25 de 25 vuelos, siempre +$73.780 | Basic y Classic de cada vuelo (la Flex no) |
+| JetSMART | sube en 6 de 6 (+$83.300) | la tarifa y la tarifa con maleta |
+| LATAM | no cambia en 16 de 16 | nada: Google no distingue Basic, Light ni Full |
+| Wingo | no cambia (6 de 6) | ya incluye la maleta de mano |
+| Clic | solo aparece al pedir maleta | su precio con maleta |
+
+**Qué se construye:**
+- **Tarifa por noches cuando no está registrada.** El comparador usa la tarifa que registró el área de viajes y, si falta, la que corresponde por las noches del viaje. Los viajes TIPO 1 se comparan con lo más barato de Google. El rastreo busca con ese mismo equipaje.
+- **Qué tan comparable es cada viaje:**
+  - **Exacta:** TIPO 1 sin maleta; TIPO 2 con maleta de mano cuando el vuelo de referencia es de Avianca, JetSMART, Wingo o Clic; TIPO 3 solo con Avianca, porque su Classic incluye bodega.
+  - **Aproximada:** LATAM en TIPO 2 o 3, porque Google no la distingue, y cualquier TIPO 3 que no sea Avianca, porque no se puede pedir bodega. El precio de Google puede quedar por debajo.
+  - **No comparable:** Google se buscó con otro equipaje que el de la tarifa.
+
+  El dashboard lo dice en cada viaje y deja ver «solo comparaciones exactas».
+- **Dos precios por vuelo al comprar.** El rastreo busca también el otro equipaje (`DOS_NIVELES`: `compra` por defecto, `ambos` o `no`). Es una consulta más por tramo. El detalle del viaje muestra, vuelo por vuelo, el precio sin maleta y con maleta de mano, y lo que se deduce de cada aerolínea.
+- **Proyección por tarifa:**
+  - el volumen se separa por TIPO;
+  - un control *«Viajes a proyectar: todos / solo TIPO 1»* deja proyectar solo donde la comparación es exacta;
+  - la muestra se puede limitar a comparaciones exactas.
+
+**Cupo de SerpApi:** quedan 187 búsquedas este mes. Con el ritmo del estudio (unas 6 al día) y la búsqueda extra al comprar, alcanza hasta el 21-oct. Si no alcanzara, se apaga con `DOS_NIVELES` = `no`.
+
 ### Fase 3 — Comparación visible para Laura (después del estudio)
 
 Por ahora (#A84) la comparación **solo la ven Yurani, Diego y David**, en una sección del
