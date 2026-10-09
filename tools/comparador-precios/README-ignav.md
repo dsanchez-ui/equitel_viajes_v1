@@ -1,5 +1,15 @@
 # Prueba de Ignav: ¿sirve para comparar con la misma tarifa?
 
+> **Resultado (9-oct-2026): no sirve.** Se probaron 5 rutas (161 vuelos directos, 19 consultas).
+> Los precios coinciden con Google Flights, pero:
+> - el filtro de bodega no cambió el precio de ningún vuelo;
+> - el de maleta de mano sacó a Avianca y LATAM de los resultados;
+> - el equipaje informado está errado (Avianca Basic con 1 maleta de bodega, LATAM Basic con 2);
+> - las opciones de compra no traen el nombre de la tarifa.
+>
+> El comparador sigue con Google Flights (SerpApi) y la comparación por maleta de mano (#A95).
+> Detalle en [docs/plan-comparador-precios.md](../../docs/plan-comparador-precios.md).
+
 Hoy el comparador usa Google Flights (SerpApi) y compara por equipaje (#A95). Tiene dos
 límites:
 - Google no trae por separado las tarifas del manual COM-P-02.
