@@ -364,8 +364,16 @@ Aviatur.
 | 11 | Qué viajes entran en la muestra | Por defecto, solo los comparados con la misma tarifa (el equipaje de la tarifa registrada); *Todas las búsquedas* queda como opción (reunión del 8-oct, Yurani: «peras con peras», #A95) |
 | 12 | Proyección por tarifa | Volumen separado por TIPO; *«Viajes a proyectar: solo TIPO 1»* proyecta solo donde lo más barato de Google es la tarifa del manual; *«Viajes comparados: solo comparaciones exactas»* (David, 9-oct, #A97) |
 | 9 | Cómo se nombran las cifras | En palabras de la pregunta que responden (*Precio más barato en Google*, *% de ahorro sobre lo cotizado*, *¿De dónde sale la diferencia?*), nunca con nombres internos ni de columnas; sin recuadros de texto (David, 8-oct, #A92) |
+| 13 | Cuándo hay cifra al año | Solo con al menos 15 comparaciones exactas (`SA_MIN_EXACT`); antes, la proyección por mes es un ejercicio y lo dice. Por defecto: % típico sobre lo cotizado, solo exactas, solo TIPO 1, 50 % de los viajes; tope por viaje = mediana del % observado (David, 13-oct, #A99) |
+| 14 | Base de los % | Todo % va sobre lo cotizado (o lo facturado si ya se compró), nunca sobre el precio de Google (David, 13-oct, #A99) |
 
 ## 11. Bitácora
+
+- **2026-10-13** — Revisión del dashboard con la base del día, antes de presentarlo (#A99):
+  - **La proyección de $187,9 M al año no se sostenía:** salía de 6 comparaciones TIPO 2, todas aproximadas; el tope era el máximo % observado y 247 de 377 viajes llegaban a él. Ahora no hay cifra al año sin 15 comparaciones exactas (hoy hay 0), y el tope es la mediana.
+  - **Vista anual de 2026 desde abril:** el presupuesto de enero a marzo ($184,9 M) bajaba el % usado. Abril a diciembre: $590,6 M y 65,2 % usado; a la fecha, 81,6 %.
+  - **Facturas para revisar la carga:** 30 solicitudes con factura de más del doble o de menos de la mitad de lo cotizado. Sin ellas, lo facturado sale +1,1 % sobre lo cotizado en el viaje típico y +4,4 % en el total. En *Cotizado frente a facturado* (viajes sin hotel): +8 % en 199 viajes, sin 9 para revisar.
+  - Todos los % sobre lo cotizado y nombres sin *ejecutado*.
 
 - **2026-10-09 (tarde)** — Claridad del comparador (#A98), tras revisar SOL-000633:
   - los dos precios de un vuelo solo se comparan si se buscaron en el mismo momento (3 horas o menos);

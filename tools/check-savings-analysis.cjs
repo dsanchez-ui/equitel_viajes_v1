@@ -243,20 +243,20 @@ function main() {
   // Proyectables en sep: ida y vuelta de $600.000 (2 tiquetes) y solo ida de 2 pasajeros de $500.000 (2 tiquetes); el
   // internacional (salvo que se incluya), el de $5.000 y lo no comprado no cuentan. En ago: 3 pasajeros ida y vuelta (6 tiquetes).
   const proj = (o) => b.saProject(trips, months, sample, Object.assign({}, base, o));
-  // Mediana por tiquete = 150.000; tope = 50 % del cotizado (el % más alto observado).
+  // Mediana por tiquete = 150.000; tope = 45 % del cotizado (#A99: el % típico, la mediana de 50 % y 40 %; antes, el mayor).
   const p1 = proj({ how: 'median', base: 'ticket' });
-  // 150.000 × 2 = 300.000 en el de $600.000; en el de $500.000, el tope (50 %) lo deja en 250.000; en ago, 900.000 → tope 300.000.
-  eq('mediana por tiquete × tiquetes, con tope del % más alto observado', [p1['2026-09'], p1['2026-08']], [550000, 300000]);
+  // 150.000 × 2 = 300.000 → tope 270.000 en el de $600.000 y 225.000 en el de $500.000; en ago, 900.000 → tope 270.000.
+  eq('mediana por tiquete × tiquetes, con tope del % típico observado', [p1['2026-09'], p1['2026-08']], [495000, 270000]);
   // #A93: la cuenta queda paso a paso para mostrarla y repetirla a mano, sin cambiar el resultado.
   const det = {};
   const p1d = b.saProject(trips, months, sample, Object.assign({}, base, { how: 'median', base: 'ticket' }), det);
   const ds = det.months['2026-09'], da = det.months['2026-08'];
   eq('cuenta de sep: base, antes del tope y recorte del tope', [ds.flights, ds.tickets, ds.spend, ds.raw, ds.cut, ds.cutTrips, p1d['2026-09']],
-    [2, 4, 1100000, 600000, 50000, 1, 550000]);
-  eq('cuenta de ago: 6 tiquetes × 150.000, el tope deja 300.000', [da.tickets, da.raw, da.cut, p1d['2026-08']], [6, 900000, 600000, 300000]);
-  eq('valor y tope que usa la cuenta', [det.rates.rt, det.cap], [150000, 0.5]);
+    [2, 4, 1100000, 600000, 105000, 2, 495000]);
+  eq('cuenta de ago: 6 tiquetes × 150.000, el tope deja 270.000', [da.tickets, da.raw, da.cut, p1d['2026-08']], [6, 900000, 630000, 270000]);
+  eq('valor y tope que usa la cuenta', [det.rates.rt, det.cap], [150000, 0.45]);
   const calc = b.saCalcText({ detail: det, proj: p1d, opts: Object.assign({}, base, { how: 'median', base: 'ticket' }) }, '2026-09');
-  eq('la cuenta en palabras cuadra con la cifra', [/^4 tiquetes × \$150\.000 = \$600\.000; el tope recorta \$50\.000 en 1 viaje → \$550\.000$/.test(calc)], [true]);
+  eq('la cuenta en palabras cuadra con la cifra', [/^4 tiquetes × \$150\.000 = \$600\.000; el tope recorta \$105\.000 en 2 viajes → \$495\.000$/.test(calc)], [true]);
   const p2 = proj({ how: 'median', base: 'pct' });
   near('mediana como % del cotizado (45 %)', p2['2026-09'], 0.45 * (600000 + 500000));
   const p3 = proj({ how: 'fixed', base: 'trip', fixed: 150000 });
@@ -297,6 +297,27 @@ function main() {
   const pTodos = b.saProject(tripsTipo, ['2026-09'], sTipo, Object.assign({}, base, { how: 'fixed', base: 'trip', fixed: 100000 }));
   const pT1 = b.saProject(tripsTipo, ['2026-09'], sTipo, Object.assign({}, base, { how: 'fixed', base: 'trip', fixed: 100000, scope: 'tipo1' }));
   eq('proyección: todos los viajes o solo TIPO 1', [pTodos['2026-09'], pT1['2026-09']], [300000, 200000]);
+
+  // #A99: claridad para presentar. Vista anual de 2026 desde abril (la plataforma arrancó el 27-mar).
+  b.document.getElementById = (id) => ({ value: '', checked: id === 'f_includeEstimated' || id === 'f_includeNoPresupuesto' });
+  const unitRow = { unit: 'POTENCIA', company: 'Cumandes', hasBudget: true, totalBudgetAnnual: 1200, monthlyBudget: Array(12).fill(100),
+    monthlyExecutedReal: [0, 0, 5, 50, 50, 0, 0, 0, 0, 0, 0, 0], monthlyExecutedEstimated: Array(12).fill(0), totalExecutedReal: 105, totalExecutedEstimated: 0,
+    requests: [{ month: 3 }, { month: 4 }, { month: 5 }], requestCount: 3 };
+  const f26 = b.applyClientFilters({ rows: [unitRow], meta: { year: 2026 } });
+  eq('2026: presupuesto, gasto y solicitudes desde abril', [f26.totals.budget, f26.totalsBudgeted.executedTotal, f26.rows[0].requestCount, f26.startMonth], [900, 100, 2, 4]);
+  const elapsed26 = b.dashElapsedMonth(2026);
+  eq('usado a la fecha: frente al presupuesto de abril al mes en curso', f26.totalsBudgeted.budgetToDate, 100 * Math.max(0, Math.min(12, elapsed26) - 3));
+  const f27 = b.applyClientFilters({ rows: [unitRow], meta: { year: 2027 } });
+  eq('2027: el año completo', [f27.totals.budget, f27.totalsBudgeted.executedTotal, f27.startMonth], [1200, 105, 1]);
+  eq('marzo, en la vista del mes, sigue viendo sus solicitudes', b.computeMonthlyData(f26, 3).rows[0].requestCount, 1);
+  // Facturas mal cargadas: más del doble o menos de la mitad de lo cotizado.
+  eq('revisar la carga de facturas', [b.varNeedsReview({ quoted: 100, real: 201 }), b.varNeedsReview({ quoted: 100, real: 200 }),
+    b.varNeedsReview({ quoted: 100, real: 49 }), b.varNeedsReview({ quoted: 100, real: 50 })], [true, false, true, false]);
+  // Todos los % del comparador, sobre lo cotizado.
+  eq('% sobre lo cotizado', [b.ptVerdict(250000, 1000000).sub, b.ptVerdict(-80000, 1000000).sub, b.ptVerdict(500, 1000000).main,
+    b.ptVerdict(100000, 800000, 'lo facturado').sub],
+    ['en Google, 25 % menos que lo cotizado', 'en Google, 8,0 % más que lo cotizado', 'Igual', 'en Google, 13 % menos que lo facturado']);
+  eq('sin al menos 15 comparaciones exactas no hay cifra al año', b.SA_MIN_EXACT, 15);
 
   if (failures.length) {
     console.error(`\n✗ Velocidad y análisis de ahorro: ${failures.length} problema(s).\n`);

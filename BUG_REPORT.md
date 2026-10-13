@@ -2342,3 +2342,65 @@ No hay push: la app no cambia.
 No hay push: la app no cambia.
 
 **Cupo:** como mucho, una consulta más por tramo de cada viaje que tenga el par de otro momento, y solo mientras siga por comprar.
+
+---
+
+## **#A99 — Dashboard de costos: cifras que se pueden presentar y nombres claros**
+**Fecha:** 2026-10-13 · **Pedido por:** David (*"Revisa el dashboard de hoy, dime si los datos te cuadran… y si los ahorros proyectados que muestra son factibles, porque me parecen bastante altos"*; luego *"Aprobado implementar, y haz las etiquetas, encabezados de columnas etc lo más claros posibles"*) · **Estado:** Implementado en `CostsDashboard.html`. `Code.gs` y la app de Laura no cambian.
+
+**Revisión del 13-oct, con la base exportada ese día:**
+- **Los datos cuadran con la hoja:** 409 viajes en avión, 752 tiquetes, $359,9 M en tiquetes; TIPO 1, 2 y 3 = 171, 185 y 53; $111,8 M en TIPO 1.
+- **La proyección de ahorro no se podía presentar** ($187,9 M al año):
+  - salía de 6 comparaciones TIPO 2, todas aproximadas;
+  - multiplicaba la mediana por tiquete por todos los tiquetes;
+  - el tope era el **máximo** % observado, así que recortaba poco (247 de 377 viajes llegaban al tope).
+- **La vista anual contaba el presupuesto de enero a marzo** ($184,9 M), meses en que la plataforma no existía (arrancó el 27-mar). El % usado del año quedaba artificialmente bajo.
+- **La variación cotizado vs facturado** tenía en los extremos errores de carga (facturas de más del doble o de menos de la mitad de lo cotizado), y el promedio dependía de ellos.
+- **Los % del comparador iban sobre el precio de Google** (*«cotizado 37 % más que Google»*) y los del resto del dashboard sobre lo cotizado: dos bases distintas para la misma pregunta.
+- Varias etiquetas eran internas: *Ejecutado real*, *Ejecutado estimado*, *Sobre-ejecutado*, *% del ejecutado*.
+
+**Fix (`CostsDashboard.html`):**
+- **Proyección de ahorro:**
+  - Arranca en lo más prudente: *% de ahorro típico sobre lo cotizado*, *Solo comparaciones exactas*, *Solo TIPO 1* y 50 % de los viajes.
+  - **Sin al menos 15 comparaciones exactas (`SA_MIN_EXACT`) no hay cifra al año.** El titular dice *«Todavía no se proyecta un ahorro al año»*, un aviso dice que es un ejercicio y no una estimación, y la fila *Equivalente a un año* no aparece.
+  - El tope por viaje es la **mediana** del % observado, no el máximo.
+  - El rango (misma aerolínea – todo) usa el mismo método que la cifra principal.
+  - Sin proyección, la gráfica se oculta (quedaba vacía con un eje de «$0 $1»).
+  - La tabla *Cotizado frente a facturado* deja fuera los viajes para revisar la carga y lo dice debajo.
+  - El CSV anota cuántas comparaciones exactas hay.
+- **Vista anual desde abril de 2026** (`DASH_FIRST_YEAR`/`DASH_FIRST_MONTH`):
+  - presupuesto, gasto, solicitudes y gráficas de 2026 cuentan de abril a diciembre (*Presupuesto abr–dic*);
+  - la gráfica mensual no dibuja presupuesto de enero a marzo y lo explica;
+  - nueva tarjeta **Usado a la fecha**: el gasto frente al presupuesto de abril al mes en curso;
+  - 2027 en adelante, el año completo.
+- **Variación cotizado vs facturado:**
+  - una factura de más del doble o de menos de la mitad de lo cotizado se marca **«revisar la carga»** (`varNeedsReview`), se lista arriba y no entra en totales ni en la gráfica (sí en la tabla, resaltada);
+  - la cifra principal es la **diferencia típica por viaje** (mediana), con la del total al lado.
+- **Todos los % sobre lo cotizado:** *«en Google, 27 % menos que lo cotizado»* (o *«que lo facturado»* en lo ya comprado).
+- **Nombres:**
+  - *Facturado*, *Comprado sin factura*, *% del gasto*, *Por encima del presupuesto*, *Presupuesto del año / abr–dic*;
+  - columnas *Valor cotizado*, *Diferencia (facturado − cotizado)*, *% sobre lo cotizado*, *Precio más barato en Google*, *Lo cotizado frente a Google*, *% del gasto en tiquetes*, *Rango: misma aerolínea – todo*;
+  - *Gasto sin presupuesto* y la vista mensual dicen *gasto*, no *ejecución*.
+
+**Compatibilidad:** solo cambia el HTML; lee los mismos payloads del `Code.gs` desplegado (#A98). La app de Laura no cambia.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `check-savings-analysis.cjs` (56 comprobaciones):
+  - el tope por mediana;
+  - 2026 desde abril y 2027 completo;
+  - presupuesto a la fecha;
+  - `varNeedsReview`;
+  - los % de `ptVerdict` sobre lo cotizado y lo facturado;
+  - `SA_MIN_EXACT`.
+- Capturas con la base del 13-oct:
+  - **Anual:** *Presupuesto abr–dic* $590,6 M, 65,2 % usado; *Usado a la fecha* 81,6 % de $471,7 M.
+  - **Variación:** 30 solicitudes para revisar la carga; diferencia típica +1,1 % y +4,4 % en el total de las otras 333.
+  - **Proyección:** 0 de 15 comparaciones exactas, así que sin cifra al año.
+  - **Cotizado frente a facturado:** +8 % en 199 viajes, sin los 9 para revisar.
+
+**Despliegue:**
+1. Pegar `server/CostsDashboard.html` y crear la versión nueva del web app.
+2. En el dashboard, *⟳ Actualizar datos*.
+
+El push solo guarda el código en GitHub: la app no cambia.

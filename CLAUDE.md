@@ -329,6 +329,19 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   de una o dos frases por concepto: cómo se hizo y por qué ese método. Si se agrega una estimación nueva,
   va con su explicación. La proyección muestra la cuenta de cada mes en pesos (cursor y CSV, columna *Cuenta*),
   y su tabla solo cuenta lo que se proyecta.
+- **Cifras que se pueden presentar** (#A99, revisión de David del 13-oct: la proyección de $187,9 M al año salía de
+  6 comparaciones aproximadas):
+  - **Proyección:** sin **15 comparaciones exactas** (`SA_MIN_EXACT`) no se muestra cifra al año, solo el ejercicio
+    por mes con un aviso. Arranca en lo más prudente (% típico sobre lo cotizado, solo exactas, solo TIPO 1, 50 %) y
+    el tope por viaje es la **mediana** del % observado, nunca el máximo.
+  - **La vista anual de 2026 cuenta desde abril** (`DASH_FIRST_MONTH`): antes no existía la plataforma y su
+    presupuesto bajaba el % usado. La tarjeta *Usado a la fecha* compara con el presupuesto hasta el mes en curso.
+  - **«Revisar la carga»:** una factura de más del doble o de menos de la mitad de lo cotizado (`varNeedsReview`)
+    se lista aparte y no entra en totales, promedios ni gráficas. La cifra principal de la variación es la
+    **diferencia típica** (mediana).
+  - **Todo % va sobre lo cotizado** (o lo facturado si ya se compró): *«en Google, 27 % menos que lo cotizado»*.
+  - Nombres en pantalla: *Facturado*, *Comprado sin factura*, *Por encima del presupuesto*, *Valor cotizado*,
+    *% sobre lo cotizado*. Nunca *ejecutado* ni *sobre-ejecutado*.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -573,6 +586,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
   Pendientes sin código: avisarle a Laura del campo de tarifa; revisar las cifras de ahorro con Yurani antes de
   mostrarlas a Alejandro; pedir a Aviatur el precio de las tres tarifas en cada cotización; borrar
   `public/assets/EmailGenerator-CHBQuqHQ.js` unos días después (#A96). Internacionales: se queda CEO o CDS.
+- **#A99 (13-oct, cifras del dashboard que se pueden presentar):** solo cambia `server/CostsDashboard.html`;
+  pendiente pegarlo y crear la versión nueva del web app (lo hace David). `Code.gs` no cambia.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
   [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).
