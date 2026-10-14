@@ -11919,6 +11919,7 @@ function onOpen() {
     .addItem('12. Columnas de compra y resumen de facturas', 'menuColumnasCompraFacturas')
     .addItem('13. Aprobaciones por política: activar resumen cada 2 h', 'activarAprobacionesPolitica')
     .addItem('14. Aprobaciones por política: ver pendientes', 'menuVerAprobacionesPolitica')
+    .addItem('15. Informe mensual de la política: prueba (solo a mí)', 'menuInformeMensualPrueba')
     .addToUi();
 }
 
@@ -19068,7 +19069,11 @@ function procesarAprobacionesPolitica() {
   var listed = 0;
   try { listed = _policySendDigest_(false); }
   catch (e) { console.error('procesarAprobacionesPolitica: error enviando el resumen: ' + e); }
-  return { expired: expired, listed: listed };
+  // #A101: el informe mensual de cumplimiento sale con esta misma pasada (primer día hábil).
+  var monthly = '';
+  try { monthly = _mrMaybeSendMonthly_(); }
+  catch (e) { console.error('procesarAprobacionesPolitica: error enviando el informe mensual: ' + e); }
+  return { expired: expired, listed: listed, monthly: monthly };
 }
 
 /**
@@ -19366,7 +19371,9 @@ function menuVerAprobacionesPolitica() {
       'Aprueba: ' + (cfg.name || '—') + (cfg.email ? ' (' + cfg.email + ')' : '') + ' — se cambia en la configuración del dashboard de costos (budgetApproverEmail / budgetApproverName).\n' +
       'Resumen cada ' + POLICY_DIGEST_EVERY_HOURS + ' h: ' + (trig === true ? 'activo' : trig === false ? 'NO ACTIVO (menú 13)' :
         'revíselo en Activadores del editor (debe estar ' + POLICY_DIGEST_HANDLER + ', cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas; si no está, menú 13)') + '\n' +
-      'Aviso a los solicitantes hasta el ' + _policyFmtDay_(POLICY_NOTICE_UNTIL) + ': ' + _policyNoticeAckCount_() + ' constancia(s) de lectura en la hoja «' + POLICY_NOTICE_SHEET + '».\n\n' +
+      'Aviso a los solicitantes hasta el ' + _policyFmtDay_(POLICY_NOTICE_UNTIL) + ': ' + _policyNoticeAckCount_() + ' constancia(s) de lectura en la hoja «' + POLICY_NOTICE_SHEET + '».\n' +
+      (function() { var nx = _mrNextSend_(), last = _mrLastSent_(); return 'Informe mensual (#A101): el de ' + _mrMonthLabel_(nx.ym) + ' sale el ' + _policyFmtDay_(nx.dayKey) +
+        ' con la pasada del resumen' + (last ? '; último enviado: ' + _mrMonthLabel_(last) : '') + '. Prueba: menú 15.'; })() + '\n\n' +
       (items.length ? 'En espera (' + items.length + '):\n' + lines.join('\n') : 'No hay solicitudes en espera.'), ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
@@ -19450,4 +19457,521 @@ function getPolicyHeldRequests() {
     };
   });
   return { enabled: cfg.enabled, approverName: cfg.name, expiryDays: POLICY_HOLD_EXPIRY_DAYS, items: items };
+}
+
+// =====================================================================
+// INFORME MENSUAL DE CUMPLIMIENTO DE LA POLÍTICA DE VIAJES (#A101)
+// =====================================================================
+// Alejandro Gómez (CFO) anunció el 13-oct-2026 que el informe de cumplimiento de
+// la política COM-P-02, «con los cuadros de honor y deshonor, se publicará cada
+// mes». David (14-oct): que le llegue solo el primer día hábil del mes siguiente,
+// con copia a Yurani y a David, y una prueba que solo le llegue a quien la corre.
+// Decisiones de David del 14-oct:
+//   - cada viaje cuenta en el MES DE LA SOLICITUD (como el informe del 13-oct);
+//   - cuadros de honor y de deshonor y «quién pide»: los ÚLTIMOS 3 MESES;
+//   - para quien aprueba en la configuración del dashboard (budgetApproverEmail).
+// Mismas reglas del informe del 13-oct: solo vuelos RESERVADO o PROCESADO; las
+// modificaciones y lo registrado después de comprar («SOLO POR TRAZABILIDAD») no
+// cuentan para la anticipación; a tiempo = días entre la solicitud (o la compra) y
+// la ida ≥ 8 nacional / 30 internacional. La tarifa sale solo de lo registrado
+// (TIPO DE COMPRA DE TKT), nunca del texto del viajero.
+// Envío: lo revisa cada pasada de procesarAprobacionesPolitica (cada 2 h; el
+// activador lo crea David a mano, el proyecto no tiene permiso para crearlo). La
+// primera pasada en horario laboral desde el primer día hábil del mes lo envía una
+// vez; la hoja oculta INFORMES ENVIADOS deja la constancia y evita repetirlo. Solo
+// lee las solicitudes. Nada se guarda en Script Properties.
+// =====================================================================
+
+var MR_REPORT_KIND = 'Cumplimiento de la política de viajes';
+var MR_SENT_SHEET = 'INFORMES ENVIADOS';
+// El primero automático es el de octubre de 2026: sale el martes 3-nov (el 2-nov es festivo).
+var MR_FIRST_MONTH = '2026-10';
+var MR_CC = ['yprieto@equitel.com.co', 'dsanchez@equitel.com.co'];
+var MR_TREND_MONTHS = 6;
+var MR_RANK_MONTHS = 3;
+var MR_RANK_MIN_TRIPS = 4;
+var MR_HONOR_MAX_SHARE = 0.2;
+var MR_SHAME_MIN_SHARE = 0.6;
+var MR_RANK_ROWS = 8;
+var MR_REQUESTER_ROWS = 12;
+var MR_MONTHS_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/** 'AAAA-MM' más n meses (n puede ser negativo). */
+function _mrAddMonths_(ym, n) {
+  var y = +String(ym).slice(0, 4), m = +String(ym).slice(5, 7) - 1 + n;
+  y += Math.floor(m / 12);
+  m = ((m % 12) + 12) % 12;
+  return y + '-' + ('0' + (m + 1)).slice(-2);
+}
+
+function _mrMonthLabel_(ym) { return MR_MONTHS_ES[+String(ym).slice(5, 7) - 1] + ' de ' + String(ym).slice(0, 4); }
+function _mrMonthShort_(ym) { return MR_MONTHS_ES[+String(ym).slice(5, 7) - 1].slice(0, 3) + ' ' + String(ym).slice(0, 4); }
+
+/** Primer día hábil (lunes a viernes, sin festivos de Colombia) de un mes 'AAAA-MM', como 'AAAA-MM-DD'. */
+function _mrFirstBusinessDay_(ym) {
+  var y = +String(ym).slice(0, 4), m = +String(ym).slice(5, 7);
+  var holidays = _psHolidaysCO_(y);
+  for (var d = 1; d <= 15; d++) {
+    var n = Math.round(Date.UTC(y, m - 1, d) / 86400000), w = new Date(n * 86400000).getUTCDay();
+    if (w !== 0 && w !== 6 && !holidays[n]) return _psKeyFromDayNumber_(n);
+  }
+  return ym + '-01';
+}
+
+/** 'PINZON GONZALEZ MAURICIO' → 'Pinzon Gonzalez Mauricio'. */
+function _mrName_(s) {
+  return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim()
+    .replace(/(^|[\s'-])([a-záéíóúñü])/g, function(all, sep, ch) { return sep + ch.toUpperCase(); });
+}
+
+/** Nombre para comparar personas: mayúsculas, sin tildes, espacios simples. */
+function _mrNameKey_(s) {
+  return String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function _mrPct_(n, d) { return d ? Math.round(100 * n / d) + ' %' : '—'; }
+function _mrDays_(n) { return n === null || n === undefined ? '—' : (Math.round(n * 10) / 10).toString().replace('.', ',') + (Math.abs(n) === 1 ? ' día' : ' días'); }
+
+/**
+ * Lee la hoja una sola vez. trips = vuelos RESERVADO o PROCESADO (sin pruebas), con
+ * las mismas fórmulas del informe del 13-oct. policy = solicitudes que pasaron por el
+ * CFO (#A100): en espera, decididas o con tarifa superior; cualquier estado y modo.
+ */
+function _mrReadData_() {
+  var out = { trips: [], policy: [] };
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2) return out;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var idx = {};
+  ['ID RESPUESTA', 'STATUS', 'MODO_SOLICITUD', 'ES INTERNACIONAL', 'FECHA SOLICITUD', 'FECHA/HORA (AUTOMÁTICO)', 'FECHA IDA', 'FECHA VUELTA',
+    'FECHA DE COMPRA DE TIQUETE', 'SELECCION_TEXTO', 'TIPO DE SOLICITUD', '# NOCHES (AUTOMÁTICO)', 'CORREO ENCUESTADO', 'EMPRESA', 'UNIDAD DE NEGOCIO',
+    'CIUDAD ORIGEN', 'CIUDAD DESTINO', FARE_TYPE_HEADER, POLICY_DECISION_HEADER, FARE_CFO_FLAG_HEADER,
+    'NOMBRE PERSONA 1', 'NOMBRE PERSONA 2', 'NOMBRE PERSONA 3', 'NOMBRE PERSONA 4', 'NOMBRE PERSONA 5'].forEach(function(h) { idx[h] = H(h); });
+  var get = function(row, h) { var i = idx[h]; return i >= 0 ? row[i] : ''; };
+  var names = _policyUserNames_();
+  var diff = function(a, b) { return a && b ? _psDayNumber_(b) - _psDayNumber_(a) : null; };
+  data.forEach(function(row) {
+    var id = String(get(row, 'ID RESPUESTA') || '').trim();
+    if (!id) return;
+    var travelers = [1, 2, 3, 4, 5].map(function(k) { return String(get(row, 'NOMBRE PERSONA ' + k) || '').trim().toUpperCase().replace(/\s+/g, ' '); })
+      .filter(Boolean);
+    if (travelers.some(function(n) { return /PRUEBA/.test(n); })) return;
+    var st = String(get(row, 'STATUS') || '').trim();
+    var sol = _psDateKey_(get(row, 'FECHA SOLICITUD')) || _psDateKey_(get(row, 'FECHA/HORA (AUTOMÁTICO)'));
+    if (!sol) return;
+    var hotelOnly = String(get(row, 'MODO_SOLICITUD') || '').trim() === 'SOLO_HOSPEDAJE';
+    var decision = String(get(row, POLICY_DECISION_HEADER) || '').trim();
+    var fareFlag = String(get(row, FARE_CFO_FLAG_HEADER) || '').trim().toUpperCase() === 'SI';
+    if (decision || st === POLICY_HOLD_STATUS || fareFlag) {
+      out.policy.push({ id: id, month: sol.slice(0, 7), status: st, decision: decision, fareFlag: fareFlag, hotelOnly: hotelOnly });
+    }
+    if (hotelOnly || !/^(RESERVADO|PROCESADO)$/.test(st)) return;
+    var intl = String(get(row, 'ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI';
+    var min = intl ? POLICY_MIN_DAYS_INTERNATIONAL : POLICY_MIN_DAYS_NATIONAL;
+    var ida = _psDateKey_(get(row, 'FECHA IDA')), vuelta = _psDateKey_(get(row, 'FECHA VUELTA')), compra = _psDateKey_(get(row, 'FECHA DE COMPRA DE TIQUETE'));
+    var diasSol = diff(sol, ida), diasCompra = diff(compra, ida), diasGestion = diff(sol, compra);
+    var traz = /SOLO POR TRAZABILIDAD/i.test(String(get(row, 'SELECCION_TEXTO') || ''));
+    var mod = String(get(row, 'TIPO DE SOLICITUD') || '').trim().toUpperCase() === 'MODIFICACION';
+    var email = String(get(row, 'CORREO ENCUESTADO') || '').trim().toLowerCase();
+    out.trips.push({
+      id: id, status: st, month: sol.slice(0, 7), sol: sol, ida: ida, compra: compra, intl: intl, min: min, mod: mod, traz: traz,
+      counts: !mod && !traz && diasSol !== null,
+      diasSol: diasSol, diasCompra: diasCompra, diasGestion: diasGestion,
+      onTime: diasSol === null ? null : diasSol >= min,
+      boughtOnTime: diasCompra === null ? null : diasCompra >= min,
+      email: email, requester: names[email] || email, travelers: travelers,
+      unit: String(get(row, 'UNIDAD DE NEGOCIO') || '').trim() || '(sin unidad)', company: String(get(row, 'EMPRESA') || '').trim(),
+      origin: _psCity_(get(row, 'CIUDAD ORIGEN')), destination: _psCity_(get(row, 'CIUDAD DESTINO')),
+      nights: _fareNights_(ida, vuelta, get(row, '# NOCHES (AUTOMÁTICO)')),
+      fareManual: _fareOptionForNights_(_fareNights_(ida, vuelta, get(row, '# NOCHES (AUTOMÁTICO)'))),
+      fareBought: _fareOptionValue_(String(get(row, FARE_TYPE_HEADER) || '').replace(/TIIPO/i, 'TIPO'))
+    });
+  });
+  return out;
+}
+
+/** Cifras de anticipación y compra de un grupo de viajes (solo los que cuentan). */
+function _mrStats_(trips) {
+  var c = trips.filter(function(t) { return t.counts; });
+  var bought = c.filter(function(t) { return t.diasCompra !== null; });
+  var nat = c.filter(function(t) { return !t.intl; }), intl = c.filter(function(t) { return t.intl; });
+  var onTime = c.filter(function(t) { return t.onTime; });
+  return {
+    n: c.length,
+    late: c.length - onTime.length,
+    bought: bought.length,
+    boughtOnTime: bought.filter(function(t) { return t.boughtOnTime; }).length,
+    natN: nat.length, natOnTime: nat.filter(function(t) { return t.onTime; }).length,
+    intlN: intl.length, intlOnTime: intl.filter(function(t) { return t.onTime; }).length,
+    medLead: _psMedian_(c.map(function(t) { return t.diasSol; })),
+    medManage: _psMedian_(c.filter(function(t) { return t.diasGestion !== null; }).map(function(t) { return t.diasGestion; })),
+    medBuy: _psMedian_(bought.map(function(t) { return t.diasCompra; })),
+    // Como en el informe del 13-oct: de los pedidos a tiempo que ya tienen fecha de compra.
+    onTimeN: onTime.filter(function(t) { return t.boughtOnTime !== null; }).length,
+    onTimeBoughtLate: onTime.filter(function(t) { return t.boughtOnTime === false; }).length
+  };
+}
+
+/** Tarifa comprada vs la del manual, por duración (solo compras con tarifa registrada). */
+function _mrFares_(trips) {
+  var buckets = [
+    { label: '0 a 1 noche', manual: 1, name: 'TIPO 1 (Basic)' },
+    { label: '2 a 5 noches', manual: 2, name: 'TIPO 2' },
+    { label: '6 noches o más', manual: 3, name: 'TIPO 3' }
+  ].map(function(b) { b.n = 0; b.superior = 0; return b; });
+  var withoutFare = 0;
+  trips.filter(function(t) { return !t.traz; }).forEach(function(t) {
+    if (!t.fareBought) { withoutFare++; return; }
+    var b = buckets[t.fareManual - 1];
+    b.n++;
+    if (t.fareBought > t.fareManual) b.superior++;
+  });
+  return { buckets: buckets, withoutFare: withoutFare };
+}
+
+/** Lo más frecuente de una lista de textos. */
+function _mrMode_(list) {
+  var count = {}, best = '', bestN = 0;
+  list.forEach(function(v) { count[v] = (count[v] || 0) + 1; if (count[v] > bestN) { best = v; bestN = count[v]; } });
+  return best;
+}
+
+/** Arma el informe de un mes 'AAAA-MM': cifras, HTML del correo, CSV de detalle. */
+function _mrBuild_(ym) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(ym || ''))) throw new Error('Mes inválido: use AAAA-MM.');
+  var data = _mrReadData_();
+  var cfg = _policyApprovalConfig_();
+  var inMonth = function(m) { return function(t) { return t.month === m; }; };
+  var month = data.trips.filter(inMonth(ym));
+  var prev = _mrAddMonths_(ym, -1);
+  var s = _mrStats_(month), sp = _mrStats_(data.trips.filter(inMonth(prev)));
+  var fares = _mrFares_(month), faresPrev = _mrFares_(data.trips.filter(inMonth(prev)));
+  var windowStart = _mrAddMonths_(ym, -(MR_RANK_MONTHS - 1));
+  var win = data.trips.filter(function(t) { return t.month >= windowStart && t.month <= ym && t.counts; });
+
+  // Tendencia: los 6 meses que terminan en el del informe (se recalcula cada mes).
+  var trend = [];
+  for (var k = MR_TREND_MONTHS - 1; k >= 0; k--) {
+    var m = _mrAddMonths_(ym, -k);
+    var st = _mrStats_(data.trips.filter(inMonth(m)));
+    if (st.n) trend.push({ ym: m, s: st });
+  }
+
+  // Unidades del mes, con su % de los últimos 3 meses para dar contexto.
+  var units = {};
+  month.filter(function(t) { return t.counts; }).forEach(function(t) {
+    var u = units[t.unit] = units[t.unit] || { unit: t.unit, companies: [], trips: [] };
+    u.companies.push(t.company); u.trips.push(t);
+  });
+  var unitRows = Object.keys(units).map(function(name) {
+    var u = units[name], st = _mrStats_(u.trips), w = _mrStats_(win.filter(function(t) { return t.unit === name; }));
+    return { unit: name, company: _mrMode_(u.companies), s: st, w: w };
+  }).sort(function(a, b) { return b.s.late - a.s.late || (b.s.late / b.s.n) - (a.s.late / a.s.n) || a.unit.localeCompare(b.unit); });
+
+  // Quién pide (3 meses).
+  var reqs = {};
+  win.forEach(function(t) {
+    var r = reqs[t.email] = reqs[t.email] || { name: t.requester, units: [], trips: [], forOthers: 0 };
+    r.units.push(t.unit); r.trips.push(t);
+    var me = _mrNameKey_(t.requester);
+    if (!t.travelers.some(function(n) { return _mrNameKey_(n) === me; })) r.forOthers++;
+  });
+  var reqRows = Object.keys(reqs).map(function(e) {
+    var r = reqs[e], st = _mrStats_(r.trips);
+    return { name: r.name, unit: _mrMode_(r.units), n: st.n, late: st.late, med: st.medLead, forOthers: r.forOthers };
+  }).filter(function(r) { return r.n >= MR_RANK_MIN_TRIPS && r.late > 0; })
+    .sort(function(a, b) { return b.late - a.late || b.late / b.n - a.late / a.n || a.name.localeCompare(b.name); })
+    .slice(0, MR_REQUESTER_ROWS);
+
+  // Quién viaja (3 meses): cuadros de honor y de deshonor.
+  var trav = {};
+  win.forEach(function(t) {
+    var reqKey = _mrNameKey_(t.requester);
+    t.travelers.forEach(function(n) {
+      var key = _mrNameKey_(n);
+      var v = trav[key] = trav[key] || { name: n, units: [], n: 0, late: 0, leads: [], byOthers: 0 };
+      v.units.push(t.unit); v.n++; if (!t.onTime) v.late++; v.leads.push(t.diasSol);
+      if (key !== reqKey) v.byOthers++;
+    });
+  });
+  var travRows = Object.keys(trav).map(function(k) {
+    var v = trav[k];
+    return { name: v.name, unit: _mrMode_(v.units), n: v.n, late: v.late, onTime: v.n - v.late, med: _psMedian_(v.leads), byOthers: v.byOthers };
+  }).filter(function(v) { return v.n >= MR_RANK_MIN_TRIPS; });
+  var honor = travRows.filter(function(v) { return v.late / v.n <= MR_HONOR_MAX_SHARE; })
+    .sort(function(a, b) { return b.n - a.n || a.late - b.late || (b.med || 0) - (a.med || 0) || a.name.localeCompare(b.name); }).slice(0, MR_RANK_ROWS);
+  var shame = travRows.filter(function(v) { return v.late / v.n >= MR_SHAME_MIN_SHARE; })
+    .sort(function(a, b) { return b.late - a.late || b.late / b.n - a.late / a.n || a.name.localeCompare(b.name); }).slice(0, MR_RANK_ROWS);
+
+  // Registradas después de comprar (trazabilidad) del mes.
+  var traz = month.filter(function(t) { return t.traz; });
+
+  // Lo que pasó por el CFO (#A100), por mes de la solicitud.
+  var pol = data.policy.filter(function(p) { return p.month === ym; });
+  var held = pol.filter(function(p) { return p.decision || p.status === POLICY_HOLD_STATUS; });
+  var policy = {
+    held: held.length,
+    approved: held.filter(function(p) { return /^s[ií]_/i.test(p.decision); }).length,
+    denied: held.filter(function(p) { return /^no_/i.test(p.decision); }).length,
+    expired: held.filter(function(p) { return /^vencida_/i.test(p.decision); }).length,
+    waiting: held.filter(function(p) { return p.status === POLICY_HOLD_STATUS; }).length,
+    fare: pol.filter(function(p) { return p.fareFlag; }).length,
+    fareApproved: pol.filter(function(p) { return p.fareFlag && /^(APROBADO|RESERVADO|PROCESADO)$/.test(p.status); }).length,
+    fareDenied: pol.filter(function(p) { return p.fareFlag && p.status === 'DENEGADO'; }).length
+  };
+
+  var report = {
+    ym: ym, label: _mrMonthLabel_(ym), prevLabel: _mrMonthLabel_(prev), generatedKey: _todayBogotaIso_(), approverName: cfg.name,
+    stats: s, prevStats: sp, fares: fares, faresPrev: faresPrev, trend: trend, units: unitRows, requesters: reqRows, honor: honor, shame: shame,
+    traz: traz, mods: month.filter(function(t) { return t.mod; }).length, policy: policy, windowLabel: _mrMonthShort_(windowStart) + ' a ' + _mrMonthShort_(ym),
+    monthTrips: month
+  };
+  report.subject = MR_REPORT_KIND + ' · ' + report.label;
+  report.html = _mrHtml_(report);
+  report.csv = _mrCsv_(month);
+  return report;
+}
+
+/** Tabla HTML con estilos en línea (Gmail). cols: [{ t: 'Título', right: true }]; rows: celdas ya escapadas. */
+function _mrTable_(cols, rows) {
+  var th = cols.map(function(c) {
+    return '<th style="text-align:' + (c.right ? 'right' : 'left') + '; padding:6px 8px; font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:.04em; border-bottom:2px solid #111827;">' + c.t + '</th>';
+  }).join('');
+  var tr = rows.map(function(r) {
+    return '<tr>' + r.map(function(cell, i) {
+      return '<td style="padding:7px 8px; font-size:13px; color:#1f2937; border-bottom:1px solid #e5e7eb; vertical-align:top; text-align:' + (cols[i] && cols[i].right ? 'right' : 'left') + ';">' + cell + '</td>';
+    }).join('') + '</tr>';
+  }).join('');
+  return '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>' + th + '</tr>' + tr + '</table>';
+}
+
+function _mrSection_(title, intro, body) {
+  return '<tr><td style="padding:22px 24px 4px 24px;">' +
+    '<h2 style="margin:0 0 4px 0; font-size:17px; color:#111827;">' + title + '</h2>' +
+    (intro ? '<p style="margin:0 0 10px 0; font-size:13px; color:#4b5563; line-height:1.5;">' + intro + '</p>' : '') +
+    body + '</td></tr>';
+}
+
+function _mrTile_(big, label, detail, compare) {
+  return '<td width="33%" style="padding:12px 10px; vertical-align:top; border:1px solid #e5e7eb; background:#ffffff;">' +
+    '<div style="font-size:28px; font-weight:bold; color:#111827; line-height:1;">' + big + '</div>' +
+    '<div style="font-size:13px; font-weight:bold; color:#111827; margin-top:6px;">' + label + '</div>' +
+    '<div style="font-size:12px; color:#4b5563; margin-top:4px; line-height:1.4;">' + detail + '</div>' +
+    (compare ? '<div style="font-size:11px; color:#6b7280; margin-top:6px;">' + compare + '</div>' : '') + '</td>';
+}
+
+function _mrBar_(share, color) {
+  var w = Math.max(0, Math.min(100, Math.round(share * 100)));
+  return '<div style="background:#f3f4f6; height:8px; width:120px; border-radius:4px;"><div style="background:' + color + '; height:8px; width:' + Math.round(w * 1.2) + 'px; border-radius:4px;"></div></div>';
+}
+
+/** Correo del informe: lo mismo que la presentación del 13-oct, con las cifras del mes. */
+function _mrHtml_(r) {
+  var e = escapeHtml_, s = r.stats, sp = r.prevStats;
+  var f01 = r.fares.buckets[0], f01p = r.faresPrev.buckets[0];
+  var head = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>' +
+    '<body style="margin:0; padding:0; background-color:#f4f4f5; font-family:Helvetica, Arial, sans-serif;">' +
+    '<table width="100%" style="background-color:#f4f4f5;"><tr><td align="center" style="padding:20px 8px;">' +
+    '<table width="760" style="max-width:760px; width:100%; background-color:#ffffff; border-radius:8px; overflow:hidden;">' +
+    '<tr><td style="background-color:#111827; padding:22px 24px;">' +
+      '<div style="color:#fca5a5; font-size:12px; letter-spacing:.08em; text-transform:uppercase;">Política de viajes COM-P-02 · informe mensual</div>' +
+      '<h1 style="color:#ffffff; margin:6px 0 0 0; font-size:22px;">Cumplimiento de la política de viajes · ' + e(r.label) + '</h1>' +
+      '<p style="color:#d1d5db; margin:6px 0 0 0; font-size:13px;">Solicitudes con vuelo pedidas en ' + e(r.label) + ' y ya compradas. Fuente: plataforma de viajes, datos al ' + e(_policyFmtDay_(r.generatedKey)) + '.</p></td></tr>';
+
+  var tiles = s.n ? '<tr><td style="padding:20px 24px 4px 24px;"><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>' +
+    _mrTile_(_mrPct_(s.late, s.n), 'de los viajes se pidió fuera de plazo',
+      e(s.late + ' de ' + s.n) + '. Mínimo: ' + POLICY_MIN_DAYS_NATIONAL + ' días nacional, ' + POLICY_MIN_DAYS_INTERNATIONAL + ' internacional. Mediana real: ' + e(_mrDays_(s.medLead)) + '.',
+      sp.n ? e(r.prevLabel) + ': ' + _mrPct_(sp.late, sp.n) : '') +
+    _mrTile_(_mrPct_(s.boughtOnTime, s.bought), 'de los tiquetes se compró a tiempo',
+      e(s.boughtOnTime + ' de ' + s.bought + ' compras') + '. Mediana entre la compra y el vuelo: ' + e(_mrDays_(s.medBuy)) + '.',
+      sp.bought ? e(r.prevLabel) + ': ' + _mrPct_(sp.boughtOnTime, sp.bought) : '') +
+    _mrTile_(_mrPct_(f01.superior, f01.n), 'de los viajes de 0–1 noche, en tarifa superior',
+      f01.n ? e(f01.superior + ' de ' + f01.n) + ' compras con tarifa registrada. El manual pide la más barata (Basic).' : 'Ninguna compra de 0–1 noche con tarifa registrada.',
+      f01p.n ? e(r.prevLabel) + ': ' + _mrPct_(f01p.superior, f01p.n) : '') +
+    '</tr></table>' +
+    '<p style="margin:12px 0 0 0; font-size:13px; color:#374151; line-height:1.5;">Nacional: <strong>' + _mrPct_(s.natOnTime, s.natN) + '</strong> a tiempo (' + s.natOnTime + ' de ' + s.natN + '). ' +
+      'Internacional: <strong>' + _mrPct_(s.intlOnTime, s.intlN) + '</strong> (' + s.intlOnTime + ' de ' + s.intlN + '). ' +
+      'Entre la solicitud y la compra pasan ' + e(_mrDays_(s.medManage)) + ' (mediana). ' +
+      (s.onTimeN ? 'De ' + s.onTimeN + ' pedidos a tiempo, <strong>' + s.onTimeBoughtLate + ' se compraron tarde</strong>: ahí el atraso no es del viajero.' : '') + '</p></td></tr>'
+    : _mrSection_('Sin viajes comprados', '', '<p style="font-size:13px; color:#374151;">No hay solicitudes con vuelo pedidas en ' + e(r.label) + ' que ya estén compradas.</p>');
+
+  var p = r.policy;
+  var policy = (p.held || p.fare) ? _mrSection_('Aprobaciones de ' + e(r.approverName || 'quien aprueba') + ' por la política',
+    'Solicitudes pedidas en el mes que necesitaron su aprobación antes de que el área de viajes las gestionara (regla vigente desde octubre de 2026). Cuenta cada tramo de un viaje multidestino.',
+    _mrTable_([{ t: 'Motivo' }, { t: 'Total', right: true }, { t: 'Aprobadas', right: true }, { t: 'Rechazadas', right: true }, { t: 'Vencidas', right: true }, { t: 'En espera', right: true }], [
+      ['Pedida con menos anticipación', p.held, p.approved, p.denied, p.expired, p.waiting],
+      ['Tarifa superior a la del manual', p.fare, p.fareApproved, p.fareDenied, '—', p.fare - p.fareApproved - p.fareDenied]
+    ].map(function(row) { return row.map(function(c) { return e(String(c)); }); }))) : '';
+
+  var trend = r.trend.length ? _mrSection_('Tendencia', '% de viajes pedidos con la anticipación mínima, por mes de la solicitud. Se recalcula cada mes: un viaje pedido a fin de mes que se compra después aparece en la fila de su mes en el informe siguiente.',
+    _mrTable_([{ t: 'Mes' }, { t: 'Viajes', right: true }, { t: 'Pedidos a tiempo', right: true }, { t: '' }, { t: 'Comprados a tiempo', right: true }],
+      r.trend.map(function(t) {
+        return ['<strong>' + e(_mrMonthShort_(t.ym)) + '</strong>' + (t.ym === r.ym ? ' ←' : ''), e(String(t.s.n)), _mrPct_(t.s.n - t.s.late, t.s.n), _mrBar_((t.s.n - t.s.late) / t.s.n, '#059669'), _mrPct_(t.s.boughtOnTime, t.s.bought)];
+      }))) : '';
+
+  var units = r.units.length ? _mrSection_('Por unidad de negocio',
+    'Ordenadas por viajes fuera de plazo en el mes. La última columna da el contexto de los últimos 3 meses (' + e(r.windowLabel) + ').',
+    _mrTable_([{ t: 'Unidad' }, { t: 'Empresa' }, { t: 'Viajes', right: true }, { t: 'Fuera de plazo', right: true }, { t: '% fuera', right: true }, { t: '% comprado a tiempo', right: true }, { t: '% fuera 3 meses', right: true }],
+      r.units.map(function(u) {
+        return [e(u.unit), e(u.company), e(String(u.s.n)), e(String(u.s.late)), '<strong>' + _mrPct_(u.s.late, u.s.n) + '</strong>', _mrPct_(u.s.boughtOnTime, u.s.bought), _mrPct_(u.w.late, u.w.n)];
+      }))) : '';
+
+  var rankIntro = 'Últimos 3 meses (' + e(r.windowLabel) + '), viajeros con ' + MR_RANK_MIN_TRIPS + ' viajes o más. ';
+  var honor = _mrSection_('Cuadro de honor: viajan mucho y cumplen', rankIntro + 'Como máximo ' + Math.round(MR_HONOR_MAX_SHARE * 100) + ' % fuera de plazo.',
+    r.honor.length ? _mrTable_([{ t: 'Viajero' }, { t: 'Unidad' }, { t: 'Viajes', right: true }, { t: 'A tiempo', right: true }, { t: 'Fuera', right: true }, { t: '% fuera', right: true }, { t: 'Anticipación típica', right: true }],
+      r.honor.map(function(v) { return [e(_mrName_(v.name)), e(v.unit), e(String(v.n)), e(String(v.onTime)), e(String(v.late)), _mrPct_(v.late, v.n), e(_mrDays_(v.med))]; }))
+      : '<p style="font-size:13px; color:#6b7280;">Nadie cumple las dos condiciones en este periodo.</p>');
+  var shame = _mrSection_('Cuadro de deshonor: viajan mucho y casi nunca cumplen', rankIntro + Math.round(MR_SHAME_MIN_SHARE * 100) + ' % o más fuera de plazo. ' +
+    'Cuando otro pide por el viajero, el plazo sigue siendo del viajero; si es un técnico que no elige la fecha, responde quien lo programa (ver «Quién pide»).',
+    r.shame.length ? _mrTable_([{ t: 'Viajero' }, { t: 'Unidad' }, { t: 'Viajes', right: true }, { t: 'A tiempo', right: true }, { t: 'Fuera', right: true }, { t: '% fuera', right: true }, { t: 'Anticipación típica', right: true }, { t: 'Pedidos por otro', right: true }],
+      r.shame.map(function(v) { return [e(_mrName_(v.name)), e(v.unit), e(String(v.n)), e(String(v.onTime)), e(String(v.late)), '<strong>' + _mrPct_(v.late, v.n) + '</strong>', e(_mrDays_(v.med)), e(String(v.byOthers))]; }))
+      : '<p style="font-size:13px; color:#6b7280;">Nadie cumple las dos condiciones en este periodo.</p>');
+  var reqs = r.requesters.length ? _mrSection_('Quién pide fuera de plazo', 'Últimos 3 meses (' + e(r.windowLabel) + '), solicitantes con ' + MR_RANK_MIN_TRIPS + ' pedidos o más, ordenados por pedidos fuera de plazo.',
+    _mrTable_([{ t: 'Solicitante' }, { t: 'Unidad' }, { t: 'Pedidos', right: true }, { t: 'Fuera', right: true }, { t: '% fuera', right: true }, { t: 'Días (mediana)', right: true }, { t: 'Para otra persona', right: true }],
+      r.requesters.map(function(q) { return [e(_mrName_(q.name)), e(q.unit), e(String(q.n)), e(String(q.late)), '<strong>' + _mrPct_(q.late, q.n) + '</strong>', e(q.med === null ? '—' : String(Math.round(q.med))), e(String(q.forOthers))]; }))) : '';
+
+  var traz = r.traz.length ? _mrSection_('Compras por fuera de la plataforma', r.traz.length + (r.traz.length === 1 ? ' viaje se compró primero y se registró después' : ' viajes se compraron primero y se registraron después') +
+    ' («Registrada después de comprar»). No entran en la anticipación porque su fecha de solicitud no es real.',
+    _mrTable_([{ t: 'Solicitud' }, { t: 'Viaja' }, { t: 'Unidad' }, { t: 'Ruta' }, { t: 'Vuelo' }],
+      r.traz.map(function(t) { return [e(t.id), e(t.travelers.map(_mrName_).join(', ')), e(t.unit), e(t.origin + ' → ' + t.destination), e(_policyFmtDay_(t.ida))]; }))) : '';
+
+  var fareRows = r.fares.buckets.map(function(b) { return [e(b.label), e(b.name), e(String(b.n)), _mrPct_(b.n - b.superior, b.n), '<strong>' + _mrPct_(b.superior, b.n) + '</strong>']; });
+  var fares = _mrSection_('Tarifa', 'Compras del mes con la tarifa registrada por el área de viajes, frente a la que fija el manual según las noches del viaje.' +
+    (r.fares.withoutFare ? ' ' + r.fares.withoutFare + (r.fares.withoutFare === 1 ? ' compra no tiene' : ' compras no tienen') + ' tarifa registrada y no entran.' : ''),
+    _mrTable_([{ t: 'Duración' }, { t: 'Tarifa del manual' }, { t: 'Compras', right: true }, { t: 'En la del manual o menor', right: true }, { t: 'En superior', right: true }], fareRows));
+
+  var method = _mrSection_('Cómo se calculó', '',
+    '<ul style="margin:0; padding-left:18px; font-size:12px; color:#4b5563; line-height:1.55;">' +
+    '<li><strong>Qué entra:</strong> solicitudes con vuelo reservadas o procesadas, por el mes en que se pidieron. Fuera: anuladas, denegadas, en trámite, solo hospedaje y pruebas.' +
+      (r.mods ? ' Las ' + r.mods + ' modificaciones del mes' : ' Las modificaciones') + ' y las compras registradas después no cuentan para la anticipación.</li>' +
+    '<li><strong>A tiempo:</strong> ' + POLICY_MIN_DAYS_NATIONAL + ' días o más entre la creación de la solicitud y el vuelo de ida (' + POLICY_MIN_DAYS_INTERNATIONAL + ' si es internacional). Es la misma regla con la que la plataforma marca la solicitud fuera de política. <strong>Comprado a tiempo:</strong> la misma regla con la fecha de compra.</li>' +
+    '<li><strong>Tarifa:</strong> la registrada al confirmar costos o la reserva; la del manual sale de las noches (0–1: TIPO 1; 2–5: TIPO 2; 6 o más: TIPO 3). Superior = un TIPO más alto que el del manual.</li>' +
+    '<li><strong>Cuadros y «quién pide»:</strong> mes del informe y los dos anteriores, para que haya suficientes viajes por persona. El detalle de cada solicitud del mes va en el archivo adjunto (CSV, se abre con Excel).</li>' +
+    '</ul>');
+
+  var foot = '<tr><td style="text-align:center; font-size:11px; color:#9ca3af; padding:18px 24px;">Informe automático de la plataforma de viajes. Llega el primer día hábil de cada mes. &copy; ' + r.ym.slice(0, 4) + ' Organización Equitel.</td></tr>' +
+    '</table></td></tr></table></body></html>';
+  return head + tiles + policy + trend + units + honor + shame + reqs + traz + fares + method + foot;
+}
+
+/** Detalle de las solicitudes del mes para Excel (separador ';', con BOM para las tildes). Sin cédulas. */
+function _mrCsv_(trips) {
+  var cell = function(v) {
+    var t = v === null || v === undefined ? '' : String(v);
+    if (/^[=+\-@]/.test(t)) t = "'" + t;
+    return /[;"\n\r]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  var yn = function(b) { return b === null ? '' : b ? 'SI' : 'NO'; };
+  var rows = [['Solicitud', 'Clase', 'Tipo', 'Mínimo días', 'Fecha solicitud', 'Fecha compra', 'Fecha ida', 'Días solicitud a vuelo', 'Días compra a vuelo',
+    'Pedido a tiempo', 'Comprado a tiempo', 'Solicitante', 'Viajeros', 'Unidad', 'Empresa', 'Ruta', 'Noches', 'Tarifa del manual', 'Tarifa comprada']];
+  trips.forEach(function(t) {
+    rows.push([t.id, t.mod ? 'Modificación' : t.traz ? 'Registrada después de comprar' : 'Original', t.intl ? 'Internacional' : 'Nacional', t.min,
+      t.sol, t.compra, t.ida, t.diasSol === null ? '' : t.diasSol, t.diasCompra === null ? '' : t.diasCompra,
+      t.counts ? yn(t.onTime) : '', t.counts ? yn(t.boughtOnTime) : '', _mrName_(t.requester), t.travelers.map(_mrName_).join(', '), t.unit, t.company,
+      t.origin + ' - ' + t.destination, t.nights, 'TIPO ' + t.fareManual, t.fareBought ? 'TIPO ' + t.fareBought : '']);
+  });
+  return '﻿' + rows.map(function(r) { return r.map(cell).join(';'); }).join('\r\n');
+}
+
+/** Envía el informe del mes. to/cc: correos separados por comas. Devuelve el informe armado. */
+function _mrSend_(ym, to, cc) {
+  var r = _mrBuild_(ym);
+  var attachments = [Utilities.newBlob(r.csv, 'text/csv', 'Detalle solicitudes ' + ym + '.csv')];
+  try {
+    attachments.unshift(Utilities.newBlob(r.html, 'text/html', 'informe.html').getAs('application/pdf').setName('Cumplimiento politica de viajes ' + ym + '.pdf'));
+  } catch (e) { console.warn('_mrSend_: no se pudo generar el PDF (va solo el correo y el CSV): ' + e); }
+  var valid = function(list) { return String(list || '').split(',').map(function(x) { return x.trim(); }).filter(function(x) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x); }).join(','); };
+  var opts = { to: valid(to), subject: r.subject, htmlBody: r.html, attachments: attachments,
+    body: 'Informe de cumplimiento de la política de viajes de ' + r.label + '. Ábralo en un cliente de correo que muestre HTML; el PDF adjunto tiene lo mismo.' };
+  if (!opts.to) throw new Error('No hay a quién enviar el informe.');
+  if (valid(cc)) opts.cc = valid(cc);
+  _sendMail_(opts);
+  return r;
+}
+
+/** Hoja de constancias de envío (oculta). Una fila por informe enviado. */
+function _mrSentSheet_(create) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(MR_SENT_SHEET);
+  if (!sheet && create) {
+    sheet = ss.insertSheet(MR_SENT_SHEET);
+    sheet.appendRow(['FECHA', 'INFORME', 'MES', 'PARA', 'COPIA']);
+    try { sheet.setFrozenRows(1); sheet.hideSheet(); } catch (e) { /* no crítico */ }
+  }
+  return sheet;
+}
+
+/** Mes 'AAAA-MM' de la última constancia de este informe, o ''. */
+function _mrLastSent_() {
+  var sheet = _mrSentSheet_(false);
+  if (!sheet || sheet.getLastRow() < 2) return '';
+  var last = '';
+  sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues().forEach(function(r) {
+    if (String(r[1] || '') !== MR_REPORT_KIND) return;
+    var v = r[2];
+    var ym = Object.prototype.toString.call(v) === '[object Date]' ? Utilities.formatDate(v, 'America/Bogota', 'yyyy-MM') : String(v || '').replace(/^'/, '').trim().slice(0, 7);
+    if (ym > last) last = ym;
+  });
+  return last;
+}
+
+/**
+ * Lo llama cada pasada de procesarAprobacionesPolitica. Desde el primer día hábil del
+ * mes, en horario laboral, envía una vez el informe del mes anterior a quien aprueba
+ * (budgetApproverEmail) con copia a Yurani y David. Devuelve el mes enviado o ''.
+ */
+function _mrMaybeSendMonthly_() {
+  var today = _todayBogotaIso_();
+  var ym = _mrAddMonths_(today.slice(0, 7), -1);
+  if (ym < MR_FIRST_MONTH) return '';
+  if (today < _mrFirstBusinessDay_(today.slice(0, 7))) return '';
+  if (_mrLastSent_() >= ym) return '';
+  if (!isWorkingHour()) return '';
+  var cfg = _policyApprovalConfig_();
+  if (cfg.email.indexOf('@') < 1) { console.warn('Informe mensual: falta budgetApproverEmail en la configuración del dashboard; no se envía.'); return ''; }
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) return '';
+  try {
+    if (_mrLastSent_() >= ym) return '';
+    var cc = MR_CC.filter(function(x) { return x !== cfg.emailLower; }).join(',');
+    _mrSend_(ym, cfg.email, cc);
+    _mrSentSheet_(true).appendRow([new Date(), MR_REPORT_KIND, "'" + ym, cfg.email, cc]);
+    return ym;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Próximo informe automático: { ym, dayKey } (para el menú 14 y la prueba). */
+function _mrNextSend_() {
+  var today = _todayBogotaIso_(), cur = today.slice(0, 7), due = _mrAddMonths_(cur, -1);
+  if (due >= MR_FIRST_MONTH && _mrLastSent_() < due) {
+    var first = _mrFirstBusinessDay_(cur);
+    return { ym: due, dayKey: today > first ? today : first };
+  }
+  var ym = cur < MR_FIRST_MONTH ? MR_FIRST_MONTH : cur;
+  return { ym: ym, dayKey: _mrFirstBusinessDay_(_mrAddMonths_(ym, 1)) };
+}
+
+/** Menú 15: el informe de un mes, SOLO a quien lo corre (sin copia y sin constancia). */
+function menuInformeMensualPrueba() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    var me = String(Session.getActiveUser().getEmail() || Session.getEffectiveUser().getEmail() || '').trim();
+    var def = _mrAddMonths_(_todayBogotaIso_().slice(0, 7), -1);
+    var resp = ui.prompt('Informe mensual de la política (prueba)',
+      '¿De qué mes? Escríbalo como AAAA-MM (vacío = ' + def + ').\nSe lo envío solo a ' + me + ', sin copia a nadie.', ui.ButtonSet.OK_CANCEL);
+    if (resp.getSelectedButton() !== ui.Button.OK) return;
+    var ym = String(resp.getResponseText() || '').trim() || def;
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) throw new Error('Escriba el mes como AAAA-MM, por ejemplo ' + def + '.');
+    var r = _mrSend_(ym, me, '');
+    var cfg = _policyApprovalConfig_(), next = _mrNextSend_();
+    ui.alert('Informe mensual (prueba)',
+      'Le envié a ' + me + ' el informe de ' + r.label + ': ' + r.stats.n + ' viajes, ' + r.stats.late + ' fuera de plazo.\n\n' +
+      'El automático de ' + _mrMonthLabel_(next.ym) + ' sale el ' + _policyFmtDay_(next.dayKey) + ' para ' + (cfg.name || '—') + (cfg.email ? ' (' + cfg.email + ')' : '') +
+      ', con copia a ' + MR_CC.join(' y ') + '. Lo envía la pasada del resumen cada ' + POLICY_DIGEST_EVERY_HOURS + ' h (' + POLICY_DIGEST_HANDLER + ').', ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
 }

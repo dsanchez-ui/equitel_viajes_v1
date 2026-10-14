@@ -27,8 +27,8 @@ archivos; Gmail para notificaciones.
 2. **Verificar siempre antes de proponer un push:** `npm run verify` (typecheck +
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
-   facturas por cerrar y por revisar + rastreo de precios + velocidad y análisis de ahorro +
-   enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
+   facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
+   rastreo de precios + velocidad y análisis de ahorro + enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -45,7 +45,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + rastreo de precios + caché y análisis de ahorro + build + un solo .js  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + build + un solo .js  ← antes de cualquier push
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -362,6 +362,15 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     `BUDGET_OVERRUN` y columna `APROBADO PRESUPUESTO` que el presupuesto: un voto cubre los dos; `_requiresCfoVote_`). Antes de comprar
     no se sube la tarifa por encima de la aprobada (solo Yurani y David).
   - **Aviso a los solicitantes** hasta el 25-oct: ventana al entrar con «Entendido»; constancia en la hoja `CONSTANCIA AVISOS`.
+- **Informe mensual de cumplimiento de la política** (#A101; Alejandro, 13-oct: *«se publicará cada mes»*; decisiones de David
+  del 14-oct). Sale solo el **primer día hábil del mes** (festivos de Colombia; el de octubre, el martes 3-nov), en horario laboral,
+  con la pasada de `procesarAprobacionesPolitica` (sin activador aparte), para quien aprueba (`budgetApproverEmail`) con copia a
+  Yurani y David (`MR_CC`). Una sola vez por mes: constancia en la hoja oculta `INFORMES ENVIADOS`.
+  - Mismas reglas del informe del 13-oct (verificado con la base: 375 viajes, 54 % fuera, 33 % comprado a tiempo, misma tendencia).
+    Cada viaje cuenta en el **mes de la solicitud**; la tendencia se recalcula cada mes. La tarifa sale solo de lo registrado, nunca
+    del texto del viajero.
+  - Cuadros de honor y de deshonor y «quién pide»: **últimos 3 meses**, 4 viajes o más (honor ≤ 20 % fuera; deshonor ≥ 60 %).
+  - Correo + PDF + CSV del mes, sin cédulas. **Menú 15:** prueba que solo le llega a quien la corre (sin copia ni constancia).
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -416,6 +425,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 | **REGLAS_COAPROBADOR** | Reglas de co-aprobación. |
 | **COMPARATIVO PRECIOS** / **COMPARATIVO ESTADO** | Ocultas. Las escribe el proyecto aparte del rastreo de precios (#A84): una fila por búsqueda y el estado del rastreo. Desde #A95 cada búsqueda guarda `TARIFA` y `MALETA DE MANO`. Las lee el dashboard de costos. No editarlas. |
 | **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
+| **INFORMES ENVIADOS** | Oculta. La crea el sistema (#A101): una fila (fecha, informe, mes, para, copia) por cada informe mensual de la política enviado. Evita enviarlo dos veces. No editar. |
 | **CONSTANCIA AVISOS** | La crea la app (#A100): una fila (fecha, correo, aviso) por cada solicitante que tocó «Entendido» en la ventana de las reglas nuevas. Es la evidencia de que lo leyó. No editar. |
 
 ## Script Properties (Apps Script)
@@ -446,7 +456,7 @@ helper del propio `Code.gs` (`verPropiedadesDelScript`, etc.).
 | `cleanupExpiredPropsWeekly` | Limpia sesiones, lockouts y contadores de rate limit vencidos | `setupWeeklyCleanupTrigger()` |
 | `sendPendingApprovalReminders` / `sendPendingSelectionReminders` / `sendPendingConsultReminders` | Recordatorios; escalan a superadmins tras ~30 h laborales (#A16) | Configurados a mano en la UI |
 | `warmupPing` | Cada 10 min, mantiene tibio el isolate de GAS | Configurado a mano |
-| `procesarAprobacionesPolitica` | Cada 2 h: deniega las solicitudes fuera de plazo vencidas y, en horario laboral, manda al CFO el resumen de las que esperan (#A100) | A mano en Activadores, cada 2 h, con la cuenta de los demás activadores (el menú 13 da los pasos: el manifiesto no tiene `script.scriptapp` y no se le agrega) |
+| `procesarAprobacionesPolitica` | Cada 2 h: deniega las solicitudes fuera de plazo vencidas y, en horario laboral, manda al CFO el resumen de las que esperan (#A100); el primer día hábil del mes, también el informe mensual (#A101) | A mano en Activadores, cada 2 h, con la cuenta de los demás activadores (el menú 13 da los pasos: el manifiesto no tiene `script.scriptapp` y no se le agrega) |
 
 `rastrearPrecios` (#A84, cada 15 min) **no está en este proyecto**: vive en el proyecto aparte
 del rastreo de precios, con su propia autorización. Se instala y se quita desde ese proyecto
@@ -514,6 +524,7 @@ tools/check-webapp-links.cjs         Enlaces a páginas del web app con el domin
 tools/check-fare-rules.cjs           Tarifa del manual; frontend y backend coinciden y guardado en la hoja (#A95)
 tools/check-single-bundle.cjs        La app es un solo archivo JavaScript, sin cargas bajo demanda (#A96)
 tools/check-policy-approval.cjs      Aprobación del CFO por la política: espera, resumen, decisiones, vencimiento, tarifa y aviso (#A100)
+tools/check-monthly-report.cjs       Informe mensual de la política: primer día hábil, cifras, cuadros, CSV, envío una sola vez y prueba (#A101)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
 tools/comparador-precios/apps-script/  Proyecto de Apps Script APARTE del rastreo de precios (#A84): Rastreo.gs, manifiesto y guía
@@ -614,6 +625,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A100 (14-oct, aprobación del CFO por la política):** implementado y verificado. Despliegue: pegar `Code.gs` → menú 12 →
   activador `procesarAprobacionesPolitica` creado a mano en Activadores (cada 2 h; el menú 13 da los pasos) → versión nueva
   del web app → push del frontend → revisar con el menú 14.
+- **#A101 (14-oct, informe mensual de la política):** implementado y verificado con la base del 13-oct. Solo cambia `Code.gs`:
+  va con el mismo pegado de #A100 (no necesita otro activador). Probar con el menú 15 (te llega solo a ti); el primero
+  automático sale el martes 3-nov-2026 para Alejandro.
 - **Manuales dentro de la app** (David, 14-oct): idea para después — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
 - **#A99 (13-oct, cifras del dashboard que se pueden presentar):** solo cambia `server/CostsDashboard.html`;
   pendiente pegarlo y crear la versión nueva del web app (lo hace David). `Code.gs` no cambia.

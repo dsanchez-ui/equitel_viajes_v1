@@ -174,6 +174,8 @@ para comparar con la misma tarifa. El dashboard de costos las lee en la sección
 nada de la plataforma depende de ellas.</p>
 <h3>CONSTANCIA AVISOS</h3>
 <p>La crea la app (#A100) la primera vez que alguien toca <strong>«Entendido»</strong> en la ventana que explica cómo funcionan ahora las solicitudes (se muestra a los solicitantes hasta el 25 de octubre de 2026). Una fila por persona: <code>FECHA</code>, <code>CORREO</code> y <code>AVISO</code>. Es la constancia de que cada uno lo leyó. No la edites; si se borra una fila, a esa persona le vuelve a salir la ventana (mientras dure el aviso).</p>
+<h3>INFORMES ENVIADOS</h3>
+<p>La crea el sistema (#A101) la primera vez que envía el informe mensual de cumplimiento de la política. Está oculta. Una fila por informe enviado: <code>FECHA</code>, <code>INFORME</code>, <code>MES</code>, <code>PARA</code> y <code>COPIA</code>. Sirve de constancia y evita que el informe de un mes salga dos veces. No la edites; si se borra la fila de un mes, ese informe se vuelve a enviar en la siguiente pasada del mismo mes.</p>
 <h3>Hojas con <code>_OLD_</code> en el nombre</h3>
 <p>Son respaldos de reorganizaciones anteriores de la hoja principal. <strong>Déjalas quietas</strong> hasta que hayas confirmado que la versión activa funciona bien (usualmente 1-2 semanas) y luego puedes borrarlas.</p>
 <hr>
@@ -420,6 +422,10 @@ corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53,
 <li>la lista de solicitudes en espera, con su fecha de vencimiento.</li>
 </ul>
 <p>Si el proyecto no puede consultar los activadores, en vez de decir si el resumen está activo te remite a <strong>Activadores</strong>. Allí debe estar <code>procesarAprobacionesPolitica</code>, cada 2 horas.</p>
+<p>También dice cuándo sale el próximo informe mensual y cuál fue el último enviado.</p>
+<h3>15. Informe mensual de la política: prueba (solo a mí)</h3>
+<p>El informe mensual de cumplimiento (#A101) sale solo: la pasada de <code>procesarAprobacionesPolitica</code> lo envía <strong>el primer día hábil de cada mes</strong>, en horario laboral, con las cifras del mes anterior. Le llega a quien aprueba en la configuración del dashboard de costos (hoy Alejandro Gómez), con copia a Yurani Prieto y David Sánchez. El primero es el de octubre de 2026, el <strong>martes 3 de noviembre</strong> (el lunes 2 es festivo).</p>
+<p>Este menú pide un mes (<code>AAAA-MM</code>; vacío = el mes anterior) y te envía ese informe <strong>solo a ti</strong>, sin copia y sin dejar constancia. Sirve para revisarlo antes o para ver un mes cualquiera. Al final te dice cuándo sale el próximo automático y para quién.</p>
 <h3>Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)</h3>
 <p>Un item del menú que al hacer click te muestra un diálogo diciendo <strong>qué hoja está leyendo el portal en este momento</strong>. No cambia nada, solo te informa.</p>
 <p>En producción debe decir “Modo activo: USUARIOS”. Si dice “INTEGRANTES” significa que alguien revirtió el flag.</p>

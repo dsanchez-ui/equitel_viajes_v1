@@ -302,6 +302,15 @@ Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), **toda de
 
 **Apagar las reglas sin tocar código:** `"policyApprovalEnabled": false` en la configuración del dashboard de costos. Las solicitudes que ya estén en espera se quedan así hasta que se decidan o venzan.
 
+**Informe mensual de cumplimiento (#A101):** el primer día hábil de cada mes, en horario laboral, la plataforma le envía a quien aprueba (hoy Alejandro Gómez), con copia a Yurani Prieto y David Sánchez, el informe del mes anterior. Trae lo mismo que el informe del 13 de octubre:
+
+- las tres cifras del mes (pedidos fuera de plazo, compras a tiempo y viajes de 0–1 noche en tarifa superior) frente al mes anterior;
+- la tendencia de los últimos 6 meses y el resultado por unidad;
+- los cuadros de honor y de deshonor y «quién pide fuera de plazo», con los últimos 3 meses;
+- las compras registradas después de hacerse y lo que pasó por el CFO (aprobadas, rechazadas, vencidas y tarifas superiores).
+
+Lleva un PDF con lo mismo y un CSV con el detalle de cada solicitud del mes (sin cédulas). Cada viaje cuenta en el mes en que se pidió. Lo envía la misma pasada del resumen cada 2 horas, así que no necesita otro activador. El **menú 15** te lo manda solo a ti para revisarlo.
+
 ---
 
 ## 5.bis. Capacidades exclusivas de SUPERADMIN
@@ -510,7 +519,7 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 | `sendPendingSelectionReminders` | Recordatorio al usuario que no ha descrito su selección. Mismo asunto = mismo hilo en Gmail. |
 | `processAdminReminders` | Resumen diario/periódico al admin de pendientes (cotizar, confirmar costos, reservar, cambios). |
 | `sendPendingConsultReminders` | Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio). |
-| `procesarAprobacionesPolitica` | (#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (`isWorkingHour`). Se crea **a mano** en Activadores (Según tiempo, cada 2 horas), con la misma cuenta de los demás activadores. El **menú 13** muestra los pasos. |
+| `procesarAprobacionesPolitica` | (#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (`isWorkingHour`). El primer día hábil de cada mes envía además el informe mensual de cumplimiento (#A101). Se crea **a mano** en Activadores (Según tiempo, cada 2 horas), con la misma cuenta de los demás activadores. El **menú 13** muestra los pasos. |
 
 **Trigger de mantenimiento (ya configurado):**
 - `cleanupExpiredSessions` (diario, 1–2 AM) — limpia sesiones `SESSION_*` expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en `cleanupExpiredPropsWeekly`, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.

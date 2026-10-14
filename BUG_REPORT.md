@@ -2475,3 +2475,64 @@ El push solo guarda el código en GitHub: la app no cambia.
 Rollback: versión anterior del web app. Las solicitudes en espera quedarían con su estado: aprobarlas a mano o apagar con `policyApprovalEnabled: false` antes.
 
 **Ajuste al desplegar (14-oct, menú 13):** en producción el menú 13 falló con *«Los permisos especificados no son suficientes para llamar a ScriptApp.getProjectTriggers»*. El manifiesto del proyecto (`appsscript.json`) declara sus permisos y no incluye `script.scriptapp`, el que permite crear activadores desde el código. No se agregó: cambiar los permisos obliga a reautorizar el proyecto en producción y pone en riesgo los recordatorios y el respaldo diario (ver la sección de IA de `CLAUDE.md`). Los recordatorios ya se habían creado a mano por la misma razón. Ahora el menú 13 intenta crearlo y, si no puede, muestra los pasos para crearlo en Activadores. El menú 14 deja de fallar y remite a Activadores, y quitar el activador también explica cómo borrarlo a mano. El resumen, las decisiones y el formulario nunca usaron ese permiso.
+
+---
+
+## **#A101 — Informe mensual de cumplimiento de la política, automático el primer día hábil**
+**Fecha:** 2026-10-14 · **Pedido por:** Alejandro Gómez (CFO, correo del 13-oct a los gerentes: *"este informe, con los cuadros de honor y deshonor, se publicará cada mes"*) y David (14-oct: que le llegue solo a Alejandro el primer día hábil del mes siguiente, con toda la información de los informes que él adjuntó). Decisiones de David del 14-oct. · **Estado:** Implementado; pendiente desplegar (va con #A100).
+
+**Problema:** el informe del 13-oct (presentación de 13 láminas y Excel) se armó una sola vez, a mano, con la base exportada. Nada en la plataforma lo generaba ni lo enviaba, y Alejandro se comprometió con los gerentes a publicarlo cada mes. Su presentación además anuncia que el indicador entra en la revisión operativa mensual de cada unidad.
+
+**Solución (`Code.gs`, sección #A101):**
+- **Cuándo:** la pasada de `procesarAprobacionesPolitica` (cada 2 h, el activador de #A100) llama a `_mrMaybeSendMonthly_`.
+  - Desde el **primer día hábil del mes** (`_mrFirstBusinessDay_`, festivos de Colombia con `_psHolidaysCO_`) y en horario laboral (`isWorkingHour`), envía **una vez** el informe del mes anterior.
+  - El primero es el de octubre de 2026: sale el **martes 3-nov** (el lunes 2 es festivo, Todos los Santos).
+  - Si esa pasada no corre, sale en la siguiente del mismo mes.
+  - La constancia queda en la hoja oculta `INFORMES ENVIADOS`. Sin activador nuevo: el proyecto no puede crearlos desde el código (#A100). Nada en Script Properties.
+- **Para quién:** quien aprueba en la configuración del dashboard (`budgetApproverEmail`, hoy Alejandro), con copia a Yurani y David (`MR_CC`, sin duplicar si uno de ellos es quien aprueba).
+- **Qué trae** (lo mismo de la presentación del 13-oct):
+  - las tres cifras del mes (pedidos fuera de plazo, comprados a tiempo, 0–1 noche en tarifa superior) frente al mes anterior;
+  - nacional e internacional, medianas, pedidos a tiempo comprados tarde;
+  - lo que pasó por el CFO (#A100): aprobadas, rechazadas, vencidas, en espera y tarifas superiores;
+  - tendencia de 6 meses, unidades del mes (con su % de los últimos 3 meses);
+  - cuadro de honor (≥ 4 viajes, ≤ 20 % fuera), cuadro de deshonor (≥ 4 viajes, ≥ 60 % fuera, con «pedidos por otro») y «quién pide fuera de plazo», los tres con los **últimos 3 meses**;
+  - compras registradas después de hacerse, tarifa por duración y «Cómo se calculó».
+  - Adjuntos: el mismo contenido en **PDF** (conversión HTML→PDF de Apps Script, sin permisos nuevos) y un **CSV** con el detalle de cada solicitud del mes (separador `;`, con BOM para Excel, **sin cédulas**). El `.xlsx` necesitaría `script.external_request` (#A62), así que no se usa.
+- **Reglas** (las del 13-oct):
+  - solo vuelos `RESERVADO` o `PROCESADO`, por el **mes de la solicitud** (decisión de David);
+  - las modificaciones y lo registrado después de comprar (`SOLO POR TRAZABILIDAD`) no cuentan para la anticipación;
+  - a tiempo = 8 días nacional / 30 internacional, desde la solicitud o desde la compra;
+  - la tarifa sale **solo** de `TIPO DE COMPRA DE TKT`, nunca del texto del viajero (el informe del 13-oct la infería de agosto a octubre; desde el 8-oct la plataforma la registra).
+  - La tendencia se recalcula en cada informe: lo pedido a fin de mes y comprado después aparece en la fila de su mes al mes siguiente.
+- **Menú 15 (prueba):** pide un mes y envía ese informe **solo a quien lo corre**, sin copia ni constancia; dice cuándo sale el próximo automático. El menú 14 muestra el próximo envío y el último enviado.
+
+**Compatibilidad:** solo lee la hoja de solicitudes; no cambia estados ni columnas. La única escritura es la hoja `INFORMES ENVIADOS`. El frontend no cambia. Si `budgetApproverEmail` falta, no se envía y queda un aviso en el registro.
+
+**Verificado:**
+- `npm run verify` en verde.
+- Nuevo `tools/check-monthly-report.cjs` (hoja sintética, sin correos reales):
+  - primer día hábil con festivos (3-nov-2026, 4-ene-2027);
+  - cifras del mes y del anterior; modificaciones, registros posteriores, solo hospedaje, anuladas, en trámite y pruebas fuera;
+  - tarifa solo registrada (también `TIIPO`);
+  - CFO por decisión;
+  - tendencia, unidades, cuadros y «quién pide» con ventana de 3 meses;
+  - correo, CSV sin cédulas y adjuntos;
+  - envío: no antes de octubre, no en festivo, no fuera de horario, una sola vez, ponerse al día, constancia convertida en fecha por Sheets, aprobador cambiado;
+  - la pasada de cada 2 h lo envía;
+  - menú 15 (solo a quien lo corre, mes vacío, mes mal escrito);
+  - menú 14.
+- **Con la base real del 13-oct** (en local, sin publicar) da exactamente las cifras de la presentación de Alejandro:
+  - 375 viajes y 203 fuera de plazo (54 %);
+  - 121 de 362 compras a tiempo (33 %);
+  - medianas de 7, 1 y 6 días; 44 de 165 pedidos a tiempo comprados tarde;
+  - nacional 48 % e internacional 20 %;
+  - 18 registros posteriores y 33 modificaciones;
+  - la tendencia mes a mes (sep: 82 viajes, 33 %).
+
+**Despliegue:**
+1. Va en el mismo pegado de `server/Code.gs` de #A100. El menú 15 aparece al recargar la hoja.
+2. Probar con el menú 15 (por ejemplo, septiembre).
+
+No necesita versión nueva del web app por sí solo, ni push del frontend: corre en el activador.
+
+Rollback: versión anterior de `Code.gs`. Para frenar un envío sin tocar código, agregar a mano en `INFORMES ENVIADOS` una fila con `Cumplimiento de la política de viajes` en INFORME y el mes (`'2026-10`) en MES.

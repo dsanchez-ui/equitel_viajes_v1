@@ -130,6 +130,10 @@ nada de la plataforma depende de ellas.
 
 La crea la app (#A100) la primera vez que alguien toca **«Entendido»** en la ventana que explica cómo funcionan ahora las solicitudes (se muestra a los solicitantes hasta el 25 de octubre de 2026). Una fila por persona: `FECHA`, `CORREO` y `AVISO`. Es la constancia de que cada uno lo leyó. No la edites; si se borra una fila, a esa persona le vuelve a salir la ventana (mientras dure el aviso).
 
+### INFORMES ENVIADOS
+
+La crea el sistema (#A101) la primera vez que envía el informe mensual de cumplimiento de la política. Está oculta. Una fila por informe enviado: `FECHA`, `INFORME`, `MES`, `PARA` y `COPIA`. Sirve de constancia y evita que el informe de un mes salga dos veces. No la edites; si se borra la fila de un mes, ese informe se vuelve a enviar en la siguiente pasada del mismo mes.
+
 ### Hojas con `_OLD_` en el nombre
 
 Son respaldos de reorganizaciones anteriores de la hoja principal. **Déjalas quietas** hasta que hayas confirmado que la versión activa funciona bien (usualmente 1-2 semanas) y luego puedes borrarlas.
@@ -394,6 +398,14 @@ Solo lectura. Muestra:
 - la lista de solicitudes en espera, con su fecha de vencimiento.
 
 Si el proyecto no puede consultar los activadores, en vez de decir si el resumen está activo te remite a **Activadores**. Allí debe estar `procesarAprobacionesPolitica`, cada 2 horas.
+
+También dice cuándo sale el próximo informe mensual y cuál fue el último enviado.
+
+### 15. Informe mensual de la política: prueba (solo a mí)
+
+El informe mensual de cumplimiento (#A101) sale solo: la pasada de `procesarAprobacionesPolitica` lo envía **el primer día hábil de cada mes**, en horario laboral, con las cifras del mes anterior. Le llega a quien aprueba en la configuración del dashboard de costos (hoy Alejandro Gómez), con copia a Yurani Prieto y David Sánchez. El primero es el de octubre de 2026, el **martes 3 de noviembre** (el lunes 2 es festivo).
+
+Este menú pide un mes (`AAAA-MM`; vacío = el mes anterior) y te envía ese informe **solo a ti**, sin copia y sin dejar constancia. Sirve para revisarlo antes o para ver un mes cualquiera. Al final te dice cuándo sale el próximo automático y para quién.
 
 ### Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)
 
