@@ -580,28 +580,27 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-10-07, al cerrar en Linux)
+### Para retomar (estado al 2026-10-14)
 
-- **Todo el código está en `main`** (último commit `7675944`). El frontend de #A85 ya está
-  publicado, pero la casilla de Laura solo aparece al pegar el `Code.gs` nuevo.
-- **Pendiente manual en Apps Script** (lo hace David):
-  1. Plataforma: pegar `server/Code.gs` y `server/CostsDashboard.html` → **Implementar →
-     Gestionar implementaciones → lápiz → Nueva versión**. Opcional: menú 12 (crea
-     `AEROLINEA REGRESO`).
-  2. Proyecto aparte «Equitel · Rastreo de precios»: reemplazar el archivo **Rastreo** con
-     `tools/comparador-precios/apps-script/Rastreo.gs` (`Nucleo` no cambia; no volver a
-     activar ni dar permisos). En la siguiente pasada vuelve a buscar por tramos los viajes
-     por comprar (unas 2 consultas cada uno).
-  3. Comprobar en el dashboard de costos: tocar SOL-000629 → ida y regreso por separado,
-     vuelos directos primero y enlaces a Google Flights.
+- **Todo está desplegado hasta #A101.** El 14-oct David pegó `Code.gs` y `CostsDashboard.html`, corrió el
+  menú 12, creó el activador `procesarAprobacionesPolitica` (uno solo, cada 2 h), publicó la versión nueva del
+  web app y el frontend, y probó el informe mensual con el menú 15: todo bien. No queda nada por pegar.
+- **Fechas que vienen (sin código):**
+  - **21-oct:** termina el estudio de precios (#A84). Decidir si sigue (SerpApi gratis, 250 búsquedas al mes)
+    y revisar la proyección con Yurani antes de mostrársela a Alejandro: sin 15 comparaciones exactas no da
+    cifra al año (#A99).
+  - **25-oct:** la ventana del aviso a los solicitantes deja de salir sola (`POLICY_NOTICE_UNTIL`); la
+    constancia queda en `CONSTANCIA AVISOS`.
+  - **Martes 3-nov:** primer informe mensual automático (octubre) para Alejandro, con copia a Yurani y David.
+    Revisar que llegó y que `INFORMES ENVIADOS` tiene su fila. Octubre trae poca tarifa (se registra desde el
+    8-oct); desde noviembre sale completa.
 - **Estudio de precios:** activo del 7 al 21-oct-2026. El 7-oct quedaban 212 búsquedas de
   SerpApi (plan gratis, 250 al mes).
 - **Decisiones abiertas:** pedir el valor pagado en «Registrar reserva» para tener el precio
   real sin esperar las facturas (David: *"eso lo podríamos hablar ya después"*; no está claro si
   Laura tiene el precio a mano). Mostrarle el comparador a Laura: después de mostrárselo a
   Alejandro y a Yurani.
-- **Sin código (David):** reunión del 8-oct a las 3 p. m. con Alejandro (invitar a Juan
-  Camilo); enviar el manual y el enlace de la plataforma de cotizaciones al grupo de Growth.
+- **Sin código (David):** enviar el manual y el enlace de la plataforma de cotizaciones al grupo de Growth.
 - **Fuera del repositorio:** el documento de demostración para Alejandro
   (`Comparador de precios de tiquetes - demostracion 2026-10-06.docx`) quedó en Descargas del
   PC Linux, y los resultados crudos de la prueba del 6-oct en `resultados-comparador/` (no se
@@ -620,17 +619,14 @@ autorización) y verificar antes de crear una versión nueva del web app.
   dynamically imported module» (#A96, publicado antes, `7000a25`). La vista *misma tarifa* del comparador arranca
   vacía: se llena con los viajes que Laura confirme desde ahora. Infografía de una hoja: `infografia-tarifas.pdf`.
   Pendientes sin código: avisarle a Laura del campo de tarifa; revisar las cifras de ahorro con Yurani antes de
-  mostrarlas a Alejandro; pedir a Aviatur el precio de las tres tarifas en cada cotización; borrar
-  `public/assets/EmailGenerator-CHBQuqHQ.js` unos días después (#A96). Internacionales: se queda CEO o CDS.
-- **#A100 (14-oct, aprobación del CFO por la política):** implementado y verificado. Despliegue: pegar `Code.gs` → menú 12 →
-  activador `procesarAprobacionesPolitica` creado a mano en Activadores (cada 2 h; el menú 13 da los pasos) → versión nueva
-  del web app → push del frontend → revisar con el menú 14.
-- **#A101 (14-oct, informe mensual de la política):** implementado y verificado con la base del 13-oct. Solo cambia `Code.gs`:
-  va con el mismo pegado de #A100 (no necesita otro activador). Probar con el menú 15 (te llega solo a ti); el primero
-  automático sale el martes 3-nov-2026 para Alejandro.
+  mostrarlas a Alejandro; pedir a Aviatur el precio de las tres tarifas en cada cotización. La copia
+  `public/assets/EmailGenerator-CHBQuqHQ.js` (#A96) se borró el 14-oct. Internacionales: se queda CEO o CDS.
+- **#A99, #A100 y #A101 desplegados el 14-oct-2026** (cifras del dashboard que se pueden presentar, aprobación del CFO
+  por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
+  hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
 - **Manuales dentro de la app** (David, 14-oct): idea para después — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
-- **#A99 (13-oct, cifras del dashboard que se pueden presentar):** solo cambia `server/CostsDashboard.html`;
-  pendiente pegarlo y crear la versión nueva del web app (lo hace David). `Code.gs` no cambia.
+- **Informe por unidad para cada jefe** (posible segunda etapa de #A101): la presentación de Alejandro dice que «su jefe
+  directo recibe el ranking mensual de su unidad». Nadie lo ha pedido todavía; preguntar antes de construirlo.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
   2026-06-01, pendiente de desarrollo. Spec completa y autocontenida en
   [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).

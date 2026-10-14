@@ -2205,7 +2205,7 @@ El manual dice «más de 6» para la opción 3; los viajes de 6 noches no caen e
 
 **Fix:**
 - El formulario importa el generador del correo **de forma normal**. La app vuelve a ser un solo archivo JavaScript, y enviar una solicitud ya no descarga nada. Una pestaña vieja puede enviar aunque se haya publicado otra versión.
-- `public/assets/EmailGenerator-CHBQuqHQ.js` es una copia del archivo que producción usaba al corregir. Las pestañas abiertas con esa versión siguen pudiendo enviar después de esta publicación. Se puede borrar en unos días.
+- `public/assets/EmailGenerator-CHBQuqHQ.js` es una copia del archivo que producción usaba al corregir. Las pestañas abiertas con esa versión siguen pudiendo enviar después de esta publicación. Se puede borrar en unos días (se borró el 14-oct, seis días y dos publicaciones después).
 - **Prevención:** `tools/check-single-bundle.cjs`, dentro de `npm run verify` (después del build), falla si:
   - el código vuelve a usar `import()` o `React.lazy`;
   - la compilación trae más de un `.js` propio.
