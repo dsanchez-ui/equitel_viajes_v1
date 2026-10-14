@@ -597,10 +597,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **Estudio de precios:** activo del 7 al 21-oct-2026. El 7-oct quedaban 212 búsquedas de
   SerpApi (plan gratis, 250 al mes).
 - **Decisiones abiertas:** pedir el valor pagado en «Registrar reserva» para tener el precio
-  real sin esperar las facturas (David: *"eso lo podríamos hablar ya después"*; no está claro si
-  Laura tiene el precio a mano). Mostrarle el comparador a Laura: después de mostrárselo a
-  Alejandro y a Yurani.
-- **Sin código (David):** enviar el manual y el enlace de la plataforma de cotizaciones al grupo de Growth.
+  real sin esperar las facturas (David, 14-oct: *"sería bueno"*; falta definir dónde se guarda y si
+  es obligatorio). Mostrarle el comparador a Laura: **en pausa**, no se ha decidido si se le muestra
+  (David, 14-oct).
 - **Fuera del repositorio:** el documento de demostración para Alejandro
   (`Comparador de precios de tiquetes - demostracion 2026-10-06.docx`) quedó en Descargas del
   PC Linux, y los resultados crudos de la prueba del 6-oct en `resultados-comparador/` (no se
@@ -624,7 +623,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A99, #A100 y #A101 desplegados el 14-oct-2026** (cifras del dashboard que se pueden presentar, aprobación del CFO
   por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
   hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
-- **Manuales dentro de la app** (David, 14-oct): idea para después — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
+- **Manuales dentro de la app** (David, 14-oct): **solo plan**, en
+  [docs/plan-manuales-en-app.md](docs/plan-manuales-en-app.md) — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
 - **Informe por unidad para cada jefe** (posible segunda etapa de #A101): la presentación de Alejandro dice que «su jefe
   directo recibe el ranking mensual de su unidad». Nadie lo ha pedido todavía; preguntar antes de construirlo.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del
@@ -632,7 +632,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
   [docs/plan-legalizaciones-gastos.md](docs/plan-legalizaciones-gastos.md).
 - **Optimizaciones** — plan por etapas en [OPTIMIZACIONES.md](OPTIMIZACIONES.md).
   Etapa 1 completada; el resto documentado con riesgo y beneficio.
-- **#A50** — limpiar el cableado legacy de `INTEGRANTES`.
+- **#A50** — la hoja `INTEGRANTES` se eliminó en abril; en `Code.gs` solo quedan ramas que ya no se
+  ejecutan (`USE_USUARIOS_SHEET`). Limpiarlas es opcional y sin urgencia.
 - **Plan de la reunión del 2026-09-10** —
   [docs/plan-reunion-2026-09-10.md](docs/plan-reunion-2026-09-10.md). **Desplegado
   en producción** (#A68–#A73): fecha de nacimiento en usuarios, formulario y
@@ -640,8 +641,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
   descartadas por David.
 - **#A74 y #A75** (detalle sin segunda llamada; celular del pasajero desde la lista
   de RR. HH. y como campo opcional en los formularios): en `main` (`c3c0b8d`) y
-  Apps Script desplegado (el menú 8 ya se usó). Pendiente sin código: completar con
-  RR. HH. los 7 celulares inválidos o faltantes de la lista (p. ej. uno de 9 dígitos).
+  Apps Script desplegado (el menú 8 ya se usó). Los 7 celulares inválidos o faltantes de la
+  lista de RR. HH. no se persiguen (David, 14-oct): el formulario los ofrece a quien no tiene uno válido.
 - **#A76** (dashboard de costos por unidad) y **#A77** (saltar aprobación solo Yurani y
   David; la API ya no acepta estados arbitrarios): en `main` (`edd641b`; ajuste del menú 9
   en `85ed424`). En Apps Script ya se pegó `Code.gs` y el menú 9 creó los encabezados en
@@ -678,11 +679,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
   - **V5:** lectura de facturas PDF con IA, **solo como plan** (decisión de David del 2-oct):
     [docs/plan-lectura-facturas.md](docs/plan-lectura-facturas.md). Proyecto de Apps Script
     aparte que escribe en la hoja; no toca los permisos del de producción (#A62).
-- **Costos para revisar a mano (#A79, el menú 11 no los toca):** SOL-000310 y 378
-  (apartamento corporativo, $1 que debería ser 0), SOL-000379 (tiquetes en $1 con
-  facturas), SOL-000035 ($1 en tiquetes de solo hospedaje); SOL-000002 y 109 están
-  anuladas. Hoy no afectan el dashboard.
-- **Seguimiento sin código de la carga de fechas (#A72):** corregir con RR. HH. las
-  4 fechas inválidas; revisar los 115 usuarios que no aparecen en la lista de
-  integrantes (¿siguen en la empresa?); borrar los usuarios de prueba `PRUEBA1` y
-  `PRUEBA2` y el valor suelto `ADMIN` en `USUARIOS!N233`.
+- **Costos de #A79 que el menú 11 no tocaba** (SOL-000310, 378, 379 y 035): corregidos a mano por
+  David (14-oct).
+- **Carga de fechas (#A72):** las 4 fechas inválidas de la lista de RR. HH. no se persiguen (David,
+  14-oct): esas personas no tienen fecha válida y el formulario de vuelos se la pide, porque un texto
+  que no es fecha cuenta como vacío. `PRUEBA1` y `PRUEBA2` se quedan a propósito para seguir probando.
