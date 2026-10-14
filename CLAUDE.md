@@ -350,7 +350,11 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     (filtro en el servidor), no hay métricas, recordatorios ni dashboard hasta que se apruebe. El servidor recalcula la
     anticipación: nunca confiar en el `policyViolation` del navegador. Lo que crea un **administrador** (trazabilidad de un viaje
     ya comprado) no queda en espera, solo se marca. No aplica a solicitudes de cambio.
-  - El CFO recibe **un resumen cada 2 h** (7:00–20:00, todos los días; disparador `procesarAprobacionesPolitica`, menú 13) con una
+  - El área de viajes las ve **solo** en el botón «En espera de preaprobación» de su panel (solo lectura, `getPolicyHeldRequests`),
+    nunca en la lista principal. **Multidestino:** si cualquier tramo no cumple, espera todo el viaje (`GRUPO MULTIDESTINO`) y una
+    decisión cubre todos los tramos.
+  - El CFO recibe **un resumen cada 2 h solo en horario laboral** (`isWorkingHour`, como los demás resúmenes: nada los fines de
+    semana por la tarde ni los domingos; disparador `procesarAprobacionesPolitica`, menú 13) con una
     fila por solicitud y Aprobar / Rechazar firmados (`policy_decision`). Aprobada → `PENDIENTE_OPCIONES` (los tiempos cuentan desde
     `policyApproved`); rechazada o **vencida a los 7 días o al pasar la fecha del viaje** → `DENEGADO` con «No se aprobó la excepción
     por incumplimiento de la política de anticipación». Nunca se borra. Decisión en `APROBACION CFO ANTICIPACION`.
@@ -402,7 +406,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), y `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION` y `REQUIERE APROB TARIFA` (#A100) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), y `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO` (#A100) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -442,7 +446,7 @@ helper del propio `Code.gs` (`verPropiedadesDelScript`, etc.).
 | `cleanupExpiredPropsWeekly` | Limpia sesiones, lockouts y contadores de rate limit vencidos | `setupWeeklyCleanupTrigger()` |
 | `sendPendingApprovalReminders` / `sendPendingSelectionReminders` / `sendPendingConsultReminders` | Recordatorios; escalan a superadmins tras ~30 h laborales (#A16) | Configurados a mano en la UI |
 | `warmupPing` | Cada 10 min, mantiene tibio el isolate de GAS | Configurado a mano |
-| `procesarAprobacionesPolitica` | Cada 2 h: deniega las solicitudes fuera de plazo vencidas y manda al CFO el resumen de las que esperan (7:00–20:00) (#A100) | Menú 13 (`activarAprobacionesPolitica`), con la cuenta dueña del script |
+| `procesarAprobacionesPolitica` | Cada 2 h: deniega las solicitudes fuera de plazo vencidas y, en horario laboral, manda al CFO el resumen de las que esperan (#A100) | Menú 13 (`activarAprobacionesPolitica`), con la cuenta dueña del script |
 
 `rastrearPrecios` (#A84, cada 15 min) **no está en este proyecto**: vive en el proyecto aparte
 del rastreo de precios, con su propia autorización. Se instala y se quita desde ese proyecto
@@ -468,6 +472,7 @@ components/
   PurchaseInfoFields.tsx   Aerolínea y canal de compra (Confirmar costos y Registrar reserva, #A82) y hotel reservado (#A94)
   FareFields.tsx           Tarifa del manual COM-P-02: recomendada, excepción y aviso al cargar opciones (#A95); aviso del voto del CFO (#A100)
   PolicyNoticeModal.tsx    Ventana con las reglas nuevas de las solicitudes y «Entendido» con constancia (#A100)
+  PolicyHeldPanel.tsx      Botón «En espera de preaprobación» del panel del analista: solo lectura (#A100)
   InvoiceReviewPanel.tsx   Barra "Listas para cerrar" y "Facturas por revisar" del panel del analista (#A83)
   ReservationModal.tsx     Registrar reserva (+ guardado parcial, #A57)
   SupportUploadModal.tsx   Soportes post-aprobación

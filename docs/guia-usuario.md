@@ -113,10 +113,12 @@ Al enviar:
 
 1. La solicitud **se crea, pero queda en espera** (etiqueta ámbar **EN ESPERA DE APROBACIÓN**). El área de viajes **no la ve ni la gestiona** todavía: no se cotiza ni se compra nada.
 2. Te llega un correo **[EN ESPERA DE APROBACIÓN]** que explica por qué.
-3. Quien aprueba (hoy **Alejandro Gómez de Greiff**) la revisa en un resumen que recibe cada 2 horas y la **aprueba o rechaza**.
+3. Quien aprueba (hoy **Alejandro Gómez de Greiff**) la revisa en un resumen que recibe cada 2 horas **en horario laboral** (lunes a viernes de 7:00 a 17:00 y sábados de 8:00 a 12:00) y la **aprueba o rechaza**. Una solicitud hecha un fin de semana la ve el siguiente día hábil.
 4. **Si la aprueba**, te llega un correo y la solicitud sigue el proceso normal desde la etapa de opciones.
 5. **Si la rechaza**, queda **DENEGADA** con el motivo *«No se aprobó la excepción por incumplimiento de la política de anticipación»* (más su comentario, si escribió uno).
 6. **Si nadie la aprueba en 7 días, o antes de la fecha del viaje, queda denegada sola.** Nunca se borra: queda el registro.
+
+**Viaje multidestino:** si **cualquier tramo** no cumple la anticipación, **todo el viaje queda en espera** (si un tramo no se puede hacer, los demás tampoco). Los tramos quedan enlazados y **una sola decisión aplica a todos**: si se aprueba, siguen todos; si se rechaza o vence, se deniegan todos. Te llega un solo correo por viaje.
 
 Si el viaje es urgente, comunícate directamente con quien aprueba. Los viajes que registra el área de viajes (por ejemplo, uno ya comprado por fuera) no quedan en espera, pero sí quedan marcados fuera de política y cuentan en el informe de cumplimiento.
 
@@ -417,7 +419,7 @@ A veces hay emergencias que no esperan 8 días. Puedes crear la solicitud igual,
 Recomendaciones:
 
 - Escribe en **«¿Por qué no se pudo pedir con más anticipación?»** la razón real y concreta: es lo único que lee para decidir.
-- Si es muy urgente, comunícate con él directamente; el resumen le llega cada 2 horas.
+- Si es muy urgente, comunícate con él directamente; el resumen le llega cada 2 horas en horario laboral.
 - Si se rechaza, o nadie la aprueba en 7 días o antes de la fecha del viaje, queda **DENEGADA**. El cumplimiento de la política se mide cada mes por persona y por unidad.
 
 ### 9.6 El viaje ya lo pagó el área antes de que yo seleccionara

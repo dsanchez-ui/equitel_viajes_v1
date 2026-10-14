@@ -17,7 +17,11 @@
  *   - tarifa superior a la del manual: marca, voto del CFO (el mismo del
  *     presupuesto) y no se sube la tarifa antes de comprar;
  *   - el interruptor de la configuración apaga las reglas;
- *   - el aviso emergente de la semana del 19-oct y su constancia de lectura.
+ *   - el aviso emergente de la semana del 19-oct y su constancia de lectura;
+ *   - el resumen solo en horario laboral (isWorkingHour), como los demás;
+ *   - multidestino: si un tramo no cumple, todo el viaje espera, una sola decisión
+ *     (aprobar, rechazar o vencer) cubre todos los tramos y se avisa una vez;
+ *   - la lista de solo lectura del área de viajes (getPolicyHeldRequests).
  */
 
 const fs = require('fs');
@@ -115,6 +119,8 @@ function load() {
   if (typeof ctx.processPolicyDecision !== 'function') throw new Error('No se encontró processPolicyDecision() en server/Code.gs');
   // Entorno controlado
   ctx._todayBogotaIso_ = () => TODAY;
+  ctx.isWorkingHour = () => false; // cada prueba del resumen fija el horario
+  ctx._isCreateRequestRateLimited_ = () => false; // la prueba crea más de 10 solicitudes del mismo solicitante
   ctx.isUserAnalyst = (e) => ['admin@p.co', 'yprieto@equitel.com.co', 'dsanchez@equitel.com.co'].includes(String(e || '').toLowerCase());
   ctx.isSuperAdmin = () => false;
   ctx.validateUserSession_ = () => true;
@@ -323,6 +329,66 @@ function main() {
   const canc = ctx.dispatch('cancelOwnRequest', { userEmail: 'ana@p.co', sessionToken: 't', requestId: HELD4, reason: 'Ya no viajo' });
   ok('anular en espera: queda anulada sin correo al área de viajes', canc.success && cell(HELD4, 'STATUS') === 'ANULADO' && !log.mails.some((m) => /compras\.equitel/.test(m.to)));
 
+  // Horario laboral: fuera de él no sale el resumen (sí se deniegan las vencidas)
+  log.mails.length = 0;
+  reset();
+  ctx.isWorkingHour = () => false;
+  ctx.procesarAprobacionesPolitica();
+  eq('fuera del horario laboral: no le llega nada al CFO', mailsTo(CFO).length, 0);
+  ctx.isWorkingHour = () => true;
+  reset();
+  ctx.procesarAprobacionesPolitica();
+  eq('en horario laboral: le llega el resumen', mailsTo(CFO).length, 1);
+  ctx.isWorkingHour = () => false;
+
+  // Multidestino: el tramo 1 no cumple → todo el viaje espera; una sola decisión
+  const leg = (key, n, total, dep, extra) => base(Object.assign({ departureDate: day(dep), returnDate: '', multiGroupKey: key, multiGroupIndex: n, multiGroupTotal: total,
+    policyGroupHold: true, policyJustification: 'Reunión con cliente confirmada ayer.', comments: '[MULTIDESTINO] Tramo ' + n + '/' + total + ' · Itinerario: x\nVisita' }, extra || {}));
+  log.mails.length = 0;
+  const G1 = [create(leg('MD-viajeuno01', 1, 3, 3)).data, create(leg('MD-viajeuno01', 2, 3, 9, { origin: 'MEDELLIN, COLOMBIA', destination: 'CALI, COLOMBIA' })).data,
+    create(leg('MD-viajeuno01', 3, 3, 12, { origin: 'CALI, COLOMBIA', destination: 'BOGOTA, COLOMBIA' })).data];
+  eq('multidestino: los 3 tramos esperan (aunque el 2 y el 3 cumplan)', G1.map((id) => cell(id, 'STATUS')), Array(3).fill('PENDIENTE_APROBACION_POLITICA'));
+  eq('multidestino: cada tramo con su propia marca de anticipación', G1.map((id) => cell(id, 'VIOLACION POLITICA')), ['SI', 'NO', 'NO']);
+  eq('multidestino: enlazados', G1.map((id) => cell(id, 'GRUPO MULTIDESTINO')), Array(3).fill('MD-viajeuno01'));
+  eq('multidestino: un solo correo al solicitante, que lo explica', [mailsTo('ana@p.co').length, /multidestino de <strong>3 tramos/.test((mailsTo('ana@p.co')[0] || {}).html || '')], [1, true]);
+  // sin la marca del formulario: si ya hay un tramo del viaje en espera, el siguiente también espera
+  const G2 = [create(leg('MD-viajedos02', 1, 2, 2, { policyGroupHold: undefined })).data, create(leg('MD-viajedos02', 2, 2, 15, { policyGroupHold: undefined, origin: 'MEDELLIN, COLOMBIA', destination: 'BOGOTA, COLOMBIA' })).data];
+  eq('multidestino: el tramo que cumple espera si otro del viaje ya espera', G2.map((id) => cell(id, 'STATUS')), Array(2).fill('PENDIENTE_APROBACION_POLITICA'));
+  reset();
+  const panel = ctx.getPolicyHeldRequests();
+  const g1Item = panel.items.find((it) => it.ids.includes(G1[0]));
+  ok('lista del área de viajes: el viaje multidestino es una sola entrada con sus 3 tramos', g1Item && g1Item.ids.join() === G1.join() && g1Item.legs.length === 3 && g1Item.id === G1[0]);
+  ok('lista del área de viajes: trae quién aprueba y la justificación', panel.approverName === 'Alejandro Gómez de Greiff' && g1Item.justification === 'Reunión con cliente confirmada ayer.');
+  reset();
+  const resA = ctx.dispatch('getPolicyHeldRequests', { userEmail: 'ana@p.co', sessionToken: 't' });
+  ok('lista del área de viajes: solo administradores', !resA.success);
+  log.mails.length = 0;
+  reset();
+  ctx._policySendDigest_(true);
+  const dg = mailsTo(CFO)[0].html;
+  ok('resumen: el viaje multidestino es una fila con Aprobar y Rechazar', (dg.match(new RegExp('id=' + G1[0] + '&', 'g')) || []).length === 2 && !new RegExp('id=' + G1[1] + '&').test(dg) && /Viaje multidestino de 3 tramos/.test(dg));
+  const gLinks = [...dg.matchAll(/href="([^"]*action=policy_decision[^"]*)"/g)].map((m) => params(m[1].replace(/&amp;/g, '&')));
+  log.mails.length = 0;
+  reset();
+  page = ctx.processPolicyDecision({ parameter: Object.assign(gLinks.find((q) => q.id === G1[0] && q.decision === 'approved'), { confirm: 'true' }) });
+  eq('multidestino: aprobar el viaje libera los 3 tramos', G1.map((id) => cell(id, 'STATUS')), Array(3).fill('PENDIENTE_OPCIONES'));
+  eq('multidestino: al área de viajes le llega cada tramo como nuevo', log.mails.filter((m) => /compras\.equitel/.test(m.to)).length, 3);
+  log.mails.length = 0;
+  reset();
+  page = ctx.processPolicyDecision({ parameter: Object.assign(gLinks.find((q) => q.id === G2[0] && q.decision === 'denied'), { confirm: 'true' }) });
+  eq('multidestino: rechazar el viaje deniega todos los tramos', G2.map((id) => cell(id, 'STATUS')), ['DENEGADO', 'DENEGADO']);
+  ok('multidestino: un solo correo de rechazo, que nombra los demás tramos', log.mails.length === 1 && new RegExp(G2[1]).test(log.mails[0].html));
+  // vencimiento conjunto: pasó la fecha del primer tramo
+  const G3 = [create(leg('MD-viajetres3', 1, 2, 2)).data, create(leg('MD-viajetres3', 2, 2, 20, { origin: 'MEDELLIN, COLOMBIA', destination: 'BOGOTA, COLOMBIA' })).data];
+  setCell(G3[0], 'FECHA IDA', '13-10-2026');
+  log.mails.length = 0;
+  reset();
+  const run2 = ctx.procesarAprobacionesPolitica();
+  ok('multidestino: vence el viaje completo, con un solo aviso', G3.every((id) => run2.expired.includes(id) && cell(id, 'STATUS') === 'DENEGADO') && log.mails.filter((m) => m.to === 'ana@p.co').length === 1);
+  // un administrador registrando un multidestino: no espera
+  const GA = create(leg('MD-viajeadm4', 1, 1, 3, { requesterEmail: 'admin@p.co' }), 'admin@p.co').data;
+  eq('multidestino creado por un administrador: no espera', cell(GA, 'STATUS'), 'PENDIENTE_OPCIONES');
+
   // 7. Disparador
   ctx.activarAprobacionesPolitica();
   eq('disparador: uno, cada 2 horas', [log.triggers.filter((t) => t === 'procesarAprobacionesPolitica').length, log.everyHours], [1, 2]);
@@ -434,7 +500,7 @@ function main() {
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('Aprobación del CFO por la política (#A100): anticipación en el servidor, espera oculta al área de viajes, resumen con enlaces firmados, aprobar/rechazar/vencer, métricas desde la aprobación, tarifa superior con voto del CFO, interruptor y aviso con constancia. OK');
+  console.log('Aprobación del CFO por la política (#A100): anticipación en el servidor, espera oculta al área de viajes, resumen con enlaces firmados, aprobar/rechazar/vencer, métricas desde la aprobación, resumen solo en horario laboral, multidestino con una sola decisión, lista de solo lectura del área de viajes, tarifa superior con voto del CFO, interruptor y aviso con constancia. OK');
 }
 
 main();

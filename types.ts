@@ -22,6 +22,35 @@ export enum RequestStatus {
   PENDING_POLICY_APPROVAL = 'PENDIENTE_APROBACION_POLITICA'
 }
 
+/** #A100: solicitud (o viaje multidestino) en espera del CFO, para el panel del área de viajes (solo lectura). */
+export interface PolicyHeldItem {
+  id: string;
+  ids: string[];
+  legs: { id: string; origin: string; destination: string; depKey: string; leadDays: number | null; minDays: number }[];
+  hotelOnly: boolean;
+  international: boolean;
+  origin: string;
+  destination: string;
+  depKey: string;
+  retKey: string;
+  createdKey: string;
+  leadDays: number | null;
+  minDays: number;
+  expiryKey: string;
+  requesterEmail: string;
+  requesterName: string;
+  travelers: string[];
+  unit: string;
+  justification: string;
+}
+
+export interface PolicyHeldResponse {
+  enabled: boolean;
+  approverName: string;
+  expiryDays: number;
+  items: PolicyHeldItem[];
+}
+
 /** #A100: aviso de cómo funcionan ahora las solicitudes (bootstrap). show = mostrarlo ahora. */
 export interface PolicyNotice {
   id: string;
@@ -266,6 +295,11 @@ export interface TravelRequest {
   policyJustification?: string;
   policyDecision?: string;
   policyApproverName?: string;
+  // #A100: solo en el envío de un multidestino: enlaza los tramos y dice si todo el viaje espera al CFO.
+  multiGroupKey?: string;
+  multiGroupIndex?: number;
+  multiGroupTotal?: number;
+  policyGroupHold?: boolean;
   // True cuando el solicitante no es ninguno de los pasajeros (detección por cédula
   // contra directorio + fallback por correo). Se usa para mostrar el ícono 👥 en
   // dashboards. No afecta el flujo de aprobación.

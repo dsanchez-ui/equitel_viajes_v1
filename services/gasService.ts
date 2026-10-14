@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo, PolicyApprovalInfo, PolicyNotice } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo, PolicyApprovalInfo, PolicyNotice, PolicyHeldResponse } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -389,6 +389,13 @@ class GasService {
     policyApproval?: PolicyApprovalInfo;
   }> {
     return this._bootstrapFetch('getFormBootstrap', 'los datos del formulario', null, false);
+  }
+
+  /** #A100: solicitudes en espera de la aprobación del CFO (solo administradores, solo lectura). */
+  async getPolicyHeldRequests(): Promise<PolicyHeldResponse> {
+    const response = await this.runGas('getPolicyHeldRequests', {});
+    if (!response.success) throw new Error(response.error);
+    return response.data;
   }
 
   /** #A100: «Entendido» en el aviso de cómo funcionan ahora las solicitudes (deja constancia en el servidor). */

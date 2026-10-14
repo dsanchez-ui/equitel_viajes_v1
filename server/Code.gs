@@ -631,7 +631,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'dismissInvoiceAlert', 'getPriceTracking', 'getPriceTrackingDetail'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'getPolicyHeldRequests', 'dismissInvoiceAlert', 'getPriceTracking', 'getPriceTrackingDetail'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -711,6 +711,8 @@ function dispatch(action, payload) {
       case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline, payload.hotelName, payload.hotelChannel,
         payload.fareOption, payload.fareJustification, currentUserEmail); break;
       case 'getInvoiceReview': result = getInvoiceReview(); break;
+      // #A100: solicitudes en espera de la aprobación del CFO (solo lectura, botón aparte del panel).
+      case 'getPolicyHeldRequests': result = getPolicyHeldRequests(); break;
       case 'dismissInvoiceAlert': result = dismissInvoiceAlert(payload.requestId, currentUserEmail); break;
       // SECURITY: Server-side analyst check
       case 'checkIsAnalyst': result = isUserAnalyst(currentUserEmail); break;
@@ -3851,6 +3853,7 @@ function _ensureA82A83Columns_() {
     { header: POLICY_JUSTIFICATION_HEADER, col: _ensureRequestColumn_(POLICY_JUSTIFICATION_HEADER, POLICY_JUSTIFICATION_NOTE) },
     { header: POLICY_DECISION_HEADER, col: _ensureRequestColumn_(POLICY_DECISION_HEADER, POLICY_DECISION_NOTE) },
     { header: FARE_CFO_FLAG_HEADER, col: _ensureRequestColumn_(FARE_CFO_FLAG_HEADER, FARE_CFO_FLAG_NOTE) },
+    { header: POLICY_GROUP_HEADER, col: _ensureRequestColumn_(POLICY_GROUP_HEADER, POLICY_GROUP_NOTE) },
     { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
       'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
   ];
@@ -6001,6 +6004,15 @@ function createNewRequest(data, emailHtml, policy) {
     }
     _policyJustInObs = H(POLICY_JUSTIFICATION_HEADER) < 0;
   }
+  // #A100: llave que enlaza los tramos de un viaje multidestino (todos, esperen o no).
+  const _policyGroupKeyVal = policy && policy.groupKey ? policy.groupKey : '';
+  if (_policyGroupKeyVal && H(POLICY_GROUP_HEADER) < 0) {
+    try {
+      _ensureRequestColumn_(POLICY_GROUP_HEADER, POLICY_GROUP_NOTE);
+    } catch (colErr) {
+      console.warn('createNewRequest: no se pudo crear la columna "' + POLICY_GROUP_HEADER + '": ' + colErr);
+    }
+  }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
@@ -6090,6 +6102,7 @@ function createNewRequest(data, emailHtml, policy) {
   set("OBSERVACIONES", safeSheetValue_((data.comments || '') +
       (_policyJustInObs ? (data.comments ? '\n' : '') + '[JUSTIFICACIÓN ANTICIPACIÓN]: ' + _policyJustification : '')));
   if (_policyJustification && !_policyJustInObs) set(POLICY_JUSTIFICATION_HEADER, safeSheetValue_(_policyJustification));
+  if (_policyGroupKeyVal) set(POLICY_GROUP_HEADER, _policyGroupKeyVal);
 
   set("QUIÉN APRUEBA? (AUTOMÁTICO)", approverName);
   set("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)", approverEmail);
@@ -18508,8 +18521,13 @@ function costsDashboard_getPriceTrackingDetail(payload) {
 //      (`budgetApproverEmail` / `budgetApproverName` de la configuración del
 //      dashboard de costos): cambiarlo allí lo cambia para las dos reglas.
 //    - En vez de un correo por solicitud, `procesarAprobacionesPolitica`
-//      (disparador cada 2 horas) le manda UN resumen con una fila por solicitud
-//      y los botones Aprobar / Rechazar al lado (enlaces firmados).
+//      (disparador cada 2 horas, solo en horario laboral como los demás
+//      resúmenes: `isWorkingHour`) le manda UN resumen con una fila por
+//      solicitud y los botones Aprobar / Rechazar al lado (enlaces firmados).
+//    - Multidestino: si un tramo no cumple, esperan todos los tramos del viaje
+//      (enlazados por GRUPO MULTIDESTINO) y una sola decisión los cubre.
+//    - El área de viajes no las ve en su lista; solo en el botón «En espera de
+//      preaprobación» de su panel (solo lectura, getPolicyHeldRequests).
 //    - Aprobada → PENDIENTE_OPCIONES y le llega al área de viajes como nueva
 //      (desde aquí corren los tiempos). Rechazada → DENEGADO con el motivo.
 //    - Si nadie la aprueba en 7 días, o pasa la fecha del viaje, queda DENEGADO
@@ -18534,15 +18552,20 @@ var POLICY_JUSTIFICATION_MIN = 10;
 var POLICY_JUSTIFICATION_MAX = 500;
 var POLICY_DIGEST_HANDLER = 'procesarAprobacionesPolitica';
 var POLICY_DIGEST_EVERY_HOURS = 2;
-// El resumen sale todos los días entre estas horas de Bogotá (los viajes fuera
-// de plazo son urgentes, también el fin de semana). Las solicitudes vencidas se
-// deniegan en cualquier pasada, a cualquier hora.
-var POLICY_DIGEST_FROM_HOUR = 7;
-var POLICY_DIGEST_TO_HOUR = 20;
+// El resumen sale solo en horario laboral (isWorkingHour: L-V 7:00-17:00 y
+// sábados 8:00-12:00), igual que los demás resúmenes: David, 14-oct, «no quiero
+// estarlo molestando en fines de semana». Las solicitudes vencidas se deniegan
+// en cualquier pasada (ese correo es solo para el solicitante).
+var POLICY_DIGEST_HOURS_TEXT = 'en horario laboral (lunes a viernes de 7:00 a 17:00 y sábados de 8:00 a 12:00)';
 var POLICY_JUSTIFICATION_HEADER = 'JUSTIFICACION ANTICIPACION';
 var POLICY_JUSTIFICATION_NOTE = 'Por qué la solicitud se pidió con menos anticipación de la que pide la política (#A100). La escribe el solicitante en el formulario; la lee el CFO antes de decidir.';
 var POLICY_DECISION_HEADER = 'APROBACION CFO ANTICIPACION';
 var POLICY_DECISION_NOTE = 'Decisión del CFO sobre la solicitud fuera de plazo (#A100): Sí_correo_fecha, No_correo_fecha o Vencida_sistema_fecha (nadie la aprobó a tiempo). Vacía = no necesitó aprobación.';
+// Viajes multidestino (#A100, David 14-oct): los tramos se crean como solicitudes
+// aparte, enlazadas por esta llave. Si un tramo no cumple, TODO el viaje espera
+// y una sola decisión del CFO aplica a todos los tramos.
+var POLICY_GROUP_HEADER = 'GRUPO MULTIDESTINO';
+var POLICY_GROUP_NOTE = 'Llave que enlaza los tramos de un mismo viaje multidestino (#A100). Si un tramo no cumple la anticipación, todos esperan la misma aprobación del CFO.';
 var FARE_CFO_FLAG_HEADER = 'REQUIERE APROB TARIFA';
 var FARE_CFO_FLAG_NOTE = 'SI = la tarifa confirmada es superior a la del manual COM-P-02 y la aprobación pide el voto del CFO (#A100). Lo marca el sistema al confirmar costos.';
 var POLICY_DENIAL_REASON = 'No se aprobó la excepción por incumplimiento de la política de anticipación.';
@@ -18609,6 +18632,32 @@ function _normalizePolicyJustification_(raw) {
   return { ok: true, text: j };
 }
 
+/** Llave de un viaje multidestino que manda el formulario ('MD-…'); '' si no es válida. */
+function _policyGroupKey_(raw) {
+  var k = String(raw == null ? '' : raw).trim();
+  return /^MD-[A-Za-z0-9]{6,40}$/.test(k) ? k : '';
+}
+
+/** Filas de la hoja con esa llave de viaje: [{rowNumber, id, status, depKey, row}]. */
+function _policyGroupRows_(groupKey) {
+  var out = [];
+  var gIdx = H(POLICY_GROUP_HEADER);
+  if (!groupKey || gIdx < 0) return out;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2) return out;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var stIdx = H('STATUS'), idIdx = H('ID RESPUESTA'), depIdx = H('FECHA IDA');
+  data.forEach(function(row, i) {
+    if (String(row[gIdx] || '').trim() !== groupKey) return;
+    out.push({ rowNumber: i + 2, id: String(row[idIdx] || '').trim(), status: String(row[stIdx] || '').trim(), depKey: _psDateKey_(row[depIdx]), row: row });
+  });
+  return out;
+}
+
+function _policyGroupHasHeld_(groupKey) {
+  return _policyGroupRows_(groupKey).some(function(g) { return g.status === POLICY_HOLD_STATUS; });
+}
+
 /**
  * Decide, en el servidor, si una solicitud NUEVA queda en espera del CFO. Nunca
  * confía en el `policyViolation` del navegador: lo recalcula con la fecha de ida.
@@ -18618,12 +18667,21 @@ function _normalizePolicyJustification_(raw) {
  */
 function _planPolicyHold_(data, currentUserEmail) {
   var lead = _policyLeadCheck_(data.departureDate, !!data.isInternational);
-  var out = { hold: false, violates: lead.known ? lead.violates : null, lead: lead, justification: '', approverName: '' };
+  var groupKey = _policyGroupKey_(data.multiGroupKey);
+  var out = {
+    hold: false, violates: lead.known ? lead.violates : null, lead: lead, justification: '', approverName: '',
+    groupKey: groupKey, groupIndex: Number(data.multiGroupIndex) || 0, groupTotal: Number(data.multiGroupTotal) || 0, byGroup: false
+  };
   var hasKey = data.policyJustification !== undefined && data.policyJustification !== null;
-  if (!lead.known || !lead.violates) return out;
-  var cfg = _policyApprovalConfig_();
   if (String(data.requestType || 'ORIGINAL') === 'MODIFICACION') return out;
+  var cfg = _policyApprovalConfig_();
   var isAdmin = isUserAnalyst(currentUserEmail);
+  // Multidestino: un tramo que cumple también espera si otro tramo del mismo viaje
+  // no cumple (lo dice el formulario o ya hay un tramo del viaje en espera). Que
+  // el navegador pida esperar de más no le da nada a nadie; nunca lo contrario.
+  var groupHold = !!groupKey && (data.policyGroupHold === true || _policyGroupHasHeld_(groupKey));
+  if (!(lead.known && lead.violates) && !groupHold) return out;
+  if (!(lead.known && lead.violates)) out.byGroup = true;
   if (cfg.enabled && !isAdmin) {
     out.hold = true;
     out.approverName = cfg.name;
@@ -18723,7 +18781,11 @@ function _policyHeldItem_(row, names) {
     unit: String(req.businessUnit || ''),
     justification: String(cell(POLICY_JUSTIFICATION_HEADER) || '').trim(),
     multidestino: multi ? multi[0].replace('[MULTIDESTINO]', '').trim() : '',
-    reason: String(req.comments || '').replace(/^\[MULTIDESTINO\][^\n]*\n?/, '').trim()
+    reason: String(req.comments || '').replace(/^\[MULTIDESTINO\][^\n]*\n?/, '').trim(),
+    groupKey: _policyGroupKey_(cell(POLICY_GROUP_HEADER)),
+    ids: [req.requestId],
+    legs: [{ id: req.requestId, origin: String(req.origin || ''), destination: String(req.destination || ''), depKey: depKey,
+      leadDays: lead, minDays: req.isInternational ? POLICY_MIN_DAYS_INTERNATIONAL : POLICY_MIN_DAYS_NATIONAL }]
   };
 }
 
@@ -18737,41 +18799,78 @@ function _policyDecisionLink_(id, decision, actorEmail) {
 
 /** Bloque HTML con los datos del viaje (resumen del CFO y página de confirmación). */
 function _policyItemHtml_(it) {
-  var route = it.hotelOnly
-    ? '🏨 Hospedaje en ' + escapeHtml_(it.destination)
-    : '✈️ ' + escapeHtml_(it.origin) + ' → ' + escapeHtml_(it.destination);
-  var dates = it.hotelOnly
-    ? 'Entrada ' + escapeHtml_(_policyFmtDay_(it.depKey)) + (it.retKey ? ' · salida ' + escapeHtml_(_policyFmtDay_(it.retKey)) : '')
-    : 'Ida ' + escapeHtml_(_policyFmtDay_(it.depKey)) + (it.retKey ? ' · regreso ' + escapeHtml_(_policyFmtDay_(it.retKey)) : ' · solo ida');
+  var multi = it.legs && it.legs.length > 1;
+  var legLead = function(l) {
+    if (l.leadDays === null || l.leadDays === undefined) return '';
+    return l.leadDays < l.minDays
+      ? ' · <strong style="color:#b91c1c;">' + escapeHtml_(_policyDaysText_(l.leadDays)) + ' antes (la política pide ' + l.minDays + ')</strong>'
+      : ' · ' + escapeHtml_(_policyDaysText_(l.leadDays)) + ' antes (cumple)';
+  };
+  var route, dates;
+  if (multi) {
+    route = '🧭 Viaje multidestino de ' + it.legs.length + ' tramos';
+    dates = '<div style="margin:2px 0 4px 0;">Una sola decisión para todo el viaje: si un tramo no se puede hacer, los demás tampoco.</div>' +
+      it.legs.map(function(l, i) {
+        return '<div>Tramo ' + (i + 1) + ': ' + escapeHtml_(l.id) + ' · ' + escapeHtml_(l.origin) + ' → ' + escapeHtml_(l.destination) +
+          ' · ' + escapeHtml_(_policyFmtDay_(l.depKey)) + legLead(l) + '</div>';
+      }).join('');
+  } else {
+    route = it.hotelOnly
+      ? '🏨 Hospedaje en ' + escapeHtml_(it.destination)
+      : '✈️ ' + escapeHtml_(it.origin) + ' → ' + escapeHtml_(it.destination);
+    dates = it.hotelOnly
+      ? 'Entrada ' + escapeHtml_(_policyFmtDay_(it.depKey)) + (it.retKey ? ' · salida ' + escapeHtml_(_policyFmtDay_(it.retKey)) : '')
+      : 'Ida ' + escapeHtml_(_policyFmtDay_(it.depKey)) + (it.retKey ? ' · regreso ' + escapeHtml_(_policyFmtDay_(it.retKey)) : ' · solo ida');
+  }
   var who = it.requesterName ? escapeHtml_(it.requesterName) + ' <span style="color:#6b7280;">(' + escapeHtml_(it.requesterEmail) + ')</span>' : escapeHtml_(it.requesterEmail);
-  var lead = it.leadDays === null ? '' : ', <strong style="color:#b91c1c;">' + escapeHtml_(_policyDaysText_(it.leadDays)) + ' antes</strong> (la política pide ' + it.minDays + ')';
-  var html = '<div style="font-size:14px; font-weight:bold; color:#111827;">' + escapeHtml_(it.id) + ' · ' + route + '</div>' +
-    '<div style="font-size:13px; color:#374151; margin-top:4px;">' + dates + (it.req.isInternational ? ' · <strong>internacional</strong>' : '') + '</div>' +
+  var lead = multi || it.leadDays === null ? '' : ', <strong style="color:#b91c1c;">' + escapeHtml_(_policyDaysText_(it.leadDays)) + ' antes</strong> (la política pide ' + it.minDays + ')';
+  var html = '<div style="font-size:14px; font-weight:bold; color:#111827;">' + (multi ? '' : escapeHtml_(it.id) + ' · ') + route + '</div>' +
+    '<div style="font-size:13px; color:#374151; margin-top:4px;">' + dates + (it.req.isInternational && !multi ? ' · <strong>internacional</strong>' : '') + '</div>' +
     '<div style="font-size:13px; color:#374151; margin-top:4px;"><strong>Viaja:</strong> ' + escapeHtml_(it.travelers.join(', ') || '—') + '</div>' +
     '<div style="font-size:13px; color:#374151; margin-top:4px;"><strong>La pidió:</strong> ' + who + ' el ' + escapeHtml_(_policyFmtDay_(it.createdKey)) + lead + '</div>' +
-    (it.unit ? '<div style="font-size:12px; color:#6b7280; margin-top:4px;">Unidad: ' + escapeHtml_(it.unit) + (it.multidestino ? ' · Multidestino: ' + escapeHtml_(it.multidestino) : '') + '</div>' : '') +
+    (it.unit ? '<div style="font-size:12px; color:#6b7280; margin-top:4px;">Unidad: ' + escapeHtml_(it.unit) + '</div>' : '') +
     '<div style="font-size:13px; color:#374151; margin-top:6px; background:#fffbeb; border-left:3px solid #f59e0b; padding:6px 8px;"><strong>Por qué no se pidió antes:</strong> ' +
       (it.justification ? '<em>"' + escapeHtml_(it.justification) + '"</em>' : '<em style="color:#6b7280;">No la escribió (la pidió con la versión anterior del formulario).</em>') + '</div>' +
     (it.reason ? '<div style="font-size:12px; color:#6b7280; margin-top:4px;"><strong>Motivo del viaje:</strong> ' + escapeHtml_(it.reason.substring(0, 300)) + '</div>' : '');
   return html;
 }
 
-/** Lista de solicitudes en espera (más urgentes primero). */
+/**
+ * Lista de lo que espera al CFO (más urgente primero). Los tramos de un mismo viaje
+ * multidestino van juntos en UNA entrada: la decisión es una para todo el viaje.
+ * `id` es el primer tramo (el de los enlaces); `ids` y `legs`, todos los que esperan.
+ */
 function _policyHeldItems_() {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   if (!sheet || sheet.getLastRow() < 2) return [];
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
   var stIdx = H('STATUS'), idIdx = H('ID RESPUESTA');
-  var names = null, seen = {}, items = [];
+  var names = null, seen = {}, singles = [], groups = {};
   data.forEach(function(row) {
     var id = String(row[idIdx] || '').trim();
     if (!id || seen[id] || String(row[stIdx] || '').trim() !== POLICY_HOLD_STATUS) return;
     seen[id] = true;
     if (!names) names = _policyUserNames_();
-    items.push(_policyHeldItem_(row, names));
+    var it = _policyHeldItem_(row, names);
+    if (it.groupKey) (groups[it.groupKey] = groups[it.groupKey] || []).push(it);
+    else singles.push(it);
   });
-  items.sort(function(a, b) { return String(a.depKey).localeCompare(String(b.depKey)) || String(a.id).localeCompare(String(b.id)); });
-  return items;
+  var byDep = function(a, b) { return String(a.depKey).localeCompare(String(b.depKey)) || String(a.id).localeCompare(String(b.id)); };
+  Object.keys(groups).forEach(function(k) {
+    var legs = groups[k].sort(byDep);
+    var first = legs[0];
+    var merged = Object.assign({}, first);
+    merged.ids = legs.map(function(l) { return l.id; });
+    merged.legs = legs.map(function(l) { return l.legs[0]; });
+    merged.justification = (legs.filter(function(l) { return l.justification; })[0] || first).justification;
+    merged.createdKey = legs.map(function(l) { return l.createdKey; }).filter(Boolean).sort()[0] || first.createdKey;
+    merged.expiryKey = legs.map(function(l) { return l.expiryKey; }).filter(Boolean).sort()[0] || first.expiryKey;
+    var lastLeg = legs[legs.length - 1];
+    merged.retKey = lastLeg.depKey !== first.depKey ? lastLeg.depKey : first.retKey;
+    singles.push(merged);
+  });
+  singles.sort(byDep);
+  return singles;
 }
 
 /** Correo-resumen para quien aprueba: una fila por solicitud, con sus botones al lado. */
@@ -18800,15 +18899,14 @@ function _policyDigestHtml_(items, cfg) {
       'Estas solicitudes se pidieron con menos anticipación de la que pide la política de viajes (<strong>' + POLICY_MIN_DAYS_NATIONAL + ' días</strong> para viajes nacionales y <strong>' + POLICY_MIN_DAYS_INTERNATIONAL + '</strong> para internacionales). ' +
       'El área de viajes <strong>no las gestiona hasta que usted las apruebe</strong>. Si la aprueba, sigue el proceso normal; si la rechaza, el solicitante recibe un correo con el motivo.</td></tr>' +
     '<tr><td style="padding:6px 12px 12px 12px;"><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; border:1px solid #e5e7eb;">' + rows + '</table></td></tr>' +
-    '<tr><td style="padding:0 20px 20px 20px; color:#6b7280; font-size:12px; line-height:1.5;">Cada botón abre una página para confirmar y, si quiere, dejar un comentario. Este resumen llega cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas mientras haya solicitudes pendientes. Las que nadie aprueba en ' + POLICY_HOLD_EXPIRY_DAYS + ' días, o antes de la fecha del viaje, quedan denegadas.</td></tr>' +
+    '<tr><td style="padding:0 20px 20px 20px; color:#6b7280; font-size:12px; line-height:1.5;">Cada botón abre una página para confirmar y, si quiere, dejar un comentario. En un viaje multidestino, la decisión aplica a todos sus tramos. Este resumen llega cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas ' + POLICY_DIGEST_HOURS_TEXT + ' mientras haya solicitudes pendientes. Las que nadie aprueba en ' + POLICY_HOLD_EXPIRY_DAYS + ' días, o antes de la fecha del viaje, quedan denegadas.</td></tr>' +
     '<tr><td style="text-align:center; font-size:11px; color:#9ca3af; padding-bottom:18px;">&copy; ' + new Date().getFullYear() + ' Organización Equitel. Gestión de Viajes Corporativos.</td></tr>' +
     '</table></td></tr></table></body></html>';
 }
 
-/** Hora de Bogotá dentro de la ventana del resumen. */
+/** El resumen sale en el mismo horario laboral que los demás resúmenes (isWorkingHour). */
 function _policyDigestHour_() {
-  var hour = parseInt(Utilities.formatDate(new Date(), 'America/Bogota', 'H'), 10);
-  return hour >= POLICY_DIGEST_FROM_HOUR && hour < POLICY_DIGEST_TO_HOUR;
+  return isWorkingHour();
 }
 
 /** Envía el resumen a quien aprueba si hay solicitudes en espera. Devuelve cuántas listó. */
@@ -18874,7 +18972,31 @@ function _policyApprove_(sheet, rowNumber, id, approverEmail, comment) {
  * Deniega la solicitud en espera (rechazo del CFO o vencimiento). Solo le escribe
  * al solicitante y a los pasajeros: el área de viajes nunca la vio.
  */
-function _policyDeny_(sheet, rowNumber, id, actorLabel, reason, comment, expired) {
+/**
+ * Lo que espera junto con una fila: ella y, si es un tramo de un viaje
+ * multidestino, los demás tramos del viaje que también esperan (por fecha).
+ * @return {Array<{rowNumber: number, id: string, depKey: string}>}
+ */
+function _policyHeldMates_(sheet, rowNumber) {
+  var gIdx = H(POLICY_GROUP_HEADER);
+  var self = { rowNumber: rowNumber, id: String(sheet.getRange(rowNumber, H('ID RESPUESTA') + 1).getValue() || '').trim(),
+    depKey: _psDateKey_(sheet.getRange(rowNumber, H('FECHA IDA') + 1).getValue()) };
+  var key = gIdx < 0 ? '' : _policyGroupKey_(sheet.getRange(rowNumber, gIdx + 1).getValue());
+  if (!key) return [self];
+  var mates = _policyGroupRows_(key).filter(function(g) { return g.status === POLICY_HOLD_STATUS; })
+    .map(function(g) { return { rowNumber: g.rowNumber, id: g.id, depKey: g.depKey }; });
+  if (!mates.some(function(m) { return m.rowNumber === rowNumber; })) mates.push(self);
+  mates.sort(function(a, b) { return String(a.depKey).localeCompare(String(b.depKey)) || a.id.localeCompare(b.id); });
+  return mates;
+}
+
+/**
+ * Deniega la solicitud en espera (rechazo del CFO o vencimiento). Solo le escribe
+ * al solicitante y a los pasajeros: el área de viajes nunca la vio. En un viaje
+ * multidestino se avisa una vez (notify solo en el primer tramo, con los demás en
+ * otherIds).
+ */
+function _policyDeny_(sheet, rowNumber, id, actorLabel, reason, comment, expired, notify, otherIds) {
   var stamp = Utilities.formatDate(new Date(), 'America/Bogota', 'd/M/yyyy H:mm');
   var col = _ensureRequestColumn_(POLICY_DECISION_HEADER, POLICY_DECISION_NOTE);
   sheet.getRange(rowNumber, col).setValue((expired ? 'Vencida_sistema_' : 'No_' + actorLabel + '_') + stamp);
@@ -18884,9 +19006,11 @@ function _policyDeny_(sheet, rowNumber, id, actorLabel, reason, comment, expired
   _recordEvent_(id, 'policyDecision', { decision: expired ? 'expired' : 'denied', email: expired ? '' : actorLabel });
   SpreadsheetApp.flush();
   _dashInvalidate_();
+  if (notify === false) return;
   try {
     var req = mapRowToRequest(_policyReadRow_(sheet, rowNumber));
-    req.denialReason = fullReason;
+    req.denialReason = fullReason + (otherIds && otherIds.length
+      ? ' Aplica a todo su viaje multidestino: también quedaron denegados los tramos ' + otherIds.join(', ') + '.' : '');
     sendEmailRich(req.requesterEmail, getStandardSubject(req), HtmlTemplates.decisionNotification(req, 'DENEGADO'), getCCList(req) || null);
   } catch (e) {
     console.error('_policyDeny_: no se pudo avisar de ' + id + ': ' + e);
@@ -18912,10 +19036,16 @@ function _policyExpireHeld_() {
     var gone = (age !== null && age >= POLICY_HOLD_EXPIRY_DAYS) || (dep && today > dep);
     if (!gone) return;
     var rowNumber = i + 2;
-    // Releer el estado justo antes de escribir: pudo cambiar en esta misma pasada.
+    // Releer el estado justo antes de escribir: pudo cambiar en esta misma pasada
+    // (p. ej. ya se denegó con otro tramo de su viaje).
     if (String(sheet.getRange(rowNumber, stIdx + 1).getValue() || '').trim() !== POLICY_HOLD_STATUS) return;
-    _policyDeny_(sheet, rowNumber, id, 'sistema', POLICY_EXPIRED_REASON, '', true);
-    expired.push(id);
+    // Multidestino: vence el viaje completo; un solo aviso, en el primer tramo.
+    var mates = _policyHeldMates_(sheet, rowNumber);
+    mates.forEach(function(m, k) {
+      _policyDeny_(sheet, m.rowNumber, m.id, 'sistema', POLICY_EXPIRED_REASON, '', true, k === 0,
+        mates.filter(function(x) { return x.id !== m.id; }).map(function(x) { return x.id; }));
+      expired.push(m.id);
+    });
   });
   return expired;
 }
@@ -18951,8 +19081,7 @@ function activarAprobacionesPolitica() {
   });
   ScriptApp.newTrigger(POLICY_DIGEST_HANDLER).timeBased().everyHours(POLICY_DIGEST_EVERY_HOURS).create();
   var cfg = _policyApprovalConfig_();
-  var msg = 'Aprobaciones por política activas: cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas (de ' + POLICY_DIGEST_FROM_HOUR + ':00 a ' +
-    POLICY_DIGEST_TO_HOUR + ':00) ' + (cfg.enabled ? 'le llega el resumen a ' + cfg.name + ' (' + cfg.email + ').' :
+  var msg = 'Aprobaciones por política activas: cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas, ' + POLICY_DIGEST_HOURS_TEXT + ', ' + (cfg.enabled ? 'le llega el resumen a ' + cfg.name + ' (' + cfg.email + ').' :
     'NO se envía nada: las reglas están apagadas o falta budgetApproverEmail en la configuración del dashboard de costos.');
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
   return msg;
@@ -19042,19 +19171,24 @@ function processPolicyDecision(e) {
     rowNumber = _getRowByRequestId_(id);
     var st = String(sheet.getRange(rowNumber, H('STATUS') + 1).getValue() || '').trim();
     if (st !== POLICY_HOLD_STATUS) return notHeld(st);
+    // Multidestino: la decisión aplica a todos los tramos del viaje que esperan.
+    var mates = _policyHeldMates_(sheet, rowNumber);
+    var idsTxt = mates.map(function(m) { return escapeHtml_(m.id); }).join(', ');
+    var others = function(m) { return mates.filter(function(x) { return x.id !== m.id; }).map(function(x) { return x.id; }); };
     if (decision === 'approved') {
-      // Si la fecha del viaje ya pasó (la pasada automática aún no la había
-      // denegado), aprobarla metería al flujo un viaje que ya no existe.
-      var depKeyNow = _psDateKey_(sheet.getRange(rowNumber, H('FECHA IDA') + 1).getValue());
-      if (depKeyNow && _todayBogotaIso_() > depKeyNow) {
-        _policyDeny_(sheet, rowNumber, id, 'sistema', POLICY_EXPIRED_REASON, '', true);
-        return renderMessagePage('Fecha del viaje vencida', 'La fecha del viaje de la solicitud <strong>' + escapeHtml_(id) + '</strong> ya pasó, así que no se puede aprobar: quedó denegada por vencimiento y se le avisó al solicitante.', '#374151');
+      // Si la fecha del viaje (su primer tramo) ya pasó y la pasada automática aún
+      // no lo había denegado, aprobarlo metería al flujo un viaje que ya no existe.
+      if (mates[0].depKey && _todayBogotaIso_() > mates[0].depKey) {
+        mates.forEach(function(m, k) { _policyDeny_(sheet, m.rowNumber, m.id, 'sistema', POLICY_EXPIRED_REASON, '', true, k === 0, others(m)); });
+        return renderMessagePage('Fecha del viaje vencida', 'La fecha del viaje (' + idsTxt + ') ya pasó, así que no se puede aprobar: quedó denegado por vencimiento y se le avisó al solicitante.', '#374151');
       }
-      _policyApprove_(sheet, rowNumber, id, cfg.email, comment);
-      return renderMessagePage('Excepción aprobada', 'La solicitud <strong>' + escapeHtml_(id) + '</strong> sigue su proceso normal. Se avisó al área de viajes y al solicitante.', '#059669');
+      mates.forEach(function(m) { _policyApprove_(sheet, m.rowNumber, m.id, cfg.email, comment); });
+      return renderMessagePage('Excepción aprobada', (mates.length > 1 ? 'Las solicitudes <strong>' + idsTxt + '</strong> (todo el viaje multidestino) siguen' : 'La solicitud <strong>' + idsTxt + '</strong> sigue') +
+        ' su proceso normal. Se avisó al área de viajes y al solicitante.', '#059669');
     }
-    _policyDeny_(sheet, rowNumber, id, cfg.email, POLICY_DENIAL_REASON, comment, false);
-    return renderMessagePage('Solicitud rechazada', 'La solicitud <strong>' + escapeHtml_(id) + '</strong> quedó denegada. Se le avisó al solicitante.', '#D71920');
+    mates.forEach(function(m, k) { _policyDeny_(sheet, m.rowNumber, m.id, cfg.email, POLICY_DENIAL_REASON, comment, false, k === 0, others(m)); });
+    return renderMessagePage('Solicitud rechazada', (mates.length > 1 ? 'Las solicitudes <strong>' + idsTxt + '</strong> (todo el viaje multidestino) quedaron denegadas.' : 'La solicitud <strong>' + idsTxt + '</strong> quedó denegada.') +
+      ' Se le avisó al solicitante.', '#D71920');
   } catch (err) {
     console.error('processPolicyDecision ' + id + ': ' + err);
     return renderMessagePage('Error', 'No se pudo registrar la decisión: ' + escapeHtml_(String(err && err.message || err)), '#D71920');
@@ -19065,18 +19199,27 @@ function processPolicyDecision(e) {
 
 /** Correo al solicitante (y pasajeros) cuando su solicitud queda en espera del CFO. */
 function _sendPolicyHoldNotice_(data, id, plan) {
+  // Multidestino: un solo correo por viaje, con el primer tramo (los demás tramos
+  // esperan la misma decisión y el correo lo explica).
+  var isGroup = !!(plan.groupKey && plan.groupTotal > 1);
+  if (isGroup && plan.groupIndex > 1) return;
   try {
     var isHotelOnly = data.requestMode === 'HOTEL_ONLY';
     var lead = plan.lead || {};
     var who = escapeHtml_(plan.approverName || 'el CFO');
+    var why = isGroup
+      ? 'Al menos un tramo de su viaje multidestino se pidió con menos anticipación de la que pide la política de viajes de la organización (<strong>' +
+        POLICY_MIN_DAYS_NATIONAL + ' días</strong> para viajes nacionales y <strong>' + POLICY_MIN_DAYS_INTERNATIONAL + '</strong> para internacionales). '
+      : 'Se pidió <strong>' + escapeHtml_(_policyDaysText_(lead.days)) + '</strong> antes ' + (isHotelOnly ? 'de la entrada al hotel' : 'del viaje') +
+        ', y la política de viajes de la organización pide al menos <strong>' + lead.min + ' días</strong> para ' + (data.isInternational ? 'viajes internacionales' : 'viajes nacionales') + '. ';
     var content =
-      '<p style="font-size:15px; color:#111827;">Su solicitud <strong>' + escapeHtml_(id) + '</strong> quedó registrada, pero <strong>todavía no se puede gestionar</strong>.</p>' +
+      (isGroup
+        ? '<p style="font-size:15px; color:#111827;">Su viaje multidestino de <strong>' + plan.groupTotal + ' tramos</strong> quedó registrado (esta es la solicitud del tramo 1, <strong>' + escapeHtml_(id) + '</strong>), pero <strong>todavía no se puede gestionar</strong>. Todos los tramos esperan juntos: <strong>una sola decisión aplica a todo el viaje</strong>.</p>'
+        : '<p style="font-size:15px; color:#111827;">Su solicitud <strong>' + escapeHtml_(id) + '</strong> quedó registrada, pero <strong>todavía no se puede gestionar</strong>.</p>') +
       '<div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:6px; padding:14px 16px; margin:16px 0; font-size:13px; color:#78350f; line-height:1.6;">' +
-        'Se pidió <strong>' + escapeHtml_(_policyDaysText_(lead.days)) + '</strong> antes ' + (isHotelOnly ? 'de la entrada al hotel' : 'del viaje') +
-        ', y la política de viajes de la organización pide al menos <strong>' + lead.min + ' días</strong> para ' + (data.isInternational ? 'viajes internacionales' : 'viajes nacionales') + '. ' +
-        'Por eso, antes de que el área de viajes la gestione, debe aprobarla <strong>' + who + '</strong>.</div>' +
+        why + 'Por eso, antes de que el área de viajes ' + (isGroup ? 'lo' : 'la') + ' gestione, debe aprobar' + (isGroup ? 'lo' : 'la') + ' <strong>' + who + '</strong>.</div>' +
       '<ul style="font-size:13px; color:#374151; line-height:1.7; padding-left:18px;">' +
-        '<li>Su solicitud ya está en la lista de aprobaciones de ' + who + (plan.justification ? ', con la justificación que usted escribió' : '') + '.</li>' +
+        '<li>' + (isGroup ? 'Su viaje' : 'Su solicitud') + ' ya está en la lista de aprobaciones de ' + who + (plan.justification ? ', con la justificación que usted escribió' : '') + '. Las aprobaciones se revisan ' + POLICY_DIGEST_HOURS_TEXT + '.</li>' +
         '<li>Si la aprueba, le llegará un correo y el área de viajes empezará a gestionarla.</li>' +
         '<li>Si no la aprueba, o si no hay respuesta en ' + POLICY_HOLD_EXPIRY_DAYS + ' días o antes de la fecha del viaje, quedará denegada y también le avisaremos.</li>' +
         '<li>Si el viaje es urgente, puede comunicarse directamente con ' + who + '.</li></ul>' +
@@ -19244,4 +19387,23 @@ function ackPolicyNotice(noticeId, currentUserEmail) {
   }
   sheet.appendRow([new Date(), email, POLICY_NOTICE_ID]);
   return true;
+}
+
+/**
+ * #A100: lo que espera la aprobación del CFO, para el botón «En espera de
+ * preaprobación» del panel del área de viajes. SOLO LECTURA (administradores):
+ * esas solicitudes no cumplen la política de anticipación y no se gestionan.
+ */
+function getPolicyHeldRequests() {
+  var cfg = _policyApprovalConfig_();
+  var items = _policyHeldItems_().map(function(it) {
+    return {
+      id: it.id, ids: it.ids, legs: it.legs, hotelOnly: it.hotelOnly, international: !!(it.req && it.req.isInternational),
+      origin: it.origin, destination: it.destination, depKey: it.depKey, retKey: it.retKey, createdKey: it.createdKey,
+      leadDays: it.leadDays, minDays: it.minDays, expiryKey: it.expiryKey,
+      requesterEmail: it.requesterEmail, requesterName: it.requesterName, travelers: it.travelers, unit: it.unit,
+      justification: it.justification
+    };
+  });
+  return { enabled: cfg.enabled, approverName: cfg.name, expiryDays: POLICY_HOLD_EXPIRY_DAYS, items: items };
 }

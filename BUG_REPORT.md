@@ -2419,10 +2419,16 @@ El push solo guarda el código en GitHub: la app no cambia.
   - El solicitante recibe un correo **[EN ESPERA DE APROBACIÓN]**. El área de viajes no recibe nada.
   - **El área de viajes no la ve:** `getAllRequests*` la filtra en el servidor, y queda fuera de métricas, del dashboard de costos y de los recordatorios. El API rechaza cualquier gestión sobre ella (`_assertNotPolicyHold_` en dispatch).
   - **Quién aprueba:** el mismo responsable del presupuesto excedido (`budgetApproverEmail` / `budgetApproverName` del dashboard de costos). Cambiarlo allí lo cambia para las dos reglas, y los enlaces del anterior dejan de servir.
-  - `procesarAprobacionesPolitica` (disparador cada 2 h, menú 13) le manda un resumen de 7:00 a 20:00, todos los días: una fila por solicitud (quién la pidió, quién viaja, ruta, fechas, cuándo, con cuánta anticipación y la justificación), con **Aprobar / Rechazar** al lado. Los enlaces van firmados (`policy_decision`) y abren una página para confirmar, con un comentario opcional.
+  - `procesarAprobacionesPolitica` (disparador cada 2 h, menú 13) le manda un resumen **solo en horario laboral** (`isWorkingHour`, como los demás resúmenes; David: *"no quiero estarlo molestando en fines de semana"*): una fila por solicitud (quién la pidió, quién viaja, ruta, fechas, cuándo, con cuánta anticipación y la justificación), con **Aprobar / Rechazar** al lado. Los enlaces van firmados (`policy_decision`) y abren una página para confirmar, con un comentario opcional.
   - **Aprobada:** pasa a `PENDIENTE_OPCIONES` y le llega al área de viajes como nueva (**[APROBADA POR EXCEPCIÓN]**, con copia al solicitante). Las métricas cuentan desde `policyApproved`.
   - **Rechazada o vencida** (7 días o pasó la fecha del viaje): `DENEGADO` con «No se aprobó la excepción por incumplimiento de la política de anticipación». Solo se avisa al solicitante. Nada se borra.
   - Lo que crea un **administrador** (registro de viajes ya comprados) no queda en espera, pero se marca. No aplica a solicitudes de cambio.
+  - **El área de viajes las ve solo en un botón aparte**, «⏳ En espera de preaprobación (N)» (`getPolicyHeldRequests`, `PolicyHeldPanel`). Es de solo lectura y dice que no cumplen la política y no se gestionan. Nunca aparecen en la lista principal.
+  - **Multidestino** (David, 14-oct: *"si el solicitante no puede hacer el primer viaje, pues no va a poder hacer los otros"*):
+    - si cualquier tramo no cumple, todos los tramos esperan, enlazados en `GRUPO MULTIDESTINO`;
+    - el formulario manda la llave y la marca del grupo, y el servidor además pone en espera un tramo si otro del mismo viaje ya espera;
+    - en el resumen el viaje es una fila y una decisión cubre todos los tramos (aprobar, rechazar o vencer);
+    - el solicitante recibe un solo correo por viaje.
 - **Tarifa superior a la del manual** (TIPO mayor que el recomendado y con otro nombre):
   - Al confirmar costos se marca `REQUIERE APROB TARIFA` y la aprobación pide el voto del CFO. Usa el mismo rol `BUDGET_OVERRUN` y la columna `APROBADO PRESUPUESTO`: un voto cubre los dos motivos (`_requiresCfoVote_` en los 3 puntos del motor). Los avisos separan presupuesto (`budgetExceeded`) y tarifa (`requiresFareApproval`).
   - Antes de comprar (`APROBADO`), `setPurchaseInfo` no deja subir la tarifa por encima de la aprobada. Solo `SKIP_APPROVAL_ALLOWED` (Yurani y David) puede hacerlo. Corregir una reserva ya registrada sí se permite.
@@ -2447,6 +2453,9 @@ El push solo guarda el código en GitHub: la app no cambia.
   - resumen ordenado por urgencia;
   - aprobar, rechazar, segundo clic, enlace manipulado, enlace de otra solicitud y aprobador cambiado;
   - vencimiento por 7 días y por fecha, y aprobar con el viaje ya pasado;
+  - el resumen solo en horario laboral;
+  - multidestino: espera de todo el viaje (también por un tramo ya en espera), una fila en el resumen, aprobar libera los 3 tramos, rechazar y vencer deniegan todos con un solo correo, y lo que crea un administrador no espera;
+  - la lista de solo lectura (solo administradores);
   - anular una en espera;
   - disparador sin duplicar;
   - métricas desde la aprobación;
@@ -2457,7 +2466,7 @@ El push solo guarda el código en GitHub: la app no cambia.
 
 **Despliegue (en este orden):**
 1. Apps Script: pegar `server/Code.gs` y guardar.
-2. Correr el **menú 12** (crea las columnas nuevas).
+2. Correr el **menú 12** (crea las columnas nuevas, también `GRUPO MULTIDESTINO`).
 3. Correr el **menú 13** con la cuenta dueña del script (activa el resumen cada 2 h).
 4. Crear la versión nueva del web app.
 5. Push del frontend (la ventana del aviso y la justificación).

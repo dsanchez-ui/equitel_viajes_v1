@@ -467,17 +467,18 @@
 <p>Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), <strong>toda desviación de la política la aprueba el CFO antes de la compra</strong>. Quién aprueba es el mismo responsable del <strong>presupuesto excedido</strong>: <code>budgetApproverEmail</code> y <code>budgetApproverName</code> en la <strong>configuración del dashboard de costos</strong> (⚙️, solo superadmin). Si se cambia allí, cambia para las dos reglas, y los enlaces que ya tenía el anterior dejan de servir.</p>
 <p><strong>1. Anticipación.</strong> Una solicitud nueva que no cumple 8 días (nacional) o 30 (internacional) queda en <code>PENDIENTE_APROBACION_POLITICA</code>:</p>
 <ul>
-<li><strong>El área de viajes no la ve</strong>: no aparece en el panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. No hay que hacer nada con ella.</li>
+<li><strong>El área de viajes no la gestiona</strong>: no aparece en la lista principal del panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. Para verlas hay un botón aparte, <strong>«⏳ En espera de preaprobación (N)»</strong>, arriba de la lista: muestra, solo para leer, quién la pidió, quién viaja, el viaje, la anticipación, la justificación y cuándo vence, con el aviso de que <strong>no cumplen la política de anticipación y no se gestionan</strong>.</li>
 <li>El solicitante escribe por qué (obligatorio) y recibe un correo <strong>[EN ESPERA DE APROBACIÓN]</strong>.</li>
-<li>El CFO recibe <strong>un resumen cada 2 horas</strong> (de 7:00 a 20:00, todos los días) con una fila por solicitud y los botones <strong>APROBAR</strong> / <strong>RECHAZAR</strong>.</li>
+<li>El CFO recibe <strong>un resumen cada 2 horas en horario laboral</strong> (lunes a viernes de 7:00 a 17:00, sábados de 8:00 a 12:00, como los demás resúmenes) con una fila por solicitud y los botones <strong>APROBAR</strong> / <strong>RECHAZAR</strong>.</li>
 <li><strong>Aprobada</strong> → pasa a <code>PENDIENTE_OPCIONES</code> y te llega un correo <strong>[APROBADA POR EXCEPCIÓN]</strong> como cualquier solicitud nueva. Los tiempos de las métricas cuentan desde ese momento.</li>
 <li><strong>Rechazada</strong> → <code>DENEGADO</code> con el motivo «No se aprobó la excepción por incumplimiento de la política de anticipación». Solo se avisa al solicitante.</li>
 <li><strong>Vencida</strong> (7 días sin respuesta o pasó la fecha del viaje) → <code>DENEGADO</code> sola, con el mismo motivo.</li>
 <li><strong>Lo que creas tú (cualquier administrador) no queda en espera</strong>, por ejemplo al registrar un viaje que ya se compró por fuera: queda marcado fuera de política y cuenta en el informe.</li>
-<li>No aplica a las solicitudes de cambio. En multidestino cada tramo se evalúa por su fecha: el tramo que cumple te llega normal.</li>
+<li>No aplica a las solicitudes de cambio.</li>
+<li><strong>Multidestino:</strong> cada tramo se evalúa por su fecha, pero si <strong>cualquier tramo</strong> no cumple, <strong>todo el viaje espera</strong> (los tramos quedan enlazados en <code>GRUPO MULTIDESTINO</code>). En el resumen del CFO el viaje es una sola fila y <strong>una decisión cubre todos los tramos</strong>: aprobado, te llegan todos como nuevos; rechazado o vencido, se deniegan todos.</li>
 </ul>
 <p><strong>2. Tarifa superior a la del manual.</strong> Si al confirmar costos registras una tarifa de mayor TIPO que la recomendada (y es una excepción), la hoja marca <code>REQUIERE APROB TARIFA</code> y la aprobación le pide el voto al CFO (el mismo voto del presupuesto excedido: uno cubre los dos motivos). Al <strong>registrar la reserva</strong> no se puede subir la tarifa por encima de la aprobada; solo Yurani Prieto y David Sánchez pueden autorizarlo. Corregir una reserva ya registrada sí se permite (refleja lo que se compró).</p>
-<p><strong>Hoja de cálculo:</strong> columnas <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code> (<code>Sí_correo_fecha</code>, <code>No_…</code>, <code>Vencida_sistema_…</code>) y <code>REQUIERE APROB TARIFA</code>; las crea el sistema o el <strong>menú 12</strong>. El menú <strong>13</strong> activa el resumen cada 2 horas y el <strong>14</strong> muestra las solicitudes en espera, quién aprueba y cuántas personas leyeron el aviso.</p>
+<p><strong>Hoja de cálculo:</strong> columnas <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code> (<code>Sí_correo_fecha</code>, <code>No_…</code>, <code>Vencida_sistema_…</code>), <code>REQUIERE APROB TARIFA</code> y <code>GRUPO MULTIDESTINO</code>; las crea el sistema o el <strong>menú 12</strong>. El menú <strong>13</strong> activa el resumen cada 2 horas y el <strong>14</strong> muestra las solicitudes en espera, quién aprueba y cuántas personas leyeron el aviso.</p>
 <p><strong>Aviso a los solicitantes:</strong> hasta el domingo 25 de octubre, cada solicitante ve al entrar una ventana con las reglas nuevas y debe tocar <strong>«Entendido»</strong>. Cada lectura queda en la hoja <strong>CONSTANCIA AVISOS</strong> (fecha y correo).</p>
 <p><strong>Apagar las reglas sin tocar código:</strong> <code>&quot;policyApprovalEnabled&quot;: false</code> en la configuración del dashboard de costos. Las solicitudes que ya estén en espera se quedan así hasta que se decidan o venzan.</p>
 <hr>
@@ -740,7 +741,7 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 </tr>
 <tr>
 <td><code>procesarAprobacionesPolitica</code></td>
-<td>(#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación (de 7:00 a 20:00, todos los días). Se instala con el <strong>menú 13</strong> (<code>activarAprobacionesPolitica</code>) desde la cuenta dueña del script.</td>
+<td>(#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (<code>isWorkingHour</code>). Se instala con el <strong>menú 13</strong> (<code>activarAprobacionesPolitica</code>) desde la cuenta dueña del script.</td>
 </tr>
 </tbody>
 </table>

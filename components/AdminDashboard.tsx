@@ -11,6 +11,7 @@ import { PinEntryModal } from './PinEntryModal';
 import { CancellationModal } from './CancellationModal';
 import { MetricsPanel } from './MetricsPanel';
 import { InvoiceReviewPanel } from './InvoiceReviewPanel';
+import { PolicyHeldPanel } from './PolicyHeldPanel';
 import { ChangeRequestModal } from './ChangeRequestModal';
 import { gasService } from '../services/gasService';
 import { getDaysDiff, formatToDDMMYYYY, formatShortDateTime } from '../utils/dateUtils';
@@ -456,6 +457,9 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
           </button>
         </div>
       </div>
+
+      {/* #A100: fuera de la política de anticipación, esperando al CFO (solo lectura, fuera de la lista principal) */}
+      <PolicyHeldPanel />
 
       {/* #A83: viajes terminados con facturas incompletas */}
       <InvoiceReviewPanel requests={requests} onViewRequest={onViewRequest} onFinalize={confirmFinalize} onOpenSupports={setSelectedRequestForSupports} />

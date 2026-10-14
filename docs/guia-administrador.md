@@ -284,18 +284,19 @@ Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), **toda de
 
 **1. Anticipación.** Una solicitud nueva que no cumple 8 días (nacional) o 30 (internacional) queda en `PENDIENTE_APROBACION_POLITICA`:
 
-- **El área de viajes no la ve**: no aparece en el panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. No hay que hacer nada con ella.
+- **El área de viajes no la gestiona**: no aparece en la lista principal del panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. Para verlas hay un botón aparte, **«⏳ En espera de preaprobación (N)»**, arriba de la lista: muestra, solo para leer, quién la pidió, quién viaja, el viaje, la anticipación, la justificación y cuándo vence, con el aviso de que **no cumplen la política de anticipación y no se gestionan**.
 - El solicitante escribe por qué (obligatorio) y recibe un correo **[EN ESPERA DE APROBACIÓN]**.
-- El CFO recibe **un resumen cada 2 horas** (de 7:00 a 20:00, todos los días) con una fila por solicitud y los botones **APROBAR** / **RECHAZAR**.
+- El CFO recibe **un resumen cada 2 horas en horario laboral** (lunes a viernes de 7:00 a 17:00, sábados de 8:00 a 12:00, como los demás resúmenes) con una fila por solicitud y los botones **APROBAR** / **RECHAZAR**.
 - **Aprobada** → pasa a `PENDIENTE_OPCIONES` y te llega un correo **[APROBADA POR EXCEPCIÓN]** como cualquier solicitud nueva. Los tiempos de las métricas cuentan desde ese momento.
 - **Rechazada** → `DENEGADO` con el motivo «No se aprobó la excepción por incumplimiento de la política de anticipación». Solo se avisa al solicitante.
 - **Vencida** (7 días sin respuesta o pasó la fecha del viaje) → `DENEGADO` sola, con el mismo motivo.
 - **Lo que creas tú (cualquier administrador) no queda en espera**, por ejemplo al registrar un viaje que ya se compró por fuera: queda marcado fuera de política y cuenta en el informe.
-- No aplica a las solicitudes de cambio. En multidestino cada tramo se evalúa por su fecha: el tramo que cumple te llega normal.
+- No aplica a las solicitudes de cambio.
+- **Multidestino:** cada tramo se evalúa por su fecha, pero si **cualquier tramo** no cumple, **todo el viaje espera** (los tramos quedan enlazados en `GRUPO MULTIDESTINO`). En el resumen del CFO el viaje es una sola fila y **una decisión cubre todos los tramos**: aprobado, te llegan todos como nuevos; rechazado o vencido, se deniegan todos.
 
 **2. Tarifa superior a la del manual.** Si al confirmar costos registras una tarifa de mayor TIPO que la recomendada (y es una excepción), la hoja marca `REQUIERE APROB TARIFA` y la aprobación le pide el voto al CFO (el mismo voto del presupuesto excedido: uno cubre los dos motivos). Al **registrar la reserva** no se puede subir la tarifa por encima de la aprobada; solo Yurani Prieto y David Sánchez pueden autorizarlo. Corregir una reserva ya registrada sí se permite (refleja lo que se compró).
 
-**Hoja de cálculo:** columnas `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION` (`Sí_correo_fecha`, `No_…`, `Vencida_sistema_…`) y `REQUIERE APROB TARIFA`; las crea el sistema o el **menú 12**. El menú **13** activa el resumen cada 2 horas y el **14** muestra las solicitudes en espera, quién aprueba y cuántas personas leyeron el aviso.
+**Hoja de cálculo:** columnas `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION` (`Sí_correo_fecha`, `No_…`, `Vencida_sistema_…`), `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO`; las crea el sistema o el **menú 12**. El menú **13** activa el resumen cada 2 horas y el **14** muestra las solicitudes en espera, quién aprueba y cuántas personas leyeron el aviso.
 
 **Aviso a los solicitantes:** hasta el domingo 25 de octubre, cada solicitante ve al entrar una ventana con las reglas nuevas y debe tocar **«Entendido»**. Cada lectura queda en la hoja **CONSTANCIA AVISOS** (fecha y correo).
 
@@ -509,7 +510,7 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 | `sendPendingSelectionReminders` | Recordatorio al usuario que no ha descrito su selección. Mismo asunto = mismo hilo en Gmail. |
 | `processAdminReminders` | Resumen diario/periódico al admin de pendientes (cotizar, confirmar costos, reservar, cambios). |
 | `sendPendingConsultReminders` | Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio). |
-| `procesarAprobacionesPolitica` | (#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación (de 7:00 a 20:00, todos los días). Se instala con el **menú 13** (`activarAprobacionesPolitica`) desde la cuenta dueña del script. |
+| `procesarAprobacionesPolitica` | (#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (`isWorkingHour`). Se instala con el **menú 13** (`activarAprobacionesPolitica`) desde la cuenta dueña del script. |
 
 **Trigger de mantenimiento (ya configurado):**
 - `cleanupExpiredSessions` (diario, 1–2 AM) — limpia sesiones `SESSION_*` expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en `cleanupExpiredPropsWeekly`, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.

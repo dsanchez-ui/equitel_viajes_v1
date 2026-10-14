@@ -529,9 +529,11 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const policyHoldApplies = !!policyApproval?.appliesToUser && !isModification && anyPolicyViolation;
   const policyApproverLabel = policyApproval?.approverName || 'el CFO';
   const policyHoldNotice = (ids: string[]) =>
-    `${ids.length > 1 ? 'Sus solicitudes ' + ids.join(', ') + ' quedaron creadas' : 'Su solicitud ' + (ids[0] || '') + ' quedó creada'}, pero en espera: ` +
-    `se ${ids.length > 1 ? 'pidieron' : 'pidió'} con menos anticipación de la que pide la política de viajes, así que primero debe aprobarla ${policyApproverLabel}. ` +
-    `El área de viajes empieza a gestionarla cuando la apruebe. Le llegará un correo con la decisión; ` +
+    (ids.length > 1
+      ? `Su viaje multidestino quedó creado (solicitudes ${ids.join(', ')}), pero en espera: al menos un tramo se pidió con menos anticipación de la que pide la política de viajes. ` +
+        `Todos los tramos esperan juntos la aprobación de ${policyApproverLabel}: una sola decisión aplica a todo el viaje. `
+      : `Su solicitud ${ids[0] || ''} quedó creada, pero en espera: se pidió con menos anticipación de la que pide la política de viajes, así que primero debe aprobarla ${policyApproverLabel}. `) +
+    `El área de viajes empieza a gestionarla cuando se apruebe. Le llegará un correo con la decisión; ` +
     `si nadie la aprueba en ${policyApproval?.expiryDays || 7} días o antes de la fecha del viaje, queda denegada. Si es urgente, comuníquese con ${policyApproverLabel}.`;
 
   // PASSPORT VALIDATION (solo internacionales). Cuando es internacional y los
@@ -1265,6 +1267,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         const legs = buildMultiLegs();
         const itinerary = buildItinerarySummary(legs);
         const variousCostCenters = getVariousCCFormatted();
+        // #A100: llave que enlaza los tramos del viaje (una por envío; los reintentos usan el mismo snapshot).
+        const groupKey = 'MD-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        const groupJustification = policyJustification.replace(/\s+/g, ' ').trim();
         pendingSubmissionRef.current = legs.map((leg, i) => {
           const note = `[MULTIDESTINO] Tramo ${i + 1}/${legs.length} · Itinerario: ${itinerary}`;
           const legPayload: Partial<TravelRequest> = {
@@ -1279,8 +1284,13 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             returnTimePreference: '',
             isInternational: legIntl(leg.origin, leg.destination) === true,
             policyViolation: legPolicyViolations[i] === true,
-            // #A100: la clave solo va en los tramos que quedan en espera del CFO.
-            policyJustification: policyHoldApplies && legPolicyViolations[i] === true ? policyJustification.replace(/\s+/g, ' ').trim() : undefined,
+            // #A100: si un tramo no cumple, TODO el viaje espera al CFO (una sola decisión):
+            // todos los tramos llevan la justificación y la marca del grupo.
+            policyJustification: policyHoldApplies ? groupJustification : undefined,
+            multiGroupKey: groupKey,
+            multiGroupIndex: i + 1,
+            multiGroupTotal: legs.length,
+            policyGroupHold: policyHoldApplies,
             costCenterName,
             approverName,
             approverEmail,
@@ -2152,12 +2162,15 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               <p className="text-sm text-amber-900 font-bold">⏳ Esta solicitud necesita la aprobación de {policyApproverLabel}</p>
               <p className="text-xs text-amber-900 leading-relaxed">
                 {multiDestino
-                  ? <>Tramos fuera de plazo: {legPolicyViolations.map((v, i) => v ? `Tramo ${i + 1}` : null).filter(Boolean).join(', ')}. </>
+                  ? <>Tramos fuera de plazo: <strong>{legPolicyViolations.map((v, i) => v ? `Tramo ${i + 1}` : null).filter(Boolean).join(', ')}</strong>.{' '}
+                      <strong>Todo el viaje ({extraTramos.length + 1} tramos) queda en espera</strong>: si un tramo no se puede hacer, los demás tampoco,
+                      así que una sola aprobación cubre todos los tramos (y si se rechaza o vence, se deniegan todos). </>
                   : null}
                 La política de viajes pide al menos <strong>{policyApproval?.minDaysNational || 8} días</strong> de anticipación para viajes nacionales
                 y <strong>{policyApproval?.minDaysInternational || 30}</strong> para internacionales. La solicitud se va a crear, pero
                 el área de viajes <strong>no la gestiona hasta que {policyApproverLabel} la apruebe</strong>. Le llegará un correo con la decisión;
                 si nadie la aprueba en {policyApproval?.expiryDays || 7} días o antes de la fecha del viaje, queda denegada.
+                Las aprobaciones se revisan en horario laboral.
               </p>
               <label className="block text-xs font-bold text-amber-900" htmlFor="policyJustification">
                 ¿Por qué no se pudo pedir con más anticipación? <span className="text-red-600">*</span>

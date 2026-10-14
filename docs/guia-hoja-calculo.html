@@ -387,12 +387,15 @@ corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53,
 <p><code>REQUIERE APROB TARIFA</code> (#A100): <code>SI</code> cuando la tarifa confirmada es superior a la del manual; entonces la aprobación pide el voto del CFO (el mismo de <code>APROBADO PRESUPUESTO</code>). La marca el sistema al confirmar costos.</p>
 </li>
 <li>
+<p><code>GRUPO MULTIDESTINO</code> (#A100): llave que enlaza los tramos de un mismo viaje multidestino (<code>MD-…</code>). Si un tramo no cumple la anticipación, todos esperan la misma aprobación del CFO.</p>
+</li>
+<li>
 <p>Estado <code>PENDIENTE_APROBACION_POLITICA</code> (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de viajes no la ve hasta que se apruebe.</p>
 </li>
 </ul>
 <p>Todas las crea el menú <em>12. Columnas de compra y resumen de facturas</em> (o el sistema, la primera vez que las necesita).</p>
 <h3>12. Columnas de compra y resumen de facturas</h3>
-<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code>, <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code>, <code>REQUIERE APROB TARIFA</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
+<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code>, <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code>, <code>REQUIERE APROB TARIFA</code>, <code>GRUPO MULTIDESTINO</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
 <ul>
 <li><strong>listas para cerrar:</strong> viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita</li>
 <li><strong>facturas por revisar:</strong> les faltan facturas o PDF, a partir del día 7 después del viaje</li>
@@ -400,7 +403,7 @@ corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53,
 </ul>
 <p><strong>No cierra nada.</strong> Las dos listas aparecen en el panel del analista, que es donde se cierran (ver la guía de administrador, 5.5).</p>
 <h3>13. Aprobaciones por política: activar resumen cada 2 h</h3>
-<p>Instala el disparador <code>procesarAprobacionesPolitica</code> (#A100): cada 2 horas deniega las solicitudes fuera de plazo que vencieron y, de 7:00 a 20:00, le manda al CFO el resumen de las que esperan su aprobación. <strong>Ejecútalo con la cuenta dueña del script</strong> (los correos salen desde la cuenta que lo instala). Activarlo dos veces no lo duplica.</p>
+<p>Instala el disparador <code>procesarAprobacionesPolitica</code> (#A100): cada 2 horas deniega las solicitudes fuera de plazo que vencieron y, solo en horario laboral (lunes a viernes de 7:00 a 17:00, sábados de 8:00 a 12:00), le manda al CFO el resumen de las que esperan su aprobación. <strong>Ejecútalo con la cuenta dueña del script</strong> (los correos salen desde la cuenta que lo instala). Activarlo dos veces no lo duplica.</p>
 <h3>14. Aprobaciones por política: ver pendientes</h3>
 <p>Solo lectura: si las reglas están encendidas, quién aprueba (se cambia en la configuración del dashboard de costos, <code>budgetApproverEmail</code> / <code>budgetApproverName</code>), si el resumen está activo, cuántas personas leyeron el aviso y la lista de solicitudes en espera con su fecha de vencimiento.</p>
 <h3>Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)</h3>
