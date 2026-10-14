@@ -832,7 +832,7 @@
         </div>
       </div>
       <div class="filters-toggles">
-        <label class="toggle"><input type="checkbox" id="f_includeEstimated" checked /> Incluir lo comprado que aún no tiene factura (se cuenta lo cotizado)</label>
+        <label class="toggle"><input type="checkbox" id="f_includeEstimated" checked /> Incluir lo comprado que aún no tiene factura (se cuenta lo pagado o, si no se registró, lo cotizado)</label>
         <label class="toggle"><input type="checkbox" id="f_includeNoPresupuesto" checked /> Mostrar unidades sin presupuesto asignado en tablas</label>
       </div>
       <div class="filter-summary" id="filterSummary">
@@ -857,7 +857,8 @@
         <dt>Facturado</dt>
         <dd>La suma de las facturas de cada solicitud (hasta 3). Si una factura no tiene total, se suman su valor y su IVA.</dd>
         <dt>Comprado sin factura</dt>
-        <dd>Si la solicitud está reservada pero aún no tiene factura, se toma lo cotizado (tiquetes + hotel); cuando llega la
+        <dd>Si la solicitud está reservada pero aún no tiene factura, se toma lo pagado al comprar, si el área de viajes lo
+          escribió en «Registrar reserva»; si no, lo cotizado (tiquetes y hotel por separado). Cuando llega la
           factura, la reemplaza. Así el gasto no se ve menor de lo que es mientras llegan las facturas.</dd>
         <dt>Presupuesto</dt>
         <dd>El de la hoja PPTOS UNIDADES, sumando los meses de cada vista. El periodo actual es el bloque de
@@ -2061,7 +2062,7 @@ function renderKpis(containerId, data, contextLabel) {
 
   var kpis = [
     { cls: 'real', label: 'Facturado', value: fmtMoney(tb.executedReal), extra: 'lo que ya tiene factura, en unidades con presupuesto' },
-    { cls: 'estimated', label: 'Comprado sin factura', value: fmtMoney(tb.executedEstimated), extra: 'se cuenta lo cotizado mientras llega la factura' },
+    { cls: 'estimated', label: 'Comprado sin factura', value: fmtMoney(tb.executedEstimated), extra: 'lo pagado o lo cotizado, mientras llega la factura' },
     { cls: 'budget', label: 'Presupuesto', value: fmtMoney(tb.budget), extra: contextLabel },
     { cls: 'delta' + (deltaOver ? ' over' : ''), label: deltaOver ? 'Por encima del presupuesto' : 'Disponible', value: fmtMoney(Math.abs(tb.delta || 0)), extra: fmtPct(tb.percentUsed) + ' usado' }
   ];
@@ -2816,7 +2817,7 @@ function renderTopTravelers(prefix, rows) {
       var est = document.createElement('span');
       est.className = 'badge-est';
       est.textContent = 'incluye compras sin factura';
-      est.title = fmtMoney(t.estimated) + ' de este costo es de compras que aún no tienen factura (se cuenta lo cotizado).';
+      est.title = fmtMoney(t.estimated) + ' de este costo es de compras que aún no tienen factura (se cuenta lo pagado o lo cotizado).';
       nameTd.appendChild(est);
     }
     tr.appendChild(nameTd);
@@ -4815,7 +4816,7 @@ function exportCSV() {
   // SECCIÓN 3: detalle de solicitudes (todas las del año filtradas)
   rows.push('');
   rows.push(['DETALLE DE SOLICITUDES'].map(csvSafe).join(','));
-  rows.push(['Unidad', 'ID solicitud', 'Solicitante', 'Fecha compra', 'Mes', 'Estado', 'Sin factura (se cuenta lo cotizado)', 'Gasto'].map(csvSafe).join(','));
+  rows.push(['Unidad', 'ID solicitud', 'Solicitante', 'Fecha compra', 'Mes', 'Estado', 'Sin factura (se cuenta lo pagado o lo cotizado)', 'Gasto'].map(csvSafe).join(','));
   (filteredData.rows || []).forEach(function(b) {
     (b.requests || []).forEach(function(r) {
       rows.push([

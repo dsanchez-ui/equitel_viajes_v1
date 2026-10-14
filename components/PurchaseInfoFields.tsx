@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { HOTEL_NAME_MAX, HotelForm, PURCHASE_AIRLINES, PURCHASE_CHANNELS, PurchaseForm, checkHotelForm, checkPurchaseForm, purchaseChannelLabel, purchaseKey } from '../utils/purchase';
+import { formatCop, normalizePaidValue } from '../utils/money';
 
 const OTHER = '__OTRA__';
 
@@ -139,6 +140,64 @@ interface HotelPurchaseFieldsProps {
     title: string;
     hint?: string;
 }
+
+export interface PaidForm { tickets: string; hotel: string }
+
+/** Etiquetas de cada valor pagado: completan «El costo …» en los mensajes de error. */
+export const PAID_LABELS = { tickets: 'pagado por los tiquetes', hotel: 'pagado por el hotel' } as const;
+
+interface PaidValueFieldsProps {
+    showTickets: boolean;
+    showHotel: boolean;
+    value: PaidForm;
+    onChange: (next: PaidForm) => void;
+    /** Lo cotizado al confirmar costos, como referencia. */
+    quotedTickets?: number;
+    quotedHotel?: number;
+}
+
+/**
+ * Valor pagado al comprar (#A102, David, 14-oct). Opcional: vacío = no se registró. Mientras
+ * llega la factura, el dashboard de costos usa este valor en vez de lo cotizado.
+ */
+export const PaidValueFields: React.FC<PaidValueFieldsProps> = ({ showTickets, showHotel, value, onChange, quotedTickets, quotedHotel }) => {
+    const field = (kind: 'tickets' | 'hotel', label: string, quoted?: number) => {
+        const text = value[kind];
+        const check = normalizePaidValue(text, PAID_LABELS[kind]);
+        return (
+            <div>
+                <label className="block text-xs font-bold text-gray-700 mb-1">{label}</label>
+                <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    data-paid={kind}
+                    placeholder="Ej: 889.518"
+                    className={`w-full border rounded p-2 text-sm bg-white text-gray-900 ${text.trim() && !check.ok ? 'border-red-400' : 'border-gray-300'}`}
+                    value={text}
+                    onChange={(e) => onChange({ ...value, [kind]: e.target.value })}
+                    onBlur={() => { if (check.ok && typeof check.value === 'number') onChange({ ...value, [kind]: formatCop(check.value) }); }}
+                />
+                {text.trim() && !check.ok
+                    ? <p className="text-xs text-red-600 mt-1" data-paid-error={kind}>{check.error}</p>
+                    : quoted ? <p className="text-[11px] text-gray-500 mt-1">Cotizado: $ {formatCop(quoted)}</p> : null}
+            </div>
+        );
+    };
+    return (
+        <div className="p-3 border border-emerald-200 bg-emerald-50 rounded" data-paid-fields>
+            <div className="text-xs font-bold text-emerald-900 uppercase mb-2">Valor pagado (opcional)</div>
+            <div className={`grid gap-3 ${showTickets && showHotel ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
+                {showTickets && field('tickets', 'Tiquetes', quotedTickets)}
+                {showHotel && field('hotel', 'Hotel', quotedHotel)}
+            </div>
+            <p className="text-[11px] text-emerald-800 mt-2">
+                En pesos, como quedó la compra. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado.
+                Si aún no lo tiene, déjelo vacío: se puede agregar después al corregir la reserva.
+            </p>
+        </div>
+    );
+};
 
 /**
  * Hotel reservado y su canal de compra (#A94, pedido de Laura). Lo usa

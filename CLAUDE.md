@@ -222,6 +222,13 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     confirmar la reserva, con la casilla *No se reservó hotel* (no en solo hospedaje, donde el bloque reemplaza al de
     compra y su canal es también `CANAL DE COMPRA`). Gemelo `normalizeHotelPurchase` ↔ `_normalizeHotelPurchase_`.
     Solo se toca si viene `hotelChannel`; la app solo muestra el bloque si el servidor manda `purchaseHotelChannel`.
+  - **Valor pagado** (#A102, David, 14-oct: **opcional**): bloque *Valor pagado* en *Registrar reserva* (tiquetes; hotel si
+    hubo), columnas `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (pesos, reglas de #A79; vacío = no se registró). **No es**
+    `VALOR PAGADO A AEROLINEA Y/O HOTEL`, que es la factura 1. Mientras llega la factura, el dashboard lo usa en vez de lo
+    cotizado. Solo administradores. Gemelo `normalizePaidValue` ↔ `_normalizePaidValue_`; la clave presente activa la regla.
+  - **Corregir una reserva no cambia la fecha de compra** (#A102): el modal arranca con la guardada (`purchaseDate`). Si solo
+    cambió la compra (aerolínea, canal, tarifa, hotel o valor pagado), se guarda sin `amendReservation` y sin correo al
+    viajero. Antes la corrección escribía el día de hoy: 16 reservas cambiaron de fecha (4 de mes), sin corregir en la hoja.
 - **Tarifa del tiquete según el manual COM-P-02** (#A95, reunión del 8-oct, aprobado por David): la
   tarifa sale de las noches del viaje: **TIPO 1** de 0 a 1 noche, **TIPO 2** de 2 a 5, **TIPO 3** de 6 o más
   (el manual dice «más de 6»; los 6 son TIPO 3). Cada aerolínea le da su nombre (Avianca: Basic, Classic,
@@ -367,8 +374,9 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   con la pasada de `procesarAprobacionesPolitica` (sin activador aparte), para quien aprueba (`budgetApproverEmail`) con copia a
   Yurani y David (`MR_CC`). Una sola vez por mes: constancia en la hoja oculta `INFORMES ENVIADOS`.
   - Mismas reglas del informe del 13-oct (verificado con la base: 375 viajes, 54 % fuera, 33 % comprado a tiempo, misma tendencia).
-    Cada viaje cuenta en el **mes de la solicitud**; la tendencia se recalcula cada mes. La tarifa sale solo de lo registrado, nunca
-    del texto del viajero.
+    Cada viaje cuenta en el **mes de la solicitud**; la tendencia se recalcula cada mes. **La tarifa cuenta en el mes de la compra**
+    (David, 14-oct: cada compra sale una vez, también la registrada después de comprar). Sale solo de lo registrado, nunca del texto
+    del viajero.
   - Cuadros de honor y de deshonor y «quién pide»: **últimos 3 meses**, 4 viajes o más (honor ≤ 20 % fuera; deshonor ≥ 60 %).
   - Correo + PDF + CSV del mes, sin cédulas. **Menú 15:** prueba que solo le llega a quien la corre (sin copia ni constancia).
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
@@ -415,7 +423,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), y `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO` (#A100) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, lo pagado al comprar; no son la factura 1), y `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO` (#A100) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -501,7 +509,7 @@ utils/EmailGenerator.ts    Generación de correos HTML (import normal, nunca baj
 utils/workOrder.ts         Validación de OT (gemelo de Code.gs, #A66)
 utils/birthdate.ts         Validación de fecha de nacimiento (gemelo de Code.gs, #A70)
 utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #A75)
-utils/money.ts             Costos en pesos: formato y mínimo (gemelo de Code.gs, #A79)
+utils/money.ts             Costos en pesos: formato, mínimo y valor pagado (gemelo de Code.gs, #A79, #A102)
 utils/purchase.ts          Aerolínea, canal de compra y hotel reservado (gemelo de Code.gs, #A82, #A94)
 utils/fare.ts              Tarifa del tiquete por noches y su justificación (gemelo de Code.gs, #A95)
 server/
@@ -584,7 +592,12 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 - **Todo está desplegado hasta #A101.** El 14-oct David pegó `Code.gs` y `CostsDashboard.html`, corrió el
   menú 12, creó el activador `procesarAprobacionesPolitica` (uno solo, cada 2 h), publicó la versión nueva del
-  web app y el frontend, y probó el informe mensual con el menú 15: todo bien. No queda nada por pegar.
+  web app y el frontend, y probó el informe mensual con el menú 15: todo bien.
+- **Pendiente de pegar (lo hace David):** `Code.gs` y `CostsDashboard.html` con la tarifa del informe por mes de compra
+  (ajuste de #A101) y el valor pagado (#A102) → menú 12 (opcional) → versión nueva del web app → push del frontend. Si solo
+  se pega `Code.gs`, el informe del 3-nov ya sale con la tarifa por mes de compra.
+- **Fechas de compra cambiadas por correcciones (#A102):** SOL-000100, 107, 202, 230, 249, 270, 435, 465, 494, 495, 516,
+  526, 527, 545, 552 y 635. Si se quieren corregir, que el área de viajes confirme cada fecha y la corrija a mano.
 - **Fechas que vienen (sin código):**
   - **21-oct:** termina el estudio de precios (#A84). Decidir si sigue (SerpApi gratis, 250 búsquedas al mes)
     y revisar la proyección con Yurani antes de mostrársela a Alejandro: sin 15 comparaciones exactas no da
@@ -596,10 +609,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
     8-oct); desde noviembre sale completa.
 - **Estudio de precios:** activo del 7 al 21-oct-2026. El 7-oct quedaban 212 búsquedas de
   SerpApi (plan gratis, 250 al mes).
-- **Decisiones abiertas:** pedir el valor pagado en «Registrar reserva» para tener el precio
-  real sin esperar las facturas (David, 14-oct: *"sería bueno"*; falta definir dónde se guarda y si
-  es obligatorio). Mostrarle el comparador a Laura: **en pausa**, no se ha decidido si se le muestra
-  (David, 14-oct).
+- **Decisiones abiertas:** mostrarle el comparador a Laura: **en pausa**, no se ha decidido si se le muestra
+  (David, 14-oct). Siguiente paso posible del valor pagado: compararlo con Google en el comparador sin esperar la factura.
 - **Fuera del repositorio:** el documento de demostración para Alejandro
   (`Comparador de precios de tiquetes - demostracion 2026-10-06.docx`) quedó en Descargas del
   PC Linux, y los resultados crudos de la prueba del 6-oct en `resultados-comparador/` (no se

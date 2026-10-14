@@ -3,8 +3,11 @@
  * Verifica las reglas de los costos que confirma el área de viajes (#A79) y que
  * los DOS lados coincidan:
  *
- *   - `server/Code.gs`  → `_formatCop_`, `_parseCopAmount_`, `_validateCostAmount_`, `COST_MIN_PESOS`
- *   - `utils/money.ts`  → `formatCop`, `parseCopAmount`, `validateCostAmount`, `COST_MIN_PESOS`
+ *   - `server/Code.gs`  → `_formatCop_`, `_parseCopAmount_`, `_validateCostAmount_`, `_normalizePaidValue_`, `COST_MIN_PESOS`
+ *   - `utils/money.ts`  → `formatCop`, `parseCopAmount`, `validateCostAmount`, `normalizePaidValue`, `COST_MIN_PESOS`
+ *
+ * #A102: el valor pagado al comprar es opcional (vacío = no se registró) y, si se
+ * escribe, sigue las mismas reglas.
  *
  * Reglas (David, 2026-09-14): pesos enteros, con o sin puntos de miles; los
  * centavos se redondean; 0 es válido y cualquier otro valor debe ser de al menos
@@ -38,7 +41,7 @@ function loadBackend() {
   const gs = fs.readFileSync(path.join(ROOT, 'server', 'Code.gs'), 'utf8');
   const min = gs.match(/^var COST_MIN_PESOS = (\d+);$/m);
   if (!min) throw new Error('No se encontró "var COST_MIN_PESOS = …;" en server/Code.gs');
-  const code = [min[0], extractFunction(gs, '_formatCop_'), extractFunction(gs, '_parseCopAmount_'), extractFunction(gs, '_validateCostAmount_')].join('\n');
+  const code = [min[0], extractFunction(gs, '_formatCop_'), extractFunction(gs, '_parseCopAmount_'), extractFunction(gs, '_validateCostAmount_'), extractFunction(gs, '_normalizePaidValue_')].join('\n');
   const ctx = {};
   vm.createContext(ctx);
   new vm.Script(code, { filename: 'Code.gs (extracto costos)' }).runInContext(ctx);
@@ -48,6 +51,7 @@ function loadBackend() {
     format: (n) => call('_formatCop_(__a[0])', [n]),
     parse: (raw) => call('_parseCopAmount_(__a[0])', [raw]),
     validate: (raw, label, required) => call('_validateCostAmount_(__a[0], __a[1], __a[2])', [raw, label, required]),
+    paid: (raw, label) => call('_normalizePaidValue_(__a[0], __a[1])', [raw, label]),
   };
 }
 
@@ -58,10 +62,11 @@ function loadFrontend() {
   const mod = { exports: {} };
   new vm.Script(out.code, { filename: 'money.ts' }).runInNewContext({ module: mod, exports: mod.exports, require });
   const e = mod.exports;
-  if (typeof e.formatCop !== 'function' || typeof e.parseCopAmount !== 'function' || typeof e.validateCostAmount !== 'function' || typeof e.COST_MIN_PESOS !== 'number') {
-    throw new Error('utils/money.ts no exporta formatCop(), parseCopAmount(), validateCostAmount() y COST_MIN_PESOS');
+  if (typeof e.formatCop !== 'function' || typeof e.parseCopAmount !== 'function' || typeof e.validateCostAmount !== 'function' ||
+      typeof e.normalizePaidValue !== 'function' || typeof e.COST_MIN_PESOS !== 'number') {
+    throw new Error('utils/money.ts no exporta formatCop(), parseCopAmount(), validateCostAmount(), normalizePaidValue() y COST_MIN_PESOS');
   }
-  return { min: e.COST_MIN_PESOS, format: e.formatCop, parse: e.parseCopAmount, validate: e.validateCostAmount };
+  return { min: e.COST_MIN_PESOS, format: e.formatCop, parse: e.parseCopAmount, validate: e.validateCostAmount, paid: e.normalizePaidValue };
 }
 
 const T = 'de los tiquetes', HOT = 'del hotel';
@@ -84,6 +89,14 @@ const CASES = [
   // no son pesos
   ['12a', T, true, false], ['-5000', T, true, false], [-5000, T, true, false], ['12.34.567', T, true, false],
   ['88.9518', T, true, false], ['1.234,567', T, true, false], ['.50', T, true, false], [NaN, T, true, false], [Infinity, T, true, false],
+];
+
+// Valor pagado (#A102): [entrada, ok esperado, valor esperado]. Vacío = no se registró ('').
+const PAID_LABEL = 'pagado por los tiquetes';
+const PAID_CASES = [
+  ['', true, ''], ['   ', true, ''], [null, true, ''], [undefined, true, ''],
+  ['889.518', true, 889518], [889518, true, 889518], ['0', true, 0], [0, true, 0], ['$ 1.200.000', true, 1200000],
+  ['9.999', false], ['800', false], [889.518, false], ['12a', false], ['-5000', false],
 ];
 
 function main() {
@@ -114,6 +127,18 @@ function main() {
     if (JSON.stringify(back.parse(input)) !== JSON.stringify(front.parse(input))) problems.push('parseCopAmount difiere entre frontend y backend');
     if (problems.length) failures.push({ input, label, required, expectOk, expectValue, b, f, problems });
   }
+  for (const [input, expectOk, expectValue] of PAID_CASES) {
+    const b = back.paid(input, PAID_LABEL);
+    const f = front.paid(input, PAID_LABEL);
+    const problems = [];
+    for (const [side, r] of [['backend', b], ['frontend', f]]) {
+      if (r.ok !== expectOk) problems.push(`valor pagado: ${side} ${r.ok ? 'acepta' : 'rechaza'} y se esperaba lo contrario`);
+      else if (expectOk && r.value !== expectValue) problems.push(`valor pagado: ${side} da ${JSON.stringify(r.value)}`);
+      else if (!r.ok && !/pagado por los tiquetes/.test(r.error || '')) problems.push(`valor pagado: ${side} rechaza sin decir qué valor (${r.error})`);
+    }
+    if (JSON.stringify(b) !== JSON.stringify(f)) problems.push('valor pagado: frontend y backend no coinciden');
+    if (problems.length) failures.push({ input, problems });
+  }
   if (failures.length > 0) {
     console.error(`\n✗ Costos: ${failures.length} caso(s) con problemas.\n`);
     for (const x of failures) {
@@ -124,7 +149,7 @@ function main() {
     process.exit(1);
   }
   const accepted = CASES.filter((c) => c[3]).length;
-  console.log(`Costos: ${CASES.length} casos OK, frontend y backend coinciden (${accepted} aceptados, ${CASES.length - accepted} rechazados; mínimo $${front.format(front.min)}).`);
+  console.log(`Costos: ${CASES.length} casos OK, frontend y backend coinciden (${accepted} aceptados, ${CASES.length - accepted} rechazados; mínimo $${front.format(front.min)}). Valor pagado: ${PAID_CASES.length} casos OK.`);
 }
 
 main();

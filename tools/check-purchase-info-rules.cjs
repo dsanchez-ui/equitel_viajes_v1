@@ -172,8 +172,8 @@ function memorySheet(name, rows) {
 function checkBackendWrites(failures) {
   const gs = fs.readFileSync(path.join(ROOT, 'server', 'Code.gs'), 'utf8');
   const HEAD = ['ID RESPUESTA', 'STATUS', 'MODO_SOLICITUD', 'FECHA IDA', 'FECHA VUELTA', 'COSTO_FINAL_TIQUETES', 'COSTO_FINAL_HOTEL',
-    'COSTO COTIZADO PARA VIAJE', 'AEROLINEA', 'CANAL DE COMPRA', 'EVENTOS_JSON', 'CORREO ENCUESTADO'];
-  const row = (id, mode, ret) => [id, 'PENDIENTE_CONFIRMACION_COSTO', mode, '2026-10-20', ret, '', '', '', '', '', '{}', 'viajero@ejemplo.test'];
+    'COSTO COTIZADO PARA VIAJE', 'AEROLINEA', 'CANAL DE COMPRA', 'EVENTOS_JSON', 'CORREO ENCUESTADO', 'FECHA DE COMPRA DE TIQUETE'];
+  const row = (id, mode, ret) => [id, 'PENDIENTE_CONFIRMACION_COSTO', mode, '2026-10-20', ret, '', '', '', '', '', '{}', 'viajero@ejemplo.test', ''];
   const base = memorySheet('Nueva Base Solicitudes', [HEAD,
     row('SOL-1', 'VIAJE', '2026-10-22'), row('SOL-2', 'VIAJE', ''), row('SOL-3', 'SOLO_HOSPEDAJE', '2026-10-22'), row('SOL-4', 'VIAJE', '2026-10-22'),
     row('SOL-5', 'VIAJE', '2026-10-22')]);
@@ -243,8 +243,8 @@ function checkBackendWrites(failures) {
 
   const mapped = ctx.mapRowToRequest(base.data.find((r) => r[0] === 'SOL-1'));
   eq('la solicitud que recibe la app trae el regreso', [mapped.purchaseAirline, mapped.purchaseReturnAirline], ['LATAM', 'Avianca']);
-  eq('la acción setPurchaseInfo pasa el regreso, el hotel, la tarifa (#A95) y quién la registra (#A100)',
-    /setPurchaseInfo\(payload\.requestId, payload\.airline, payload\.channel, payload\.returnAirline, payload\.hotelName, payload\.hotelChannel,\s*payload\.fareOption, payload\.fareJustification, currentUserEmail\)/.test(gs), true);
+  eq('la acción setPurchaseInfo pasa el regreso, el hotel, la tarifa (#A95), quién la registra (#A100) y el valor pagado (#A102)',
+    /setPurchaseInfo\(payload\.requestId, payload\.airline, payload\.channel, payload\.returnAirline, payload\.hotelName, payload\.hotelChannel,\s*payload\.fareOption, payload\.fareJustification, currentUserEmail, \{ tickets: payload\.paidTickets, hotel: payload\.paidHotel \}\)/.test(gs), true);
 
   // #A94: hotel reservado y su canal.
   const hotelPair = (id) => [cell(id, 'HOTEL RESERVADO'), cell(id, 'CANAL DE COMPRA HOTEL')];
@@ -270,6 +270,48 @@ function checkBackendWrites(failures) {
   eq('un hotel inválido no deja la compra a medias', JSON.stringify(base.data) === antesHotel, true);
   const mappedHotel = ctx.mapRowToRequest(base.data.find((r) => r[0] === 'SOL-3'));
   eq('la solicitud que recibe la app trae el hotel', [mappedHotel.purchaseHotelName, mappedHotel.purchaseHotelChannel], ['HOTEL SONESTA', 'Directo']);
+
+  // #A102: valor pagado al comprar (opcional) y fecha de compra guardada.
+  const paidPair = (id) => [cell(id, 'VALOR COMPRA TIQUETES'), cell(id, 'VALOR COMPRA HOTEL')];
+  eq('app anterior: no crea las columnas del valor pagado', paidPair('SOL-1'), ['(sin columna)', '(sin columna)']);
+  const sinPagado = ctx.mapRowToRequest(base.data.find((r) => r[0] === 'SOL-1'));
+  eq('la app sabe que el servidor guarda el valor pagado (clave presente, vacía)', [sinPagado.purchasePaidTickets, sinPagado.purchasePaidHotel], ['', '']);
+  const compraAntes = trio('SOL-1');
+  eq('solo el valor pagado, sin tocar la compra', set('SOL-1', undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'x@y', { tickets: '889.518', hotel: '0' }),
+    { paidTickets: 889518, paidHotel: 0 });
+  eq('el valor pagado queda en sus columnas y la compra no cambia', [paidPair('SOL-1'), trio('SOL-1')], [[889518, 0], compraAntes]);
+  eq('las columnas del valor pagado quedan al final', base.data[0].slice(-2), ['VALOR COMPRA TIQUETES', 'VALOR COMPRA HOTEL']);
+  set('SOL-1', 'LATAM', 'Aviatur', 'Avianca', undefined, undefined, undefined, undefined, 'x@y');
+  eq('app anterior (sin la clave): no borra el valor pagado', paidPair('SOL-1'), [889518, 0]);
+  set('SOL-1', undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'x@y', { hotel: '' });
+  eq('vacío borra solo el que viene', paidPair('SOL-1'), [889518, '']);
+  const antesPagado = JSON.stringify(base.data);
+  eq('valor pagado imposible: error que dice cuál', /pagado por los tiquetes/.test(throws(() => set('SOL-1', 'LATAM', 'Aviatur', 'Avianca', undefined, undefined, undefined, undefined, 'x@y', { tickets: '9.999' }))), true);
+  eq('valor pagado con decimales: se rechaza', /pagado por el hotel/.test(throws(() => set('SOL-1', undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'x@y', { hotel: 450000.5 }))), true);
+  eq('un valor pagado inválido no deja la compra a medias', JSON.stringify(base.data) === antesPagado, true);
+  set('SOL-3', undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'x@y', { tickets: '500.000', hotel: '320.000' });
+  eq('solo hospedaje: no guarda valor de tiquetes, sí el del hotel', paidPair('SOL-3'), ['', 320000]);
+  const conPagado = ctx.mapRowToRequest(base.data.find((r) => r[0] === 'SOL-1'));
+  eq('la solicitud que recibe la app trae el valor pagado', [conPagado.purchasePaidTickets, conPagado.purchasePaidHotel], [889518, '']);
+  eq('al solicitante no le llega el valor pagado', [ctx._hideFareInternals_(conPagado).purchasePaidTickets, conPagado.purchasePaidHotel], ['', '']);
+  base.data.find((r) => r[0] === 'SOL-1')[base.data[0].indexOf('FECHA DE COMPRA DE TIQUETE')] = '9/10/2026'; // aquí Utilities es un objeto vacío: la fecha va como texto
+  ctx._clearReqHeadersCache_();
+  eq('la app recibe la fecha de compra guardada (Corregir reserva la muestra)', ctx.mapRowToRequest(base.data.find((r) => r[0] === 'SOL-1')).purchaseDate, '2026-10-09');
+  eq('sin fecha de compra: vacía', ctx.mapRowToRequest(base.data.find((r) => r[0] === 'SOL-2')).purchaseDate, '');
+
+  // Dashboard de costos: mientras llega la factura, lo pagado reemplaza a lo cotizado (tiquetes y hotel por separado).
+  const cfg = ctx._csLoadConfig_();
+  const hm = {}; base.data[0].forEach((h, i) => { hm[h] = i; });
+  const estRow = (paidT, paidH) => {
+    const r = new Array(base.data[0].length).fill('');
+    r[hm['STATUS']] = 'RESERVADO'; r[hm['COSTO_FINAL_TIQUETES']] = 800000; r[hm['COSTO_FINAL_HOTEL']] = 300000;
+    r[hm['VALOR COMPRA TIQUETES']] = paidT; r[hm['VALOR COMPRA HOTEL']] = paidH;
+    return ctx._csComputeRowExecuted_(r, hm, cfg);
+  };
+  eq('dashboard: sin valor pagado, lo cotizado', [estRow('', '').estimated, estRow('', '').isEstimated], [1100000, true]);
+  eq('dashboard: con el de los tiquetes, ese más el hotel cotizado', estRow(720000, '').estimated, 1020000);
+  eq('dashboard: hotel pagado en 0 (apartamento corporativo) cuenta como 0', estRow(720000, 0).estimated, 720000);
+  eq('dashboard: lo estimado no cuenta como factura', Object.keys(estRow(720000, 0).breakdown).filter((k) => k.charAt(0) !== '_' && estRow(720000, 0).breakdown[k] > 0).length, 0);
 
   // #A86: confirmar costos por la API deja quién lo hizo (lo muestra el comparador de precios).
   ctx._clearReqHeadersCache_();

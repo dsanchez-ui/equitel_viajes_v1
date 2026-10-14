@@ -709,7 +709,7 @@ function dispatch(action, payload) {
       case 'getPurchaseStats': result = getPurchaseStats(payload.filters || {}); break;
       // Aerolínea y canal de compra (#A82) y facturas por revisar (#A83). Solo administradores.
       case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline, payload.hotelName, payload.hotelChannel,
-        payload.fareOption, payload.fareJustification, currentUserEmail); break;
+        payload.fareOption, payload.fareJustification, currentUserEmail, { tickets: payload.paidTickets, hotel: payload.paidHotel }); break;
       case 'getInvoiceReview': result = getInvoiceReview(); break;
       // #A100: solicitudes en espera de la aprobación del CFO (solo lectura, botón aparte del panel).
       case 'getPolicyHeldRequests': result = getPolicyHeldRequests(); break;
@@ -3222,7 +3222,7 @@ function closeRequestWithChecks(requestId, actorEmail, options) {
     var executed = _csComputeRowExecuted_(row, headerMap, config);
     var bd = executed && executed.breakdown ? executed.breakdown : {};
     Object.keys(bd).forEach(function(k) {
-      if (k === '_estimadoFromCotizado') return; // proxy estimado, no es una factura
+      if (k.charAt(0) === '_') return; // proxy estimado (#A102: lo pagado o lo cotizado), no es una factura
       if (Number(bd[k]) > 0) declaredCount++;
     });
 
@@ -3443,6 +3443,14 @@ var HOTEL_NAME_MAX = 120;
 var PURCHASE_HOTEL_NOTE = 'Hotel que reservó el área de viajes (#A94), en mayúsculas y sin tildes. NOMBRE HOTEL es el que pidió el viajero.';
 var PURCHASE_HOTEL_CHANNEL_NOTE = 'Canal de compra del hotel (#A94): Aviatur, Directo (con el hotel) u Otra agencia. «No se reservó» = al final no hubo hotel.';
 
+// Valor pagado al comprar (#A102, David, 14-oct): opcional en «Registrar reserva», en pesos (reglas de #A79).
+// Vacío = no se registró. Mientras no llega la factura, el dashboard de costos lo usa en vez de lo cotizado.
+// No confundir con VALOR PAGADO A AEROLINEA Y/O HOTEL, que es el valor de la factura 1.
+var PAID_TICKETS_HEADER = 'VALOR COMPRA TIQUETES';
+var PAID_HOTEL_HEADER = 'VALOR COMPRA HOTEL';
+var PAID_TICKETS_NOTE = 'Lo que se pagó por los tiquetes al comprarlos (#A102), en pesos. Opcional: lo escribe el área de viajes en «Registrar reserva». Vacío = no se registró.';
+var PAID_HOTEL_NOTE = 'Lo que se pagó por el hotel al reservarlo (#A102), en pesos. Opcional: lo escribe el área de viajes en «Registrar reserva». Vacío = no se registró.';
+
 /**
  * Valida y normaliza el hotel reservado y su canal.
  * @returns {{ok: boolean, hotelName: string, hotelChannel: string, error?: string}}
@@ -3629,14 +3637,40 @@ function _writeHotelPurchase_(sheet, rowNumber, info) {
 }
 
 /**
+ * Valor pagado (#A102): '' si viene vacío (no se registró); si no, pesos con las reglas de #A79
+ * (0 es válido, cualquier otro valor de al menos COST_MIN_PESOS). label: 'pagado por los tiquetes'.
+ */
+function _normalizePaidValue_(raw, label) {
+  if (_parseCopAmount_(raw).empty) return { ok: true, value: '' };
+  var v = _validateCostAmount_(raw, label, true);
+  return v.ok ? { ok: true, value: v.value } : { ok: false, error: v.error };
+}
+
+/** Lo guardado en una celda de valor pagado: pesos o '' si está vacía o no es un número. */
+function _paidCellValue_(v) {
+  if (v === '' || v === null || v === undefined) return '';
+  if (typeof v === 'number') return isFinite(v) && v >= 0 ? Math.round(v) : '';
+  var digits = String(v).replace(/[^\d]/g, '');
+  return digits ? Number(digits) : '';
+}
+
+/** Escribe el valor pagado de tiquetes y hotel (solo las claves presentes; crea las columnas al final si faltan). */
+function _writePaidValues_(sheet, rowNumber, paid) {
+  if (paid.tickets !== undefined) sheet.getRange(rowNumber, _ensureRequestColumn_(PAID_TICKETS_HEADER, PAID_TICKETS_NOTE)).setValue(paid.tickets);
+  if (paid.hotel !== undefined) sheet.getRange(rowNumber, _ensureRequestColumn_(PAID_HOTEL_HEADER, PAID_HOTEL_NOTE)).setValue(paid.hotel);
+}
+
+/**
  * Guarda aerolínea y canal de una solicitud (registro de la reserva o corrección).
  * returnAirline (#A85): undefined = no tocar la guardada (app anterior).
  * hotelName / hotelChannel (#A94): hotel reservado y su canal; solo se tocan si
  * hotelChannel viene. Si channel no viene, solo se guarda el hotel. Todo se valida
  * antes de escribir: un error no deja nada a medias.
+ * paid (#A102): { tickets, hotel } con el valor pagado; solo se toca la clave presente
+ * (una app anterior no lo manda y no lo borra). '' borra lo guardado.
  * Solo administradores (adminOnlyActions).
  */
-function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, hotelChannel, fareOption, fareJustification, currentUserEmail) {
+function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, hotelChannel, fareOption, fareJustification, currentUserEmail, paid) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   var rowNumber = _getRowByRequestId_(requestId);
   if (!sheet || rowNumber === -1) throw new Error('Solicitud no encontrada.');
@@ -3644,8 +3678,11 @@ function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, 
   var withPurchase = channel !== undefined && channel !== null;
   var withHotel = hotelChannel !== undefined && hotelChannel !== null;
   var withFare = fareOption !== undefined && fareOption !== null && !hotelOnly; // #A95: solo hospedaje no lleva tarifa
-  var r = null, h = null, f = null;
-  if (withPurchase || (!withHotel && !withFare)) {
+  var paidIn = paid || {};
+  var withPaidTickets = paidIn.tickets !== undefined && paidIn.tickets !== null && !hotelOnly; // solo hospedaje no lleva tiquetes
+  var withPaidHotel = paidIn.hotel !== undefined && paidIn.hotel !== null;
+  var r = null, h = null, f = null, p = null;
+  if (withPurchase || (!withHotel && !withFare && !withPaidTickets && !withPaidHotel)) {
     var withReturn = returnAirline !== undefined && returnAirline !== null;
     r = _normalizePurchaseInfo_(airline, channel, hotelOnly, withReturn && _rowHasReturn_(sheet, rowNumber) ? returnAirline : '');
     if (!r.ok) throw new Error(r.error);
@@ -3663,6 +3700,19 @@ function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, 
     // #A100: antes de comprar no se sube la tarifa por encima de la aprobada.
     _assertFareChangeAllowed_(sheet, rowNumber, f, currentUserEmail);
   }
+  if (withPaidTickets || withPaidHotel) {
+    p = {};
+    if (withPaidTickets) {
+      var pt = _normalizePaidValue_(paidIn.tickets, 'pagado por los tiquetes');
+      if (!pt.ok) throw new Error(pt.error);
+      p.tickets = pt.value;
+    }
+    if (withPaidHotel) {
+      var ph = _normalizePaidValue_(paidIn.hotel, 'pagado por el hotel');
+      if (!ph.ok) throw new Error(ph.error);
+      p.hotel = ph.value;
+    }
+  }
   var out = {};
   // La tarifa va primero: si la hoja rechazara el valor (p. ej. una lista desplegable),
   // no quedan la aerolínea o el hotel guardados sin ella.
@@ -3677,6 +3727,11 @@ function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, 
   if (h) {
     _writeHotelPurchase_(sheet, rowNumber, h);
     out.hotelName = h.hotelName; out.hotelChannel = h.hotelChannel;
+  }
+  if (p) {
+    _writePaidValues_(sheet, rowNumber, p);
+    if (p.tickets !== undefined) out.paidTickets = p.tickets;
+    if (p.hotel !== undefined) out.paidHotel = p.hotel;
   }
   return out;
 }
@@ -3722,7 +3777,7 @@ function _invoiceTotalsForClose_(row, headerMap, config) {
   var total = executed.real;
   var count = 0;
   Object.keys(executed.breakdown || {}).forEach(function(k) {
-    if (k !== '_estimadoFromCotizado' && Number(executed.breakdown[k]) > 0) count++;
+    if (k.charAt(0) !== '_' && Number(executed.breakdown[k]) > 0) count++;
   });
   var covered = {};
   (config.facturas || []).forEach(function(f) { covered[f.totalHeader] = true; });
@@ -3849,6 +3904,9 @@ function _ensureA82A83Columns_() {
     { header: FARE_NAME_HEADER, col: _ensureRequestColumn_(FARE_NAME_HEADER, FARE_NAME_NOTE) },
     { header: FARE_JUSTIFICATION_HEADER, col: _ensureRequestColumn_(FARE_JUSTIFICATION_HEADER, FARE_JUSTIFICATION_NOTE) },
     { header: CHECKED_BAG_HEADER, col: _ensureRequestColumn_(CHECKED_BAG_HEADER, CHECKED_BAG_NOTE) },
+    // #A102: valor pagado al comprar (opcional).
+    { header: PAID_TICKETS_HEADER, col: _ensureRequestColumn_(PAID_TICKETS_HEADER, PAID_TICKETS_NOTE) },
+    { header: PAID_HOTEL_HEADER, col: _ensureRequestColumn_(PAID_HOTEL_HEADER, PAID_HOTEL_NOTE) },
     // #A100: aprobación del CFO por incumplir la política (anticipación y tarifa).
     { header: POLICY_JUSTIFICATION_HEADER, col: _ensureRequestColumn_(POLICY_JUSTIFICATION_HEADER, POLICY_JUSTIFICATION_NOTE) },
     { header: POLICY_DECISION_HEADER, col: _ensureRequestColumn_(POLICY_DECISION_HEADER, POLICY_DECISION_NOTE) },
@@ -5322,12 +5380,12 @@ function renderMessagePage(title, message, color) {
 // --- DATA ACCESS ---
 
 /**
- * Tarifa recomendada y motivo de una excepción (#A95): solo para administradores.
- * Al solicitante le llegan vacíos (las claves se quedan: la app las usa para saber
- * que el servidor maneja la tarifa). La tarifa comprada y su nombre sí le llegan.
+ * Tarifa recomendada y motivo de una excepción (#A95) y valor pagado (#A102): solo para
+ * administradores. Al solicitante le llegan vacíos (las claves se quedan: la app las usa para
+ * saber que el servidor maneja la tarifa). La tarifa comprada y su nombre sí le llegan.
  */
 function _hideFareInternals_(req) {
-  if (req) { req.fareRecommended = ''; req.fareJustification = ''; }
+  if (req) { req.fareRecommended = ''; req.fareJustification = ''; req.purchasePaidTickets = ''; req.purchasePaidHotel = ''; }
   return req;
 }
 
@@ -8390,6 +8448,9 @@ function mapRowToRequest(row, lite) {
 
     // RESERVATION MAPPING (Requires flushing or reading new value)
     reservationNumber: String(get("No RESERVA")),
+    // Fecha de compra guardada, 'AAAA-MM-DD' o '' (#A102): «Corregir reserva» la muestra en vez de la
+    // de hoy. Antes la corrección la reemplazaba por el día en que se corregía.
+    purchaseDate: _psDateKey_(get("FECHA DE COMPRA DE TIQUETE")),
     // For Reservation URL, we don't have a direct column, but we can try to extract it from supportData if marked
     reservationUrl: supportData?.files?.find(f => f.isReservation)?.url,
 
@@ -8419,7 +8480,11 @@ function mapRowToRequest(row, lite) {
     fareName: String(get("TARIFA NOMBRE") || ''),
     fareJustification: String(get("TARIFA JUSTIFICACION") || ''),
     // Maleta de bodega que pidió el viajero (#A95): true, false o null si no se preguntó.
-    checkedBaggage: _checkedBaggageFromCell_(get(CHECKED_BAG_HEADER))
+    checkedBaggage: _checkedBaggageFromCell_(get(CHECKED_BAG_HEADER)),
+    // Valor pagado al comprar (#A102): pesos o '' si no se registró. Que la clave venga le dice a la
+    // app que este servidor ya lo guarda. Solo administradores (_hideFareInternals_).
+    purchasePaidTickets: _paidCellValue_(get(PAID_TICKETS_HEADER)),
+    purchasePaidHotel: _paidCellValue_(get(PAID_HOTEL_HEADER))
   };
 
   // Compute and attach the EFFECTIVE approval status (mirrors the rules in
@@ -16135,12 +16200,16 @@ function _csComputeRowExecuted_(row, headerMap, config) {
   var estimated = 0;
   var isEstimated = false;
   if (allowEstimate && real === 0) {
-    var tickets = _csToNumber_(_csReadCell_(row, headerMap, config.estimateFallback.ticketsHeader));
-    var hotel = _csToNumber_(_csReadCell_(row, headerMap, config.estimateFallback.hotelHeader));
+    // #A102: el valor pagado al comprar, si se registró, reemplaza a lo cotizado (tiquetes y hotel por separado).
+    var paidT = _paidCellValue_(_csReadCell_(row, headerMap, PAID_TICKETS_HEADER));
+    var paidH = _paidCellValue_(_csReadCell_(row, headerMap, PAID_HOTEL_HEADER));
+    var tickets = paidT !== '' ? paidT : _csToNumber_(_csReadCell_(row, headerMap, config.estimateFallback.ticketsHeader));
+    var hotel = paidH !== '' ? paidH : _csToNumber_(_csReadCell_(row, headerMap, config.estimateFallback.hotelHeader));
     if (tickets + hotel > 0) {
       estimated = tickets + hotel;
       isEstimated = true;
-      breakdown._estimadoFromCotizado = estimated;
+      breakdown._estimado = estimated; // mientras llega la factura (lo pagado o lo cotizado): no es una factura
+      if (paidT !== '' || paidH !== '') breakdown._estimadoConPagado = 1;
     }
   }
 
@@ -19486,6 +19555,7 @@ var MR_REPORT_KIND = 'Cumplimiento de la política de viajes';
 var MR_SENT_SHEET = 'INFORMES ENVIADOS';
 // El primero automático es el de octubre de 2026: sale el martes 3-nov (el 2-nov es festivo).
 var MR_FIRST_MONTH = '2026-10';
+var MR_FARE_SINCE = '2026-10-08';  // desde esta noche la plataforma registra la tarifa (#A95)
 var MR_CC = ['yprieto@equitel.com.co', 'dsanchez@equitel.com.co'];
 var MR_TREND_MONTHS = 6;
 var MR_RANK_MONTHS = 3;
@@ -19574,7 +19644,7 @@ function _mrReadData_() {
     var mod = String(get(row, 'TIPO DE SOLICITUD') || '').trim().toUpperCase() === 'MODIFICACION';
     var email = String(get(row, 'CORREO ENCUESTADO') || '').trim().toLowerCase();
     out.trips.push({
-      id: id, status: st, month: sol.slice(0, 7), sol: sol, ida: ida, compra: compra, intl: intl, min: min, mod: mod, traz: traz,
+      id: id, status: st, month: sol.slice(0, 7), buyMonth: compra ? compra.slice(0, 7) : '', sol: sol, ida: ida, compra: compra, intl: intl, min: min, mod: mod, traz: traz,
       counts: !mod && !traz && diasSol !== null,
       diasSol: diasSol, diasCompra: diasCompra, diasGestion: diasGestion,
       onTime: diasSol === null ? null : diasSol >= min,
@@ -19612,7 +19682,10 @@ function _mrStats_(trips) {
   };
 }
 
-/** Tarifa comprada vs la del manual, por duración (solo compras con tarifa registrada). */
+/**
+ * Tarifa comprada vs la del manual, por duración (solo compras con tarifa registrada). Entra toda compra,
+ * también la registrada después de hacerse: no cuenta para la anticipación, pero su tarifa también se pagó.
+ */
 function _mrFares_(trips) {
   var buckets = [
     { label: '0 a 1 noche', manual: 1, name: 'TIPO 1 (Basic)' },
@@ -19620,7 +19693,7 @@ function _mrFares_(trips) {
     { label: '6 noches o más', manual: 3, name: 'TIPO 3' }
   ].map(function(b) { b.n = 0; b.superior = 0; return b; });
   var withoutFare = 0;
-  trips.filter(function(t) { return !t.traz; }).forEach(function(t) {
+  trips.forEach(function(t) {
     if (!t.fareBought) { withoutFare++; return; }
     var b = buckets[t.fareManual - 1];
     b.n++;
@@ -19642,10 +19715,13 @@ function _mrBuild_(ym) {
   var data = _mrReadData_();
   var cfg = _policyApprovalConfig_();
   var inMonth = function(m) { return function(t) { return t.month === m; }; };
+  // La tarifa cuenta en el mes de la compra (David, 14-oct): cada compra sale una sola vez, también
+  // la pedida a fin de mes que se compra después del primer día hábil. La anticipación sigue por mes de solicitud.
+  var boughtIn = function(m) { return function(t) { return t.buyMonth === m; }; };
   var month = data.trips.filter(inMonth(ym));
   var prev = _mrAddMonths_(ym, -1);
   var s = _mrStats_(month), sp = _mrStats_(data.trips.filter(inMonth(prev)));
-  var fares = _mrFares_(month), faresPrev = _mrFares_(data.trips.filter(inMonth(prev)));
+  var fares = _mrFares_(data.trips.filter(boughtIn(ym))), faresPrev = _mrFares_(data.trips.filter(boughtIn(prev)));
   var windowStart = _mrAddMonths_(ym, -(MR_RANK_MONTHS - 1));
   var win = data.trips.filter(function(t) { return t.month >= windowStart && t.month <= ym && t.counts; });
 
@@ -19728,7 +19804,7 @@ function _mrBuild_(ym) {
   };
   report.subject = MR_REPORT_KIND + ' · ' + report.label;
   report.html = _mrHtml_(report);
-  report.csv = _mrCsv_(month);
+  report.csv = _mrCsv_(month.concat(data.trips.filter(function(t) { return t.buyMonth === ym && t.month !== ym; })), ym);
   return report;
 }
 
@@ -19776,7 +19852,7 @@ function _mrHtml_(r) {
     '<tr><td style="background-color:#111827; padding:22px 24px;">' +
       '<div style="color:#fca5a5; font-size:12px; letter-spacing:.08em; text-transform:uppercase;">Política de viajes COM-P-02 · informe mensual</div>' +
       '<h1 style="color:#ffffff; margin:6px 0 0 0; font-size:22px;">Cumplimiento de la política de viajes · ' + e(r.label) + '</h1>' +
-      '<p style="color:#d1d5db; margin:6px 0 0 0; font-size:13px;">Solicitudes con vuelo pedidas en ' + e(r.label) + ' y ya compradas. Fuente: plataforma de viajes, datos al ' + e(_policyFmtDay_(r.generatedKey)) + '.</p></td></tr>';
+      '<p style="color:#d1d5db; margin:6px 0 0 0; font-size:13px;">Solicitudes con vuelo pedidas en ' + e(r.label) + ' y ya compradas; la tarifa, de las compras hechas en el mes. Fuente: plataforma de viajes, datos al ' + e(_policyFmtDay_(r.generatedKey)) + '.</p></td></tr>';
 
   var tiles = s.n ? '<tr><td style="padding:20px 24px 4px 24px;"><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;"><tr>' +
     _mrTile_(_mrPct_(s.late, s.n), 'de los viajes se pidió fuera de plazo',
@@ -19786,7 +19862,7 @@ function _mrHtml_(r) {
       e(s.boughtOnTime + ' de ' + s.bought + ' compras') + '. Mediana entre la compra y el vuelo: ' + e(_mrDays_(s.medBuy)) + '.',
       sp.bought ? e(r.prevLabel) + ': ' + _mrPct_(sp.boughtOnTime, sp.bought) : '') +
     _mrTile_(_mrPct_(f01.superior, f01.n), 'de los viajes de 0–1 noche, en tarifa superior',
-      f01.n ? e(f01.superior + ' de ' + f01.n) + ' compras con tarifa registrada. El manual pide la más barata (Basic).' : 'Ninguna compra de 0–1 noche con tarifa registrada.',
+      f01.n ? e(f01.superior + ' de ' + f01.n) + ' compras del mes con tarifa registrada. El manual pide la más barata (Basic).' : 'Ninguna compra de 0–1 noche con tarifa registrada en el mes.',
       f01p.n ? e(r.prevLabel) + ': ' + _mrPct_(f01p.superior, f01p.n) : '') +
     '</tr></table>' +
     '<p style="margin:12px 0 0 0; font-size:13px; color:#374151; line-height:1.5;">Nacional: <strong>' + _mrPct_(s.natOnTime, s.natN) + '</strong> a tiempo (' + s.natOnTime + ' de ' + s.natN + '). ' +
@@ -19836,16 +19912,18 @@ function _mrHtml_(r) {
       r.traz.map(function(t) { return [e(t.id), e(t.travelers.map(_mrName_).join(', ')), e(t.unit), e(t.origin + ' → ' + t.destination), e(_policyFmtDay_(t.ida))]; }))) : '';
 
   var fareRows = r.fares.buckets.map(function(b) { return [e(b.label), e(b.name), e(String(b.n)), _mrPct_(b.n - b.superior, b.n), '<strong>' + _mrPct_(b.superior, b.n) + '</strong>']; });
-  var fares = _mrSection_('Tarifa', 'Compras del mes con la tarifa registrada por el área de viajes, frente a la que fija el manual según las noches del viaje.' +
-    (r.fares.withoutFare ? ' ' + r.fares.withoutFare + (r.fares.withoutFare === 1 ? ' compra no tiene' : ' compras no tienen') + ' tarifa registrada y no entran.' : ''),
+  var fares = _mrSection_('Tarifa', 'Compras hechas en ' + e(r.label) + ' con la tarifa registrada por el área de viajes, frente a la que fija el manual según las noches del viaje. ' +
+    'Cuenta la fecha de compra, no la de la solicitud: cada compra sale una sola vez, aunque se haya pedido el mes anterior.' +
+    (r.fares.withoutFare ? ' ' + r.fares.withoutFare + (r.fares.withoutFare === 1 ? ' compra no tiene' : ' compras no tienen') + ' tarifa registrada y no entran' +
+      (r.ym <= MR_FARE_SINCE.slice(0, 7) ? ' (la plataforma la registra desde el ' + e(_policyFmtDay_(MR_FARE_SINCE)) + ')' : '') + '.' : ''),
     _mrTable_([{ t: 'Duración' }, { t: 'Tarifa del manual' }, { t: 'Compras', right: true }, { t: 'En la del manual o menor', right: true }, { t: 'En superior', right: true }], fareRows));
 
   var method = _mrSection_('Cómo se calculó', '',
     '<ul style="margin:0; padding-left:18px; font-size:12px; color:#4b5563; line-height:1.55;">' +
-    '<li><strong>Qué entra:</strong> solicitudes con vuelo reservadas o procesadas, por el mes en que se pidieron. Fuera: anuladas, denegadas, en trámite, solo hospedaje y pruebas.' +
+    '<li><strong>Qué entra:</strong> solicitudes con vuelo reservadas o procesadas, por el mes en que se pidieron (la tarifa, por el mes en que se compraron). Fuera: anuladas, denegadas, en trámite, solo hospedaje y pruebas.' +
       (r.mods ? ' Las ' + r.mods + ' modificaciones del mes' : ' Las modificaciones') + ' y las compras registradas después no cuentan para la anticipación.</li>' +
     '<li><strong>A tiempo:</strong> ' + POLICY_MIN_DAYS_NATIONAL + ' días o más entre la creación de la solicitud y el vuelo de ida (' + POLICY_MIN_DAYS_INTERNATIONAL + ' si es internacional). Es la misma regla con la que la plataforma marca la solicitud fuera de política. <strong>Comprado a tiempo:</strong> la misma regla con la fecha de compra.</li>' +
-    '<li><strong>Tarifa:</strong> la registrada al confirmar costos o la reserva; la del manual sale de las noches (0–1: TIPO 1; 2–5: TIPO 2; 6 o más: TIPO 3). Superior = un TIPO más alto que el del manual.</li>' +
+    '<li><strong>Tarifa:</strong> la registrada al confirmar costos o la reserva; la del manual sale de las noches (0–1: TIPO 1; 2–5: TIPO 2; 6 o más: TIPO 3). Superior = un TIPO más alto que el del manual. Cuenta en el mes de la compra, para que ninguna quede por fuera.</li>' +
     '<li><strong>Cuadros y «quién pide»:</strong> mes del informe y los dos anteriores, para que haya suficientes viajes por persona. El detalle de cada solicitud del mes va en el archivo adjunto (CSV, se abre con Excel).</li>' +
     '</ul>');
 
@@ -19854,8 +19932,11 @@ function _mrHtml_(r) {
   return head + tiles + policy + trend + units + honor + shame + reqs + traz + fares + method + foot;
 }
 
-/** Detalle de las solicitudes del mes para Excel (separador ';', con BOM para las tildes). Sin cédulas. */
-function _mrCsv_(trips) {
+/**
+ * Detalle para Excel (separador ';', con BOM para las tildes). Sin cédulas. Una fila por solicitud pedida
+ * o comprada en el mes; las dos últimas columnas dicen en qué parte del informe cuenta cada una.
+ */
+function _mrCsv_(trips, ym) {
   var cell = function(v) {
     var t = v === null || v === undefined ? '' : String(v);
     if (/^[=+\-@]/.test(t)) t = "'" + t;
@@ -19863,12 +19944,15 @@ function _mrCsv_(trips) {
   };
   var yn = function(b) { return b === null ? '' : b ? 'SI' : 'NO'; };
   var rows = [['Solicitud', 'Clase', 'Tipo', 'Mínimo días', 'Fecha solicitud', 'Fecha compra', 'Fecha ida', 'Días solicitud a vuelo', 'Días compra a vuelo',
-    'Pedido a tiempo', 'Comprado a tiempo', 'Solicitante', 'Viajeros', 'Unidad', 'Empresa', 'Ruta', 'Noches', 'Tarifa del manual', 'Tarifa comprada']];
+    'Pedido a tiempo', 'Comprado a tiempo', 'Solicitante', 'Viajeros', 'Unidad', 'Empresa', 'Ruta', 'Noches', 'Tarifa del manual', 'Tarifa comprada',
+    'Cuenta en la anticipación del mes', 'Cuenta en la tarifa del mes']];
   trips.forEach(function(t) {
+    var inLead = t.counts && t.month === ym;
     rows.push([t.id, t.mod ? 'Modificación' : t.traz ? 'Registrada después de comprar' : 'Original', t.intl ? 'Internacional' : 'Nacional', t.min,
       t.sol, t.compra, t.ida, t.diasSol === null ? '' : t.diasSol, t.diasCompra === null ? '' : t.diasCompra,
-      t.counts ? yn(t.onTime) : '', t.counts ? yn(t.boughtOnTime) : '', _mrName_(t.requester), t.travelers.map(_mrName_).join(', '), t.unit, t.company,
-      t.origin + ' - ' + t.destination, t.nights, 'TIPO ' + t.fareManual, t.fareBought ? 'TIPO ' + t.fareBought : '']);
+      inLead ? yn(t.onTime) : '', inLead ? yn(t.boughtOnTime) : '', _mrName_(t.requester), t.travelers.map(_mrName_).join(', '), t.unit, t.company,
+      t.origin + ' - ' + t.destination, t.nights, 'TIPO ' + t.fareManual, t.fareBought ? 'TIPO ' + t.fareBought : '',
+      yn(inLead), yn(t.buyMonth === ym && !!t.fareBought)]);
   });
   return '﻿' + rows.map(function(r) { return r.map(cell).join(';'); }).join('\r\n');
 }

@@ -198,7 +198,7 @@ function checkWrites(gs, failures) {
   eq('la solicitud que recibe la app trae la tarifa', [mapped.fareType, mapped.fareRecommended, mapped.fareName, mapped.fareJustification], ['1', '2', 'Basic', J]);
   const legacy = ctx.mapRowToRequest(['SOL-9', 'RESERVADO', 'VIAJE', '', '', '', '', '', '', 'TIIPO 2']);
   eq('un valor histórico mal escrito no se toma como tarifa', legacy.fareType, '');
-  eq('la acción pasa la tarifa (y quién la registra, #A100)', gs.includes('payload.fareOption, payload.fareJustification, currentUserEmail); break;'), true);
+  eq('la acción pasa la tarifa (y quién la registra, #A100, y el valor pagado, #A102)', gs.includes('payload.fareOption, payload.fareJustification, currentUserEmail, { tickets: payload.paidTickets, hotel: payload.paidHotel }); break;'), true);
   // La recomendada y el motivo solo llegan a los administradores (revisión del 8-oct).
   ctx._clearRequestRowCache_ && ctx._clearRequestRowCache_();
   const asOwner = ctx.getRequestById('SOL-1', false), asAdmin = ctx.getRequestById('SOL-1', true);

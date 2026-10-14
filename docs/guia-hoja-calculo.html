@@ -377,6 +377,9 @@ corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53,
 <p><code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code> y <code>TARIFA JUSTIFICACION</code> (#A95, 8-oct-2026): la tarifa que recomienda el manual COM-P-02 por las noches del viaje (<code>TIPO 1</code>, <code>TIPO 2</code> o <code>TIPO 3</code>, la calcula el sistema), su nombre en la aerolínea (por ejemplo, <em>Classic</em>) y, si se compró otra, el motivo. La tarifa comprada sigue en <code>TIPO DE COMPRA DE TKT</code>, que ahora llenan “Confirmar costos” y “Registrar reserva”. Ver <a href="manual-com-p-02.md">manual-com-p-02.md</a>.</p>
 </li>
 <li>
+<p><code>VALOR COMPRA TIQUETES</code> y <code>VALOR COMPRA HOTEL</code> (#A102, 14-oct-2026): lo que se pagó al comprar, en pesos. Opcionales: los llena “Registrar reserva” (o “Corregir reserva”) si el área de viajes los tiene. Vacías = no se registró. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado. No confundir con <code>VALOR PAGADO A AEROLINEA Y/O HOTEL</code>, que es el valor de la factura 1.</p>
+</li>
+<li>
 <p><code>MALETA DE BODEGA</code> (#A95, 8-oct-2026): lo que marcó el viajero en el formulario (<em>¿Lleva maleta de bodega?</em>): <code>SI</code> o <code>NO</code>. Vacía = la solicitud es anterior y no se preguntó. Solo vuelos.</p>
 </li>
 <li>
@@ -397,7 +400,7 @@ corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53,
 </ul>
 <p>Todas las crea el menú <em>12. Columnas de compra y resumen de facturas</em> (o el sistema, la primera vez que las necesita).</p>
 <h3>12. Columnas de compra y resumen de facturas</h3>
-<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code>, <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code>, <code>REQUIERE APROB TARIFA</code>, <code>GRUPO MULTIDESTINO</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
+<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code>, <code>VALOR COMPRA TIQUETES</code>, <code>VALOR COMPRA HOTEL</code>, <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code>, <code>REQUIERE APROB TARIFA</code>, <code>GRUPO MULTIDESTINO</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
 <ul>
 <li><strong>listas para cerrar:</strong> viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita</li>
 <li><strong>facturas por revisar:</strong> les faltan facturas o PDF, a partir del día 7 después del viaje</li>

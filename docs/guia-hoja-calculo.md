@@ -358,6 +358,7 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 - `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94, 8-oct-2026): el hotel que reservó el área de viajes (en mayúsculas y sin tildes) y su canal (*Aviatur*, *Directo* u *Otra agencia*). *No se reservó* = al final no hubo hotel. `NOMBRE HOTEL` sigue siendo el que pidió el viajero. Las llena "Registrar reserva".
 
 - `TARIFA RECOMENDADA`, `TARIFA NOMBRE` y `TARIFA JUSTIFICACION` (#A95, 8-oct-2026): la tarifa que recomienda el manual COM-P-02 por las noches del viaje (`TIPO 1`, `TIPO 2` o `TIPO 3`, la calcula el sistema), su nombre en la aerolínea (por ejemplo, *Classic*) y, si se compró otra, el motivo. La tarifa comprada sigue en `TIPO DE COMPRA DE TKT`, que ahora llenan "Confirmar costos" y "Registrar reserva". Ver [manual-com-p-02.md](manual-com-p-02.md).
+- `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, 14-oct-2026): lo que se pagó al comprar, en pesos. Opcionales: los llena "Registrar reserva" (o "Corregir reserva") si el área de viajes los tiene. Vacías = no se registró. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado. No confundir con `VALOR PAGADO A AEROLINEA Y/O HOTEL`, que es el valor de la factura 1.
 - `MALETA DE BODEGA` (#A95, 8-oct-2026): lo que marcó el viajero en el formulario (*¿Lleva maleta de bodega?*): `SI` o `NO`. Vacía = la solicitud es anterior y no se preguntó. Solo vuelos.
 - `JUSTIFICACION ANTICIPACION` (#A100, 14-oct-2026): por qué la solicitud se pidió con menos anticipación de la que pide la política (8 días nacional, 30 internacional). La escribe el solicitante; la lee el CFO antes de decidir.
 - `APROBACION CFO ANTICIPACION` (#A100): la decisión sobre esa solicitud: `Sí_correo_fecha` (aprobada), `No_correo_fecha` (rechazada) o `Vencida_sistema_fecha` (nadie la aprobó en 7 días o antes del viaje). Vacía = no la necesitó.
@@ -369,7 +370,7 @@ Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sis
 
 ### 12. Columnas de compra y resumen de facturas
 
-Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION`, `MALETA DE BODEGA`, `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA`, `GRUPO MULTIDESTINO` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
+Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION`, `MALETA DE BODEGA`, `VALOR COMPRA TIQUETES`, `VALOR COMPRA HOTEL`, `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA`, `GRUPO MULTIDESTINO` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
 - **listas para cerrar:** viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita
 - **facturas por revisar:** les faltan facturas o PDF, a partir del día 7 después del viaje
 - avisos omitidos y solicitudes en espera

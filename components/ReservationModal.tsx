@@ -3,7 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { TravelRequest, SupportFile, RequestStatus, APPROVER_ROLE_LABELS } from '../types';
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
-import { HotelPurchaseFields, PurchaseInfoFields } from './PurchaseInfoFields';
+import { HotelPurchaseFields, PAID_LABELS, PaidForm, PaidValueFields, PurchaseInfoFields } from './PurchaseInfoFields';
+import { formatCop, normalizePaidValue } from '../utils/money';
 import { FareFields } from './FareFields';
 import { FareForm, fareFormFrom, fareRecommendation, fareShort, normalizeFare } from '../utils/fare';
 import { HotelForm, PurchaseForm, checkHotelForm, checkPurchaseForm, hotelFormFrom, hotelPurchaseLabel, purchaseAirlineLabel, purchaseChannelLabel, purchaseFormFrom } from '../utils/purchase';
@@ -46,7 +47,9 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
     const [creditCard, setCreditCard] = useState(request.creditCard || '');
     const [creditCards, setCreditCards] = useState<{ value: string, label: string }[]>([]);
     const [loadingCards, setLoadingCards] = useState(true);
-    const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().split('T')[0]);
+    // #A102: la fecha guardada (al corregir, o la de una reserva parcial); si no hay, la de hoy.
+    // Antes siempre era la de hoy y corregir una reserva cambiaba la fecha de compra.
+    const [purchaseDate, setPurchaseDate] = useState(() => request.purchaseDate || new Date().toISOString().split('T')[0]);
 
     // New files selected locally (not yet uploaded)
     const [newFiles, setNewFiles] = useState<File[]>([]);
@@ -108,12 +111,34 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
         || (serverHasReturnAirline && purchaseCheck.returnAirline !== (request.purchaseReturnAirline || '')));
     const fareDirty = fareChanged || (fareAirlineChanged && !!request.fareType);
 
+    // #A102 (David, 14-oct): valor pagado al comprar, opcional. Solo si el servidor ya lo guarda
+    // (manda la clave purchasePaidTickets). Tiquetes en viajes con vuelo; hotel si se reservó.
+    const serverHasPaid = request.purchasePaidTickets !== undefined;
+    const showPaidTickets = serverHasPaid && !isHotelOnly;
+    const showPaidHotel = serverHasPaid && showHotel && (isHotelOnly || !hotel.notBooked);
+    const paidAsText = (v: number | '' | undefined) => (typeof v === 'number' ? formatCop(v) : '');
+    const [paid, setPaid] = useState<PaidForm>(() => ({ tickets: paidAsText(request.purchasePaidTickets), hotel: paidAsText(request.purchasePaidHotel) }));
+    const paidTicketsCheck = normalizePaidValue(paid.tickets, PAID_LABELS.tickets);
+    const paidHotelCheck = normalizePaidValue(paid.hotel, PAID_LABELS.hotel);
+    const paidError = (showPaidTickets && !paidTicketsCheck.ok && paidTicketsCheck.error) || (showPaidHotel && !paidHotelCheck.ok && paidHotelCheck.error) || '';
+    const paidTicketsNeedsSave = showPaidTickets && paidTicketsCheck.ok && paidTicketsCheck.value !== (request.purchasePaidTickets ?? '');
+    const paidHotelNeedsSave = showPaidHotel && paidHotelCheck.ok && paidHotelCheck.value !== (request.purchasePaidHotel ?? '');
+
+    // #A102: al corregir, si solo cambió lo interno de la compra (aerolínea, canal, hotel, tarifa o valor
+    // pagado) y nada de la reserva, se guarda sin «corregir la reserva»: el viajero no recibe un correo de
+    // corrección por un dato que no ve. Con un servidor anterior (sin purchaseDate) se corrige como antes.
+    const reservationChanged = !isEditMode || request.purchaseDate === undefined
+        || reservationNumber.trim() !== String(request.reservationNumber || '').trim()
+        || creditCard !== (request.creditCard || '')
+        || purchaseDate !== request.purchaseDate
+        || filesToDelete.size > 0 || newFiles.length > 0 || !!correctionNote.trim();
+
     /**
      * Guarda aerolínea, canal, hotel y tarifa si cambiaron. Con un backend anterior (que no
      * conoce la acción) sigue sin guardarlos y devuelve una nota; otro error se lanza.
      * draft: «Guardar sin enviar», donde la tarifa puede quedar para después.
      */
-    const savePurchaseInfoIfNeeded = async (draft = false): Promise<string> => {
+    const purchaseInfoToSave = (draft = false) => {
         const purchaseChanged = purchaseCheck.ok && !(purchaseCheck.airline === (request.purchaseAirline || '')
             && purchaseCheck.channel === (request.purchaseChannel || '')
             && (!serverHasReturnAirline || purchaseCheck.returnAirline === (request.purchaseReturnAirline || '')));
@@ -124,8 +149,8 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
         // Al corregir o en un borrador, la precargada que nadie tocó no se guarda.
         const fareNeedsSave = serverHasFare && fareCheck.ok && (fareDirty
             || (!isEditMode && !draft && !request.fareType));
-        if (!purchaseChanged && !hotelNeedsSave && !fareNeedsSave) return '';
-        const info: { airline?: string; channel?: string; returnAirline?: string; hotelName?: string; hotelChannel?: string; fareOption?: string; fareJustification?: string } = {};
+        if (!purchaseChanged && !hotelNeedsSave && !fareNeedsSave && !paidTicketsNeedsSave && !paidHotelNeedsSave) return null;
+        const info: { airline?: string; channel?: string; returnAirline?: string; hotelName?: string; hotelChannel?: string; fareOption?: string; fareJustification?: string; paidTickets?: string; paidHotel?: string } = {};
         if (purchaseChanged) {
             info.airline = purchaseCheck.airline;
             info.channel = purchaseCheck.channel;
@@ -139,6 +164,15 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             info.fareOption = String(fareCheck.option);
             info.fareJustification = fareCheck.justification;
         }
+        // '' borra un valor guardado que Laura dejó vacío al corregir.
+        if (paidTicketsNeedsSave) info.paidTickets = String(paidTicketsCheck.value);
+        if (paidHotelNeedsSave) info.paidHotel = String(paidHotelCheck.value);
+        return info;
+    };
+
+    const savePurchaseInfoIfNeeded = async (draft = false): Promise<string> => {
+        const info = purchaseInfoToSave(draft);
+        if (!info) return '';
         try {
             await gasService.setPurchaseInfo(request.requestId, info);
             return '';
@@ -147,7 +181,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             if (/Acción desconocida/i.test(msg)) {
                 return '\n\nNota: la aerolínea y el canal no se guardaron porque falta publicar la nueva versión del servidor.';
             }
-            throw new Error('No se pudo guardar la compra (aerolínea, canal, hotel o tarifa): ' + msg);
+            throw new Error('No se pudo guardar la compra (aerolínea, canal, hotel, tarifa o valor pagado): ' + msg);
         }
     };
 
@@ -286,6 +320,17 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 return;
             }
         }
+        // #A102: el valor pagado es opcional, pero si se escribió debe ser un valor en pesos.
+        if (paidError) {
+            setDialog({
+                isOpen: true,
+                title: 'Revise el valor pagado',
+                message: paidError,
+                type: 'ALERT',
+                onConfirm: closeDialog
+            });
+            return;
+        }
         // #A82: obligatorio al registrar; al corregir, solo si se escribió algo.
         setTriedPurchase(true);
         if ((!isEditMode || purchaseTouched) && !purchaseCheck.ok) {
@@ -342,8 +387,25 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 ? (purchaseCheck.airline ? purchaseAirlineLabel(purchaseCheck.airline, purchaseCheck.returnAirline) + ' · ' : '') + purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)
                 : '',
             serverHasFare && fareCheck.ok && (!isEditMode || fareDirty || !!request.fareType) ? 'tarifa ' + fareShort(fareCheck.option, fareAirline, fareReturnAirline) + (fareCheck.exception ? ' (no es la recomendada)' : '') : '',
-            showHotel && hotelCheck.ok ? 'hotel: ' + hotelPurchaseLabel(hotelCheck.hotelName, hotelCheck.hotelChannel) : ''
+            showHotel && hotelCheck.ok ? 'hotel: ' + hotelPurchaseLabel(hotelCheck.hotelName, hotelCheck.hotelChannel) : '',
+            [showPaidTickets && typeof paidTicketsCheck.value === 'number' ? 'tiquetes $' + formatCop(paidTicketsCheck.value) : '',
+                showPaidHotel && typeof paidHotelCheck.value === 'number' ? 'hotel $' + formatCop(paidHotelCheck.value) : '']
+                .filter(Boolean).join(', ').replace(/^(.+)$/, 'valor pagado: $1')
         ].filter(Boolean).join('; ');
+        if (isEditMode && !reservationChanged) {
+            const pending = !!purchaseInfoToSave();
+            setDialog({
+                isOpen: true,
+                title: pending ? 'Guardar la compra' : 'Sin cambios',
+                message: pending
+                    ? `Se guardará la compra${buyText ? ` (${buyText})` : ''}.\n\nNo cambió nada de la reserva (PNR, tarjeta, fecha ni archivos), así que no se enviará correo al usuario.\n\n¿Desea continuar?`
+                    : 'No hay cambios para guardar.',
+                type: pending ? 'CONFIRM' : 'ALERT',
+                onConfirm: pending ? executeSubmission : closeDialog,
+                onCancel: closeDialog
+            });
+            return;
+        }
         const confirmMsg = isEditMode
             ? `Se actualizará la reserva a ${reservationNumber} con tarjeta ${creditCard}.`
               + (deleteCount > 0 ? `\nSe eliminarán ${deleteCount} archivo(s) de Drive.` : '')
@@ -378,7 +440,16 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
             // #A82: primero aerolínea y canal (si falla, no se registra nada).
             const purchaseNote = await savePurchaseInfoIfNeeded();
 
-            if (isEditMode) {
+            if (isEditMode && !reservationChanged) {
+                // #A102: solo cambió lo interno de la compra; la reserva queda igual y no hay correo.
+                setDialog({
+                    isOpen: true,
+                    title: 'Compra Guardada',
+                    message: 'Se guardó la compra. No se envió correo al usuario.' + purchaseNote,
+                    type: 'SUCCESS',
+                    onConfirm: () => { closeDialog(); onSuccess(); }
+                });
+            } else if (isEditMode) {
                 await gasService.amendReservation(
                     request.requestId,
                     reservationNumber,
@@ -436,6 +507,17 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                 isOpen: true,
                 title: 'Revise la tarifa',
                 message: fareCheck.error || 'Revise la tarifa del tiquete.',
+                type: 'ALERT',
+                onConfirm: closeDialog
+            });
+            return;
+        }
+        // #A102: el valor pagado puede faltar, pero si se escribió debe ser un valor en pesos.
+        if (paidError) {
+            setDialog({
+                isOpen: true,
+                title: 'Revise el valor pagado',
+                message: paidError,
                 type: 'ALERT',
                 onConfirm: closeDialog
             });
@@ -585,7 +667,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                     className="w-full border border-gray-300 rounded p-2 text-gray-900 bg-white focus:ring-brand-red focus:border-brand-red"
                                     disabled={loading}
                                 />
-                                <p className="text-xs text-gray-400 mt-1 italic">Por defecto: fecha de hoy.</p>
+                                <p className="text-xs text-gray-400 mt-1 italic">{request.purchaseDate ? 'La fecha de compra registrada. Cámbiela solo si está mal.' : 'Por defecto: fecha de hoy.'}</p>
                             </div>
 
                             {/* Credit Card */}
@@ -655,6 +737,18 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                     hint={!request.purchaseHotelChannel && request.hotelName
                                         ? 'Viene del hotel que pidió el viajero. Cámbielo si se reservó otro.'
                                         : undefined}
+                                />
+                            )}
+
+                            {/* #A102: valor pagado al comprar (opcional) */}
+                            {(showPaidTickets || showPaidHotel) && (
+                                <PaidValueFields
+                                    showTickets={showPaidTickets}
+                                    showHotel={showPaidHotel}
+                                    value={paid}
+                                    onChange={setPaid}
+                                    quotedTickets={request.finalCostTickets || undefined}
+                                    quotedHotel={request.finalCostHotel || undefined}
                                 />
                             )}
 

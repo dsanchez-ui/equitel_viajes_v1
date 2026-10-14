@@ -962,6 +962,16 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                 <strong>{hotelPurchaseLabel(request.purchaseHotelName || '', request.purchaseHotelChannel)}</strong>
                                             </div>
                                         )}
+                                        {/* #A102: valor pagado al comprar (solo administradores) */}
+                                        {isAdmin && (typeof request.purchasePaidTickets === 'number' || typeof request.purchasePaidHotel === 'number') && (
+                                            <div className="mt-1 text-xs text-gray-600" data-paid-summary>
+                                                <span className="text-gray-400">Valor pagado:</span>{' '}
+                                                <strong>{[
+                                                    typeof request.purchasePaidTickets === 'number' ? 'tiquetes $' + request.purchasePaidTickets.toLocaleString('es-CO') : '',
+                                                    typeof request.purchasePaidHotel === 'number' ? 'hotel $' + request.purchasePaidHotel.toLocaleString('es-CO') : ''
+                                                ].filter(Boolean).join(' · ')}</strong>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

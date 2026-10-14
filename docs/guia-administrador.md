@@ -163,11 +163,12 @@ Cuando el solicitante **es** un ejecutivo (CEO o CDS), su sola aprobación basta
 3. Ingresa:
    - **No. reserva / PNR** (texto libre, 3-10 caracteres usualmente)
    - **Tarjeta de crédito** usada (del dropdown)
-   - **Fecha de compra** (hoy por default)
+   - **Fecha de compra** (hoy por default; si ya hay una guardada, por ejemplo de una reserva parcial, viene esa)
    - **Archivos de confirmación** (PDF de la aerolínea / hotel — puedes subir varios)
    - **Compra (aerolínea y canal)** (#A82): viene llena con lo previsto al confirmar costos. Cámbiala si se compró por otro canal (por ejemplo, directo con la aerolínea porque Aviatur no ajustó el precio). Es obligatoria al registrar; al corregir una reserva es opcional. Si el regreso se compró con otra aerolínea, marca *"El regreso es con otra aerolínea"* (#A85).
    - **Tarifa comprada** (#A95): viene con la que se registró al confirmar costos. Cámbiala si al final se compró otra; si no es la recomendada, escribe por qué. Es obligatoria al confirmar la reserva; al corregir o con *"Guardar sin enviar"* solo se revisa si la cambias.
    - **Hotel (nombre y canal)** (#A94): solo en solicitudes con hospedaje. Viene con el hotel que pidió el viajero; cámbialo si reservaste otro y elige el canal (*Aviatur*, *Directo con el hotel* u *Otra agencia*). Es obligatorio al confirmar la reserva; con *"Guardar sin enviar"* puede quedar para después. Si al final no se reservó hotel (lo quitó el aprobador o es un apartamento corporativo), marca *"No se reservó hotel"*. En solo hospedaje este bloque reemplaza al de compra.
+   - **Valor pagado (opcional)** (#A102): lo que se pagó por los tiquetes y, si hubo hotel, por el hotel, en pesos (con o sin puntos de miles; 0 vale para un apartamento corporativo). Si aún no lo tienes, déjalo vacío y agrégalo después con *"Corregir reserva"*. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado.
 4. Al guardar:
    - La carpeta en Drive se renombra a `SOL-000123 - PNR12345 - TC 1234 - MAY 26`
    - Se envía correo al usuario con el PNR y los archivos adjuntos
@@ -179,11 +180,13 @@ Si algo salió mal (PNR equivocado, archivo erróneo, cambió la tarjeta):
 1. Fila con status `RESERVADO`
 2. Abre el detalle → **"Corregir reserva"**
 3. Puedes:
-   - Editar PNR / tarjeta / fecha
+   - Editar PNR / tarjeta / fecha (la fecha viene con la de compra registrada: cámbiala solo si está mal)
    - Eliminar archivos existentes
    - Subir archivos nuevos
    - Agregar nota de corrección (explicación libre)
+   - Cambiar la compra: aerolínea, canal, tarifa, hotel o valor pagado
 4. El usuario recibe un correo "Corrección de reserva" con los nuevos datos.
+   - **Excepción (#A102):** si solo cambiaste la compra (aerolínea, canal, tarifa, hotel o valor pagado) y nada de la reserva (PNR, tarjeta, fecha, archivos ni nota), se guarda **sin correo**: el viajero no ve esos datos. Así puedes agregar el valor pagado cuando lo tengas.
 
 ### 5.5 Cerrar la solicitud (RESERVADO → PROCESADO)
 

@@ -2479,7 +2479,7 @@ Rollback: versión anterior del web app. Las solicitudes en espera quedarían co
 ---
 
 ## **#A101 — Informe mensual de cumplimiento de la política, automático el primer día hábil**
-**Fecha:** 2026-10-14 · **Pedido por:** Alejandro Gómez (CFO, correo del 13-oct a los gerentes: *"este informe, con los cuadros de honor y deshonor, se publicará cada mes"*) y David (14-oct: que le llegue solo a Alejandro el primer día hábil del mes siguiente, con toda la información de los informes que él adjuntó). Decisiones de David del 14-oct. · **Estado:** Implementado; pendiente desplegar (va con #A100).
+**Fecha:** 2026-10-14 · **Pedido por:** Alejandro Gómez (CFO, correo del 13-oct a los gerentes: *"este informe, con los cuadros de honor y deshonor, se publicará cada mes"*) y David (14-oct: que le llegue solo a Alejandro el primer día hábil del mes siguiente, con toda la información de los informes que él adjuntó). Decisiones de David del 14-oct. · **Estado:** Desplegado el 14-oct; ajuste de la tarifa por mes de compra pendiente de pegar.
 
 **Problema:** el informe del 13-oct (presentación de 13 láminas y Excel) se armó una sola vez, a mano, con la base exportada. Nada en la plataforma lo generaba ni lo enviaba, y Alejandro se comprometió con los gerentes a publicarlo cada mes. Su presentación además anuncia que el indicador entra en la revisión operativa mensual de cada unidad.
 
@@ -2536,3 +2536,100 @@ Rollback: versión anterior del web app. Las solicitudes en espera quedarían co
 No necesita versión nueva del web app por sí solo, ni push del frontend: corre en el activador.
 
 Rollback: versión anterior de `Code.gs`. Para frenar un envío sin tocar código, agregar a mano en `INFORMES ENVIADOS` una fila con `Cumplimiento de la política de viajes` en INFORME y el mes (`'2026-10`) en MES.
+
+### Desplegado (2026-10-14)
+David pegó `Code.gs` y creó el activador `procesarAprobacionesPolitica` (uno solo, cada 2 h). La prueba del menú 15 salió bien.
+
+### Ajuste del 14-oct: la tarifa cuenta en el mes de la compra
+**Pregunta de David:** el informe del 3-nov ¿trae todas las tarifas que se eligieron en octubre?
+
+**No del todo.** La tarifa se contaba, como todo lo demás, en el mes de la **solicitud**. Por eso quedaban por fuera dos casos:
+- una solicitud pedida a fin de mes y comprada después del primer día hábil, por ejemplo mientras espera la aprobación del CFO, no salía en ningún cuadro de tarifa: tampoco en el del mes siguiente, porque se pidió en el anterior;
+- `_mrFares_` dejaba por fuera lo registrado después de comprar. Esa exclusión no estaba documentada: la regla era solo para la anticipación. En la base del 13-oct escondía SOL-000640, TIPO 2 en un viaje de 1 noche.
+
+**Cambio (decisión de David):**
+- el cuadro de tarifa y la tercera cifra del resumen cuentan las compras **hechas en el mes** (`buyMonth`, de `FECHA DE COMPRA DE TIQUETE`), incluidas las registradas después;
+- la anticipación sigue por mes de solicitud;
+- el CSV trae lo pedido **o** comprado en el mes, con dos columnas nuevas: *Cuenta en la anticipación del mes* y *Cuenta en la tarifa del mes*;
+- el correo lo explica en el cuadro de tarifa y en «Cómo se calculó». En octubre agrega que la plataforma registra la tarifa desde el 8-oct (`MR_FARE_SINCE`).
+
+**Verificado:**
+- `check-monthly-report` con tres casos nuevos:
+  - pedida en septiembre y comprada en octubre: entra en octubre;
+  - pedida en octubre y comprada en noviembre: entra en noviembre;
+  - registrada después: entra en la tarifa y no en la anticipación.
+- Si se vuelve a contar por mes de solicitud, la prueba falla en 3 puntos.
+- Con la base del 13-oct, octubre da 5 compras con tarifa: de 0 a 1 noche, 3 de 3 en superior (SOL-000635, 638 y 640); de 2 a 5 noches, 2 en la del manual. Las 12 compras de octubre sin tarifa son anteriores a la noche del 8-oct.
+
+**Despliegue:** pegar `server/Code.gs` y guardar. No necesita versión nueva del web app ni otro activador: el informe corre en el activador, que usa el código guardado.
+
+---
+
+## **#A102 — Valor pagado en «Registrar reserva» y la corrección ya no cambia la fecha de compra**
+**Fecha:** 2026-10-14 · **Pedido por:** David (*"sería bueno poner ahí el valor"*), con la pregunta abierta desde el 7-oct de tener el precio real sin esperar las facturas. Decisión de David: **opcional**. · **Estado:** Implementado; pendiente desplegar.
+
+**Problema:**
+- Entre la compra y la factura pasan semanas. Mientras tanto, el dashboard de costos cuenta lo cotizado («Comprado sin factura»), aunque el área de viajes ya sabe cuánto pagó.
+- Las columnas `VALOR PAGADO A AEROLINEA Y/O HOTEL` y `VALOR PAGADO A AVIATUR Y/O IVA` no sirven para eso: son el valor y el IVA de la **factura 1** y se llenan después del viaje.
+
+**Solución:**
+- **Dos columnas nuevas al final:** `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (las crea el menú 12, o el sistema la primera vez que hacen falta).
+  - Pesos enteros con las reglas de #A79: con o sin puntos de miles; 0 vale; cualquier otro valor, mínimo $10.000.
+  - Vacío = no se registró.
+- **«Registrar reserva»:** bloque *Valor pagado (opcional)*.
+  - Tiquetes en viajes con vuelo; hotel si hubo hotel (también en solo hospedaje).
+  - Al lado, lo cotizado como referencia.
+  - Vacío no bloquea. Un valor mal escrito avisa antes de guardar.
+- **Validación en los dos lados:** gemelo `normalizePaidValue` (`utils/money.ts`) ↔ `_normalizePaidValue_` (`Code.gs`).
+- **Guardado:** viaja en `setPurchaseInfo` (`paidTickets` / `paidHotel`).
+  - Solo se toca la clave presente: una app anterior no lo borra; `''` lo borra.
+  - Solo hospedaje no guarda valor de tiquetes.
+  - Un valor inválido no deja nada a medias.
+- **Quién lo ve:** la app solo muestra el bloque si el servidor manda la clave `purchasePaidTickets`. Al solicitante le llega vacío (`_hideFareInternals_`). El detalle se lo muestra a los administradores (*Valor pagado: …*).
+- **Dashboard de costos:** «Comprado sin factura» usa lo pagado si está y, si no, lo cotizado, por separado para tiquetes y hotel (`_csComputeRowExecuted_`). Los textos del filtro, de la tarjeta, de *¿Cómo se calcula?* y del CSV lo dicen.
+  - El estimado se marca con claves que empiezan por `_` (`_estimado`, `_estimadoConPagado`), y el conteo de facturas las ignora.
+  - Antes era una sola clave, `_estimadoFromCotizado`.
+
+**Error encontrado de paso: corregir una reserva cambiaba la fecha de compra.**
+- **Causa:** la app no recibía la fecha guardada. El campo *Fecha de compra* de «Corregir reserva» arrancaba con la de hoy, y `amendReservation` la escribía.
+- **Efecto:** en la base del 13-oct, 24 de las 26 reservas corregidas tienen como fecha de compra el día de la corrección.
+- **16 cambiaron de fecha:** SOL-000100, 107, 202, 230, 249, 270, 435, 465, 494, 495, 516, 526, 527, 545, 552 y 635.
+- **4 cambiaron de mes**, y con eso su mes en el dashboard y su «comprado a tiempo»: SOL-000100 y 107 (de abril a mayo), 249 (de junio a julio) y 495 (de septiembre a octubre).
+
+**Arreglo:**
+- `mapRowToRequest` manda `purchaseDate` (`AAAA-MM-DD`), y el modal arranca con esa fecha (también en una reserva parcial). Con un servidor anterior sigue la de hoy.
+- Al corregir, si solo cambió la compra (aerolínea, canal, tarifa, hotel o valor pagado) y nada de la reserva (PNR, tarjeta, fecha, archivos ni nota), se guarda con `setPurchaseInfo` y **no se llama a `amendReservation`**. No se reescribe la fecha ni se envía al viajero un correo de corrección por un dato que no ve. El aviso antes de guardar lo explica.
+- **Las 16 fechas no se tocan desde el código.** La fecha real de compra no se guardó en ningún lado. La mejor pista es la del registro de la reserva (`EVENTOS_JSON`), pero Laura pudo haber escrito otra. Si se quieren corregir, que el área de viajes confirme cada una y la corrija a mano en la hoja (*sugerir y que una persona confirme*).
+
+**Compatibilidad:**
+- **App nueva con servidor anterior:** no hay clave, no hay bloque; la fecha y la corrección funcionan como antes.
+- **Servidor nuevo con app anterior:** no manda el valor pagado, nada se borra, y la corrección sigue enviando correo.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `check-cost-rules`: 14 casos del valor pagado; los dos lados coinciden.
+- `check-purchase-info-rules` (hoja en memoria):
+  - columnas al final;
+  - solo el valor pagado, sin tocar la compra;
+  - app anterior sin la clave;
+  - vacío borra solo el que viene;
+  - inválido sin escritura a medias;
+  - solo hospedaje;
+  - la app lo recibe y el solicitante no;
+  - `purchaseDate`;
+  - el dashboard con y sin valor pagado, y hotel en 0;
+  - lo estimado no cuenta como factura.
+- **En la app real** (Vite contra `Code.gs` con datos ficticios, Chrome sin pantalla):
+  - el bloque aparece y rechaza $5.000;
+  - «Corregir reserva» muestra la fecha guardada (9-oct, no la de hoy);
+  - guardar solo el valor pagado pide confirmación sin correo, deja $612.400 en la hoja, la fecha y el PNR iguales, y **0 correos**.
+
+**Despliegue:**
+1. Pegar `server/Code.gs` y `server/CostsDashboard.html`.
+2. Menú 12 (crea las dos columnas; opcional, se crean solas al primer uso).
+3. Crear la versión nueva del web app.
+4. Push del frontend.
+
+En cualquier orden funciona, pero el bloque solo aparece cuando están los dos lados.
+
+**Rollback:** frontend = revert; backend = versión anterior del web app. Las columnas nuevas pueden quedarse.

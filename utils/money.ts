@@ -3,7 +3,7 @@
  *
  * ⚠️ ESTE ARCHIVO TIENE UN GEMELO EN EL BACKEND.
  * La misma lógica vive en `server/Code.gs` (`_formatCop_`, `_parseCopAmount_`,
- * `_validateCostAmount_`). Si cambias las reglas o los mensajes aquí, cámbialos
+ * `_validateCostAmount_`, `_normalizePaidValue_`). Si cambias las reglas o los mensajes aquí, cámbialos
  * allá: `tools/check-cost-rules.cjs` compara ambos lados dentro de
  * `npm run verify` y falla si se separan.
  *
@@ -84,4 +84,21 @@ export function validateCostAmount(raw: string | number | null | undefined, labe
     return { ok: false, value: p.value, error: 'El costo ' + label + ' ($' + formatCop(p.value) + ') no es un valor real: revise que esté completo (mínimo $' + formatCop(COST_MIN_PESOS) + ') o escriba 0 si no tiene costo.' };
   }
   return { ok: true, value: p.value };
+}
+
+export interface PaidCheck {
+  ok: boolean;
+  /** Pesos, o '' si se dejó vacío (no se registró). */
+  value?: number | '';
+  error?: string;
+}
+
+/**
+ * Valor pagado al comprar (#A102, opcional en «Registrar reserva»): vacío = no se registró;
+ * si se escribe, las mismas reglas de los costos. `label`: 'pagado por los tiquetes'.
+ */
+export function normalizePaidValue(raw: string | number | null | undefined, label: string): PaidCheck {
+  if (parseCopAmount(raw).empty) return { ok: true, value: '' };
+  const v = validateCostAmount(raw, label, true);
+  return v.ok ? { ok: true, value: v.value as number } : { ok: false, error: v.error };
 }

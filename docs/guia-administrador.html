@@ -354,11 +354,12 @@
 <ul>
 <li><strong>No. reserva / PNR</strong> (texto libre, 3-10 caracteres usualmente)</li>
 <li><strong>Tarjeta de crédito</strong> usada (del dropdown)</li>
-<li><strong>Fecha de compra</strong> (hoy por default)</li>
+<li><strong>Fecha de compra</strong> (hoy por default; si ya hay una guardada, por ejemplo de una reserva parcial, viene esa)</li>
 <li><strong>Archivos de confirmación</strong> (PDF de la aerolínea / hotel — puedes subir varios)</li>
 <li><strong>Compra (aerolínea y canal)</strong> (#A82): viene llena con lo previsto al confirmar costos. Cámbiala si se compró por otro canal (por ejemplo, directo con la aerolínea porque Aviatur no ajustó el precio). Es obligatoria al registrar; al corregir una reserva es opcional. Si el regreso se compró con otra aerolínea, marca <em>“El regreso es con otra aerolínea”</em> (#A85).</li>
 <li><strong>Tarifa comprada</strong> (#A95): viene con la que se registró al confirmar costos. Cámbiala si al final se compró otra; si no es la recomendada, escribe por qué. Es obligatoria al confirmar la reserva; al corregir o con <em>“Guardar sin enviar”</em> solo se revisa si la cambias.</li>
 <li><strong>Hotel (nombre y canal)</strong> (#A94): solo en solicitudes con hospedaje. Viene con el hotel que pidió el viajero; cámbialo si reservaste otro y elige el canal (<em>Aviatur</em>, <em>Directo con el hotel</em> u <em>Otra agencia</em>). Es obligatorio al confirmar la reserva; con <em>“Guardar sin enviar”</em> puede quedar para después. Si al final no se reservó hotel (lo quitó el aprobador o es un apartamento corporativo), marca <em>“No se reservó hotel”</em>. En solo hospedaje este bloque reemplaza al de compra.</li>
+<li><strong>Valor pagado (opcional)</strong> (#A102): lo que se pagó por los tiquetes y, si hubo hotel, por el hotel, en pesos (con o sin puntos de miles; 0 vale para un apartamento corporativo). Si aún no lo tienes, déjalo vacío y agrégalo después con <em>“Corregir reserva”</em>. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado.</li>
 </ul>
 </li>
 <li>Al guardar:
@@ -375,13 +376,18 @@
 <li>Abre el detalle → <strong>“Corregir reserva”</strong></li>
 <li>Puedes:
 <ul>
-<li>Editar PNR / tarjeta / fecha</li>
+<li>Editar PNR / tarjeta / fecha (la fecha viene con la de compra registrada: cámbiala solo si está mal)</li>
 <li>Eliminar archivos existentes</li>
 <li>Subir archivos nuevos</li>
 <li>Agregar nota de corrección (explicación libre)</li>
+<li>Cambiar la compra: aerolínea, canal, tarifa, hotel o valor pagado</li>
 </ul>
 </li>
-<li>El usuario recibe un correo “Corrección de reserva” con los nuevos datos.</li>
+<li>El usuario recibe un correo “Corrección de reserva” con los nuevos datos.
+<ul>
+<li><strong>Excepción (#A102):</strong> si solo cambiaste la compra (aerolínea, canal, tarifa, hotel o valor pagado) y nada de la reserva (PNR, tarjeta, fecha, archivos ni nota), se guarda <strong>sin correo</strong>: el viajero no ve esos datos. Así puedes agregar el valor pagado cuando lo tengas.</li>
+</ul>
+</li>
 </ol>
 <h3>5.5 Cerrar la solicitud (RESERVADO → PROCESADO)</h3>
 <p>Cuando los soportes post-viaje están listos:</p>

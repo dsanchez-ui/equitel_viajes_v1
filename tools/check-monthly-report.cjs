@@ -7,7 +7,8 @@
  *     festivo: el de octubre sale el martes 3-nov);
  *   - las reglas del informe del 13-oct: solo vuelos comprados, por mes de la
  *     solicitud; sin modificaciones ni registros posteriores en la anticipación;
- *     8 días nacional / 30 internacional; tarifa solo la registrada;
+ *     8 días nacional / 30 internacional; tarifa solo la registrada y por mes de
+ *     compra (David, 14-oct: cada compra sale una sola vez);
  *   - tendencia, unidades, «quién pide» y cuadros de honor y de deshonor de los
  *     últimos 3 meses; lo que pasó por el CFO (#A100);
  *   - el CSV de detalle (sin cédulas) y el PDF adjunto;
@@ -193,7 +194,7 @@ function main() {
   eq('modificaciones del mes (no cuentan)', r.mods, 1);
   eq('registradas después de comprar: listadas aparte', r.traz.map((t) => t.id), ['OCT-TRAZ']);
   eq('tarifa 0-1 noche: OK1 y OKLATEBUY (TIIPO 1) en la del manual, LATE1 superior', [r.fares.buckets[0].n, r.fares.buckets[0].superior], [3, 1]);
-  eq('tarifa: sin tarifa registrada no entran (la modificación, HON y TAR del mes)', r.fares.withoutFare, 5);
+  eq('tarifa: sin tarifa registrada no entran (la modificación, la registrada después, HON y TAR del mes)', r.fares.withoutFare, 6);
   eq('tarifa septiembre: SEP-OK en TIPO 3 con 0 noches es superior', [r.faresPrev.buckets[0].n, r.faresPrev.buckets[0].superior], [2, 1]);
   eq('CFO: en espera, aprobadas, rechazadas, vencidas', [r.policy.held, r.policy.approved, r.policy.denied, r.policy.expired, r.policy.waiting], [4, 1, 1, 1, 1]);
   eq('CFO: tarifa superior', [r.policy.fare, r.policy.fareApproved, r.policy.fareDenied], [1, 1, 0]);
@@ -217,10 +218,35 @@ function main() {
 
   const csv = r.csv;
   const lines = csv.replace(/^﻿/, '').split('\r\n');
-  ok('CSV: con BOM para las tildes en Excel y separador ;', csv.charCodeAt(0) === 0xfeff && lines[0].split(';').length === 19);
+  ok('CSV: con BOM para las tildes en Excel y separador ;', csv.charCodeAt(0) === 0xfeff && lines[0].split(';').length === 21);
   eq('CSV: una fila por solicitud comprada del mes (incluye modificación y registrada después)', lines.length - 1, 10);
   ok('CSV: sin cédulas', !/987654321/.test(csv));
   ok('CSV: marca la clase', lines.some((l) => /^OCT-TRAZ;Registrada después de comprar;/.test(l)) && lines.some((l) => /^OCT-MOD;Modificación;/.test(l)));
+  ok('CSV: dice dónde cuenta cada fila', lines.some((l) => /^OCT-OK1;.*;SI;SI$/.test(l)) && lines.some((l) => /^OCT-MOD;.*;NO;NO$/.test(l)) && lines.some((l) => /^OCT-TRAZ;.*;NO;NO$/.test(l)));
+  ok('correo: la tarifa por mes de compra, explicada', /Cuenta la fecha de compra, no la de la solicitud/.test(html) && /la tarifa, por el mes en que se compraron/.test(html));
+
+  // 3b. Tarifa por mes de compra (David, 14-oct): una pedida en septiembre y comprada en octubre entra en
+  // octubre; una pedida en octubre y comprada en noviembre entra en noviembre. La anticipación no cambia de mes.
+  const before = req.length;
+  row({ id: 'SEP-BUYOCT', sol: '2026-09-28', ida: '2026-10-20', compra: '2026-10-02', fare: 'TIPO 1', req: 'otro@p.co', travelers: ['RUIZ OTRO'] }); // 0 noches en TIPO 1: la del manual
+  row({ id: 'OCT-TRAZFARE', sol: '2026-10-11', ida: '2026-10-10', compra: '2026-10-09', traz: true, fare: 'TIPO 2', req: 'admin@p.co', travelers: ['DIAZ JORGE'] }); // registrada después: su tarifa sí cuenta
+  row({ id: 'OCT-BUYNOV', sol: '2026-10-29', ida: '2026-11-20', compra: '2026-11-04', fare: 'TIPO 2', req: 'otro@p.co', travelers: ['RUIZ OTRO'] }); // 0 noches en TIPO 2: superior
+  reset();
+  const rc = ctx._mrBuild_('2026-10');
+  eq('tarifa por mes de compra: octubre suma SEP-BUYOCT y la registrada después (superior), no OCT-BUYNOV', [rc.fares.buckets[0].n, rc.fares.buckets[0].superior], [5, 2]);
+  eq('tarifa por mes de compra: septiembre ya no cuenta SEP-BUYOCT', [rc.faresPrev.buckets[0].n, rc.faresPrev.buckets[0].superior], [2, 1]);
+  eq('anticipación por mes de solicitud: OCT-BUYNOV cuenta en octubre, SEP-BUYOCT en septiembre', [rc.stats.n, rc.prevStats.n], [9, 5]);
+  const lc = rc.csv.replace(/^﻿/, '').split('\r\n');
+  eq('CSV de octubre: lo pedido en octubre y lo comprado en octubre', lc.length - 1, 13);
+  ok('CSV de octubre: la registrada después cuenta en la tarifa y no en la anticipación', lc.some((l) => /^OCT-TRAZFARE;Registrada después de comprar;.*;NO;SI$/.test(l)));
+  ok('CSV de octubre: SEP-BUYOCT solo en la tarifa, OCT-BUYNOV solo en la anticipación', lc.some((l) => /^SEP-BUYOCT;.*;NO;SI$/.test(l)) && lc.some((l) => /^OCT-BUYNOV;.*;SI;NO$/.test(l)));
+  reset();
+  const rn = ctx._mrBuild_('2026-11');
+  eq('noviembre: la tarifa de OCT-BUYNOV entra en noviembre', [rn.fares.buckets[0].n, rn.fares.buckets[0].superior], [1, 1]);
+  ok('noviembre: el CSV la trae aunque se pidió en octubre', /\r\nOCT-BUYNOV;.*;NO;SI(\r\n|$)/.test(rn.csv));
+  ok('noviembre: sin la nota del 8-oct (solo para octubre)', !/la plataforma la registra desde/.test(rn.html));
+  ok('octubre: con la nota del 8-oct si faltan tarifas', /la plataforma la registra desde el/.test(rc.html));
+  req.splice(before);
 
   // 4. Envío automático
   const auto = () => { reset(); return ctx._mrMaybeSendMonthly_(); };

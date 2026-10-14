@@ -250,6 +250,12 @@ export interface TravelRequest {
   // 'Otra agencia' | 'No se reservó'. undefined = el servidor aún no los maneja.
   purchaseHotelName?: string;
   purchaseHotelChannel?: string;
+  // Fecha de compra guardada, 'AAAA-MM-DD' o '' (#A102). undefined = servidor anterior.
+  purchaseDate?: string;
+  // Valor pagado al comprar (#A102), en pesos; '' si no se registró. undefined = el servidor
+  // aún no lo maneja (la app no lo pide). Solo administradores: al solicitante le llega ''.
+  purchasePaidTickets?: number | '';
+  purchasePaidHotel?: number | '';
   // Tarifa del tiquete según el manual COM-P-02 (#A95): '1' | '2' | '3' o '' si no
   // está registrada. undefined = el servidor aún no la maneja (la app no la pide).
   fareType?: string;
