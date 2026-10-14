@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo, PolicyApprovalInfo, PolicyNotice } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -351,6 +351,8 @@ class GasService {
     role?: 'REQUESTER' | 'ANALYST' | 'SUPERADMIN';
     // #A77: si puede saltar la etapa de aprobación (solo Yurani y David). Ausente con un backend anterior.
     canSkipApproval?: boolean;
+    // #A100: aviso de cómo funcionan ahora las solicitudes. Ausente con un backend anterior.
+    policyNotice?: PolicyNotice | null;
     integrantesHash?: string;
     integrantes?: Integrant[];
     requestsLite?: TravelRequest[];
@@ -383,8 +385,16 @@ class GasService {
     sites: string[];
     costCenters: CostCenterMaster[];
     cities: CityMaster[];
+    /** #A100: solo con un servidor que deja en espera las solicitudes fuera de plazo. */
+    policyApproval?: PolicyApprovalInfo;
   }> {
     return this._bootstrapFetch('getFormBootstrap', 'los datos del formulario', null, false);
+  }
+
+  /** #A100: «Entendido» en el aviso de cómo funcionan ahora las solicitudes (deja constancia en el servidor). */
+  async ackPolicyNotice(noticeId: string): Promise<void> {
+    const response = await this.runGas('ackPolicyNotice', { noticeId });
+    if (!response.success) throw new Error(response.error);
   }
 
   async uploadSupportFile(requestId: string, fileData: string, fileName: string, mimeType: string): Promise<SupportData> {

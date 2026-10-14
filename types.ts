@@ -16,7 +16,34 @@ export enum RequestStatus {
   RESERVED = 'RESERVADO', // New Status: Tiquetes Comprados (Internal)
   REJECTED = 'DENEGADO',
   PROCESSED = 'PROCESADO',
-  CANCELLED = 'ANULADO'
+  CANCELLED = 'ANULADO',
+  // #A100: fuera de la política de anticipación; espera la aprobación del CFO.
+  // El área de viajes no la ve (el servidor la filtra) ni corren sus tiempos.
+  PENDING_POLICY_APPROVAL = 'PENDIENTE_APROBACION_POLITICA'
+}
+
+/** #A100: aviso de cómo funcionan ahora las solicitudes (bootstrap). show = mostrarlo ahora. */
+export interface PolicyNotice {
+  id: string;
+  show: boolean;
+  until: string;
+  approverName: string;
+  minDaysNational: number;
+  minDaysInternational: number;
+  expiryDays: number;
+}
+
+/** #A100: lo que el servidor le dice al formulario sobre la aprobación por política (getFormBootstrap). */
+export interface PolicyApprovalInfo {
+  enabled: boolean;
+  /** false para administradores: lo que ellos crean no queda en espera. */
+  appliesToUser: boolean;
+  approverName: string;
+  minDaysNational: number;
+  minDaysInternational: number;
+  expiryDays: number;
+  justificationMin: number;
+  justificationMax: number;
 }
 
 export interface Passenger {
@@ -230,6 +257,15 @@ export interface TravelRequest {
   budgetApproverEmail?: string;
   budgetApproverName?: string;
   budgetApproverIsAreaApprover?: boolean;
+  // #A100: requiresBudgetOverrunApproval = «el CFO vota». Por qué: presupuesto
+  // excedido y/o tarifa superior a la del manual. undefined = backend anterior.
+  budgetExceeded?: boolean;
+  requiresFareApproval?: boolean;
+  // #A100: solicitud fuera de plazo: justificación del solicitante, decisión del
+  // CFO ('Sí_…', 'No_…', 'Vencida_…' o '') y quién aprueba.
+  policyJustification?: string;
+  policyDecision?: string;
+  policyApproverName?: string;
   // True cuando el solicitante no es ninguno de los pasajeros (detección por cédula
   // contra directorio + fallback por correo). Se usa para mostrar el ícono 👥 en
   // dashboards. No afecta el flujo de aprobación.
@@ -273,6 +309,7 @@ export const APPROVER_ROLE_LABELS: Record<string, string> = {
   CEO: 'Gerencia General',
   CDS: 'Dirección Cadena de Suministro',
   BUDGET_OVERRUN: 'Aprobador de Presupuesto',
+  POLICY_EXCEPTION: 'CFO · excepción a la política de anticipación',
 };
 
 export interface CostCenterMaster {

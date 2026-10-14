@@ -518,6 +518,12 @@ function doGet(e) {
     return processUserConsultResponse(e);
   }
 
+  // 3b'. Decisión del CFO sobre una solicitud fuera de la política de
+  // anticipación (#A100), desde el resumen que le llega cada 2 horas.
+  if (action === 'policy_decision') {
+    return processPolicyDecision(e);
+  }
+
   // 3c. Admin mobile module — página HTML standalone para crear usuarios
   // desde el celular. Seguridad: la página exige login con PIN admin y usa
   // un token de sesión validado en cada request hacia mobileAdmin_*.
@@ -594,7 +600,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport', 'setPurchaseInfo', 'dismissInvoiceAlert'].includes(action);
+  const isWriteAction = ['ackPolicyNotice', 'createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport', 'setPurchaseInfo', 'dismissInvoiceAlert'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -666,6 +672,13 @@ function dispatch(action, payload) {
       }
     }
 
+    // #A100: una solicitud en espera de la aprobación del CFO no se gestiona
+    // (no la ve el área de viajes; esto corta también llamadas directas al API).
+    const policyGuardedActions = ['updateRequest', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'setPurchaseInfo', 'uploadSupportFile', 'closeRequest', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'requestModification'];
+    if (policyGuardedActions.includes(action) && payload) {
+      _assertNotPolicyHold_(payload.requestId || payload.id);
+    }
+
     let result;
     switch (action) {
       case 'getCurrentUser': result = currentUserEmail; break;
@@ -677,7 +690,9 @@ function dispatch(action, payload) {
       case 'getCoApproverRules': result = getCoApproverRules_(); break;
       case 'getExecutiveEmails': result = getExecutiveEmails(); break;
       // Etapa 2.3: bootstrap consolidado del form (5 datasets en una llamada)
-      case 'getFormBootstrap': result = getFormBootstrap(); break;
+      case 'getFormBootstrap': result = getFormBootstrap(currentUserEmail); break;
+      // #A100: «Entendido» en el aviso de cómo funcionan ahora las solicitudes (constancia).
+      case 'ackPolicyNotice': result = ackPolicyNotice(payload.noticeId, currentUserEmail); break;
       // Etapa 2.1 + 2.4: bootstrap del LOGIN. Consolida validateSession +
       // getIntegrantesData (con hash cache) + getXxxRequestsLite. EXEMPT en
       // el sentido de que valida sesión internamente (para devolver
@@ -694,7 +709,7 @@ function dispatch(action, payload) {
       case 'getPurchaseStats': result = getPurchaseStats(payload.filters || {}); break;
       // Aerolínea y canal de compra (#A82) y facturas por revisar (#A83). Solo administradores.
       case 'setPurchaseInfo': result = setPurchaseInfo(payload.requestId, payload.airline, payload.channel, payload.returnAirline, payload.hotelName, payload.hotelChannel,
-        payload.fareOption, payload.fareJustification); break;
+        payload.fareOption, payload.fareJustification, currentUserEmail); break;
       case 'getInvoiceReview': result = getInvoiceReview(); break;
       case 'dismissInvoiceAlert': result = dismissInvoiceAlert(payload.requestId, currentUserEmail); break;
       // SECURITY: Server-side analyst check
@@ -747,7 +762,13 @@ function dispatch(action, payload) {
         // que alguien podía crearla ya APROBADA llamando a la API. Las solicitudes
         // de cambio no pasan por aquí (requestModification fija su estado).
         cleanData.status = 'PENDIENTE_OPCIONES';
-        result = createNewRequest(cleanData, payload.emailHtml);
+        // #A100: fuera de la política de anticipación → espera la aprobación del
+        // CFO. El servidor recalcula la anticipación (no confía en el navegador).
+        var _policy = _planPolicyHold_(cleanData, currentUserEmail);
+        if (_policy.violates !== null) cleanData.policyViolation = _policy.violates;
+        if (_policy.hold) cleanData.status = POLICY_HOLD_STATUS;
+        delete cleanData.policyJustification;
+        result = createNewRequest(cleanData, payload.emailHtml, _policy);
         break;
       }
       case 'updateRequest': {
@@ -1815,6 +1836,10 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
    if (_forbiddenParents.indexOf(_parentStatusStr) !== -1) {
       throw new Error('No se puede solicitar modificación: la solicitud original está en estado ' + _parentStatusStr + '. Crea una solicitud nueva.');
    }
+   // #A100: todavía espera la aprobación del CFO; se puede anular y pedir de nuevo.
+   if (_parentStatusStr === POLICY_HOLD_STATUS) {
+      throw new Error('No se puede solicitar modificación: la solicitud original todavía espera la aprobación por la política de anticipación. Puede anularla y crear una nueva.');
+   }
 
    // #A63: UNA SOLA SOLICITUD DE CAMBIO VIVA POR SOLICITUD.
    // Sin este guard, un usuario podía enviar el formulario dos veces (p. ej.
@@ -2291,6 +2316,7 @@ function _approverRoleLabel_(role) {
     case 'CEO': return 'Gerencia General';
     case 'CDS': return 'Dirección Cadena de Suministro';
     case 'BUDGET_OVERRUN': return 'Aprobador de Presupuesto';
+    case 'POLICY_EXCEPTION': return 'CFO · excepción a la política de anticipación';
     case 'NORMAL': return 'Aprobador de Área';
     default: return 'Aprobador';
   }
@@ -2424,6 +2450,12 @@ function processApprovalFromEmail(e) {
           const requiresCeoApproval = isInternational;
           const requiresCdsApproval = isInternational || totalCost > 1200000;
           const requiresExecutiveApproval = requiresCeoApproval || requiresCdsApproval;
+
+          // #A100: en espera del CFO por la política de anticipación. Ningún enlace
+          // de aprobación de área sirve todavía (no debería existir uno).
+          if (currentStatus === POLICY_HOLD_STATUS) {
+              return renderMessagePage('Solicitud en espera', 'La solicitud ' + escapeHtml_(id) + ' todavía espera la aprobación por la política de anticipación. No se registró ningún cambio.', '#374151');
+          }
 
           // If already fully processed, stop status update but allow logging if it's a late approval
           const isAdvancedStatus = ['APROBADO', 'RESERVADO', 'PROCESADO', 'ANULADO', 'DENEGADO'].includes(currentStatus);
@@ -2648,9 +2680,12 @@ function processApprovalFromEmail(e) {
           // presupuesto (no debe bloquear la aprobación completa).
           const _workOrderApprIdx = H("# ORDEN TRABAJO");
           const _workOrderApprVal = (_workOrderApprIdx >= 0) ? rowValues[_workOrderApprIdx] : '';
-          const requiresBudgetOverrun = (requiereApPptoIdx >= 0)
-              ? _requiresBudgetOverrun_(rowValues[requiereApPptoIdx], _workOrderApprVal)
-              : false;
+          // #A100: el mismo voto cubre la tarifa superior a la del manual.
+          const _fareFlagApprIdx = H(FARE_CFO_FLAG_HEADER);
+          const requiresBudgetOverrun = _requiresCfoVote_(
+              requiereApPptoIdx >= 0 ? rowValues[requiereApPptoIdx] : '',
+              _workOrderApprVal,
+              _fareFlagApprIdx >= 0 ? rowValues[_fareFlagApprIdx] : '');
 
           // Detect special cases: requester is CEO/CDS, or the assigned area approver
           // happens to be CEO/CDS (so a single click on the deduped email implicitly
@@ -3599,7 +3634,7 @@ function _writeHotelPurchase_(sheet, rowNumber, info) {
  * antes de escribir: un error no deja nada a medias.
  * Solo administradores (adminOnlyActions).
  */
-function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, hotelChannel, fareOption, fareJustification) {
+function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, hotelChannel, fareOption, fareJustification, currentUserEmail) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   var rowNumber = _getRowByRequestId_(requestId);
   if (!sheet || rowNumber === -1) throw new Error('Solicitud no encontrada.');
@@ -3623,6 +3658,8 @@ function setPurchaseInfo(requestId, airline, channel, returnAirline, hotelName, 
     f = _normalizeFare_(fareOption, fareJustification, _fareRecommendedForRow_(sheet, rowNumber),
       r ? r.airline : rowCell(PURCHASE_AIRLINE_HEADER), r && r.writeReturn ? r.returnAirline : rowCell(PURCHASE_RETURN_AIRLINE_HEADER));
     if (!f.ok) throw new Error(f.error);
+    // #A100: antes de comprar no se sube la tarifa por encima de la aprobada.
+    _assertFareChangeAllowed_(sheet, rowNumber, f, currentUserEmail);
   }
   var out = {};
   // La tarifa va primero: si la hoja rechazara el valor (p. ej. una lista desplegable),
@@ -3810,6 +3847,10 @@ function _ensureA82A83Columns_() {
     { header: FARE_NAME_HEADER, col: _ensureRequestColumn_(FARE_NAME_HEADER, FARE_NAME_NOTE) },
     { header: FARE_JUSTIFICATION_HEADER, col: _ensureRequestColumn_(FARE_JUSTIFICATION_HEADER, FARE_JUSTIFICATION_NOTE) },
     { header: CHECKED_BAG_HEADER, col: _ensureRequestColumn_(CHECKED_BAG_HEADER, CHECKED_BAG_NOTE) },
+    // #A100: aprobación del CFO por incumplir la política (anticipación y tarifa).
+    { header: POLICY_JUSTIFICATION_HEADER, col: _ensureRequestColumn_(POLICY_JUSTIFICATION_HEADER, POLICY_JUSTIFICATION_NOTE) },
+    { header: POLICY_DECISION_HEADER, col: _ensureRequestColumn_(POLICY_DECISION_HEADER, POLICY_DECISION_NOTE) },
+    { header: FARE_CFO_FLAG_HEADER, col: _ensureRequestColumn_(FARE_CFO_FLAG_HEADER, FARE_CFO_FLAG_NOTE) },
     { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
       'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
   ];
@@ -4893,9 +4934,17 @@ const HtmlTemplates = {
 
         // BUDGET OVERRUN BANNER (2026-05-21): cuando la solicitud causa que la
         // unidad de negocio exceda su presupuesto del periodo configurado.
-        if (request.requiresBudgetOverrunApproval) {
+        // #A100: requiresBudgetOverrunApproval = «el CFO vota»; budgetExceeded dice si
+        // el motivo es el presupuesto (o solo la tarifa, aviso de abajo).
+        if (request.budgetExceeded !== undefined ? request.budgetExceeded : request.requiresBudgetOverrunApproval) {
             const budgetName = escapeHtml_(request.budgetApproverName || 'el responsable de presupuesto configurado');
             alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>💰 PRESUPUESTO DE UNIDAD EXCEDIDO:</strong> Esta solicitud causa que la unidad de negocio <strong>${escapeHtml_(request.businessUnit || '')}</strong> exceda su presupuesto del periodo. Requiere aprobación adicional de <strong>${budgetName}</strong>.</div>`;
+        }
+
+        // #A100: TARIFA SUPERIOR A LA DEL MANUAL
+        if (request.requiresFareApproval) {
+            const fareCfoName = escapeHtml_(request.budgetApproverName || 'el CFO');
+            alertHtml += `<div style="background-color: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🎫 TARIFA SUPERIOR A LA DEL MANUAL:</strong> Se confirmó la tarifa <strong>TIPO ${escapeHtml_(request.fareType || '')}${request.fareName ? ' (' + escapeHtml_(request.fareName) + ')' : ''}</strong> y el manual pide <strong>TIPO ${escapeHtml_(request.fareRecommended || '')}</strong> para este viaje. Requiere la aprobación de <strong>${fareCfoName}</strong> antes de comprar.${request.fareJustification ? '<br/><span style="font-style: italic;">Motivo del área de viajes: "' + escapeHtml_(request.fareJustification) + '"</span>' : ''}</div>`;
         }
 
         // POLICY VIOLATION BANNER
@@ -5320,6 +5369,7 @@ function getAllRequests() {
 
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
   const idIdx = H("ID RESPUESTA");
+  const statusIdxAll = H("STATUS");
 
   const uniqueRequests = new Map();
 
@@ -5327,6 +5377,8 @@ function getAllRequests() {
       const id = String(row[idIdx]).trim();
       // Skip empty rows (no ID)
       if (!id) return;
+      // #A100: en espera del CFO = el área de viajes todavía no la gestiona.
+      if (String(row[statusIdxAll] || '').trim() === POLICY_HOLD_STATUS) return;
 
       // Deduplicate: Keep the first occurrence found
       if (!uniqueRequests.has(id)) {
@@ -5363,11 +5415,15 @@ function getAllRequestsLite() {
 
   const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
   const idIdx = H("ID RESPUESTA");
+  const statusIdxLite = H("STATUS");
 
   const uniqueRequests = new Map();
   data.forEach(row => {
     const id = String(row[idIdx]).trim();
     if (!id) return;
+    // #A100: en espera del CFO = el área de viajes todavía no la ve. Se filtra
+    // aquí (no en la app) para que una pestaña con la app anterior tampoco la vea.
+    if (String(row[statusIdxLite] || '').trim() === POLICY_HOLD_STATUS) return;
     if (!uniqueRequests.has(id)) uniqueRequests.set(id, row);
   });
 
@@ -5511,6 +5567,8 @@ function bootstrap(integrantesHash, sessionEmail, sessionToken) {
     role: role,
     // #A77: la app muestra "Saltar aprobación" solo si el backend lo permite.
     canSkipApproval: _canSkipApproval_(sessionEmail),
+    // #A100: aviso de cómo funcionan ahora las solicitudes (semana del 19-oct).
+    policyNotice: (function() { try { return _policyNoticeFor_(sessionEmail); } catch (e) { console.warn('bootstrap policyNotice: ' + e); return null; } })(),
     integrantesHash: currentHash,
     requestsLite: requestsLite
   };
@@ -5546,14 +5604,18 @@ function _computeIntegrantesHash_(integrantes) {
  * un error de cualquier sub-función se propaga al frontend para que muestre
  * el error claro al usuario en lugar de form roto.
  */
-function getFormBootstrap() {
-  return {
+function getFormBootstrap(currentUserEmail) {
+  var out = {
     coApproverRules: getCoApproverRules_(),
     executiveEmails: getExecutiveEmails(),
     sites: getSites(),
     costCenters: getCostCenterData(),
     cities: getCitiesList()
   };
+  // #A100: que la clave venga le dice al formulario que este servidor deja en
+  // espera las solicitudes fuera de plazo (pide la justificación y lo explica).
+  try { out.policyApproval = _policyApprovalPublicInfo_(currentUserEmail); } catch (e) { console.warn('getFormBootstrap: ' + e); }
+  return out;
 }
 
 function getCitiesList() {
@@ -5878,8 +5940,11 @@ function validateRequestInput_(data) {
   if (errors.length > 0) throw new Error('Validación: ' + errors.join(' '));
 }
 
-function createNewRequest(data, emailHtml) {
+function createNewRequest(data, emailHtml, policy) {
   validateRequestInput_(data);
+  // #A100: plan de la política de anticipación (solo lo arma dispatch para las
+  // solicitudes nuevas; requestModification no lo pasa).
+  policy = policy || null;
 
   // Rate-limit de creación (máx 10/día por solicitante). Protege contra abuso
   // o cuentas comprometidas que inundarían el sistema con solicitudes.
@@ -5921,6 +5986,20 @@ function createNewRequest(data, emailHtml) {
     } catch (colErr) {
       console.warn('createNewRequest: no se pudo crear la columna "' + CHECKED_BAG_HEADER + '": ' + colErr);
     }
+  }
+
+  // #A100: la justificación de una solicitud fuera de plazo va en su columna
+  // (al final; se crea la primera vez). Si no se puede crear, la solicitud se
+  // crea igual y la justificación queda en OBSERVACIONES.
+  const _policyJustification = policy && policy.justification ? policy.justification : '';
+  let _policyJustInObs = false;
+  if (_policyJustification && H(POLICY_JUSTIFICATION_HEADER) < 0) {
+    try {
+      _ensureRequestColumn_(POLICY_JUSTIFICATION_HEADER, POLICY_JUSTIFICATION_NOTE);
+    } catch (colErr) {
+      console.warn('createNewRequest: no se pudo crear la columna "' + POLICY_JUSTIFICATION_HEADER + '": ' + colErr);
+    }
+    _policyJustInObs = H(POLICY_JUSTIFICATION_HEADER) < 0;
   }
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -6008,7 +6087,9 @@ function createNewRequest(data, emailHtml) {
   set("HORA LLEGADA VUELO VUELTA", data.returnTimePreference || '');
   set("ID RESPUESTA", id);
   set("STATUS", data.status || 'PENDIENTE_OPCIONES');
-  set("OBSERVACIONES", safeSheetValue_(data.comments || ''));
+  set("OBSERVACIONES", safeSheetValue_((data.comments || '') +
+      (_policyJustInObs ? (data.comments ? '\n' : '') + '[JUSTIFICACIÓN ANTICIPACIÓN]: ' + _policyJustification : '')));
+  if (_policyJustification && !_policyJustInObs) set(POLICY_JUSTIFICATION_HEADER, safeSheetValue_(_policyJustification));
 
   set("QUIÉN APRUEBA? (AUTOMÁTICO)", approverName);
   set("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)", approverEmail);
@@ -6116,6 +6197,9 @@ function createNewRequest(data, emailHtml) {
 
   // METRICS: registrar evento de creación
   _recordEvent_(id, 'created');
+  // #A100: en espera del CFO. Los tiempos del flujo empiezan cuando la apruebe
+  // (evento policyApproved), no aquí.
+  if (policy && policy.hold) _recordEvent_(id, 'policyHold');
 
   // Completar en USUARIOS la fecha de nacimiento de pasajeros registrados que no
   // la tenían. La solicitud ya quedó guardada: un fallo aquí no la afecta.
@@ -6144,7 +6228,11 @@ function createNewRequest(data, emailHtml) {
   data.approverEmail = approverEmail;
   data.approverName = approverName;
 
-  if (emailHtml) {
+  if (policy && policy.hold) {
+      // #A100: el área de viajes no recibe nada (le llega cuando el CFO apruebe);
+      // el solicitante y los pasajeros reciben la explicación de la espera.
+      _sendPolicyHoldNotice_(data, id, policy);
+  } else if (emailHtml) {
       sendRequestEmailWithHtml(data, id, emailHtml);
   } else {
       sendNewRequestNotification(data, id);
@@ -7315,6 +7403,14 @@ function updateRequestStatus(id, status, payload) {
          console.error('Error en verificación de presupuesto excedido: ' + eBudget);
       }
 
+      // #A100: tarifa superior a la del manual → el CFO también vota. Si falla, la
+      // aprobación sigue sin ese voto (mismo criterio que el presupuesto).
+      try {
+         _updateFareCfoFlag_(sheet, rowNumber);
+      } catch (eFareCfo) {
+         console.error('Error marcando la tarifa superior a la del manual: ' + eFareCfo);
+      }
+
       const fullReq = mapRowToRequest(sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0]);
       // Si el modal de "Confirmar costos" marcó el checkbox de saltar
       // aprobación (skipApprovalStage se invoca inmediatamente después), NO
@@ -8323,7 +8419,11 @@ function mapRowToRequest(row, lite) {
   // existen aún en el sheet (no se hicieron las migraciones), `get()` retorna ''.
   // OT-aware: una solicitud con OT válida NO requiere aprobación de presupuesto
   // aunque el flag "SI" esté persistido (su costo va a la OT, no al presupuesto).
-  const requiereApPpto = _requiresBudgetOverrun_(get("REQUIERE APROB PPTO"), get("# ORDEN TRABAJO"));
+  const budgetExceededRow = _requiresBudgetOverrun_(get("REQUIERE APROB PPTO"), get("# ORDEN TRABAJO"));
+  // #A100: tarifa superior a la del manual → también pide el voto del CFO
+  // (mismo rol y misma columna que el presupuesto excedido).
+  const fareNeedsCfoRow = _fareCfoFlagSet_(get(FARE_CFO_FLAG_HEADER));
+  const requiereApPpto = budgetExceededRow || fareNeedsCfoRow;
   const aprobadoPptoVal = String(get("APROBADO PRESUPUESTO"));
   // El email del aprobador de presupuesto vive en la config del dashboard.
   // Lo leemos aquí para que la simetría área↔budget funcione (si el aprobador
@@ -8365,6 +8465,13 @@ function mapRowToRequest(row, lite) {
   result.requiresCeoApproval = eff.requiresCeoApproval;
   result.requiresCdsApproval = eff.requiresCdsApproval;
   result.requiresBudgetOverrunApproval = eff.requiresBudgetOverrun;
+  // #A100: por qué se pide el voto del CFO (los avisos los muestran por separado).
+  result.budgetExceeded = budgetExceededRow;
+  result.requiresFareApproval = fareNeedsCfoRow;
+  // #A100: solicitud fuera de plazo que esperó (o espera) la aprobación del CFO.
+  result.policyJustification = String(get(POLICY_JUSTIFICATION_HEADER) || '');
+  result.policyDecision = String(get(POLICY_DECISION_HEADER) || '');
+  result.policyApproverName = (_cfgBudget && _cfgBudget.policyApprovalEnabled !== false) ? String(_cfgBudget.budgetApproverName || _cfgBudget.budgetApproverEmail || '') : '';
 
   // PROXY DETECTION: marca la solicitud como "a nombre de otro" cuando el
   // solicitante NO es ninguno de los pasajeros. Método primario por CÉDULA
@@ -8744,9 +8851,12 @@ function sendPendingApprovalReminders() {
       // OT-aware: solicitudes con OT válida no piden aprobación de presupuesto,
       // así que tampoco se le recuerda al responsable de presupuesto.
       const _woIdxRem = H('# ORDEN TRABAJO');
-      const requiresBudgetOverrunRem = (reqApPptoIdxRem >= 0)
-          ? _requiresBudgetOverrun_(row[reqApPptoIdxRem], _woIdxRem >= 0 ? row[_woIdxRem] : '')
-          : false;
+      // #A100: el voto del CFO también lo pide una tarifa superior a la del manual.
+      const _fareFlagIdxRem = H(FARE_CFO_FLAG_HEADER);
+      const requiresBudgetOverrunRem = _requiresCfoVote_(
+          reqApPptoIdxRem >= 0 ? row[reqApPptoIdxRem] : '',
+          _woIdxRem >= 0 ? row[_woIdxRem] : '',
+          _fareFlagIdxRem >= 0 ? row[_fareFlagIdxRem] : '');
       const isBudgetApproved = (requiresBudgetOverrunRem && budgetColIdxRem >= 0)
           ? String(row[budgetColIdxRem]).startsWith("Sí")
           : false;
@@ -9576,8 +9686,12 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
   var note = '[ANULACIÓN POR USUARIO]: ' + reason.trim();
   sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + note);
 
+  // #A100: si estaba en espera del CFO, el área de viajes nunca la vio: no se le
+  // avisa (y sale sola del resumen del CFO).
+  var wasPolicyHold = currentStatus === POLICY_HOLD_STATUS;
+
   // Notify ADMIN (not user — user already knows, they initiated it)
-  try {
+  if (!wasPolicyHold) try {
     var rowData = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
     var req = mapRowToRequest(rowData);
     var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
@@ -11790,6 +11904,8 @@ function onOpen() {
     .addItem('10. Ver administradores y permisos especiales', 'menuVerPermisosAdministradores')
     .addItem('11. Corregir costos mal digitados', 'menuCorregirCostos')
     .addItem('12. Columnas de compra y resumen de facturas', 'menuColumnasCompraFacturas')
+    .addItem('13. Aprobaciones por política: activar resumen cada 2 h', 'activarAprobacionesPolitica')
+    .addItem('14. Aprobaciones por política: ver pendientes', 'menuVerAprobacionesPolitica')
     .addToUi();
 }
 
@@ -14238,6 +14354,11 @@ function _recordEvent_(requestId, eventKey, data) {
           at: nowIso
         };
       }
+    } else if (eventKey === 'policyDecision') {
+      // Decisión sobre la política de anticipación (#A100): approved | denied | expired.
+      if (!events.policyDecision) {
+        events.policyDecision = { decision: (data && data.decision) || '', email: (data && data.email) || '', at: nowIso };
+      }
     } else if (eventKey === 'costConfirmedBy') {
       // Quién confirmó los costos (#A86): la primera vez, igual que costConfirmed.
       if (!events.costConfirmedBy) {
@@ -14418,6 +14539,7 @@ function getMetrics(filters) {
     if (dateFrom && m._requestDate && m._requestDate < dateFrom) continue;
     if (dateTo && m._requestDate && m._requestDate > dateTo) continue;
     if (excludeStatuses.length > 0 && excludeStatuses.indexOf(m.status) >= 0) continue;
+    if (m.status === POLICY_HOLD_STATUS) continue; // #A100: no se mide hasta que el CFO la apruebe
     if (hideNoEvents && !m.hasEvents) continue;
 
     var clean = {};
@@ -14886,21 +15008,23 @@ function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, com
     company: String(row[companyIdx] || ''),
     status: String(row[statusIdx] || ''),
     created: events.created || null,
-    timeToOptionsMinutes: minutesBetween(events.created, events.optionsUploaded),
+    // #A100: si esperó la aprobación del CFO, el área de viajes empieza a contar
+    // desde que la aprobó (policyApproved), no desde que se creó.
+    timeToOptionsMinutes: minutesBetween(events.policyApproved || events.created, events.optionsUploaded),
     timeToSelectionMinutes: minutesBetween(events.optionsUploaded, events.selectionMade),
     timeToCostConfirmMinutes: minutesBetween(events.selectionMade, events.costConfirmed),
     timeToFullApprovalMinutes: minutesBetween(events.costConfirmed, events.fullyApproved),
     timeToReservationMinutes: minutesBetween(events.fullyApproved, events.reservationRegistered),
-    totalCycleMinutes: minutesBetween(events.created, events.reservationRegistered),
+    totalCycleMinutes: minutesBetween(events.policyApproved || events.created, events.reservationRegistered),
     approvals: approvals,
     hasEvents: hasEvents,
     crossDays: {
-      toOptions: daysBetween(events.created, events.optionsUploaded),
+      toOptions: daysBetween(events.policyApproved || events.created, events.optionsUploaded),
       toSelection: daysBetween(events.optionsUploaded, events.selectionMade),
       toCostConfirm: daysBetween(events.selectionMade, events.costConfirmed),
       toFullApproval: daysBetween(events.costConfirmed, events.fullyApproved),
       toReservation: daysBetween(events.fullyApproved, events.reservationRegistered),
-      totalCycle: daysBetween(events.created, events.reservationRegistered)
+      totalCycle: daysBetween(events.policyApproved || events.created, events.reservationRegistered)
     }
   };
 }
@@ -15658,6 +15782,8 @@ function _csIsConfigValid_(cfg) {
     if (cfg.budgetApproverEmail && cfg.budgetApproverEmail.indexOf('@') < 0) return false;
   }
   if (cfg.budgetApproverName !== undefined && typeof cfg.budgetApproverName !== 'string') return false;
+  // #A100: interruptor de la aprobación del CFO por política (anticipación y tarifa).
+  if (cfg.policyApprovalEnabled !== undefined && typeof cfg.policyApprovalEnabled !== 'boolean') return false;
   if (cfg.budgetPeriodMonths !== undefined) {
     var validPeriods = [1, 2, 3, 4, 6, 12]; // solo valores que dividen 12 exactamente
     if (validPeriods.indexOf(Number(cfg.budgetPeriodMonths)) < 0) return false;
@@ -18138,6 +18264,7 @@ function _saTrips_(vals, hm, config) {
     var row = vals[r];
     if (!String(cell(row, 'ID RESPUESTA') || '').trim()) continue;
     var status = String(cell(row, 'STATUS') || '').trim();
+    if (status === POLICY_HOLD_STATUS) continue; // #A100: se cuenta cuando el CFO decida
     var reqKey = _psDateKey_(cell(row, 'FECHA SOLICITUD'));
     var buyKey = _psDateKey_(cell(row, 'FECHA DE COMPRA DE TIQUETE'));
     var depKey = _psDateKey_(cell(row, 'FECHA IDA'));
@@ -18365,3 +18492,756 @@ function costsDashboard_getPriceTrackingDetail(payload) {
 // =====================================================================
 // ===== FIN DASHBOARD COSTOS ==========================================
 // =====================================================================
+
+// =====================================================================
+// #A100 — APROBACIÓN DEL CFO POR INCUMPLIR LA POLÍTICA (2026-10-14)
+// =====================================================================
+// Pedido de Yurani (13-oct) y reglas de Alejandro Gómez (CFO) desde el 19-oct:
+// toda desviación de la política COM-P-02 la aprueba él ANTES de la compra.
+//
+// 1. ANTICIPACIÓN (8 días nacional, 30 internacional). Una solicitud nueva que
+//    no cumple se crea en PENDIENTE_APROBACION_POLITICA: queda registrada, pero
+//    el área de viajes no la ve ni la gestiona, no corren tiempos ni métricas y
+//    no hay recordatorios. El solicitante escribe por qué (obligatorio en el
+//    formulario) y recibe un correo que le explica la espera.
+//    - Quien aprueba es el mismo responsable del presupuesto excedido
+//      (`budgetApproverEmail` / `budgetApproverName` de la configuración del
+//      dashboard de costos): cambiarlo allí lo cambia para las dos reglas.
+//    - En vez de un correo por solicitud, `procesarAprobacionesPolitica`
+//      (disparador cada 2 horas) le manda UN resumen con una fila por solicitud
+//      y los botones Aprobar / Rechazar al lado (enlaces firmados).
+//    - Aprobada → PENDIENTE_OPCIONES y le llega al área de viajes como nueva
+//      (desde aquí corren los tiempos). Rechazada → DENEGADO con el motivo.
+//    - Si nadie la aprueba en 7 días, o pasa la fecha del viaje, queda DENEGADO
+//      sola («no se aprobó la excepción…»). Nunca se borra nada.
+//    - No aplica a las que crea un administrador (registro de viajes ya
+//      comprados, trazabilidad): esas se marcan fuera de política y siguen.
+//    - Aplica a vuelos y a solo hospedaje. No aplica a solicitudes de cambio.
+// 2. TARIFA SUPERIOR a la del manual (#A95): al confirmar costos se marca
+//    `REQUIERE APROB TARIFA` y la aprobación pide el voto del mismo responsable,
+//    igual que el presupuesto excedido (mismo rol BUDGET_OVERRUN y columna
+//    APROBADO PRESUPUESTO: un solo voto cubre los dos motivos). Antes de comprar
+//    no se puede subir la tarifa por encima de la aprobada.
+// Interruptor: `policyApprovalEnabled: false` en la configuración del dashboard
+// apaga las dos reglas sin tocar código (por defecto, encendidas).
+// =====================================================================
+
+var POLICY_HOLD_STATUS = 'PENDIENTE_APROBACION_POLITICA';
+var POLICY_MIN_DAYS_NATIONAL = 8;
+var POLICY_MIN_DAYS_INTERNATIONAL = 30;
+var POLICY_HOLD_EXPIRY_DAYS = 7;
+var POLICY_JUSTIFICATION_MIN = 10;
+var POLICY_JUSTIFICATION_MAX = 500;
+var POLICY_DIGEST_HANDLER = 'procesarAprobacionesPolitica';
+var POLICY_DIGEST_EVERY_HOURS = 2;
+// El resumen sale todos los días entre estas horas de Bogotá (los viajes fuera
+// de plazo son urgentes, también el fin de semana). Las solicitudes vencidas se
+// deniegan en cualquier pasada, a cualquier hora.
+var POLICY_DIGEST_FROM_HOUR = 7;
+var POLICY_DIGEST_TO_HOUR = 20;
+var POLICY_JUSTIFICATION_HEADER = 'JUSTIFICACION ANTICIPACION';
+var POLICY_JUSTIFICATION_NOTE = 'Por qué la solicitud se pidió con menos anticipación de la que pide la política (#A100). La escribe el solicitante en el formulario; la lee el CFO antes de decidir.';
+var POLICY_DECISION_HEADER = 'APROBACION CFO ANTICIPACION';
+var POLICY_DECISION_NOTE = 'Decisión del CFO sobre la solicitud fuera de plazo (#A100): Sí_correo_fecha, No_correo_fecha o Vencida_sistema_fecha (nadie la aprobó a tiempo). Vacía = no necesitó aprobación.';
+var FARE_CFO_FLAG_HEADER = 'REQUIERE APROB TARIFA';
+var FARE_CFO_FLAG_NOTE = 'SI = la tarifa confirmada es superior a la del manual COM-P-02 y la aprobación pide el voto del CFO (#A100). Lo marca el sistema al confirmar costos.';
+var POLICY_DENIAL_REASON = 'No se aprobó la excepción por incumplimiento de la política de anticipación.';
+var POLICY_EXPIRED_REASON = 'No se aprobó la excepción por incumplimiento de la política de anticipación: nadie la aprobó antes del plazo (7 días o la fecha del viaje).';
+
+/** Quién aprueba y si las reglas están encendidas (configuración del dashboard de costos). */
+function _policyApprovalConfig_() {
+  var cfg = null;
+  try { cfg = _csLoadConfig_(); } catch (e) { cfg = null; }
+  var email = cfg ? String(cfg.budgetApproverEmail || '').trim() : '';
+  var name = cfg ? String(cfg.budgetApproverName || '').trim() : '';
+  var switchedOff = !!(cfg && cfg.policyApprovalEnabled === false);
+  return {
+    enabled: !switchedOff && email.indexOf('@') > 0,
+    email: email,
+    emailLower: email.toLowerCase(),
+    name: name || email
+  };
+}
+
+/** Lo que necesita el formulario (getFormBootstrap). appliesToUser = false para administradores. */
+function _policyApprovalPublicInfo_(currentUserEmail) {
+  var cfg = _policyApprovalConfig_();
+  return {
+    enabled: cfg.enabled,
+    appliesToUser: cfg.enabled && !isUserAnalyst(currentUserEmail),
+    approverName: cfg.enabled ? cfg.name : '',
+    minDaysNational: POLICY_MIN_DAYS_NATIONAL,
+    minDaysInternational: POLICY_MIN_DAYS_INTERNATIONAL,
+    expiryDays: POLICY_HOLD_EXPIRY_DAYS,
+    justificationMin: POLICY_JUSTIFICATION_MIN,
+    justificationMax: POLICY_JUSTIFICATION_MAX
+  };
+}
+
+/** Días calendario entre dos fechas 'AAAA-MM-DD' (b − a); null si falta alguna. */
+function _policyDaysBetweenKeys_(a, b) {
+  var re = /^(\d{4})-(\d{2})-(\d{2})$/;
+  var x = re.exec(String(a || '')), y = re.exec(String(b || ''));
+  if (!x || !y) return null;
+  return Math.round((Date.UTC(+y[1], +y[2] - 1, +y[3]) - Date.UTC(+x[1], +x[2] - 1, +x[3])) / 86400000);
+}
+
+/**
+ * Anticipación de una salida respecto a hoy (Bogotá): misma regla del formulario
+ * (RequestForm `computePolicyViolation`): no cumple si faltan menos de 8 días
+ * (nacional) o 30 (internacional).
+ */
+function _policyLeadCheck_(departureDate, isInternational) {
+  var min = isInternational ? POLICY_MIN_DAYS_INTERNATIONAL : POLICY_MIN_DAYS_NATIONAL;
+  var days = _policyDaysBetweenKeys_(_todayBogotaIso_(), _psDateKey_(departureDate));
+  return { known: days !== null, days: days, min: min, violates: days !== null && days < min };
+}
+
+/** Justificación de la solicitud fuera de plazo: 10 a 500 caracteres, espacios colapsados. */
+function _normalizePolicyJustification_(raw) {
+  var j = String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim();
+  if (j.length < POLICY_JUSTIFICATION_MIN) {
+    return { ok: false, text: '', error: 'Escriba por qué no se pudo pedir el viaje con la anticipación de la política (mínimo ' + POLICY_JUSTIFICATION_MIN + ' caracteres).' };
+  }
+  if (j.length > POLICY_JUSTIFICATION_MAX) {
+    return { ok: false, text: '', error: 'La justificación es demasiado larga (máximo ' + POLICY_JUSTIFICATION_MAX + ' caracteres).' };
+  }
+  return { ok: true, text: j };
+}
+
+/**
+ * Decide, en el servidor, si una solicitud NUEVA queda en espera del CFO. Nunca
+ * confía en el `policyViolation` del navegador: lo recalcula con la fecha de ida.
+ * La justificación se valida solo si la clave viene (formulario nuevo); una
+ * pestaña con la app anterior crea igual, sin justificación.
+ * @return {{hold: boolean, violates: (boolean|null), lead: Object, justification: string, approverName: string}}
+ */
+function _planPolicyHold_(data, currentUserEmail) {
+  var lead = _policyLeadCheck_(data.departureDate, !!data.isInternational);
+  var out = { hold: false, violates: lead.known ? lead.violates : null, lead: lead, justification: '', approverName: '' };
+  var hasKey = data.policyJustification !== undefined && data.policyJustification !== null;
+  if (!lead.known || !lead.violates) return out;
+  var cfg = _policyApprovalConfig_();
+  if (String(data.requestType || 'ORIGINAL') === 'MODIFICACION') return out;
+  var isAdmin = isUserAnalyst(currentUserEmail);
+  if (cfg.enabled && !isAdmin) {
+    out.hold = true;
+    out.approverName = cfg.name;
+    if (hasKey) {
+      var j = _normalizePolicyJustification_(data.policyJustification);
+      if (!j.ok) throw new Error(j.error);
+      out.justification = j.text;
+    }
+  } else if (hasKey && String(data.policyJustification).trim()) {
+    // Administrador (trazabilidad) o reglas apagadas: se guarda si la escribió.
+    out.justification = String(data.policyJustification).replace(/\s+/g, ' ').trim().substring(0, POLICY_JUSTIFICATION_MAX);
+  }
+  return out;
+}
+
+/** Estado actual de una solicitud ('' si no existe). */
+function _requestStatusById_(requestId) {
+  if (!requestId) return '';
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = _getRowByRequestId_(String(requestId));
+  if (!sheet || rowNumber === -1) return '';
+  var idx = H('STATUS');
+  return idx < 0 ? '' : String(sheet.getRange(rowNumber, idx + 1).getValue() || '').trim();
+}
+
+/** Corta cualquier gestión del área de viajes sobre una solicitud en espera del CFO. */
+function _assertNotPolicyHold_(requestId) {
+  if (_requestStatusById_(requestId) === POLICY_HOLD_STATUS) {
+    var cfg = _policyApprovalConfig_();
+    throw new Error('La solicitud ' + requestId + ' todavía espera la aprobación de ' + (cfg.name || 'el CFO') +
+      ' por no cumplir la política de anticipación. No se puede gestionar hasta que la apruebe.');
+  }
+}
+
+/** 'jue 16 oct 2026' desde 'AAAA-MM-DD' (o lo que llegue, si no es una fecha). */
+function _policyFmtDay_(key) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+  if (!m) return String(key || '');
+  var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+  var days = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  var months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return days[d.getUTCDay()] + ' ' + (+m[3]) + ' ' + months[+m[2] - 1] + ' ' + m[1];
+}
+
+/** 'el día de la salida' en plural correcto: «1 día», «0 días». */
+function _policyDaysText_(n) {
+  n = Number(n);
+  return n + (n === 1 ? ' día' : ' días');
+}
+
+/** Correo → nombre (hoja USUARIOS, columnas por posición: cédula, nombre, correo). */
+function _policyUserNames_() {
+  var map = {};
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+    if (!sheet || sheet.getLastRow() < 2) return map;
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues().forEach(function(r) {
+      var e = String(r[2] || '').toLowerCase().trim();
+      if (e && !map[e]) map[e] = String(r[1] || '').trim();
+    });
+  } catch (e) { console.warn('_policyUserNames_: ' + e); }
+  return map;
+}
+
+/** Datos de una fila en espera para el resumen, las páginas y los correos. */
+function _policyHeldItem_(row, names) {
+  var req = mapRowToRequest(row, true);
+  var cell = function(h) { var i = H(h); return (i > -1 && i < row.length) ? row[i] : ''; };
+  var createdKey = _psDateKey_(cell('FECHA SOLICITUD'));
+  var depKey = _psDateKey_(cell('FECHA IDA'));
+  var retKey = _psDateKey_(cell('FECHA VUELTA'));
+  var lead = _policyDaysBetweenKeys_(createdKey, depKey);
+  var expiryKey = '';
+  var cm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(createdKey);
+  if (cm) {
+    var ex = new Date(Date.UTC(+cm[1], +cm[2] - 1, +cm[3] + POLICY_HOLD_EXPIRY_DAYS, 12));
+    expiryKey = ex.toISOString().slice(0, 10);
+    if (depKey && depKey < expiryKey) expiryKey = depKey; // lo que llegue primero
+  }
+  var requester = String(req.requesterEmail || '').toLowerCase().trim();
+  var multi = /^\[MULTIDESTINO\][^\n]*/.exec(String(cell('OBSERVACIONES') || ''));
+  return {
+    req: req,
+    id: req.requestId,
+    hotelOnly: req.requestMode === 'HOTEL_ONLY',
+    origin: String(req.origin || ''),
+    destination: String(req.destination || ''),
+    createdKey: createdKey,
+    depKey: depKey,
+    retKey: retKey,
+    leadDays: lead,
+    minDays: req.isInternational ? POLICY_MIN_DAYS_INTERNATIONAL : POLICY_MIN_DAYS_NATIONAL,
+    expiryKey: expiryKey,
+    requesterEmail: requester,
+    requesterName: (names && names[requester]) || '',
+    travelers: (req.passengers || []).map(function(p) { return String(p.name || '').trim(); }).filter(Boolean),
+    unit: String(req.businessUnit || ''),
+    justification: String(cell(POLICY_JUSTIFICATION_HEADER) || '').trim(),
+    multidestino: multi ? multi[0].replace('[MULTIDESTINO]', '').trim() : '',
+    reason: String(req.comments || '').replace(/^\[MULTIDESTINO\][^\n]*\n?/, '').trim()
+  };
+}
+
+/** Enlace firmado para decidir desde el correo (#A5): action policy_decision, actor = quien aprueba. */
+function _policyDecisionLink_(id, decision, actorEmail) {
+  var actor = String(actorEmail || '').toLowerCase().trim();
+  var s = _newApprovalLinkSig_('policy_decision', id, decision, '', actor);
+  return WEB_APP_URL + '?action=policy_decision&id=' + encodeURIComponent(id) + '&decision=' + decision +
+    '&actor=' + encodeURIComponent(actor) + '&t=' + s.t + '&sig=' + s.sig;
+}
+
+/** Bloque HTML con los datos del viaje (resumen del CFO y página de confirmación). */
+function _policyItemHtml_(it) {
+  var route = it.hotelOnly
+    ? '🏨 Hospedaje en ' + escapeHtml_(it.destination)
+    : '✈️ ' + escapeHtml_(it.origin) + ' → ' + escapeHtml_(it.destination);
+  var dates = it.hotelOnly
+    ? 'Entrada ' + escapeHtml_(_policyFmtDay_(it.depKey)) + (it.retKey ? ' · salida ' + escapeHtml_(_policyFmtDay_(it.retKey)) : '')
+    : 'Ida ' + escapeHtml_(_policyFmtDay_(it.depKey)) + (it.retKey ? ' · regreso ' + escapeHtml_(_policyFmtDay_(it.retKey)) : ' · solo ida');
+  var who = it.requesterName ? escapeHtml_(it.requesterName) + ' <span style="color:#6b7280;">(' + escapeHtml_(it.requesterEmail) + ')</span>' : escapeHtml_(it.requesterEmail);
+  var lead = it.leadDays === null ? '' : ', <strong style="color:#b91c1c;">' + escapeHtml_(_policyDaysText_(it.leadDays)) + ' antes</strong> (la política pide ' + it.minDays + ')';
+  var html = '<div style="font-size:14px; font-weight:bold; color:#111827;">' + escapeHtml_(it.id) + ' · ' + route + '</div>' +
+    '<div style="font-size:13px; color:#374151; margin-top:4px;">' + dates + (it.req.isInternational ? ' · <strong>internacional</strong>' : '') + '</div>' +
+    '<div style="font-size:13px; color:#374151; margin-top:4px;"><strong>Viaja:</strong> ' + escapeHtml_(it.travelers.join(', ') || '—') + '</div>' +
+    '<div style="font-size:13px; color:#374151; margin-top:4px;"><strong>La pidió:</strong> ' + who + ' el ' + escapeHtml_(_policyFmtDay_(it.createdKey)) + lead + '</div>' +
+    (it.unit ? '<div style="font-size:12px; color:#6b7280; margin-top:4px;">Unidad: ' + escapeHtml_(it.unit) + (it.multidestino ? ' · Multidestino: ' + escapeHtml_(it.multidestino) : '') + '</div>' : '') +
+    '<div style="font-size:13px; color:#374151; margin-top:6px; background:#fffbeb; border-left:3px solid #f59e0b; padding:6px 8px;"><strong>Por qué no se pidió antes:</strong> ' +
+      (it.justification ? '<em>"' + escapeHtml_(it.justification) + '"</em>' : '<em style="color:#6b7280;">No la escribió (la pidió con la versión anterior del formulario).</em>') + '</div>' +
+    (it.reason ? '<div style="font-size:12px; color:#6b7280; margin-top:4px;"><strong>Motivo del viaje:</strong> ' + escapeHtml_(it.reason.substring(0, 300)) + '</div>' : '');
+  return html;
+}
+
+/** Lista de solicitudes en espera (más urgentes primero). */
+function _policyHeldItems_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var stIdx = H('STATUS'), idIdx = H('ID RESPUESTA');
+  var names = null, seen = {}, items = [];
+  data.forEach(function(row) {
+    var id = String(row[idIdx] || '').trim();
+    if (!id || seen[id] || String(row[stIdx] || '').trim() !== POLICY_HOLD_STATUS) return;
+    seen[id] = true;
+    if (!names) names = _policyUserNames_();
+    items.push(_policyHeldItem_(row, names));
+  });
+  items.sort(function(a, b) { return String(a.depKey).localeCompare(String(b.depKey)) || String(a.id).localeCompare(String(b.id)); });
+  return items;
+}
+
+/** Correo-resumen para quien aprueba: una fila por solicitud, con sus botones al lado. */
+function _policyDigestHtml_(items, cfg) {
+  var rows = items.map(function(it) {
+    var btn = function(href, color, text) {
+      return '<a href="' + href + '" style="display:block; background-color:' + color + '; color:#ffffff; text-decoration:none; font-weight:bold; font-size:13px; padding:10px 12px; border-radius:4px; text-align:center; margin-bottom:8px;">' + text + '</a>';
+    };
+    return '<tr>' +
+      '<td style="padding:14px 12px; border-bottom:1px solid #e5e7eb; vertical-align:top;">' + _policyItemHtml_(it) +
+        '<div style="font-size:11px; color:#9ca3af; margin-top:6px;">Si no se aprueba, se deniega sola el ' + escapeHtml_(_policyFmtDay_(it.expiryKey)) + '.</div></td>' +
+      '<td style="padding:14px 12px; border-bottom:1px solid #e5e7eb; vertical-align:top; width:120px;">' +
+        btn(_policyDecisionLink_(it.id, 'approved', cfg.email), '#059669', 'APROBAR') +
+        btn(_policyDecisionLink_(it.id, 'denied', cfg.email), '#dc2626', 'RECHAZAR') +
+      '</td></tr>';
+  }).join('');
+  var n = items.length;
+  return '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>' +
+    '<body style="margin:0; padding:0; background-color:#f4f4f4; font-family:Helvetica, Arial, sans-serif;">' +
+    '<table width="100%" style="background-color:#f4f4f4;"><tr><td align="center" style="padding:20px 8px;">' +
+    '<table width="680" style="max-width:680px; width:100%; background-color:#ffffff; border-radius:8px; overflow:hidden;">' +
+    '<tr><td style="background-color:#92400e; padding:22px 20px; text-align:center;">' +
+      '<h1 style="color:#ffffff; margin:0; font-size:20px; letter-spacing:0.5px;">APROBACIÓN POR INCUMPLIMIENTO DE LA POLÍTICA DE ANTICIPACIÓN</h1>' +
+      '<p style="color:#ffffff; margin:6px 0 0 0; font-size:14px; opacity:0.9;">' + n + (n === 1 ? ' solicitud espera' : ' solicitudes esperan') + ' su decisión</p></td></tr>' +
+    '<tr><td style="padding:20px 20px 6px 20px; color:#374151; font-size:14px; line-height:1.5;">' +
+      'Estas solicitudes se pidieron con menos anticipación de la que pide la política de viajes (<strong>' + POLICY_MIN_DAYS_NATIONAL + ' días</strong> para viajes nacionales y <strong>' + POLICY_MIN_DAYS_INTERNATIONAL + '</strong> para internacionales). ' +
+      'El área de viajes <strong>no las gestiona hasta que usted las apruebe</strong>. Si la aprueba, sigue el proceso normal; si la rechaza, el solicitante recibe un correo con el motivo.</td></tr>' +
+    '<tr><td style="padding:6px 12px 12px 12px;"><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; border:1px solid #e5e7eb;">' + rows + '</table></td></tr>' +
+    '<tr><td style="padding:0 20px 20px 20px; color:#6b7280; font-size:12px; line-height:1.5;">Cada botón abre una página para confirmar y, si quiere, dejar un comentario. Este resumen llega cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas mientras haya solicitudes pendientes. Las que nadie aprueba en ' + POLICY_HOLD_EXPIRY_DAYS + ' días, o antes de la fecha del viaje, quedan denegadas.</td></tr>' +
+    '<tr><td style="text-align:center; font-size:11px; color:#9ca3af; padding-bottom:18px;">&copy; ' + new Date().getFullYear() + ' Organización Equitel. Gestión de Viajes Corporativos.</td></tr>' +
+    '</table></td></tr></table></body></html>';
+}
+
+/** Hora de Bogotá dentro de la ventana del resumen. */
+function _policyDigestHour_() {
+  var hour = parseInt(Utilities.formatDate(new Date(), 'America/Bogota', 'H'), 10);
+  return hour >= POLICY_DIGEST_FROM_HOUR && hour < POLICY_DIGEST_TO_HOUR;
+}
+
+/** Envía el resumen a quien aprueba si hay solicitudes en espera. Devuelve cuántas listó. */
+function _policySendDigest_(force) {
+  var cfg = _policyApprovalConfig_();
+  if (!cfg.enabled) return 0;
+  if (!force && !_policyDigestHour_()) return 0;
+  var items = _policyHeldItems_();
+  if (!items.length) return 0;
+  var subject = 'Aprobación por incumplimiento de la política de anticipación: ' + items.length +
+    (items.length === 1 ? ' solicitud pendiente' : ' solicitudes pendientes');
+  sendEmailRich(cfg.email, subject, _policyDigestHtml_(items, cfg), null);
+  return items.length;
+}
+
+/** Fila de la hoja (Array) de una solicitud. */
+function _policyReadRow_(sheet, rowNumber) {
+  return sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+}
+
+/** Agrega una línea a OBSERVACIONES. */
+function _policyAppendObs_(sheet, rowNumber, note) {
+  var obsIdx = H('OBSERVACIONES');
+  if (obsIdx < 0) return;
+  var cur = sheet.getRange(rowNumber, obsIdx + 1).getValue();
+  sheet.getRange(rowNumber, obsIdx + 1).setValue((cur ? cur + '\n' : '') + note);
+}
+
+/**
+ * Aprueba la excepción: la solicitud entra al flujo normal (PENDIENTE_OPCIONES),
+ * le llega al área de viajes como nueva y desde aquí corren los tiempos.
+ */
+function _policyApprove_(sheet, rowNumber, id, approverEmail, comment) {
+  var stamp = Utilities.formatDate(new Date(), 'America/Bogota', 'd/M/yyyy H:mm');
+  var col = _ensureRequestColumn_(POLICY_DECISION_HEADER, POLICY_DECISION_NOTE);
+  sheet.getRange(rowNumber, col).setValue('Sí_' + approverEmail + '_' + stamp);
+  sheet.getRange(rowNumber, H('STATUS') + 1).setValue('PENDIENTE_OPCIONES');
+  _policyAppendObs_(sheet, rowNumber, '[POLÍTICA]: Aprobada por excepción por ' + approverEmail + ' (' + stamp + '): se pidió con menos anticipación de la que pide la política.');
+  if (comment) _appendApproverComment_(sheet, rowNumber, 'POLICY_EXCEPTION', approverEmail, approverEmail, comment);
+  _recordEvent_(id, 'policyApproved');
+  _recordEvent_(id, 'policyDecision', { decision: 'approved', email: approverEmail });
+  SpreadsheetApp.flush();
+  _dashInvalidate_();
+  try {
+    var req = mapRowToRequest(_policyReadRow_(sheet, rowNumber));
+    var cfg = _policyApprovalConfig_();
+    var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
+    var content = '<div style="background-color:#ecfdf5; border:1px solid #a7f3d0; border-left:4px solid #059669; border-radius:6px; padding:14px 16px; margin-bottom:18px; font-size:13px; color:#065f46; line-height:1.55;">' +
+      '<strong>✅ Aprobada por excepción.</strong> ' + escapeHtml_(cfg.name || approverEmail) + ' aprobó esta solicitud, que se pidió con menos anticipación de la que pide la política. ' +
+      'Desde ahora sigue el proceso normal: el área de viajes cargará las opciones.' +
+      (comment ? '<div style="margin-top:8px; font-style:italic; color:#374151;">Comentario: "' + escapeHtml_(comment) + '"</div>' : '') + '</div>' +
+      '<div style="text-align:center; margin-bottom:24px;"><a href="' + PLATFORM_URL + '" style="background-color:#111827; color:white; padding:10px 20px; text-decoration:none; border-radius:4px; font-weight:bold; display:inline-block;">INGRESAR A LA PLATAFORMA</a></div>' +
+      '<hr style="border:0; border-top:1px solid #e5e7eb; margin:24px 0;">' + HtmlTemplates._getFullSummary(req);
+    var html = HtmlTemplates.layout(id, content, '#059669', isHotelOnly ? 'NUEVA SOLICITUD DE HOSPEDAJE' : 'NUEVA SOLICITUD DE VIAJE');
+    var cc = [req.requesterEmail, getCCList(req)].filter(function(e) { return e; }).join(',');
+    sendEmailRich(ADMIN_EMAIL, getStandardSubject(req) + ' [APROBADA POR EXCEPCIÓN]', html, cc);
+  } catch (e) {
+    console.error('_policyApprove_: no se pudo avisar de ' + id + ': ' + e);
+  }
+}
+
+/**
+ * Deniega la solicitud en espera (rechazo del CFO o vencimiento). Solo le escribe
+ * al solicitante y a los pasajeros: el área de viajes nunca la vio.
+ */
+function _policyDeny_(sheet, rowNumber, id, actorLabel, reason, comment, expired) {
+  var stamp = Utilities.formatDate(new Date(), 'America/Bogota', 'd/M/yyyy H:mm');
+  var col = _ensureRequestColumn_(POLICY_DECISION_HEADER, POLICY_DECISION_NOTE);
+  sheet.getRange(rowNumber, col).setValue((expired ? 'Vencida_sistema_' : 'No_' + actorLabel + '_') + stamp);
+  sheet.getRange(rowNumber, H('STATUS') + 1).setValue('DENEGADO');
+  var fullReason = reason + (comment ? ' Comentario: ' + comment : '');
+  _policyAppendObs_(sheet, rowNumber, '[DENEGACIÓN - ' + (expired ? 'sistema' : actorLabel) + ']: ' + fullReason);
+  _recordEvent_(id, 'policyDecision', { decision: expired ? 'expired' : 'denied', email: expired ? '' : actorLabel });
+  SpreadsheetApp.flush();
+  _dashInvalidate_();
+  try {
+    var req = mapRowToRequest(_policyReadRow_(sheet, rowNumber));
+    req.denialReason = fullReason;
+    sendEmailRich(req.requesterEmail, getStandardSubject(req), HtmlTemplates.decisionNotification(req, 'DENEGADO'), getCCList(req) || null);
+  } catch (e) {
+    console.error('_policyDeny_: no se pudo avisar de ' + id + ': ' + e);
+  }
+}
+
+/**
+ * Deniega las solicitudes en espera que vencieron: 7 días desde que se pidieron,
+ * o ya pasó el día del viaje. Devuelve los IDs denegados.
+ */
+function _policyExpireHeld_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var stIdx = H('STATUS'), idIdx = H('ID RESPUESTA'), crIdx = H('FECHA SOLICITUD'), depIdx = H('FECHA IDA');
+  var today = _todayBogotaIso_();
+  var expired = [];
+  data.forEach(function(row, i) {
+    var id = String(row[idIdx] || '').trim();
+    if (!id || String(row[stIdx] || '').trim() !== POLICY_HOLD_STATUS) return;
+    var age = _policyDaysBetweenKeys_(_psDateKey_(row[crIdx]), today);
+    var dep = _psDateKey_(row[depIdx]);
+    var gone = (age !== null && age >= POLICY_HOLD_EXPIRY_DAYS) || (dep && today > dep);
+    if (!gone) return;
+    var rowNumber = i + 2;
+    // Releer el estado justo antes de escribir: pudo cambiar en esta misma pasada.
+    if (String(sheet.getRange(rowNumber, stIdx + 1).getValue() || '').trim() !== POLICY_HOLD_STATUS) return;
+    _policyDeny_(sheet, rowNumber, id, 'sistema', POLICY_EXPIRED_REASON, '', true);
+    expired.push(id);
+  });
+  return expired;
+}
+
+/**
+ * DISPARADOR (cada 2 horas): deniega las vencidas y le manda el resumen a quien
+ * aprueba. Se instala con activarAprobacionesPolitica().
+ */
+function procesarAprobacionesPolitica() {
+  _resetPerExecutionCaches_();
+  var expired = [];
+  var lock = LockService.getScriptLock();
+  if (lock.tryLock(LOCK_WAIT_MS)) {
+    try { expired = _policyExpireHeld_(); }
+    catch (e) { console.error('procesarAprobacionesPolitica: error denegando vencidas: ' + e); }
+    finally { lock.releaseLock(); }
+  } else {
+    console.warn('procesarAprobacionesPolitica: sistema ocupado; las vencidas se revisan en la próxima pasada.');
+  }
+  var listed = 0;
+  try { listed = _policySendDigest_(false); }
+  catch (e) { console.error('procesarAprobacionesPolitica: error enviando el resumen: ' + e); }
+  return { expired: expired, listed: listed };
+}
+
+/** Instala el disparador del resumen (cada 2 horas). Ejecutar una vez desde el editor o el menú. */
+function activarAprobacionesPolitica() {
+  // Los correos del resumen salen desde la cuenta que instala el disparador: la
+  // misma de los demás disparadores (dueña del script), y siempre un administrador.
+  _requireAnalyst_();
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === POLICY_DIGEST_HANDLER) ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger(POLICY_DIGEST_HANDLER).timeBased().everyHours(POLICY_DIGEST_EVERY_HOURS).create();
+  var cfg = _policyApprovalConfig_();
+  var msg = 'Aprobaciones por política activas: cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas (de ' + POLICY_DIGEST_FROM_HOUR + ':00 a ' +
+    POLICY_DIGEST_TO_HOUR + ':00) ' + (cfg.enabled ? 'le llega el resumen a ' + cfg.name + ' (' + cfg.email + ').' :
+    'NO se envía nada: las reglas están apagadas o falta budgetApproverEmail en la configuración del dashboard de costos.');
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
+  return msg;
+}
+
+/** Quita el disparador del resumen. Las solicitudes en espera se quedan como están. */
+function desactivarAprobacionesPolitica() {
+  var n = 0;
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === POLICY_DIGEST_HANDLER) { ScriptApp.deleteTrigger(t); n++; }
+  });
+  var msg = n ? 'Disparador del resumen de aprobaciones por política eliminado.' : 'No había disparador del resumen de aprobaciones por política.';
+  try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
+  return msg;
+}
+
+/** Página de confirmación (aprobar o rechazar) con los datos del viaje y un comentario opcional. */
+function _renderPolicyDecisionPage_(it, decision, actor, sigT, sigVal) {
+  var approve = decision === 'approved';
+  var color = approve ? '#059669' : '#D71920';
+  var url = WEB_APP_URL + '?action=policy_decision&id=' + _jsUrlParam_(it.id) + '&decision=' + decision + '&actor=' + _jsUrlParam_(actor) +
+    '&t=' + _jsUrlParam_(sigT) + '&sig=' + _jsUrlParam_(sigVal) + '&confirm=true';
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>' + (approve ? 'Aprobar' : 'Rechazar') + ' excepción</title>' +
+    '<style>body{font-family:sans-serif;background:#f3f4f6;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:16px}' +
+    '.card{background:white;padding:26px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:520px;width:100%}' +
+    'h1{color:' + color + ';font-size:20px;margin:0 0 6px 0;text-align:center}.sub{text-align:center;color:#6b7280;font-size:13px;margin-bottom:16px}' +
+    '.box{border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:12px}' +
+    'textarea{width:100%;min-height:80px;border:1px solid #d1d5db;border-radius:6px;padding:10px;font-family:sans-serif;font-size:13px;resize:vertical;box-sizing:border-box;margin-top:6px}' +
+    'label{display:block;font-size:12px;font-weight:bold;color:#6b7280;text-transform:uppercase;margin-top:10px}.hint{font-size:11px;color:#9ca3af;margin-top:4px}' +
+    '.btn{background:' + color + ';color:white;padding:12px 24px;border:none;border-radius:4px;cursor:pointer;font-size:15px;font-weight:bold;margin-top:16px;width:100%}.loading{display:none;text-align:center}</style>' +
+    '<script>function go(){var c=document.getElementById("comment").value.trim();document.getElementById("form-card").style.display="none";document.getElementById("loading-card").style.display="block";' +
+    'window.top.location.href="' + url + '"+(c?"&comment="+encodeURIComponent(c):"");}</script></head><body>' +
+    '<div id="form-card" class="card"><h1>' + (approve ? '¿Aprobar la excepción?' : '¿Rechazar la solicitud?') + '</h1>' +
+    '<div class="sub">Solicitud fuera de la política de anticipación</div>' +
+    '<div class="box">' + _policyItemHtml_(it) + '</div>' +
+    '<p style="font-size:13px;color:#374151;line-height:1.5;">' + (approve
+      ? 'Si la aprueba, la solicitud sigue el proceso normal y el área de viajes empieza a gestionarla.'
+      : 'Si la rechaza, queda denegada y el solicitante recibe un correo con el motivo: <em>«' + escapeHtml_(POLICY_DENIAL_REASON) + '»</em>') + '</p>' +
+    '<label for="comment">Comentario (opcional)</label><textarea id="comment" maxlength="500" placeholder="' + (approve ? 'Ej.: Aprobado solo el tiquete, sin hotel.' : 'Ej.: Debe planearse con más tiempo.') + '"></textarea>' +
+    '<div class="hint">Si escribe algo, ' + (approve ? 'lo verán el área de viajes y el solicitante.' : 'se agrega al motivo que recibe el solicitante.') + '</div>' +
+    '<button class="btn" onclick="go()">' + (approve ? 'SÍ, APROBAR' : 'SÍ, RECHAZAR') + '</button></div>' +
+    '<div id="loading-card" class="card loading"><h1>Procesando…</h1><p>Por favor espere.</p></div></body></html>';
+  return HtmlService.createHtmlOutput(html).setTitle(approve ? 'Aprobar excepción' : 'Rechazar solicitud').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
+}
+
+/**
+ * doGet ?action=policy_decision: decisión del CFO desde el resumen. Exige firma
+ * (es una acción nueva: no hay enlaces viejos sin firmar) y que el actor sea
+ * quien aprueba HOY según la configuración (si se cambió, los enlaces del
+ * anterior dejan de servir).
+ */
+function processPolicyDecision(e) {
+  var p = (e && e.parameter) || {};
+  var id = String(p.id || '').trim();
+  var decision = String(p.decision || '');
+  var actor = String(p.actor || '').toLowerCase().trim();
+  if (!id || (decision !== 'approved' && decision !== 'denied') || !p.t || !p.sig) {
+    return renderMessagePage('Enlace inválido', 'El enlace está incompleto. Use los botones del último correo de aprobaciones.', '#D71920');
+  }
+  var v = _verifyApprovalLinkSig_('policy_decision', id, decision, '', actor, p.t, p.sig);
+  if (!v.valid) return renderMessagePage('Enlace inválido', escapeHtml_(v.reason), '#D71920');
+  var cfg = _policyApprovalConfig_();
+  if (!cfg.emailLower || actor !== cfg.emailLower) {
+    return renderMessagePage('Enlace ya no válido', 'Las excepciones a la política ahora las aprueba ' + escapeHtml_(cfg.name || 'otra persona') + '. Este enlace ya no sirve.', '#374151');
+  }
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = _getRowByRequestId_(id);
+  if (!sheet || rowNumber === -1) return renderMessagePage('Solicitud no encontrada', 'No se encontró la solicitud ' + escapeHtml_(id) + '.', '#374151');
+  var notHeld = function(status) {
+    var txt = status === 'DENEGADO' ? 'ya está denegada' : status === 'ANULADO' ? 'fue anulada por el solicitante' : 'ya fue aprobada y sigue su proceso';
+    return renderMessagePage('Sin cambios', 'La solicitud ' + escapeHtml_(id) + ' ' + txt + ' (estado: ' + escapeHtml_(status) + '). No se hizo ningún cambio.', '#374151');
+  };
+  if (p.confirm !== 'true') {
+    var row0 = _policyReadRow_(sheet, rowNumber);
+    var st0 = String(row0[H('STATUS')] || '').trim();
+    if (st0 !== POLICY_HOLD_STATUS) return notHeld(st0);
+    return _renderPolicyDecisionPage_(_policyHeldItem_(row0, _policyUserNames_()), decision, actor, p.t, p.sig);
+  }
+  // GAS ya decodifica e.parameter; tope defensivo de 500 caracteres.
+  var comment = String(p.comment || '').replace(/\s+/g, ' ').trim().substring(0, 500);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) {
+    return renderMessagePage('Sistema ocupado', 'No se pudo registrar la decisión. Intente de nuevo en unos segundos.', '#374151');
+  }
+  try {
+    _clearRequestRowCache_();
+    rowNumber = _getRowByRequestId_(id);
+    var st = String(sheet.getRange(rowNumber, H('STATUS') + 1).getValue() || '').trim();
+    if (st !== POLICY_HOLD_STATUS) return notHeld(st);
+    if (decision === 'approved') {
+      // Si la fecha del viaje ya pasó (la pasada automática aún no la había
+      // denegado), aprobarla metería al flujo un viaje que ya no existe.
+      var depKeyNow = _psDateKey_(sheet.getRange(rowNumber, H('FECHA IDA') + 1).getValue());
+      if (depKeyNow && _todayBogotaIso_() > depKeyNow) {
+        _policyDeny_(sheet, rowNumber, id, 'sistema', POLICY_EXPIRED_REASON, '', true);
+        return renderMessagePage('Fecha del viaje vencida', 'La fecha del viaje de la solicitud <strong>' + escapeHtml_(id) + '</strong> ya pasó, así que no se puede aprobar: quedó denegada por vencimiento y se le avisó al solicitante.', '#374151');
+      }
+      _policyApprove_(sheet, rowNumber, id, cfg.email, comment);
+      return renderMessagePage('Excepción aprobada', 'La solicitud <strong>' + escapeHtml_(id) + '</strong> sigue su proceso normal. Se avisó al área de viajes y al solicitante.', '#059669');
+    }
+    _policyDeny_(sheet, rowNumber, id, cfg.email, POLICY_DENIAL_REASON, comment, false);
+    return renderMessagePage('Solicitud rechazada', 'La solicitud <strong>' + escapeHtml_(id) + '</strong> quedó denegada. Se le avisó al solicitante.', '#D71920');
+  } catch (err) {
+    console.error('processPolicyDecision ' + id + ': ' + err);
+    return renderMessagePage('Error', 'No se pudo registrar la decisión: ' + escapeHtml_(String(err && err.message || err)), '#D71920');
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Correo al solicitante (y pasajeros) cuando su solicitud queda en espera del CFO. */
+function _sendPolicyHoldNotice_(data, id, plan) {
+  try {
+    var isHotelOnly = data.requestMode === 'HOTEL_ONLY';
+    var lead = plan.lead || {};
+    var who = escapeHtml_(plan.approverName || 'el CFO');
+    var content =
+      '<p style="font-size:15px; color:#111827;">Su solicitud <strong>' + escapeHtml_(id) + '</strong> quedó registrada, pero <strong>todavía no se puede gestionar</strong>.</p>' +
+      '<div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:6px; padding:14px 16px; margin:16px 0; font-size:13px; color:#78350f; line-height:1.6;">' +
+        'Se pidió <strong>' + escapeHtml_(_policyDaysText_(lead.days)) + '</strong> antes ' + (isHotelOnly ? 'de la entrada al hotel' : 'del viaje') +
+        ', y la política de viajes de la organización pide al menos <strong>' + lead.min + ' días</strong> para ' + (data.isInternational ? 'viajes internacionales' : 'viajes nacionales') + '. ' +
+        'Por eso, antes de que el área de viajes la gestione, debe aprobarla <strong>' + who + '</strong>.</div>' +
+      '<ul style="font-size:13px; color:#374151; line-height:1.7; padding-left:18px;">' +
+        '<li>Su solicitud ya está en la lista de aprobaciones de ' + who + (plan.justification ? ', con la justificación que usted escribió' : '') + '.</li>' +
+        '<li>Si la aprueba, le llegará un correo y el área de viajes empezará a gestionarla.</li>' +
+        '<li>Si no la aprueba, o si no hay respuesta en ' + POLICY_HOLD_EXPIRY_DAYS + ' días o antes de la fecha del viaje, quedará denegada y también le avisaremos.</li>' +
+        '<li>Si el viaje es urgente, puede comunicarse directamente con ' + who + '.</li></ul>' +
+      '<p style="font-size:12px; color:#6b7280;">Para la próxima vez: pida sus viajes con ' + POLICY_MIN_DAYS_NATIONAL + ' días de anticipación (nacionales) o ' + POLICY_MIN_DAYS_INTERNATIONAL + ' (internacionales) y el proceso sigue sin esperas.</p>' +
+      '<hr style="border:0; border-top:1px solid #e5e7eb; margin:24px 0;">';
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+    var rowNumber = _getRowByRequestId_(id);
+    var req = rowNumber > 0 ? mapRowToRequest(_policyReadRow_(sheet, rowNumber)) : null;
+    if (req) content += HtmlTemplates._getFullSummary(req);
+    var html = HtmlTemplates.layout(id, content, '#b45309', 'SOLICITUD EN ESPERA DE APROBACIÓN');
+    var subjectReq = req || Object.assign({}, data, { requestId: id });
+    sendEmailRich(data.requesterEmail, getStandardSubject(subjectReq) + ' [EN ESPERA DE APROBACIÓN]', html, getCCList(data) || null);
+  } catch (e) {
+    console.error('_sendPolicyHoldNotice_ ' + id + ': ' + e);
+  }
+}
+
+// ---------------------------------------------------------------------
+// TARIFA SUPERIOR A LA DEL MANUAL (#A100, regla 2)
+// ---------------------------------------------------------------------
+
+/** ¿La tarifa de la fila es superior a la recomendada y es una excepción (tiene justificación)? */
+function _fareIsAboveManual_(typeRaw, recommendedRaw, justificationRaw) {
+  var opt = _fareOptionValue_(typeRaw), rec = _fareOptionValue_(recommendedRaw);
+  return !!(opt && rec && opt > rec && String(justificationRaw || '').trim());
+}
+
+/** ¿La marca de tarifa pide el voto del CFO? */
+function _fareCfoFlagSet_(flagRaw) {
+  return String(flagRaw || '').toUpperCase().trim() === 'SI';
+}
+
+/**
+ * Voto del responsable de presupuesto/CFO: presupuesto excedido (sin OT válida)
+ * o tarifa superior a la del manual. Un solo voto cubre los dos motivos.
+ */
+function _requiresCfoVote_(budgetFlagRaw, workOrderRaw, fareFlagRaw) {
+  return _requiresBudgetOverrun_(budgetFlagRaw, workOrderRaw) || _fareCfoFlagSet_(fareFlagRaw);
+}
+
+/**
+ * Al confirmar costos: marca o limpia REQUIERE APROB TARIFA según la tarifa que
+ * quedó escrita. Con las reglas apagadas no marca nada nuevo (sí limpia).
+ */
+function _updateFareCfoFlag_(sheet, rowNumber) {
+  var cell = function(h) { var i = H(h); return i < 0 ? '' : sheet.getRange(rowNumber, i + 1).getValue(); };
+  var above = !_rowIsHotelOnly_(sheet, rowNumber) &&
+    _fareIsAboveManual_(cell(FARE_TYPE_HEADER), cell(FARE_RECOMMENDED_HEADER), cell(FARE_JUSTIFICATION_HEADER));
+  var cfg = _policyApprovalConfig_();
+  var flagIdx = H(FARE_CFO_FLAG_HEADER);
+  var prev = flagIdx < 0 ? '' : String(sheet.getRange(rowNumber, flagIdx + 1).getValue() || '').trim().toUpperCase();
+  if (above && cfg.enabled) {
+    var col = _ensureRequestColumn_(FARE_CFO_FLAG_HEADER, FARE_CFO_FLAG_NOTE);
+    sheet.getRange(rowNumber, col).setValue('SI');
+    if (prev !== 'SI') {
+      var opt = _fareOptionValue_(cell(FARE_TYPE_HEADER)), rec = _fareOptionValue_(cell(FARE_RECOMMENDED_HEADER));
+      _policyAppendObs_(sheet, rowNumber, '[TARIFA]: TIPO ' + opt + (cell(FARE_NAME_HEADER) ? ' (' + cell(FARE_NAME_HEADER) + ')' : '') +
+        ' es superior a la del manual (TIPO ' + rec + '). Requiere la aprobación de ' + cfg.name + '.');
+    }
+    return true;
+  }
+  if (prev === 'SI') sheet.getRange(rowNumber, flagIdx + 1).setValue('');
+  return false;
+}
+
+/**
+ * Antes de comprar (APROBADO), la tarifa no puede subir por encima de la que se
+ * aprobó al confirmar costos si es superior a la del manual. Si al confirmar no
+ * quedó tarifa (solicitudes de antes de #A95), no se bloquea. Yurani y David
+ * (SKIP_APPROVAL_ALLOWED) pueden hacerlo, como saltar la aprobación.
+ */
+function _assertFareChangeAllowed_(sheet, rowNumber, newFare, currentUserEmail) {
+  if (!newFare || !newFare.exception || newFare.option <= newFare.recommended) return;
+  var cfg = _policyApprovalConfig_();
+  if (!cfg.enabled) return;
+  var stIdx = H('STATUS');
+  if (String(sheet.getRange(rowNumber, stIdx + 1).getValue() || '').trim() !== 'APROBADO') return;
+  var typeIdx = H(FARE_TYPE_HEADER);
+  var approvedOpt = typeIdx < 0 ? 0 : _fareOptionValue_(sheet.getRange(rowNumber, typeIdx + 1).getValue());
+  if (!approvedOpt || newFare.option <= approvedOpt) return;
+  if (_canSkipApproval_(currentUserEmail)) return;
+  throw new Error('La tarifa TIPO ' + newFare.option + ' es superior a la del manual (TIPO ' + newFare.recommended + ') y a la aprobada (TIPO ' + approvedOpt +
+    '). Sin la aprobación de ' + cfg.name + ' no se puede comprar: registre la tarifa aprobada o pida a ' +
+    SKIP_APPROVAL_ALLOWED.map(function(p) { return p.name; }).join(' o ') + ' que lo autoricen.');
+}
+
+/** Menú 14 (solo lectura): solicitudes que esperan la aprobación del CFO y quién aprueba. */
+function menuVerAprobacionesPolitica() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    var cfg = _policyApprovalConfig_();
+    var items = _policyHeldItems_();
+    var trig = ScriptApp.getProjectTriggers().some(function(t) { return t.getHandlerFunction() === POLICY_DIGEST_HANDLER; });
+    var lines = items.map(function(it) {
+      return '• ' + it.id + ' · ' + (it.hotelOnly ? 'hospedaje en ' + it.destination : it.origin + ' → ' + it.destination) +
+        ' · sale ' + _policyFmtDay_(it.depKey) + ' · pidió ' + (it.requesterName || it.requesterEmail) + ' · vence ' + _policyFmtDay_(it.expiryKey);
+    });
+    ui.alert('Aprobaciones por política (#A100)',
+      'Reglas: ' + (cfg.enabled ? 'encendidas' : 'APAGADAS (policyApprovalEnabled: false o falta budgetApproverEmail)') + '\n' +
+      'Aprueba: ' + (cfg.name || '—') + (cfg.email ? ' (' + cfg.email + ')' : '') + ' — se cambia en la configuración del dashboard de costos (budgetApproverEmail / budgetApproverName).\n' +
+      'Resumen cada ' + POLICY_DIGEST_EVERY_HOURS + ' h: ' + (trig ? 'activo' : 'NO ACTIVO (menú 13)') + '\n' +
+      'Aviso a los solicitantes hasta el ' + _policyFmtDay_(POLICY_NOTICE_UNTIL) + ': ' + _policyNoticeAckCount_() + ' constancia(s) de lectura en la hoja «' + POLICY_NOTICE_SHEET + '».\n\n' +
+      (items.length ? 'En espera (' + items.length + '):\n' + lines.join('\n') : 'No hay solicitudes en espera.'), ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
+}
+
+// ---------------------------------------------------------------------
+// AVISO DE CÓMO FUNCIONAN AHORA LAS SOLICITUDES (#A100, semana del 19-oct)
+// ---------------------------------------------------------------------
+// Pedido de David (14-oct): una ventana que cada solicitante ve al entrar a la
+// app hasta que toca «Entendido», desde la publicación hasta el domingo 25-oct.
+// Cada «Entendido» deja una fila en la hoja CONSTANCIA AVISOS (fecha, correo,
+// aviso): la evidencia de que la persona lo leyó. No se usa Script Properties.
+
+var POLICY_NOTICE_ID = 'politica-anticipacion-2026-10';
+var POLICY_NOTICE_UNTIL = '2026-10-25';
+var POLICY_NOTICE_SHEET = 'CONSTANCIA AVISOS';
+
+/** Filas de la hoja de constancias (sin el encabezado). */
+function _policyNoticeRows_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(POLICY_NOTICE_SHEET);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+}
+
+function _policyNoticeAcked_(email, noticeId) {
+  var e = String(email || '').toLowerCase().trim();
+  return _policyNoticeRows_().some(function(r) { return String(r[1] || '').toLowerCase().trim() === e && String(r[2] || '') === noticeId; });
+}
+
+function _policyNoticeAckCount_() {
+  try { return _policyNoticeRows_().filter(function(r) { return String(r[2] || '') === POLICY_NOTICE_ID; }).length; }
+  catch (e) { return 0; }
+}
+
+/** Lo que necesita la ventana del aviso (bootstrap). show = false fuera de la ventana, para administradores o si ya lo leyó. */
+function _policyNoticeFor_(email) {
+  var cfg = _policyApprovalConfig_();
+  var info = {
+    id: POLICY_NOTICE_ID, show: false, until: POLICY_NOTICE_UNTIL, approverName: cfg.enabled ? cfg.name : '',
+    minDaysNational: POLICY_MIN_DAYS_NATIONAL, minDaysInternational: POLICY_MIN_DAYS_INTERNATIONAL, expiryDays: POLICY_HOLD_EXPIRY_DAYS
+  };
+  if (!cfg.enabled || !email) return info;
+  if (_todayBogotaIso_() > POLICY_NOTICE_UNTIL) return info;
+  if (isUserAnalyst(email)) return info;
+  if (_policyNoticeAcked_(email, POLICY_NOTICE_ID)) return info;
+  info.show = true;
+  return info;
+}
+
+/** «Entendido»: deja la constancia (una sola por persona y aviso). */
+function ackPolicyNotice(noticeId, currentUserEmail) {
+  var email = String(currentUserEmail || '').toLowerCase().trim();
+  if (!email || String(noticeId || '') !== POLICY_NOTICE_ID) return false;
+  if (_policyNoticeAcked_(email, POLICY_NOTICE_ID)) return true;
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(POLICY_NOTICE_SHEET);
+  if (!sheet) {
+    sheet = ss.insertSheet(POLICY_NOTICE_SHEET);
+    sheet.appendRow(['FECHA', 'CORREO', 'AVISO']);
+    try { sheet.setFrozenRows(1); } catch (e) { /* no crítico */ }
+  }
+  sheet.appendRow([new Date(), email, POLICY_NOTICE_ID]);
+  return true;
+}

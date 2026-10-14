@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster, PassportStatus, BirthdateStatus } from '../types';
+import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster, PassportStatus, BirthdateStatus, PolicyApprovalInfo } from '../types';
 import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 import { formatToYYYYMMDD, formatToDDMMYYYY, parseDate } from '../utils/dateUtils';
@@ -19,7 +19,8 @@ import { generateTravelRequestEmail } from '../utils/EmailGenerator';
 interface RequestFormProps {
   userEmail: string;
   integrantes: Integrant[];
-  onSuccess: () => void;
+  /** #A100: notice = texto para el solicitante cuando su solicitud quedó en espera del CFO. */
+  onSuccess: (notice?: string) => void;
   onCancel: () => void;
   // Modification Props
   isModification?: boolean;
@@ -218,6 +219,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   // New International Logic
   const [isInternational, setIsInternational] = useState<boolean>(initialData ? !!initialData.isInternational : false);
   const [policyViolation, setPolicyViolation] = useState<boolean>(false);
+  // #A100: aprobación del CFO por incumplir la política de anticipación. null =
+  // el servidor no la maneja (backend anterior): el formulario sigue como antes.
+  const [policyApproval, setPolicyApproval] = useState<PolicyApprovalInfo | null>(null);
+  const [policyJustification, setPolicyJustification] = useState<string>('');
 
   // ===== MULTIDESTINO state =====
   const [multiDestino, setMultiDestino] = useState<boolean>(false);
@@ -285,6 +290,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         setSites(Array.isArray(data.sites) ? data.sites : []);
         setMasterData(data.costCenters || []);
         setCities(data.cities || []);
+        setPolicyApproval(data.policyApproval && data.policyApproval.enabled ? data.policyApproval : null);
 
         const uniqueUnits = Array.from(new Set((data.costCenters || []).map(item => item.businessUnit)))
           .filter(u => u && u !== 'NA')
@@ -516,6 +522,17 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     ];
     return legs.map(l => computePolicyViolation(l.date, legIntl(l.origin, l.destination) === true));
   }, [multiDestino, formData.origin, formData.destination, formData.departureDate, extraTramos, cities]);
+
+  // #A100: ¿esta solicitud (o algún tramo) queda en espera de la aprobación del CFO?
+  // Solo si el servidor lo anuncia, no es un cambio y quien la crea no es del área de viajes.
+  const anyPolicyViolation = multiDestino ? legPolicyViolations.some(Boolean) : policyViolation;
+  const policyHoldApplies = !!policyApproval?.appliesToUser && !isModification && anyPolicyViolation;
+  const policyApproverLabel = policyApproval?.approverName || 'el CFO';
+  const policyHoldNotice = (ids: string[]) =>
+    `${ids.length > 1 ? 'Sus solicitudes ' + ids.join(', ') + ' quedaron creadas' : 'Su solicitud ' + (ids[0] || '') + ' quedó creada'}, pero en espera: ` +
+    `se ${ids.length > 1 ? 'pidieron' : 'pidió'} con menos anticipación de la que pide la política de viajes, así que primero debe aprobarla ${policyApproverLabel}. ` +
+    `El área de viajes empieza a gestionarla cuando la apruebe. Le llegará un correo con la decisión; ` +
+    `si nadie la aprueba en ${policyApproval?.expiryDays || 7} días o antes de la fecha del viaje, queda denegada. Si es urgente, comuníquese con ${policyApproverLabel}.`;
 
   // PASSPORT VALIDATION (solo internacionales). Cuando es internacional y los
   // pasajeros tienen cédula completa, consulta al backend el estado del
@@ -968,10 +985,11 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         }
       }
       // Éxito total
+      const heldIds = items.map((it, i) => (it.payload.policyJustification !== undefined ? created[i] : '')).filter(Boolean);
       pendingSubmissionRef.current = null;
       setCreatedLegIds({});
       invalidateBudgetCache();
-      onSuccess();
+      onSuccess(heldIds.length ? policyHoldNotice(heldIds) : undefined);
     } finally {
       setLoading(false);
       setSubmitProgress(null);
@@ -1222,6 +1240,19 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       return;
     }
 
+    // #A100: fuera de plazo → queda en espera del CFO y la justificación es obligatoria.
+    if (policyHoldApplies) {
+      const j = policyJustification.replace(/\s+/g, ' ').trim();
+      const min = policyApproval?.justificationMin || 10;
+      const max = policyApproval?.justificationMax || 500;
+      if (j.length < min || j.length > max) {
+        alert(j.length < min
+          ? `Escriba por qué no se pudo pedir el viaje con la anticipación de la política (mínimo ${min} caracteres).`
+          : `La justificación es demasiado larga (máximo ${max} caracteres).`);
+        return;
+      }
+    }
+
     // ===== MULTIDESTINO: construir snapshot congelado y ejecutar el loop =====
     if (multiDestino) {
       // ANTI DOBLE-SUBMIT: setLoading SÍNCRONO antes del primer await (un
@@ -1248,6 +1279,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             returnTimePreference: '',
             isInternational: legIntl(leg.origin, leg.destination) === true,
             policyViolation: legPolicyViolations[i] === true,
+            // #A100: la clave solo va en los tramos que quedan en espera del CFO.
+            policyJustification: policyHoldApplies && legPolicyViolations[i] === true ? policyJustification.replace(/\s+/g, ' ').trim() : undefined,
             costCenterName,
             approverName,
             approverEmail,
@@ -1277,6 +1310,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     }
 
     setLoading(true);
+    let createdId = '';
 
     try {
       // Resolución compartida (extraída a helpers de componente para reuso con
@@ -1290,6 +1324,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         departureDate: formatToDDMMYYYY(formData.departureDate),
         isInternational,
         policyViolation,
+        // #A100: que la clave venga le dice al servidor que el formulario ya pide la justificación.
+        policyJustification: policyHoldApplies ? policyJustification.replace(/\s+/g, ' ').trim() : undefined,
         costCenterName,
         approverName,
         approverEmail,
@@ -1343,7 +1379,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           'si necesitas corregir algo, contacta al área de viajes.'
         );
       } else {
-        await gasService.createRequest(payload, emailHtml);
+        createdId = await gasService.createRequest(payload, emailHtml);
       }
 
       // Invalidar cache de consumo presupuestal: el ejecutado de la unidad
@@ -1351,7 +1387,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       // muestre el % actualizado, no el stale del cache de sesión.
       invalidateBudgetCache();
 
-      onSuccess();
+      onSuccess(!isModification && policyHoldApplies ? policyHoldNotice(createdId ? [createdId] : []) : undefined);
     } catch (error) {
       // El backend envuelve el mensaje ("Error: <texto>") y gasService lo
       // re-lanza como Error, así que concatenar aquí producía "Error: Error: …".
@@ -2110,7 +2146,38 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </div>
           )}
 
-          {(multiDestino ? legPolicyViolations.some(Boolean) : policyViolation) && (
+          {/* #A100: fuera de plazo → espera la aprobación del CFO; justificación obligatoria */}
+          {policyHoldApplies && (
+            <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-md space-y-2">
+              <p className="text-sm text-amber-900 font-bold">⏳ Esta solicitud necesita la aprobación de {policyApproverLabel}</p>
+              <p className="text-xs text-amber-900 leading-relaxed">
+                {multiDestino
+                  ? <>Tramos fuera de plazo: {legPolicyViolations.map((v, i) => v ? `Tramo ${i + 1}` : null).filter(Boolean).join(', ')}. </>
+                  : null}
+                La política de viajes pide al menos <strong>{policyApproval?.minDaysNational || 8} días</strong> de anticipación para viajes nacionales
+                y <strong>{policyApproval?.minDaysInternational || 30}</strong> para internacionales. La solicitud se va a crear, pero
+                el área de viajes <strong>no la gestiona hasta que {policyApproverLabel} la apruebe</strong>. Le llegará un correo con la decisión;
+                si nadie la aprueba en {policyApproval?.expiryDays || 7} días o antes de la fecha del viaje, queda denegada.
+              </p>
+              <label className="block text-xs font-bold text-amber-900" htmlFor="policyJustification">
+                ¿Por qué no se pudo pedir con más anticipación? <span className="text-red-600">*</span>
+              </label>
+              <textarea
+                id="policyJustification"
+                value={policyJustification}
+                onChange={(e) => setPolicyJustification(e.target.value)}
+                maxLength={policyApproval?.justificationMax || 500}
+                rows={3}
+                placeholder="Ej.: El cliente confirmó la visita técnica ayer para este jueves."
+                className="w-full border border-amber-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
+              />
+              <p className="text-[11px] text-amber-800">
+                La leerá {policyApproverLabel} antes de decidir · {policyJustification.replace(/\s+/g, ' ').trim().length}/{policyApproval?.justificationMax || 500} caracteres (mínimo {policyApproval?.justificationMin || 10}).
+              </p>
+            </div>
+          )}
+
+          {!policyHoldApplies && (multiDestino ? legPolicyViolations.some(Boolean) : policyViolation) && (
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-md animate-pulse">
               <div className="flex">
                 <div className="flex-shrink-0">
@@ -2133,6 +2200,12 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                         : "Los viajes nacionales requieren al menos 8 días de anticipación."
                       }
                       <br />Esta solicitud requerirá aprobaciones adicionales.
+                    </p>
+                  )}
+                  {/* #A100: lo que crea el área de viajes (p. ej. registrar un viaje ya comprado) no queda en espera. */}
+                  {policyApproval && !policyApproval.appliesToUser && !isModification && (
+                    <p className="text-xs text-yellow-700 mt-1">
+                      Como la crea el área de viajes, no queda en espera de {policyApproverLabel}: queda marcada fuera de política y cuenta en el informe de cumplimiento.
                     </p>
                   )}
                 </div>

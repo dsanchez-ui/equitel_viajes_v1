@@ -639,6 +639,8 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                     showErrors={triedFare && (!isEditMode || fareDirty)}
                                     title={isEditMode ? 'Tarifa comprada (manual COM-P-02)' : 'Tarifa comprada (manual COM-P-02) *'}
                                     checkedBaggage={request.checkedBaggage}
+                                    cfoApproverName={request.policyApproverName}
+                                    cfoStage="purchase"
                                 />
                             )}
 

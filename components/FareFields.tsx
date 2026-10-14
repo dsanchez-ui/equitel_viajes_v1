@@ -16,6 +16,12 @@ interface FareFieldsProps {
     title: string;
     /** Lo que marcó el viajero en la solicitud (#A95): true, false o null si no se preguntó. */
     checkedBaggage?: boolean | null;
+    /**
+     * #A100: quién aprueba una tarifa superior a la del manual ('' o undefined = el
+     * servidor no lo pide). 'confirm' al confirmar costos; 'purchase' al registrar la compra.
+     */
+    cfoApproverName?: string;
+    cfoStage?: 'confirm' | 'purchase';
 }
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -36,7 +42,7 @@ export function fareTripText(trip: FareTrip): string {
  * Tarifa del tiquete según el manual COM-P-02 (#A95). Muestra la recomendada por las
  * noches del viaje, deja elegir otra y, si lo es, pide por qué.
  */
-export const FareFields: React.FC<FareFieldsProps> = ({ trip, airline, returnAirline, value, onChange, showErrors, title, checkedBaggage }) => {
+export const FareFields: React.FC<FareFieldsProps> = ({ trip, airline, returnAirline, value, onChange, showErrors, title, checkedBaggage, cfoApproverName, cfoStage }) => {
     const rec = fareRecommendation(trip);
     const check = normalizeFare(value.option, value.justification, rec.option, airline, returnAirline);
     const option = Number(value.option) || 0;
@@ -99,6 +105,14 @@ export const FareFields: React.FC<FareFieldsProps> = ({ trip, airline, returnAir
                         onChange={(e) => onChange({ ...value, justification: e.target.value })}
                     />
                 </div>
+            )}
+            {/* #A100: tarifa superior a la del manual → la aprueba el CFO antes de comprar */}
+            {exception && option > rec.option && cfoApproverName && (
+                <p className="text-xs text-orange-900 bg-orange-50 border border-orange-200 rounded p-2 mt-2" data-fare-cfo>
+                    🎫 Es superior a la del manual: {cfoStage === 'purchase'
+                        ? <>si es mayor que la que se aprobó al confirmar costos, no se puede registrar sin la aprobación de <strong>{cfoApproverName}</strong>.</>
+                        : <>la aprobación de esta solicitud también le pedirá el voto a <strong>{cfoApproverName}</strong>, antes de comprar.</>}
+                </p>
             )}
             {showErrors && !check.ok && <p className="text-xs text-red-600 mt-2" data-fare-error>{check.error}</p>}
         </div>

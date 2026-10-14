@@ -126,6 +126,10 @@ Están ocultas (menú **Ver → Hojas ocultas** para verlas) y avisan si alguien
 **No las edites ni las borres mientras el estudio esté activo.** Al terminar se pueden borrar:
 nada de la plataforma depende de ellas.
 
+### CONSTANCIA AVISOS
+
+La crea la app (#A100) la primera vez que alguien toca **«Entendido»** en la ventana que explica cómo funcionan ahora las solicitudes (se muestra a los solicitantes hasta el 25 de octubre de 2026). Una fila por persona: `FECHA`, `CORREO` y `AVISO`. Es la constancia de que cada uno lo leyó. No la edites; si se borra una fila, a esa persona le vuelve a salir la ventana (mientras dure el aviso).
+
 ### Hojas con `_OLD_` en el nombre
 
 Son respaldos de reorganizaciones anteriores de la hoja principal. **Déjalas quietas** hasta que hayas confirmado que la versión activa funciona bien (usualmente 1-2 semanas) y luego puedes borrarlas.
@@ -351,17 +355,29 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 
 - `TARIFA RECOMENDADA`, `TARIFA NOMBRE` y `TARIFA JUSTIFICACION` (#A95, 8-oct-2026): la tarifa que recomienda el manual COM-P-02 por las noches del viaje (`TIPO 1`, `TIPO 2` o `TIPO 3`, la calcula el sistema), su nombre en la aerolínea (por ejemplo, *Classic*) y, si se compró otra, el motivo. La tarifa comprada sigue en `TIPO DE COMPRA DE TKT`, que ahora llenan "Confirmar costos" y "Registrar reserva". Ver [manual-com-p-02.md](manual-com-p-02.md).
 - `MALETA DE BODEGA` (#A95, 8-oct-2026): lo que marcó el viajero en el formulario (*¿Lleva maleta de bodega?*): `SI` o `NO`. Vacía = la solicitud es anterior y no se preguntó. Solo vuelos.
+- `JUSTIFICACION ANTICIPACION` (#A100, 14-oct-2026): por qué la solicitud se pidió con menos anticipación de la que pide la política (8 días nacional, 30 internacional). La escribe el solicitante; la lee el CFO antes de decidir.
+- `APROBACION CFO ANTICIPACION` (#A100): la decisión sobre esa solicitud: `Sí_correo_fecha` (aprobada), `No_correo_fecha` (rechazada) o `Vencida_sistema_fecha` (nadie la aprobó en 7 días o antes del viaje). Vacía = no la necesitó.
+- `REQUIERE APROB TARIFA` (#A100): `SI` cuando la tarifa confirmada es superior a la del manual; entonces la aprobación pide el voto del CFO (el mismo de `APROBADO PRESUPUESTO`). La marca el sistema al confirmar costos.
+- Estado `PENDIENTE_APROBACION_POLITICA` (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de viajes no la ve hasta que se apruebe.
 
 Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
 
 ### 12. Columnas de compra y resumen de facturas
 
-Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION`, `MALETA DE BODEGA` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
+Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION`, `MALETA DE BODEGA`, `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
 - **listas para cerrar:** viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita
 - **facturas por revisar:** les faltan facturas o PDF, a partir del día 7 después del viaje
 - avisos omitidos y solicitudes en espera
 
 **No cierra nada.** Las dos listas aparecen en el panel del analista, que es donde se cierran (ver la guía de administrador, 5.5).
+
+### 13. Aprobaciones por política: activar resumen cada 2 h
+
+Instala el disparador `procesarAprobacionesPolitica` (#A100): cada 2 horas deniega las solicitudes fuera de plazo que vencieron y, de 7:00 a 20:00, le manda al CFO el resumen de las que esperan su aprobación. **Ejecútalo con la cuenta dueña del script** (los correos salen desde la cuenta que lo instala). Activarlo dos veces no lo duplica.
+
+### 14. Aprobaciones por política: ver pendientes
+
+Solo lectura: si las reglas están encendidas, quién aprueba (se cambia en la configuración del dashboard de costos, `budgetApproverEmail` / `budgetApproverName`), si el resumen está activo, cuántas personas leyeron el aviso y la lista de solicitudes en espera con su fecha de vencimiento.
 
 ### Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)
 

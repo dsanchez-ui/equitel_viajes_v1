@@ -1,0 +1,105 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { PolicyNotice } from '../types';
+
+interface PolicyNoticeModalProps {
+    notice: PolicyNotice;
+    /** Deja la constancia en el servidor. Si falla, la ventana se cierra igual y vuelve a salir en el próximo ingreso. */
+    onAcknowledge: () => Promise<void>;
+}
+
+/**
+ * #A100: aviso de cómo funcionan ahora las solicitudes (semana del 19-oct-2026).
+ * Lo ve cada solicitante al entrar hasta que toca «Entendido»; el servidor guarda
+ * la constancia (fecha y correo) en la hoja CONSTANCIA AVISOS. No se cierra con
+ * Escape ni haciendo clic afuera: hay que leerlo y tocar «Entendido».
+ */
+export const PolicyNoticeModal: React.FC<PolicyNoticeModalProps> = ({ notice, onAcknowledge }) => {
+    const [saving, setSaving] = useState(false);
+    // «Entendido» se habilita al llegar al final del texto (o de una vez si cabe sin desplazarse).
+    const [readToEnd, setReadToEnd] = useState(false);
+    const bodyRef = useRef<HTMLDivElement>(null);
+    const approver = notice.approverName || 'la Vicepresidencia Financiera';
+
+    const checkEnd = () => {
+        const el = bodyRef.current;
+        if (el && el.scrollTop + el.clientHeight >= el.scrollHeight - 24) setReadToEnd(true);
+    };
+    useEffect(() => {
+        checkEnd();
+        window.addEventListener('resize', checkEnd);
+        return () => window.removeEventListener('resize', checkEnd);
+    }, []);
+
+    const handleClick = async () => {
+        if (saving) return;
+        setSaving(true);
+        try { await onAcknowledge(); } finally { setSaving(false); }
+    };
+
+    return (
+        <div className="fixed inset-0 z-[9000] flex items-center justify-center p-4 bg-black/60" role="dialog" aria-modal="true" aria-labelledby="policy-notice-title">
+            <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col">
+                <div className="bg-brand-red text-white rounded-t-lg px-6 py-4">
+                    <h2 id="policy-notice-title" className="text-lg sm:text-xl font-bold">Así funcionan ahora las solicitudes de viaje</h2>
+                    <p className="text-xs sm:text-sm opacity-90 mt-1">Política de viajes de la organización (manual COM-P-02). Léalo antes de pedir su próximo viaje.</p>
+                </div>
+
+                <div ref={bodyRef} onScroll={checkEnd} tabIndex={0} aria-label="Reglas nuevas de las solicitudes" className="px-6 py-5 overflow-y-auto text-sm text-gray-800 leading-relaxed space-y-4 focus:outline-none">
+                    <section>
+                        <h3 className="font-bold text-gray-900">1. Pida su viaje con anticipación</h3>
+                        <p>
+                            Viajes <strong>nacionales: mínimo {notice.minDaysNational} días antes</strong>.
+                            Viajes <strong>internacionales: mínimo {notice.minDaysInternational} días antes</strong>.
+                            Aplica también a las solicitudes de solo hospedaje.
+                        </p>
+                    </section>
+
+                    <section className="bg-amber-50 border border-amber-200 rounded-md p-3">
+                        <h3 className="font-bold text-amber-900">2. Si la pide con menos tiempo, queda en espera</h3>
+                        <ul className="list-disc pl-5 mt-1 space-y-1 text-amber-950">
+                            <li>La solicitud se crea, pero <strong>debe aprobarla {approver}</strong> antes de que el área de viajes la gestione.</li>
+                            <li>En el formulario tendrá que escribir <strong>por qué no se pudo pedir antes</strong>. Eso es lo que lee {approver} para decidir.</li>
+                            <li>Mientras espera, el área de viajes <strong>no cotiza ni compra</strong>.</li>
+                            <li>Si no se aprueba en <strong>{notice.expiryDays} días</strong> o antes de la fecha del viaje, queda <strong>denegada</strong>.</li>
+                            <li>Le llega un correo cuando se apruebe o se rechace. Si es urgente, comuníquese directamente con {approver}.</li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h3 className="font-bold text-gray-900">3. La tarifa del tiquete la fija el manual</h3>
+                        <ul className="list-disc pl-5 mt-1 space-y-1">
+                            <li>Viajes de <strong>0 a 1 noche: la tarifa más económica</strong> (Basic, solo un artículo pequeño, sin maleta).</li>
+                            <li>De 2 a 5 noches, la tarifa con maleta de mano; de 6 noches o más, la que indica el manual.</li>
+                            <li>Una tarifa superior a la del manual también <strong>necesita la aprobación de {approver}</strong> antes de comprarse.</li>
+                            <li>La maleta de bodega solo procede cuando se viaja con herramienta. Márquelo en el formulario.</li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h3 className="font-bold text-gray-900">4. Si pide el viaje de otra persona</h3>
+                        <p>Quien programa el viaje responde por el plazo, igual que si fuera propio.</p>
+                    </section>
+
+                    <section>
+                        <h3 className="font-bold text-gray-900">5. El cumplimiento se mide</h3>
+                        <p>Cada mes se revisa el cumplimiento de la política por persona y por unidad de negocio.</p>
+                    </section>
+                </div>
+
+                <div className="border-t px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+                    <p className="text-xs text-gray-500">
+                        {readToEnd ? 'Al tocar «Entendido» queda registrado que leyó este aviso.' : 'Baje hasta el final del aviso para continuar.'}
+                    </p>
+                    <button
+                        type="button"
+                        onClick={handleClick}
+                        disabled={saving || !readToEnd}
+                        className="inline-flex justify-center rounded-md bg-brand-red px-6 py-2.5 text-sm font-bold text-white shadow hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-red-500 disabled:opacity-60"
+                    >
+                        {saving ? 'Guardando…' : 'Entendido'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};

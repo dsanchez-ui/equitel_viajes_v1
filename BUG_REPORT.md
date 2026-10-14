@@ -2404,3 +2404,63 @@ No hay push: la app no cambia.
 2. En el dashboard, *⟳ Actualizar datos*.
 
 El push solo guarda el código en GitHub: la app no cambia.
+
+---
+
+## **#A100 — Aprobación del CFO por incumplir la política: anticipación y tarifa superior**
+**Fecha:** 2026-10-14 · **Pedido por:** Yurani (13-oct: *"TODOS los tiquetes que no se soliciten dentro de la política… NO SE PROCESAN hasta que Alejandro apruebe"*) y Alejandro Gómez (CFO, 13-oct: *"Toda desviación de la política deberá ser aprobada directamente por mí… antes de la compra"*, desde el 19-oct). Diseño de David (14-oct). · **Estado:** Implementado; pendiente desplegar.
+
+**Problema:** fuera de plazo se pide el 54 % de los viajes (informe del 13-oct). La plataforma solo marcaba la solicitud: el área de viajes la gestionaba igual y el tiempo empezaba a correr. Además, el servidor confiaba en la marca de anticipación que mandaba el navegador. No había forma de que el CFO aprobara antes de la compra, ni para la anticipación ni para una tarifa superior a la del manual.
+
+**Solución:**
+- **Anticipación** (8 días nacional, 30 internacional; vuelos y solo hospedaje). Una solicitud nueva de un solicitante que no cumple se crea en `PENDIENTE_APROBACION_POLITICA`:
+  - El servidor recalcula la anticipación con la fecha de ida (`_policyLeadCheck_`) y corrige `VIOLACION POLITICA`.
+  - El formulario pide una justificación obligatoria (10 a 500 caracteres), que se guarda en `JUSTIFICACION ANTICIPACION`. Una pestaña con la app anterior crea igual, sin justificación.
+  - El solicitante recibe un correo **[EN ESPERA DE APROBACIÓN]**. El área de viajes no recibe nada.
+  - **El área de viajes no la ve:** `getAllRequests*` la filtra en el servidor, y queda fuera de métricas, del dashboard de costos y de los recordatorios. El API rechaza cualquier gestión sobre ella (`_assertNotPolicyHold_` en dispatch).
+  - **Quién aprueba:** el mismo responsable del presupuesto excedido (`budgetApproverEmail` / `budgetApproverName` del dashboard de costos). Cambiarlo allí lo cambia para las dos reglas, y los enlaces del anterior dejan de servir.
+  - `procesarAprobacionesPolitica` (disparador cada 2 h, menú 13) le manda un resumen de 7:00 a 20:00, todos los días: una fila por solicitud (quién la pidió, quién viaja, ruta, fechas, cuándo, con cuánta anticipación y la justificación), con **Aprobar / Rechazar** al lado. Los enlaces van firmados (`policy_decision`) y abren una página para confirmar, con un comentario opcional.
+  - **Aprobada:** pasa a `PENDIENTE_OPCIONES` y le llega al área de viajes como nueva (**[APROBADA POR EXCEPCIÓN]**, con copia al solicitante). Las métricas cuentan desde `policyApproved`.
+  - **Rechazada o vencida** (7 días o pasó la fecha del viaje): `DENEGADO` con «No se aprobó la excepción por incumplimiento de la política de anticipación». Solo se avisa al solicitante. Nada se borra.
+  - Lo que crea un **administrador** (registro de viajes ya comprados) no queda en espera, pero se marca. No aplica a solicitudes de cambio.
+- **Tarifa superior a la del manual** (TIPO mayor que el recomendado y con otro nombre):
+  - Al confirmar costos se marca `REQUIERE APROB TARIFA` y la aprobación pide el voto del CFO. Usa el mismo rol `BUDGET_OVERRUN` y la columna `APROBADO PRESUPUESTO`: un voto cubre los dos motivos (`_requiresCfoVote_` en los 3 puntos del motor). Los avisos separan presupuesto (`budgetExceeded`) y tarifa (`requiresFareApproval`).
+  - Antes de comprar (`APROBADO`), `setPurchaseInfo` no deja subir la tarifa por encima de la aprobada. Solo `SKIP_APPROVAL_ALLOWED` (Yurani y David) puede hacerlo. Corregir una reserva ya registrada sí se permite.
+- **Aviso a los solicitantes** (pedido de David, 14-oct): hasta el 25-oct, al entrar ven una ventana con las reglas nuevas y deben tocar **«Entendido»**. La constancia (fecha y correo) queda en la hoja `CONSTANCIA AVISOS`, nunca en Script Properties.
+- **Interruptor:** `policyApprovalEnabled: false` en la configuración del dashboard apaga las reglas. El menú 14 muestra las solicitudes en espera, quién aprueba y cuántas personas leyeron el aviso.
+
+**Compatibilidad:**
+- *Frontend nuevo + backend anterior:* `getFormBootstrap` no trae `policyApproval` → el formulario funciona como antes, sin justificación ni ventana.
+- *Backend nuevo + pestaña con la app anterior:*
+  - la solicitud queda en espera, sin justificación;
+  - el panel del área de viajes no la recibe, porque el filtro está en el servidor;
+  - el solicitante la ve con el estado sin traducir hasta recargar.
+- Las solicitudes ya creadas no cambian. La marca de tarifa solo se pone en confirmaciones de costos posteriores al despliegue.
+
+**Verificado:**
+- `npm run verify` en verde.
+- Nuevo `tools/check-policy-approval.cjs` (hoja sintética, sin correos reales):
+  - anticipación en el servidor;
+  - espera, justificación y avisos;
+  - lo creado por un administrador;
+  - filtro del área de viajes y bloqueos del API;
+  - resumen ordenado por urgencia;
+  - aprobar, rechazar, segundo clic, enlace manipulado, enlace de otra solicitud y aprobador cambiado;
+  - vencimiento por 7 días y por fecha, y aprobar con el viaje ya pasado;
+  - anular una en espera;
+  - disparador sin duplicar;
+  - métricas desde la aprobación;
+  - tarifa: marca, motor de aprobación (el área sola no basta, con el voto del CFO queda APROBADO), bloqueo al registrar la compra;
+  - interruptor;
+  - aviso y su constancia.
+- Ajustados `check-purchase-info-rules` y `check-fare-rules` (nuevo parámetro de `setPurchaseInfo`).
+
+**Despliegue (en este orden):**
+1. Apps Script: pegar `server/Code.gs` y guardar.
+2. Correr el **menú 12** (crea las columnas nuevas).
+3. Correr el **menú 13** con la cuenta dueña del script (activa el resumen cada 2 h).
+4. Crear la versión nueva del web app.
+5. Push del frontend (la ventana del aviso y la justificación).
+6. Revisar con el menú 14.
+
+Rollback: versión anterior del web app. Las solicitudes en espera quedarían con su estado: aprobarlas a mano o apagar con `policyApprovalEnabled: false` antes.

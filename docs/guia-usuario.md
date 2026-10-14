@@ -4,6 +4,8 @@
 >
 > **¿Qué cubre?** Todo el ciclo de una solicitud, paso a paso, con ejemplos concretos y los errores típicos que la gente encuentra. Mantén este documento a la mano la primera vez que hagas una solicitud; después seguramente no lo vas a necesitar.
 
+> **Novedad de octubre de 2026 — lee esto primero.** Las solicitudes que se piden con menos anticipación de la que pide la política (8 días nacional, 30 internacional) **quedan en espera** hasta que las apruebe Alejandro Gómez de Greiff (o quien defina la organización). Mientras esperan, el área de viajes no cotiza ni compra. También necesita su aprobación una tarifa superior a la del manual. Detalle en [§2.4](#24-fechas-y-horario) y [§9.5](#95-solicitud-urgente-fuera-de-política). La semana del 19 de octubre, al entrar al portal verás una ventana con estas reglas: léela y toca **«Entendido»** (queda registrado que la leíste).
+
 ---
 
 ## Índice rápido
@@ -101,16 +103,26 @@ Si el destino que necesitas no aparece en la lista, escribe al área de viajes �
 
 #### Política de anticipación
 
-El portal te avisará si tu fecha de ida es demasiado próxima:
-
 - **Viajes nacionales:** mínimo **8 días** de anticipación.
 - **Viajes internacionales:** mínimo **30 días** de anticipación.
+- Aplica también a las solicitudes de **solo hospedaje** (se cuenta hasta la fecha de entrada al hotel).
 
-Si ves un banner rojo que dice **"Solicitud fuera de política de anticipación"**, la solicitud **sí se puede enviar**, pero aparecerá marcada como "fuera de política" y tu aprobador verá el aviso en el correo. Úsalo solo si realmente es urgente y tienes justificación — aprobadores pueden denegarla.
+**Si tu fecha no cumple** (desde octubre de 2026), el formulario te muestra un recuadro amarillo **«Esta solicitud necesita la aprobación de…»** y un campo obligatorio: **«¿Por qué no se pudo pedir con más anticipación?»** (mínimo 10 caracteres). Escribe la razón real; es lo que lee quien aprueba para decidir. Ejemplo: *«El cliente confirmó ayer la visita técnica para este jueves.»*
+
+Al enviar:
+
+1. La solicitud **se crea, pero queda en espera** (etiqueta ámbar **EN ESPERA DE APROBACIÓN**). El área de viajes **no la ve ni la gestiona** todavía: no se cotiza ni se compra nada.
+2. Te llega un correo **[EN ESPERA DE APROBACIÓN]** que explica por qué.
+3. Quien aprueba (hoy **Alejandro Gómez de Greiff**) la revisa en un resumen que recibe cada 2 horas y la **aprueba o rechaza**.
+4. **Si la aprueba**, te llega un correo y la solicitud sigue el proceso normal desde la etapa de opciones.
+5. **Si la rechaza**, queda **DENEGADA** con el motivo *«No se aprobó la excepción por incumplimiento de la política de anticipación»* (más su comentario, si escribió uno).
+6. **Si nadie la aprueba en 7 días, o antes de la fecha del viaje, queda denegada sola.** Nunca se borra: queda el registro.
+
+Si el viaje es urgente, comunícate directamente con quien aprueba. Los viajes que registra el área de viajes (por ejemplo, uno ya comprado por fuera) no quedan en espera, pero sí quedan marcados fuera de política y cuentan en el informe de cumplimiento.
 
 #### Maleta de bodega
 
-Marca **"¿Lleva maleta de bodega?"** si algún pasajero necesita despachar equipaje, además de la maleta de mano. El manual de viajes elige la tarifa del tiquete según las noches del viaje, y las tarifas de viajes cortos normalmente no incluyen bodega. Con esta casilla, el área de viajes sabe que debe comprar una tarifa que la incluya. Solo aparece en viajes con vuelo.
+Marca **"¿Lleva maleta de bodega?"** si algún pasajero necesita despachar equipaje, además de la maleta de mano. **Solo procede cuando se viaja con herramienta** y así queda declarado. El manual de viajes elige la tarifa del tiquete según las noches del viaje: en viajes de **0 a 1 noche la regla es la tarifa más económica (Basic, sin maleta)**. Una tarifa superior a la del manual necesita además la aprobación de quien aprueba las excepciones, antes de comprarse. Solo aparece en viajes con vuelo.
 
 ### 2.5 Hospedaje (solo para viajes con vuelo)
 
@@ -144,6 +156,8 @@ Revisa todo y haz click en el botón rojo **`Crear Solicitud`** al final del for
 
 Al enviar exitosamente, verás un mensaje de confirmación y un correo llegará a tu bandeja con el resumen de la solicitud. A partir de ese momento, empieza el flujo de aprobación.
 
+Si la solicitud se pidió con menos anticipación de la política, en vez de eso verás un aviso ámbar arriba de tus solicitudes: **quedó creada, pero en espera** de la aprobación de la excepción (ver [§2.4](#24-fechas-y-horario)).
+
 ---
 
 ## 3. Qué pasa después de crear la solicitud
@@ -152,6 +166,11 @@ El ciclo de una solicitud tiene varias etapas. Puedes consultar en qué etapa es
 
 ```
 CREACIÓN (tú)
+   ↓
+[solo si se pidió fuera de plazo]
+EN ESPERA DE APROBACIÓN POR POLÍTICA (la aprueba o la rechaza
+                         quien aprueba las excepciones; el área de
+                         viajes todavía no la gestiona — §2.4)
    ↓
 PENDIENTE DE OPCIONES (el área de viajes está cotizando)
    ↓
@@ -284,6 +303,7 @@ Puedes modificar mientras la solicitud **no esté en estado terminal**. Es decir
 - **ANULADO**
 - **DENEGADO**
 - **PROCESADO**
+- **EN ESPERA DE APROBACIÓN POR POLÍTICA** (mientras espera la aprobación de la excepción no se piden cambios: si necesitas otra fecha, anúlala y crea una nueva).
 
 Si está en cualquier otro estado (pendiente de aprobación, pendiente de opciones, pendiente de selección, confirmación de costo, aprobado, e incluso RESERVADO), **sí puedes modificarla**. Pero atención: si ya estaba RESERVADO (tiquetes comprados), es probable que haya penalidades o costos extra — el portal te avisa con un banner rojo.
 
@@ -326,7 +346,7 @@ Mientras la solicitud no esté en estado terminal (`ANULADO`, `DENEGADO`, `PROCE
    - "El cliente canceló la reunión."
    - "Me asignaron a otro proyecto y ya no viajo."
    - "Se resolvió de forma virtual."
-4. Confirma. La solicitud pasa a **ANULADO** y el área de viajes recibe una notificación para cerrar cualquier gestión pendiente.
+4. Confirma. La solicitud pasa a **ANULADO** y el área de viajes recibe una notificación para cerrar cualquier gestión pendiente. Si estaba **en espera de aprobación por política**, el área de viajes no recibe nada (nunca la gestionó) y sale de la lista de pendientes de quien aprueba.
 
 ### Si anulas una solicitud que tiene un cambio pendiente
 
@@ -378,6 +398,7 @@ Si tu jefe te pide que le registres un viaje a él, o si RRHH te pide registrar 
 2. Cuando llenes los pasajeros, pon en el **pasajero 1** los datos de quien realmente viaja (su cédula, su nombre). No pongas los tuyos.
 3. La solicitud queda a nombre del viajero. El aprobador será **el aprobador del viajero**, no el tuyo.
 4. En el dashboard del área de viajes, estas solicitudes se marcan con un ícono **👥** (proxy) para indicar que tú la registraste pero otra persona viaja.
+5. **Quien programa el viaje de otra persona responde por el plazo**, igual que si fuera propio: pídelo con la anticipación de la política.
 
 ### 9.4 Varios pasajeros
 
@@ -391,13 +412,13 @@ Puntos clave:
 
 ### 9.5 Solicitud urgente fuera de política
 
-A veces hay emergencias que no esperan 8 días. Puedes crear la solicitud igual — el portal **te deja**, solo la marca como "fuera de política" con un banner rojo.
+A veces hay emergencias que no esperan 8 días. Puedes crear la solicitud igual, pero **queda en espera** hasta que la apruebe quien aprueba las excepciones (hoy Alejandro Gómez de Greiff). Ver [§2.4](#24-fechas-y-horario).
 
 Recomendaciones:
 
-- Pon en **Observaciones** una justificación convincente de la urgencia.
-- Avisa verbalmente a tu aprobador para que no le tome por sorpresa.
-- Ten en cuenta que el aprobador puede denegar si considera que la urgencia no aplica — es una decisión de negocio, no técnica.
+- Escribe en **«¿Por qué no se pudo pedir con más anticipación?»** la razón real y concreta: es lo único que lee para decidir.
+- Si es muy urgente, comunícate con él directamente; el resumen le llega cada 2 horas.
+- Si se rechaza, o nadie la aprueba en 7 días o antes de la fecha del viaje, queda **DENEGADA**. El cumplimiento de la política se mide cada mes por persona y por unidad.
 
 ### 9.6 El viaje ya lo pagó el área antes de que yo seleccionara
 

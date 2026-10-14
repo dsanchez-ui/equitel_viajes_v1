@@ -325,6 +325,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
                           showErrors={triedSubmit}
                           title="Tarifa del tiquete (manual COM-P-02) *"
                           checkedBaggage={request.checkedBaggage}
+                          cfoApproverName={request.policyApproverName}
+                          cfoStage="confirm"
                       />
                   )}
 

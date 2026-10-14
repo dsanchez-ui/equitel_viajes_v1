@@ -280,6 +280,10 @@
 <ul>
 <li><code>PENDIENTE_ANALISIS_CAMBIO</code> — una solicitud “hija” que reemplaza a otra. El admin decide pasarla a estudio (entra al flujo normal) o denegarla (y decidir qué hacer con la original).</li>
 </ul>
+<p><strong>Estado especial de la política de anticipación (#A100, octubre de 2026):</strong></p>
+<ul>
+<li><code>PENDIENTE_APROBACION_POLITICA</code> — la pidió un solicitante con menos anticipación de la que pide la política (8 días nacional, 30 internacional; también solo hospedaje). Ver <a href="#515-solicitudes-fuera-de-plazo-y-tarifas-superiores-aprobaci%C3%B3n-del-cfo">§5.15</a>.</li>
+</ul>
 <p><strong>Aprobadores requeridos según el tipo de solicitud:</strong></p>
 <table>
 <thead>
@@ -339,6 +343,9 @@
 <li>Al guardar, si el total ≤ $1.2M y no es internacional → pasa a <code>APROBADO</code> directo. Si no → pasa a <code>PENDIENTE_APROBACION</code> y se envía correo a CEO + CDS + aprobador de área.</li>
 </ol>
 <p><strong>Costos mal digitados antes del 2026-09-14:</strong> con el campo anterior, <code>889.518</code> se guardaba como 889 pesos con decimales. <strong>Equitel Viajes → 11. Corregir costos mal digitados</strong> los corrige: muestra una vista previa, pide confirmación, deja una nota en OBSERVACIONES y el detalle en la pestaña “Reporte corrección costos”. Los que no se pueden deducir (por ejemplo, costos de $1) solo los lista para revisarlos a mano.</p>
+<ul>
+<li><strong>Tarifa superior a la del manual</strong> (#A100): si eliges una tarifa de mayor TIPO que la recomendada (con nombre distinto, p. ej. <em>Light</em> en un viaje de 1 noche), el bloque avisa que la aprobación también le pedirá el voto a quien aprueba las excepciones (hoy Alejandro Gómez). Ver <a href="#515-solicitudes-fuera-de-plazo-y-tarifas-superiores-aprobaci%C3%B3n-del-cfo">§5.15</a>.</li>
+</ul>
 <h3>5.3 Registrar reserva (APROBADO → RESERVADO)</h3>
 <ol>
 <li>Fila con status <code>APROBADO</code></li>
@@ -456,6 +463,23 @@
 <h3>5.14 Conectividad y banner de fallas</h3>
 <p>Al arrancar, el frontend envía un <strong>ping de warmup</strong> al backend. Si la red local o Apps Script están caídos, aparece un banner rojo arriba informando que hay problemas de conectividad. El banner desaparece solo cuando la conexión vuelve. Esto evita que los usuarios confundan un error de red con un problema de permisos o credenciales.</p>
 <p>Relacionado: si el login del admin falla por un error de red (no por PIN incorrecto), el mensaje ahora lo dice explícitamente y <strong>no</strong> consume un intento del rate-limit.</p>
+<h3>5.15 Solicitudes fuera de plazo y tarifas superiores: aprobación del CFO (#A100)</h3>
+<p>Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), <strong>toda desviación de la política la aprueba el CFO antes de la compra</strong>. Quién aprueba es el mismo responsable del <strong>presupuesto excedido</strong>: <code>budgetApproverEmail</code> y <code>budgetApproverName</code> en la <strong>configuración del dashboard de costos</strong> (⚙️, solo superadmin). Si se cambia allí, cambia para las dos reglas, y los enlaces que ya tenía el anterior dejan de servir.</p>
+<p><strong>1. Anticipación.</strong> Una solicitud nueva que no cumple 8 días (nacional) o 30 (internacional) queda en <code>PENDIENTE_APROBACION_POLITICA</code>:</p>
+<ul>
+<li><strong>El área de viajes no la ve</strong>: no aparece en el panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. No hay que hacer nada con ella.</li>
+<li>El solicitante escribe por qué (obligatorio) y recibe un correo <strong>[EN ESPERA DE APROBACIÓN]</strong>.</li>
+<li>El CFO recibe <strong>un resumen cada 2 horas</strong> (de 7:00 a 20:00, todos los días) con una fila por solicitud y los botones <strong>APROBAR</strong> / <strong>RECHAZAR</strong>.</li>
+<li><strong>Aprobada</strong> → pasa a <code>PENDIENTE_OPCIONES</code> y te llega un correo <strong>[APROBADA POR EXCEPCIÓN]</strong> como cualquier solicitud nueva. Los tiempos de las métricas cuentan desde ese momento.</li>
+<li><strong>Rechazada</strong> → <code>DENEGADO</code> con el motivo «No se aprobó la excepción por incumplimiento de la política de anticipación». Solo se avisa al solicitante.</li>
+<li><strong>Vencida</strong> (7 días sin respuesta o pasó la fecha del viaje) → <code>DENEGADO</code> sola, con el mismo motivo.</li>
+<li><strong>Lo que creas tú (cualquier administrador) no queda en espera</strong>, por ejemplo al registrar un viaje que ya se compró por fuera: queda marcado fuera de política y cuenta en el informe.</li>
+<li>No aplica a las solicitudes de cambio. En multidestino cada tramo se evalúa por su fecha: el tramo que cumple te llega normal.</li>
+</ul>
+<p><strong>2. Tarifa superior a la del manual.</strong> Si al confirmar costos registras una tarifa de mayor TIPO que la recomendada (y es una excepción), la hoja marca <code>REQUIERE APROB TARIFA</code> y la aprobación le pide el voto al CFO (el mismo voto del presupuesto excedido: uno cubre los dos motivos). Al <strong>registrar la reserva</strong> no se puede subir la tarifa por encima de la aprobada; solo Yurani Prieto y David Sánchez pueden autorizarlo. Corregir una reserva ya registrada sí se permite (refleja lo que se compró).</p>
+<p><strong>Hoja de cálculo:</strong> columnas <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code> (<code>Sí_correo_fecha</code>, <code>No_…</code>, <code>Vencida_sistema_…</code>) y <code>REQUIERE APROB TARIFA</code>; las crea el sistema o el <strong>menú 12</strong>. El menú <strong>13</strong> activa el resumen cada 2 horas y el <strong>14</strong> muestra las solicitudes en espera, quién aprueba y cuántas personas leyeron el aviso.</p>
+<p><strong>Aviso a los solicitantes:</strong> hasta el domingo 25 de octubre, cada solicitante ve al entrar una ventana con las reglas nuevas y debe tocar <strong>«Entendido»</strong>. Cada lectura queda en la hoja <strong>CONSTANCIA AVISOS</strong> (fecha y correo).</p>
+<p><strong>Apagar las reglas sin tocar código:</strong> <code>&quot;policyApprovalEnabled&quot;: false</code> en la configuración del dashboard de costos. Las solicitudes que ya estén en espera se quedan así hasta que se decidan o venzan.</p>
 <hr>
 <h2>5.bis. Capacidades exclusivas de SUPERADMIN</h2>
 <p>Los <strong>superadmins</strong> (configurados en <code>SUPER_ADMIN_EMAILS</code>) tienen capacidades adicionales que un analista normal no tiene. <strong>Saltar la etapa de aprobación ya no es una de ellas</strong> (#A77): solo Yurani Prieto y David Sánchez, ver 5.9.</p>
@@ -713,6 +737,10 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <tr>
 <td><code>sendPendingConsultReminders</code></td>
 <td>Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio).</td>
+</tr>
+<tr>
+<td><code>procesarAprobacionesPolitica</code></td>
+<td>(#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación (de 7:00 a 20:00, todos los días). Se instala con el <strong>menú 13</strong> (<code>activarAprobacionesPolitica</code>) desde la cuenta dueña del script.</td>
 </tr>
 </tbody>
 </table>

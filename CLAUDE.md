@@ -2,7 +2,7 @@
 
 > Este archivo viaja con el repo y Claude Code lo lee automáticamente en cualquier
 > máquina. Es la memoria portable del proyecto. Para el detalle histórico de cada
-> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A98) — es el diario real
+> bug y decisión, ver [BUG_REPORT.md](BUG_REPORT.md) (#A1–#A100) — es el diario real
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
@@ -342,6 +342,22 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   - **Todo % va sobre lo cotizado** (o lo facturado si ya se compró): *«en Google, 27 % menos que lo cotizado»*.
   - Nombres en pantalla: *Facturado*, *Comprado sin factura*, *Por encima del presupuesto*, *Valor cotizado*,
     *% sobre lo cotizado*. Nunca *ejecutado* ni *sobre-ejecutado*.
+- **Toda desviación de la política la aprueba el CFO antes de la compra** (#A100, Yurani y Alejandro Gómez, 13-oct; diseño de
+  David, 14-oct). Quién aprueba = el responsable del presupuesto excedido (`budgetApproverEmail` / `budgetApproverName` del
+  dashboard de costos; cambiarlo allí lo cambia para todo). Interruptor: `policyApprovalEnabled: false` en esa configuración.
+  - **Anticipación** (8 días nacional, 30 internacional; vuelos **y** solo hospedaje): la solicitud nueva de un solicitante
+    queda en `PENDIENTE_APROBACION_POLITICA` con su justificación (obligatoria en el formulario). **El área de viajes no la ve**
+    (filtro en el servidor), no hay métricas, recordatorios ni dashboard hasta que se apruebe. El servidor recalcula la
+    anticipación: nunca confiar en el `policyViolation` del navegador. Lo que crea un **administrador** (trazabilidad de un viaje
+    ya comprado) no queda en espera, solo se marca. No aplica a solicitudes de cambio.
+  - El CFO recibe **un resumen cada 2 h** (7:00–20:00, todos los días; disparador `procesarAprobacionesPolitica`, menú 13) con una
+    fila por solicitud y Aprobar / Rechazar firmados (`policy_decision`). Aprobada → `PENDIENTE_OPCIONES` (los tiempos cuentan desde
+    `policyApproved`); rechazada o **vencida a los 7 días o al pasar la fecha del viaje** → `DENEGADO` con «No se aprobó la excepción
+    por incumplimiento de la política de anticipación». Nunca se borra. Decisión en `APROBACION CFO ANTICIPACION`.
+  - **Tarifa superior a la del manual**: `REQUIERE APROB TARIFA` al confirmar costos y el voto del CFO en la aprobación (mismo rol
+    `BUDGET_OVERRUN` y columna `APROBADO PRESUPUESTO` que el presupuesto: un voto cubre los dos; `_requiresCfoVote_`). Antes de comprar
+    no se sube la tarifa por encima de la aprobada (solo Yurani y David).
+  - **Aviso a los solicitantes** hasta el 25-oct: ventana al entrar con «Entendido»; constancia en la hoja `CONSTANCIA AVISOS`.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -386,7 +402,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), y `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION` y `REQUIERE APROB TARIFA` (#A100) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -396,6 +412,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 | **REGLAS_COAPROBADOR** | Reglas de co-aprobación. |
 | **COMPARATIVO PRECIOS** / **COMPARATIVO ESTADO** | Ocultas. Las escribe el proyecto aparte del rastreo de precios (#A84): una fila por búsqueda y el estado del rastreo. Desde #A95 cada búsqueda guarda `TARIFA` y `MALETA DE MANO`. Las lee el dashboard de costos. No editarlas. |
 | **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
+| **CONSTANCIA AVISOS** | La crea la app (#A100): una fila (fecha, correo, aviso) por cada solicitante que tocó «Entendido» en la ventana de las reglas nuevas. Es la evidencia de que lo leyó. No editar. |
 
 ## Script Properties (Apps Script)
 
@@ -425,6 +442,7 @@ helper del propio `Code.gs` (`verPropiedadesDelScript`, etc.).
 | `cleanupExpiredPropsWeekly` | Limpia sesiones, lockouts y contadores de rate limit vencidos | `setupWeeklyCleanupTrigger()` |
 | `sendPendingApprovalReminders` / `sendPendingSelectionReminders` / `sendPendingConsultReminders` | Recordatorios; escalan a superadmins tras ~30 h laborales (#A16) | Configurados a mano en la UI |
 | `warmupPing` | Cada 10 min, mantiene tibio el isolate de GAS | Configurado a mano |
+| `procesarAprobacionesPolitica` | Cada 2 h: deniega las solicitudes fuera de plazo vencidas y manda al CFO el resumen de las que esperan (7:00–20:00) (#A100) | Menú 13 (`activarAprobacionesPolitica`), con la cuenta dueña del script |
 
 `rastrearPrecios` (#A84, cada 15 min) **no está en este proyecto**: vive en el proyecto aparte
 del rastreo de precios, con su propia autorización. Se instala y se quita desde ese proyecto
@@ -448,7 +466,8 @@ components/
   CostConfirmationModal.tsx  Confirmar costos finales, con el detalle completo (#A81) y la compra prevista (#A82)
   RequestInfoSections.tsx  Secciones de solo lectura del detalle (las usan el detalle y Confirmar costos, #A81)
   PurchaseInfoFields.tsx   Aerolínea y canal de compra (Confirmar costos y Registrar reserva, #A82) y hotel reservado (#A94)
-  FareFields.tsx           Tarifa del manual COM-P-02: recomendada, excepción y aviso al cargar opciones (#A95)
+  FareFields.tsx           Tarifa del manual COM-P-02: recomendada, excepción y aviso al cargar opciones (#A95); aviso del voto del CFO (#A100)
+  PolicyNoticeModal.tsx    Ventana con las reglas nuevas de las solicitudes y «Entendido» con constancia (#A100)
   InvoiceReviewPanel.tsx   Barra "Listas para cerrar" y "Facturas por revisar" del panel del analista (#A83)
   ReservationModal.tsx     Registrar reserva (+ guardado parcial, #A57)
   SupportUploadModal.tsx   Soportes post-aprobación
@@ -489,6 +508,7 @@ tools/check-savings-analysis.cjs     Caché del dashboard (alcance, invalidació
 tools/check-webapp-links.cjs         Enlaces a páginas del web app con el dominio de Equitel (#A91)
 tools/check-fare-rules.cjs           Tarifa del manual; frontend y backend coinciden y guardado en la hoja (#A95)
 tools/check-single-bundle.cjs        La app es un solo archivo JavaScript, sin cargas bajo demanda (#A96)
+tools/check-policy-approval.cjs      Aprobación del CFO por la política: espera, resumen, decisiones, vencimiento, tarifa y aviso (#A100)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
 tools/comparador-precios/apps-script/  Proyecto de Apps Script APARTE del rastreo de precios (#A84): Rastreo.gs, manifiesto y guía
@@ -586,6 +606,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
   Pendientes sin código: avisarle a Laura del campo de tarifa; revisar las cifras de ahorro con Yurani antes de
   mostrarlas a Alejandro; pedir a Aviatur el precio de las tres tarifas en cada cotización; borrar
   `public/assets/EmailGenerator-CHBQuqHQ.js` unos días después (#A96). Internacionales: se queda CEO o CDS.
+- **#A100 (14-oct, aprobación del CFO por la política):** implementado y verificado. Despliegue: pegar `Code.gs` → menú 12 →
+  menú 13 (cuenta dueña) → versión nueva del web app → push del frontend → revisar con el menú 14.
+- **Manuales dentro de la app** (David, 14-oct): idea para después — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
 - **#A99 (13-oct, cifras del dashboard que se pueden presentar):** solo cambia `server/CostsDashboard.html`;
   pendiente pegarlo y crear la versión nueva del web app (lo hace David). `Code.gs` no cambia.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del

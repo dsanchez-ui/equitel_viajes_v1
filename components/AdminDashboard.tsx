@@ -540,7 +540,8 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
           los estados de la derecha (DENEGADO, ANULADO…) quedaban ocultos tras
           una barra que además competía visualmente con la de la tabla. */}
       <div className="flex flex-wrap gap-2 pb-4">
-        {['ALL', ...Object.values(RequestStatus)].map(s => (
+        {/* #A100: las que esperan al CFO no le llegan al área de viajes (sin pill). */}
+        {['ALL', ...Object.values(RequestStatus).filter(st => st !== RequestStatus.PENDING_POLICY_APPROVAL)].map(s => (
           <button
             key={s}
             onClick={() => setFilter(s)}

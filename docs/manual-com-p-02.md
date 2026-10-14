@@ -10,11 +10,11 @@
 | Regla del manual | Cómo la aplica la plataforma |
 |---|---|
 | Ningún viaje sin autorización previa (presidencia, vicepresidencia financiera, gerente de unidad o líder designado) | Toda solicitud pasa por el aprobador de área, con un enlace firmado en el correo (#A5). |
-| Nacionales con 8 días de anticipación; internacionales con 30 | Se marca como fuera de política (`policyViolation`) sin bloquear la solicitud. |
+| Nacionales con 8 días de anticipación; internacionales con 30 | Desde el 14-oct-2026 (#A100), una solicitud que no cumple **queda en espera** hasta que la apruebe el CFO (el responsable configurado en el dashboard de costos), con la justificación escrita del solicitante. El área de viajes no la gestiona mientras tanto; si no se aprueba en 7 días o antes del viaje, queda denegada. Lo que registra el área de viajes (viajes ya comprados) solo se marca fuera de política. |
 | Tiquetes nacionales de más de $1.200.000: aprobación del CEO y/o del gerente de cadena de suministro | Se pide además la aprobación del Director de Cadena de Suministro. |
 | Si el viaje va a una Orden de Trabajo, debe quedar relacionada, con los centros de costos | OT opcional con formato `OT-<EE><CCC>-<NÚMERO>` (#A66); centro de costo y unidad de negocio en cada solicitud. |
 | Aerolínea y horario: lo más conveniente en costo, ajustado en lo posible al horario pedido | El comparador busca el directo más barato a ±2 h de la hora pedida (#A84–#A88). Solo lo ven los administradores autorizados. |
-| **Tarifa por noches del viaje** (tabla de la página 2) | Se recomienda en *Cargar opciones*, *Confirmar costos* y *Registrar reserva*. Otra tarifa exige una justificación, y todo queda en la hoja (#A95). Ver abajo. |
+| **Tarifa por noches del viaje** (tabla de la página 2) | Se recomienda en *Cargar opciones*, *Confirmar costos* y *Registrar reserva*. Otra tarifa exige una justificación, y todo queda en la hoja (#A95). Una tarifa **superior** a la del manual pide además el voto del CFO en la aprobación, y antes de comprar no se puede subir por encima de la aprobada (#A100). Ver abajo. |
 | Otras aerolíneas (JetSMART, etc.) si el integrante lo requiere | La compra admite cualquier aerolínea de la lista u «Otra…» (#A82). |
 | Facturas a nombre de la empresa como soporte del viaje | Soportes después del viaje y avisos de facturas por revisar desde el día 7 (#A83). |
 | La solicitud debe decir si el viajero requiere equipaje de bodega | Casilla *¿Lleva maleta de bodega?* en el formulario, solo en vuelos (#A95). Laura la ve al cotizar, al confirmar costos y al registrar la reserva. |

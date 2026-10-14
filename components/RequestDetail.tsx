@@ -324,11 +324,19 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
         request.status !== RequestStatus.PROCESSED &&
         request.status !== RequestStatus.CANCELLED &&
         request.status !== RequestStatus.REJECTED &&
-        request.status !== RequestStatus.PENDING_CHANGE_APPROVAL;
+        request.status !== RequestStatus.PENDING_CHANGE_APPROVAL &&
+        // #A100: mientras espera al CFO no se piden cambios (se puede anular y pedir de nuevo).
+        request.status !== RequestStatus.PENDING_POLICY_APPROVAL;
+    const isPolicyHold = request.status === RequestStatus.PENDING_POLICY_APPROVAL;
+    // #A100: decisión del CFO guardada en la hoja ('Sí_correo_fecha' / 'No_…' / 'Vencida_…').
+    const policyDecisionKind = /^s[ií]_/i.test(request.policyDecision || '') ? 'approved'
+        : /^no_/i.test(request.policyDecision || '') ? 'denied'
+        : /^vencida_/i.test(request.policyDecision || '') ? 'expired' : '';
 
     // Custom Status Display for User Peace of Mind
     const getDisplayStatus = (status: RequestStatus) => {
         if (status === RequestStatus.RESERVED) return 'TIQUETES COMPRADOS';
+        if (status === RequestStatus.PENDING_POLICY_APPROVAL) return 'EN ESPERA DE APROBACIÓN POR POLÍTICA';
         return status.replace(/_/g, ' ');
     };
 
@@ -336,6 +344,7 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
         if (status === RequestStatus.APPROVED) return 'bg-green-100 text-green-700';
         if (status === RequestStatus.RESERVED) return 'bg-blue-100 text-blue-800'; // Special color for bought
         if (status === RequestStatus.PROCESSED) return 'bg-gray-800 text-white';
+        if (status === RequestStatus.PENDING_POLICY_APPROVAL) return 'bg-amber-100 text-amber-800';
         return 'bg-gray-100 text-gray-600';
     };
 
@@ -620,6 +629,28 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
 
                             <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
 
+                                {/* #A100: en espera de la aprobación del CFO por la política de anticipación */}
+                                {isPolicyHold && (
+                                    <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-md text-sm leading-relaxed">
+                                        <strong className="block mb-1">⏳ En espera de aprobación</strong>
+                                        Esta solicitud se pidió con menos anticipación de la que pide la política de viajes
+                                        ({request.isInternational ? 30 : 8} días para viajes {request.isInternational ? 'internacionales' : 'nacionales'}).
+                                        Antes de que el área de viajes la gestione, debe aprobarla <strong>{request.policyApproverName || 'el CFO'}</strong>.
+                                        Si la aprueba, le llegará un correo y sigue el proceso normal; si no la aprueba, o nadie responde en 7 días o antes de la fecha del viaje, queda denegada.
+                                        {request.policyJustification && (
+                                            <div className="mt-2 text-xs italic text-amber-800">Su justificación: "{request.policyJustification}"</div>
+                                        )}
+                                    </div>
+                                )}
+                                {!isPolicyHold && policyDecisionKind && (
+                                    <div className={`px-4 py-2 rounded-md text-xs border ${policyDecisionKind === 'approved' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}>
+                                        {policyDecisionKind === 'approved' && <>✅ Aprobada por excepción a la política de anticipación ({(request.policyDecision || '').split('_').slice(1).join(' · ')}).</>}
+                                        {policyDecisionKind === 'denied' && <>❌ No se aprobó la excepción a la política de anticipación ({(request.policyDecision || '').split('_').slice(1).join(' · ')}).</>}
+                                        {policyDecisionKind === 'expired' && <>❌ Nadie aprobó la excepción a la política de anticipación a tiempo: quedó denegada ({(request.policyDecision || '').split('_').slice(2).join(' ')}).</>}
+                                        {request.policyJustification && <span className="block mt-1 italic">Justificación: "{request.policyJustification}"</span>}
+                                    </div>
+                                )}
+
                                 {request.policyViolation && request.departureDate && (
                                     <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md text-sm text-center">
                                         <strong className="block mb-1">⚠️ SOLICITUD FUERA DE POLÍTICA DE ANTICIPACIÓN</strong>
@@ -653,9 +684,16 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                 )}
 
                                 {/* Banner PRESUPUESTO DE UNIDAD EXCEDIDO (2026-05-21) */}
-                                {request.requiresBudgetOverrunApproval && (
+                                {(request.budgetExceeded !== undefined ? request.budgetExceeded : request.requiresBudgetOverrunApproval) && (
                                     <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md text-sm">
                                         <strong>💰 PRESUPUESTO DE UNIDAD EXCEDIDO:</strong> Esta solicitud causa que la unidad de negocio <strong>{request.businessUnit}</strong> exceda su presupuesto del periodo. Requiere aprobación adicional de <strong>{request.budgetApproverName || 'el responsable de presupuesto'}</strong>.
+                                    </div>
+                                )}
+
+                                {/* #A100: tarifa superior a la del manual → aprobación del CFO antes de comprar */}
+                                {request.requiresFareApproval && (
+                                    <div className="bg-orange-50 border border-orange-200 text-orange-900 px-4 py-3 rounded-md text-sm">
+                                        <strong>🎫 TARIFA SUPERIOR A LA DEL MANUAL:</strong> Se confirmó la tarifa TIPO {request.fareType}{request.fareName ? ` (${request.fareName})` : ''} y el manual pide TIPO {request.fareRecommended || '—'} para este viaje. Requiere la aprobación de <strong>{request.budgetApproverName || 'el CFO'}</strong> antes de comprar.
                                     </div>
                                 )}
 
@@ -927,7 +965,8 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                     </div>
                                 )}
 
-                                {/* APPROVAL STATUS SECTION */}
+                                {/* APPROVAL STATUS SECTION (#A100: no aplica mientras espera al CFO por la política) */}
+                                {!isPolicyHold && (
                                 <section className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm mt-4">
                                     <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 border-b border-gray-100 pb-2">
                                         Estado de Aprobaciones
@@ -975,7 +1014,9 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                         {/* Solo aparece si la solicitud tiene flag de presupuesto excedido */}
                                         {request.requiresBudgetOverrunApproval && (
                                             <ApprovalStatusRow
-                                                label={`Presupuesto de Unidad${request.budgetApproverName ? ` (${request.budgetApproverName})` : ''}`}
+                                                label={`${request.requiresFareApproval
+                                                    ? (request.budgetExceeded ? 'Presupuesto y tarifa superior al manual' : 'Tarifa superior al manual')
+                                                    : 'Presupuesto de Unidad'}${request.budgetApproverName ? ` (${request.budgetApproverName})` : ''}`}
                                                 effectiveStatus={request.effectiveApprovalBudgetOverrun}
                                                 rawStatusString={request.approvalStatusBudgetOverrun}
                                                 naReason={request.effectiveApprovalBudgetOverrunReason}
@@ -995,6 +1036,7 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                             </div>
                                         ))}
                                 </section>
+                                )}
 
                             </div>
                         </div>

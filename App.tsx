@@ -6,7 +6,8 @@ import { UserDashboard } from './components/UserDashboard';
 import { RequestDetail } from './components/RequestDetail';
 import { PinEntryModal } from './components/PinEntryModal';
 import { gasService, setOnSessionExpired, setOnHealthChange } from './services/gasService';
-import { TravelRequest, UserRole, Integrant } from './types';
+import { TravelRequest, UserRole, Integrant, PolicyNotice } from './types';
+import { PolicyNoticeModal } from './components/PolicyNoticeModal';
 import { LOGO_URL, APP_VERSION } from './constants';
 
 const POLL_INTERVAL_MS = 30000;
@@ -158,6 +159,8 @@ const App: React.FC = () => {
   const [viewAsRequester, setViewAsRequester] = useState(false);
   // #A77: "Saltar aprobación" solo para quien el backend autoriza (Yurani y David).
   const [canSkipApprovalFlag, setCanSkipApprovalFlag] = useState(false);
+  // #A100: aviso de cómo funcionan ahora las solicitudes (lo decide el servidor en bootstrap).
+  const [policyNotice, setPolicyNotice] = useState<PolicyNotice | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [loginEmailInput, setLoginEmailInput] = useState('');
   const [showPinModal, setShowPinModal] = useState(false);
@@ -184,6 +187,7 @@ const App: React.FC = () => {
       setRequests([]);
       setRole(UserRole.REQUESTER);
       setCanSkipApprovalFlag(false);
+      setPolicyNotice(null);
       setView('LIST');
       setLoading(false);
       alert('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
@@ -244,6 +248,7 @@ const App: React.FC = () => {
         }
 
         setCanSkipApprovalFlag(resolveCanSkipApproval(data));
+        setPolicyNotice(data.policyNotice && data.policyNotice.show ? data.policyNotice : null); // #A100
 
         await handleLoginSuccess(stored.email, (data.role as StoredRole) || 'REQUESTER', resolvedIntegrantes, /*skipFetch=*/true);
       } catch (err: any) {
@@ -384,6 +389,7 @@ const App: React.FC = () => {
       setRequests([]);
       setRole(UserRole.REQUESTER);
       setCanSkipApprovalFlag(false);
+      setPolicyNotice(null);
       setViewAsRequester(false);
       alert('No se pudo completar el inicio de sesión. Por favor intenta de nuevo.');
     } finally {
@@ -488,6 +494,7 @@ const App: React.FC = () => {
         setPinFlowMessage('');
         // bootstrap ya retornó rol verificado server-side y los requests.
         setCanSkipApprovalFlag(resolveCanSkipApproval(data));
+        setPolicyNotice(data.policyNotice && data.policyNotice.show ? data.policyNotice : null); // #A100
         await handleLoginSuccess(pendingPinEmail, (data.role as StoredRole) || session.role, resolvedIntegrantes, /*skipFetch=*/true);
         return true;
       } catch (bootstrapErr) {
@@ -603,6 +610,7 @@ const App: React.FC = () => {
 
         setShowPinModal(false);
         setCanSkipApprovalFlag(resolveCanSkipApproval(data));
+        setPolicyNotice(data.policyNotice && data.policyNotice.show ? data.policyNotice : null); // #A100
         await handleLoginSuccess(pendingAdminEmail, (data.role as StoredRole) || sessionRole, loadedIntegrantes, /*skipFetch=*/true);
         return true;
       } catch (bootstrapErr) {
@@ -631,6 +639,7 @@ const App: React.FC = () => {
     setRequests([]);
     setRole(UserRole.REQUESTER);
     setCanSkipApprovalFlag(false);
+      setPolicyNotice(null);
     setViewAsRequester(false);
     setLoginEmailInput('');
 
@@ -839,8 +848,12 @@ const App: React.FC = () => {
     setView('LIST');
   };
 
-  const handleFormSuccess = () => {
+  // #A100: aviso para el solicitante cuando su solicitud quedó en espera del CFO.
+  const [formNotice, setFormNotice] = useState<string | null>(null);
+
+  const handleFormSuccess = (notice?: string) => {
     setModificationRequest(null);
+    setFormNotice(notice || null);
     setView('LIST');
     handleManualRefresh();
   };
@@ -988,6 +1001,26 @@ const App: React.FC = () => {
       // en la columna angosta de siempre.
       wide={isEffectiveAdmin && view === 'LIST'}
     >
+
+      {/* #A100: aviso de cómo funcionan ahora las solicitudes; constancia al tocar «Entendido». */}
+      {policyNotice && userEmail && (
+        <PolicyNoticeModal
+          notice={policyNotice}
+          onAcknowledge={async () => {
+            try { await gasService.ackPolicyNotice(policyNotice.id); }
+            catch (err) { console.error('No se pudo guardar la constancia del aviso:', err); }
+            setPolicyNotice(null);
+          }}
+        />
+      )}
+
+      {view === 'LIST' && formNotice && (
+        <div role="status" className="mb-4 bg-amber-50 border border-amber-300 text-amber-900 rounded-md p-4 text-sm leading-relaxed flex gap-3 items-start">
+          <span className="text-lg" aria-hidden="true">⏳</span>
+          <p className="flex-1">{formNotice}</p>
+          <button type="button" onClick={() => setFormNotice(null)} className="text-amber-700 hover:text-amber-900 text-xs font-bold underline">Entendido</button>
+        </div>
+      )}
 
       {!isEffectiveAdmin && view === 'LIST' && (
         <UserDashboard

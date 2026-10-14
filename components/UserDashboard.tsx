@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { TravelRequest } from '../types';
+import { TravelRequest, RequestStatus } from '../types';
 import { gasService } from '../services/gasService';
 import { CancellationModal } from './CancellationModal';
 import { ConfirmationDialog } from './ConfirmationDialog';
@@ -137,8 +137,9 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                         req.status === 'APROBADO' ? 'bg-green-100 text-green-700' : 
                         req.status === 'DENEGADO' ? 'bg-red-100 text-red-700' : 
                         req.status === 'ANULADO' ? 'bg-gray-200 text-gray-500 line-through' :
+                        req.status === RequestStatus.PENDING_POLICY_APPROVAL ? 'bg-amber-100 text-amber-800' :
                         'bg-gray-100 text-gray-600'
-                    }`}>{req.status}</span>
+                    }`}>{req.status === RequestStatus.PENDING_POLICY_APPROVAL ? 'EN ESPERA DE APROBACIÓN' : req.status}</span>
                  </div>
                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mt-2">
                     <span>{req.origin}</span><span className="text-brand-red text-xl">➝</span><span>{req.destination}</span>
@@ -157,6 +158,13 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                  </div>
 
                  {req.relatedRequestId && <p className="text-xs text-blue-500 mt-2">Vinculada a {req.relatedRequestId}</p>}
+
+                 {req.status === RequestStatus.PENDING_POLICY_APPROVAL && (
+                   <p className="mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded p-2 leading-snug">
+                     Se pidió con menos anticipación de la que pide la política. El área de viajes la gestiona cuando la apruebe
+                     {' '}<strong>{req.policyApproverName || 'el CFO'}</strong>. Le avisaremos por correo.
+                   </p>
+                 )}
 
                  <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
                     <div className="flex items-center gap-3">
