@@ -510,7 +510,7 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 | `sendPendingSelectionReminders` | Recordatorio al usuario que no ha descrito su selección. Mismo asunto = mismo hilo en Gmail. |
 | `processAdminReminders` | Resumen diario/periódico al admin de pendientes (cotizar, confirmar costos, reservar, cambios). |
 | `sendPendingConsultReminders` | Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio). |
-| `procesarAprobacionesPolitica` | (#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (`isWorkingHour`). Se instala con el **menú 13** (`activarAprobacionesPolitica`) desde la cuenta dueña del script. |
+| `procesarAprobacionesPolitica` | (#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (`isWorkingHour`). Se crea **a mano** en Activadores (Según tiempo, cada 2 horas), con la misma cuenta de los demás activadores. El **menú 13** muestra los pasos. |
 
 **Trigger de mantenimiento (ya configurado):**
 - `cleanupExpiredSessions` (diario, 1–2 AM) — limpia sesiones `SESSION_*` expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en `cleanupExpiredPropsWeekly`, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.

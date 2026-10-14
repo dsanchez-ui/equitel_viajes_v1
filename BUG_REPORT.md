@@ -2419,7 +2419,7 @@ El push solo guarda el código en GitHub: la app no cambia.
   - El solicitante recibe un correo **[EN ESPERA DE APROBACIÓN]**. El área de viajes no recibe nada.
   - **El área de viajes no la ve:** `getAllRequests*` la filtra en el servidor, y queda fuera de métricas, del dashboard de costos y de los recordatorios. El API rechaza cualquier gestión sobre ella (`_assertNotPolicyHold_` en dispatch).
   - **Quién aprueba:** el mismo responsable del presupuesto excedido (`budgetApproverEmail` / `budgetApproverName` del dashboard de costos). Cambiarlo allí lo cambia para las dos reglas, y los enlaces del anterior dejan de servir.
-  - `procesarAprobacionesPolitica` (disparador cada 2 h, menú 13) le manda un resumen **solo en horario laboral** (`isWorkingHour`, como los demás resúmenes; David: *"no quiero estarlo molestando en fines de semana"*): una fila por solicitud (quién la pidió, quién viaja, ruta, fechas, cuándo, con cuánta anticipación y la justificación), con **Aprobar / Rechazar** al lado. Los enlaces van firmados (`policy_decision`) y abren una página para confirmar, con un comentario opcional.
+  - `procesarAprobacionesPolitica` (disparador cada 2 h, creado a mano en Activadores; el menú 13 da los pasos) le manda un resumen **solo en horario laboral** (`isWorkingHour`, como los demás resúmenes; David: *"no quiero estarlo molestando en fines de semana"*): una fila por solicitud (quién la pidió, quién viaja, ruta, fechas, cuándo, con cuánta anticipación y la justificación), con **Aprobar / Rechazar** al lado. Los enlaces van firmados (`policy_decision`) y abren una página para confirmar, con un comentario opcional.
   - **Aprobada:** pasa a `PENDIENTE_OPCIONES` y le llega al área de viajes como nueva (**[APROBADA POR EXCEPCIÓN]**, con copia al solicitante). Las métricas cuentan desde `policyApproved`.
   - **Rechazada o vencida** (7 días o pasó la fecha del viaje): `DENEGADO` con «No se aprobó la excepción por incumplimiento de la política de anticipación». Solo se avisa al solicitante. Nada se borra.
   - Lo que crea un **administrador** (registro de viajes ya comprados) no queda en espera, pero se marca. No aplica a solicitudes de cambio.
@@ -2457,7 +2457,7 @@ El push solo guarda el código en GitHub: la app no cambia.
   - multidestino: espera de todo el viaje (también por un tramo ya en espera), una fila en el resumen, aprobar libera los 3 tramos, rechazar y vencer deniegan todos con un solo correo, y lo que crea un administrador no espera;
   - la lista de solo lectura (solo administradores);
   - anular una en espera;
-  - disparador sin duplicar;
+  - disparador sin duplicar y, sin el permiso `script.scriptapp`, el menú 13 da los pasos para crearlo a mano y el 14 sigue funcionando;
   - métricas desde la aprobación;
   - tarifa: marca, motor de aprobación (el área sola no basta, con el voto del CFO queda APROBADO), bloqueo al registrar la compra;
   - interruptor;
@@ -2467,9 +2467,11 @@ El push solo guarda el código en GitHub: la app no cambia.
 **Despliegue (en este orden):**
 1. Apps Script: pegar `server/Code.gs` y guardar.
 2. Correr el **menú 12** (crea las columnas nuevas, también `GRUPO MULTIDESTINO`).
-3. Correr el **menú 13** con la cuenta dueña del script (activa el resumen cada 2 h).
+3. Crear el activador del resumen **a mano**, con la misma cuenta de los demás activadores: editor de Apps Script → Activadores → + Agregar activador → `procesarAprobacionesPolitica`, implementación Principal, según tiempo, temporizador por horas, cada 2 horas. El menú 13 muestra estos pasos.
 4. Crear la versión nueva del web app.
 5. Push del frontend (la ventana del aviso y la justificación).
 6. Revisar con el menú 14.
 
 Rollback: versión anterior del web app. Las solicitudes en espera quedarían con su estado: aprobarlas a mano o apagar con `policyApprovalEnabled: false` antes.
+
+**Ajuste al desplegar (14-oct, menú 13):** en producción el menú 13 falló con *«Los permisos especificados no son suficientes para llamar a ScriptApp.getProjectTriggers»*. El manifiesto del proyecto (`appsscript.json`) declara sus permisos y no incluye `script.scriptapp`, el que permite crear activadores desde el código. No se agregó: cambiar los permisos obliga a reautorizar el proyecto en producción y pone en riesgo los recordatorios y el respaldo diario (ver la sección de IA de `CLAUDE.md`). Los recordatorios ya se habían creado a mano por la misma razón. Ahora el menú 13 intenta crearlo y, si no puede, muestra los pasos para crearlo en Activadores. El menú 14 deja de fallar y remite a Activadores, y quitar el activador también explica cómo borrarlo a mano. El resumen, las decisiones y el formulario nunca usaron ese permiso.

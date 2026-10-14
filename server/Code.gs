@@ -19071,29 +19071,72 @@ function procesarAprobacionesPolitica() {
   return { expired: expired, listed: listed };
 }
 
-/** Instala el disparador del resumen (cada 2 horas). Ejecutar una vez desde el editor o el menú. */
+/**
+ * Pasos para crear el disparador del resumen a mano. El manifiesto del proyecto no
+ * tiene el permiso script.scriptapp (crear activadores desde el código) y no se le
+ * agrega: cambiar los permisos obliga a reautorizar en producción y pone en riesgo
+ * los recordatorios y el respaldo. Los recordatorios también se crearon así.
+ */
+function _policyTriggerSteps_() {
+  return 'En el editor de Apps Script: Activadores (el reloj del menú de la izquierda) → + Agregar activador:\n' +
+    '• Función que se debe ejecutar: ' + POLICY_DIGEST_HANDLER + '\n' +
+    '• Implementación: Principal\n' +
+    '• Fuente del evento: Según tiempo\n' +
+    '• Tipo de activador: Temporizador por horas\n' +
+    '• Intervalo: Cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas\n' +
+    '→ Guardar. Créelo con la misma cuenta de los demás activadores (los recordatorios): los correos salen desde esa cuenta.';
+}
+
+/** ¿Existe el disparador del resumen? true / false, o null si este proyecto no puede consultarlo (sin script.scriptapp). */
+function _policyTriggerInstalled_() {
+  try {
+    return ScriptApp.getProjectTriggers().some(function(t) { return t.getHandlerFunction() === POLICY_DIGEST_HANDLER; });
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Menú 13: instala el disparador del resumen (cada 2 horas). Si el proyecto no tiene
+ * permiso para crear activadores desde el código (hoy no lo tiene), muestra los pasos
+ * para crearlo a mano en Activadores.
+ */
 function activarAprobacionesPolitica() {
   // Los correos del resumen salen desde la cuenta que instala el disparador: la
   // misma de los demás disparadores (dueña del script), y siempre un administrador.
   _requireAnalyst_();
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === POLICY_DIGEST_HANDLER) ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger(POLICY_DIGEST_HANDLER).timeBased().everyHours(POLICY_DIGEST_EVERY_HOURS).create();
   var cfg = _policyApprovalConfig_();
-  var msg = 'Aprobaciones por política activas: cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas, ' + POLICY_DIGEST_HOURS_TEXT + ', ' + (cfg.enabled ? 'le llega el resumen a ' + cfg.name + ' (' + cfg.email + ').' :
-    'NO se envía nada: las reglas están apagadas o falta budgetApproverEmail en la configuración del dashboard de costos.');
+  var who = cfg.enabled ? 'le llega el resumen a ' + cfg.name + ' (' + cfg.email + ')' :
+    'NO se envía nada: las reglas están apagadas o falta budgetApproverEmail en la configuración del dashboard de costos';
+  var msg;
+  try {
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === POLICY_DIGEST_HANDLER) ScriptApp.deleteTrigger(t);
+    });
+    ScriptApp.newTrigger(POLICY_DIGEST_HANDLER).timeBased().everyHours(POLICY_DIGEST_EVERY_HOURS).create();
+    msg = 'Aprobaciones por política activas: cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas, ' + POLICY_DIGEST_HOURS_TEXT + ', ' + who + '.';
+  } catch (e) {
+    console.warn('activarAprobacionesPolitica: no se pudo crear el disparador desde el código: ' + e);
+    msg = 'Este proyecto no tiene permiso para crear activadores desde el código (es normal: los recordatorios también se crearon a mano). Créelo así:\n\n' +
+      _policyTriggerSteps_() + '\n\nCuando exista: cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas, ' + POLICY_DIGEST_HOURS_TEXT + ', ' + who + '.';
+  }
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
   return msg;
 }
 
 /** Quita el disparador del resumen. Las solicitudes en espera se quedan como están. */
 function desactivarAprobacionesPolitica() {
-  var n = 0;
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === POLICY_DIGEST_HANDLER) { ScriptApp.deleteTrigger(t); n++; }
-  });
-  var msg = n ? 'Disparador del resumen de aprobaciones por política eliminado.' : 'No había disparador del resumen de aprobaciones por política.';
+  var msg;
+  try {
+    var n = 0;
+    ScriptApp.getProjectTriggers().forEach(function(t) {
+      if (t.getHandlerFunction() === POLICY_DIGEST_HANDLER) { ScriptApp.deleteTrigger(t); n++; }
+    });
+    msg = n ? 'Disparador del resumen de aprobaciones por política eliminado.' : 'No había disparador del resumen de aprobaciones por política.';
+  } catch (e) {
+    msg = 'Este proyecto no puede borrar activadores desde el código. Bórrelo a mano: editor de Apps Script → Activadores → fila de ' +
+      POLICY_DIGEST_HANDLER + ' → ⋮ → Borrar activador.';
+  }
   try { SpreadsheetApp.getUi().alert(msg); } catch (e) { console.log(msg); }
   return msg;
 }
@@ -19313,7 +19356,7 @@ function menuVerAprobacionesPolitica() {
     _requireAnalyst_();
     var cfg = _policyApprovalConfig_();
     var items = _policyHeldItems_();
-    var trig = ScriptApp.getProjectTriggers().some(function(t) { return t.getHandlerFunction() === POLICY_DIGEST_HANDLER; });
+    var trig = _policyTriggerInstalled_();
     var lines = items.map(function(it) {
       return '• ' + it.id + ' · ' + (it.hotelOnly ? 'hospedaje en ' + it.destination : it.origin + ' → ' + it.destination) +
         ' · sale ' + _policyFmtDay_(it.depKey) + ' · pidió ' + (it.requesterName || it.requesterEmail) + ' · vence ' + _policyFmtDay_(it.expiryKey);
@@ -19321,7 +19364,8 @@ function menuVerAprobacionesPolitica() {
     ui.alert('Aprobaciones por política (#A100)',
       'Reglas: ' + (cfg.enabled ? 'encendidas' : 'APAGADAS (policyApprovalEnabled: false o falta budgetApproverEmail)') + '\n' +
       'Aprueba: ' + (cfg.name || '—') + (cfg.email ? ' (' + cfg.email + ')' : '') + ' — se cambia en la configuración del dashboard de costos (budgetApproverEmail / budgetApproverName).\n' +
-      'Resumen cada ' + POLICY_DIGEST_EVERY_HOURS + ' h: ' + (trig ? 'activo' : 'NO ACTIVO (menú 13)') + '\n' +
+      'Resumen cada ' + POLICY_DIGEST_EVERY_HOURS + ' h: ' + (trig === true ? 'activo' : trig === false ? 'NO ACTIVO (menú 13)' :
+        'revíselo en Activadores del editor (debe estar ' + POLICY_DIGEST_HANDLER + ', cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas; si no está, menú 13)') + '\n' +
       'Aviso a los solicitantes hasta el ' + _policyFmtDay_(POLICY_NOTICE_UNTIL) + ': ' + _policyNoticeAckCount_() + ' constancia(s) de lectura en la hoja «' + POLICY_NOTICE_SHEET + '».\n\n' +
       (items.length ? 'En espera (' + items.length + '):\n' + lines.join('\n') : 'No hay solicitudes en espera.'), ui.ButtonSet.OK);
   } catch (e) {

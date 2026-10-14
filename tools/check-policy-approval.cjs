@@ -394,6 +394,22 @@ function main() {
   eq('disparador: uno, cada 2 horas', [log.triggers.filter((t) => t === 'procesarAprobacionesPolitica').length, log.everyHours], [1, 2]);
   ctx.activarAprobacionesPolitica();
   eq('disparador: activar dos veces no lo duplica', log.triggers.filter((t) => t === 'procesarAprobacionesPolitica').length, 1);
+  // Producción (14-oct): el manifiesto no tiene script.scriptapp. El menú 13 da los pasos para
+  // crearlo a mano en Activadores y el menú 14 sigue funcionando (sin decir «NO ACTIVO»).
+  const realScriptApp = ctx.ScriptApp;
+  const denied = () => { throw new Error('Los permisos especificados no son suficientes para llamar a ScriptApp.getProjectTriggers.'); };
+  ctx.ScriptApp = { getProjectTriggers: denied, deleteTrigger: denied, newTrigger: denied };
+  log.alerts.length = 0;
+  const manual = ctx.activarAprobacionesPolitica();
+  ok('disparador sin permiso: el menú 13 explica cómo crearlo a mano', /Activadores/.test(manual) && /procesarAprobacionesPolitica/.test(manual) && /Cada 2 horas/.test(manual) && log.alerts.length === 1);
+  ok('disparador sin permiso: quitarlo explica cómo borrarlo a mano', /Borrar activador/.test(ctx.desactivarAprobacionesPolitica()));
+  log.alerts.length = 0;
+  ctx.menuVerAprobacionesPolitica();
+  ok('disparador sin permiso: el menú 14 abre y remite a Activadores', log.alerts.length === 1 && !/^Error/.test(log.alerts[0]) && /revíselo en Activadores/.test(log.alerts[0]));
+  ctx.ScriptApp = realScriptApp;
+  log.alerts.length = 0;
+  ctx.menuVerAprobacionesPolitica();
+  ok('disparador con permiso: el menú 14 dice que está activo', /Resumen cada 2 h: activo/.test(log.alerts[0] || ''));
 
   // 8. Métricas: el área de viajes cuenta desde la aprobación
   const t0 = '2026-10-13T14:00:00.000Z', t1 = '2026-10-14T14:00:00.000Z', t2 = '2026-10-14T16:00:00.000Z';

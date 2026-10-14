@@ -354,7 +354,7 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     nunca en la lista principal. **Multidestino:** si cualquier tramo no cumple, espera todo el viaje (`GRUPO MULTIDESTINO`) y una
     decisión cubre todos los tramos.
   - El CFO recibe **un resumen cada 2 h solo en horario laboral** (`isWorkingHour`, como los demás resúmenes: nada los fines de
-    semana por la tarde ni los domingos; disparador `procesarAprobacionesPolitica`, menú 13) con una
+    semana por la tarde ni los domingos; disparador `procesarAprobacionesPolitica`, creado a mano) con una
     fila por solicitud y Aprobar / Rechazar firmados (`policy_decision`). Aprobada → `PENDIENTE_OPCIONES` (los tiempos cuentan desde
     `policyApproved`); rechazada o **vencida a los 7 días o al pasar la fecha del viaje** → `DENEGADO` con «No se aprobó la excepción
     por incumplimiento de la política de anticipación». Nunca se borra. Decisión en `APROBACION CFO ANTICIPACION`.
@@ -446,7 +446,7 @@ helper del propio `Code.gs` (`verPropiedadesDelScript`, etc.).
 | `cleanupExpiredPropsWeekly` | Limpia sesiones, lockouts y contadores de rate limit vencidos | `setupWeeklyCleanupTrigger()` |
 | `sendPendingApprovalReminders` / `sendPendingSelectionReminders` / `sendPendingConsultReminders` | Recordatorios; escalan a superadmins tras ~30 h laborales (#A16) | Configurados a mano en la UI |
 | `warmupPing` | Cada 10 min, mantiene tibio el isolate de GAS | Configurado a mano |
-| `procesarAprobacionesPolitica` | Cada 2 h: deniega las solicitudes fuera de plazo vencidas y, en horario laboral, manda al CFO el resumen de las que esperan (#A100) | Menú 13 (`activarAprobacionesPolitica`), con la cuenta dueña del script |
+| `procesarAprobacionesPolitica` | Cada 2 h: deniega las solicitudes fuera de plazo vencidas y, en horario laboral, manda al CFO el resumen de las que esperan (#A100) | A mano en Activadores, cada 2 h, con la cuenta de los demás activadores (el menú 13 da los pasos: el manifiesto no tiene `script.scriptapp` y no se le agrega) |
 
 `rastrearPrecios` (#A84, cada 15 min) **no está en este proyecto**: vive en el proyecto aparte
 del rastreo de precios, con su propia autorización. Se instala y se quita desde ese proyecto
@@ -612,7 +612,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
   mostrarlas a Alejandro; pedir a Aviatur el precio de las tres tarifas en cada cotización; borrar
   `public/assets/EmailGenerator-CHBQuqHQ.js` unos días después (#A96). Internacionales: se queda CEO o CDS.
 - **#A100 (14-oct, aprobación del CFO por la política):** implementado y verificado. Despliegue: pegar `Code.gs` → menú 12 →
-  menú 13 (cuenta dueña) → versión nueva del web app → push del frontend → revisar con el menú 14.
+  activador `procesarAprobacionesPolitica` creado a mano en Activadores (cada 2 h; el menú 13 da los pasos) → versión nueva
+  del web app → push del frontend → revisar con el menú 14.
 - **Manuales dentro de la app** (David, 14-oct): idea para después — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
 - **#A99 (13-oct, cifras del dashboard que se pueden presentar):** solo cambia `server/CostsDashboard.html`;
   pendiente pegarlo y crear la versión nueva del web app (lo hace David). `Code.gs` no cambia.

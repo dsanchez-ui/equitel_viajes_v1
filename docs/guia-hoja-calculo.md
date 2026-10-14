@@ -374,11 +374,26 @@ Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA
 
 ### 13. Aprobaciones por política: activar resumen cada 2 h
 
-Instala el disparador `procesarAprobacionesPolitica` (#A100): cada 2 horas deniega las solicitudes fuera de plazo que vencieron y, solo en horario laboral (lunes a viernes de 7:00 a 17:00, sábados de 8:00 a 12:00), le manda al CFO el resumen de las que esperan su aprobación. **Ejecútalo con la cuenta dueña del script** (los correos salen desde la cuenta que lo instala). Activarlo dos veces no lo duplica.
+El disparador `procesarAprobacionesPolitica` (#A100) deniega cada 2 horas las solicitudes fuera de plazo que vencieron. Solo en horario laboral (lunes a viernes de 7:00 a 17:00, sábados de 8:00 a 12:00), además le manda al CFO el resumen de las que esperan su aprobación.
+
+Este proyecto no tiene permiso para crear activadores desde el código, así que **el activador se crea a mano**, igual que los recordatorios. El menú muestra estos pasos:
+
+1. En el editor de Apps Script, abre **Activadores** (el reloj del menú de la izquierda) → **+ Agregar activador**.
+2. Función: `procesarAprobacionesPolitica` · Implementación: Principal · Fuente del evento: Según tiempo · Tipo: Temporizador por horas · Intervalo: Cada 2 horas.
+3. Guardar.
+
+**Créalo con la misma cuenta de los demás activadores**: los correos salen desde la cuenta que lo crea. Crea uno solo: dos activadores mandarían el resumen dos veces.
 
 ### 14. Aprobaciones por política: ver pendientes
 
-Solo lectura: si las reglas están encendidas, quién aprueba (se cambia en la configuración del dashboard de costos, `budgetApproverEmail` / `budgetApproverName`), si el resumen está activo, cuántas personas leyeron el aviso y la lista de solicitudes en espera con su fecha de vencimiento.
+Solo lectura. Muestra:
+
+- si las reglas están encendidas;
+- quién aprueba (se cambia en la configuración del dashboard de costos, `budgetApproverEmail` / `budgetApproverName`);
+- cuántas personas leyeron el aviso;
+- la lista de solicitudes en espera, con su fecha de vencimiento.
+
+Si el proyecto no puede consultar los activadores, en vez de decir si el resumen está activo te remite a **Activadores**. Allí debe estar `procesarAprobacionesPolitica`, cada 2 horas.
 
 ### Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)
 
