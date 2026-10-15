@@ -3,18 +3,22 @@ import { PolicyNotice } from '../types';
 
 interface PolicyNoticeModalProps {
     notice: PolicyNotice;
-    /** Deja la constancia en el servidor. Si falla, la ventana se cierra igual y vuelve a salir en el próximo ingreso. */
+    /** Deja la constancia en el servidor. Si falla, lanza el error: la ventana lo muestra y deja reintentar. */
     onAcknowledge: () => Promise<void>;
+    /** Cerrar sin constancia, solo después de una falla. El aviso vuelve a salir en el próximo ingreso. */
+    onSkip: () => void;
 }
 
 /**
- * #A100: aviso de cómo funcionan ahora las solicitudes (semana del 19-oct-2026).
- * Lo ve cada solicitante al entrar hasta que toca «Entendido»; el servidor guarda
- * la constancia (fecha y correo) en la hoja CONSTANCIA AVISOS. No se cierra con
- * Escape ni haciendo clic afuera: hay que leerlo y tocar «Entendido».
+ * #A100: aviso de cómo funcionan ahora las solicitudes (desde el 15-oct-2026).
+ * Lo ve cada solicitante al entrar hasta que toca «Entendido», sin fecha de fin;
+ * el servidor guarda la constancia (fecha y correo) en la hoja CONSTANCIA AVISOS.
+ * No se cierra con Escape ni haciendo clic afuera: hay que leerlo y tocar «Entendido».
+ * Si la constancia no se guarda, se dice (#A49: nunca en silencio) y se puede reintentar.
  */
-export const PolicyNoticeModal: React.FC<PolicyNoticeModalProps> = ({ notice, onAcknowledge }) => {
+export const PolicyNoticeModal: React.FC<PolicyNoticeModalProps> = ({ notice, onAcknowledge, onSkip }) => {
     const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
     // «Entendido» se habilita al llegar al final del texto (o de una vez si cabe sin desplazarse).
     const [readToEnd, setReadToEnd] = useState(false);
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -33,7 +37,10 @@ export const PolicyNoticeModal: React.FC<PolicyNoticeModalProps> = ({ notice, on
     const handleClick = async () => {
         if (saving) return;
         setSaving(true);
-        try { await onAcknowledge(); } finally { setSaving(false); }
+        setError('');
+        try { await onAcknowledge(); }
+        catch (err) { setError(err instanceof Error && err.message ? err.message : 'Error de conexión.'); }
+        finally { setSaving(false); }
     };
 
     return (
@@ -87,6 +94,13 @@ export const PolicyNoticeModal: React.FC<PolicyNoticeModalProps> = ({ notice, on
                     </section>
                 </div>
 
+                {error && (
+                    <div role="alert" className="mx-6 mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" data-notice-error>
+                        No se pudo guardar la constancia de lectura ({error}). Toque «Entendido» otra vez.{' '}
+                        <button type="button" onClick={onSkip} className="underline font-bold">Continuar sin guardar</button>
+                        {' '}(el aviso le volverá a salir la próxima vez que entre).
+                    </div>
+                )}
                 <div className="border-t px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
                     <p className="text-xs text-gray-500">
                         {readToEnd ? 'Al tocar «Entendido» queda registrado que leyó este aviso.' : 'Baje hasta el final del aviso para continuar.'}

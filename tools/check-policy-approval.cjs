@@ -114,6 +114,13 @@ function load() {
   };
   const stub = () => new Proxy(function () { return stub(); }, { get: (t, k) => (k === 'then' ? undefined : k === Symbol.toPrimitive ? () => '' : stub()) });
   for (const g of ['DriveApp', 'ContentService', 'UrlFetchApp', 'DocumentApp']) ctx[g] = stub();
+  // El reloj de Code.gs también queda en TODAY (10 a. m. de Bogotá): la solicitud de ejemplo se crea con
+  // new Date() y su anticipación no debe depender del día en que se corre la prueba.
+  const NOW = Date.parse(TODAY + 'T15:00:00Z');
+  ctx.Date = class extends Date {
+    constructor(...a) { super(...(a.length ? a : [NOW])); }
+    static now() { return NOW; }
+  };
   vm.createContext(ctx);
   new vm.Script(SRC, { filename: 'Code.gs' }).runInContext(ctx);
   if (typeof ctx.processPolicyDecision !== 'function') throw new Error('No se encontró processPolicyDecision() en server/Code.gs');
@@ -505,7 +512,11 @@ function main() {
     ok('aviso: ya leído, no vuelve a salir', ctx._policyNoticeFor_('ana@p.co').show === false && ctx._policyNoticeFor_('luis@p.co').show === true);
     ctx._todayBogotaIso_ = () => '2026-10-26';
     reset();
-    ok('aviso: después del 25-oct ya no sale', ctx._policyNoticeFor_('luis@p.co').show === false);
+    ok('aviso: sin fecha de fin, después del 25-oct sigue saliendo a quien no lo ha leído (David, 15-oct)', ctx._policyNoticeFor_('luis@p.co').show === true);
+    ok('aviso: y no vuelve a quien ya lo aceptó', ctx._policyNoticeFor_('ana@p.co').show === false);
+    ctx._todayBogotaIso_ = () => '2027-06-30';
+    reset();
+    ok('aviso: meses después, todavía a quien no lo ha leído', ctx._policyNoticeFor_('luis@p.co').show === true);
     ctx._todayBogotaIso_ = () => TODAY;
   } else {
     failures.push('aviso emergente: falta _policyNoticeFor_ en Code.gs');

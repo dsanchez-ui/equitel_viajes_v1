@@ -128,7 +128,7 @@ nada de la plataforma depende de ellas.
 
 ### CONSTANCIA AVISOS
 
-La crea la app (#A100) la primera vez que alguien toca **«Entendido»** en la ventana que explica cómo funcionan ahora las solicitudes (se muestra a los solicitantes hasta el 25 de octubre de 2026). Una fila por persona: `FECHA`, `CORREO` y `AVISO`. Es la constancia de que cada uno lo leyó. No la edites; si se borra una fila, a esa persona le vuelve a salir la ventana (mientras dure el aviso).
+La crea la app (#A100) la primera vez que alguien toca **«Entendido»** en la ventana que explica cómo funcionan ahora las solicitudes (se muestra a cada solicitante, sin fecha de fin, hasta que lo acepta). Una fila por persona: `FECHA`, `CORREO` y `AVISO`. Es la constancia de que cada uno lo leyó. No la edites; si se borra una fila, a esa persona le vuelve a salir la ventana.
 
 ### INFORMES ENVIADOS
 

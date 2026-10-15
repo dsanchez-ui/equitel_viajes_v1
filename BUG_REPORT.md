@@ -2476,6 +2476,26 @@ Rollback: versión anterior del web app. Las solicitudes en espera quedarían co
 
 **Ajuste al desplegar (14-oct, menú 13):** en producción el menú 13 falló con *«Los permisos especificados no son suficientes para llamar a ScriptApp.getProjectTriggers»*. El manifiesto del proyecto (`appsscript.json`) declara sus permisos y no incluye `script.scriptapp`, el que permite crear activadores desde el código. No se agregó: cambiar los permisos obliga a reautorizar el proyecto en producción y pone en riesgo los recordatorios y el respaldo diario (ver la sección de IA de `CLAUDE.md`). Los recordatorios ya se habían creado a mano por la misma razón. Ahora el menú 13 intenta crearlo y, si no puede, muestra los pasos para crearlo en Activadores. El menú 14 deja de fallar y remite a Activadores, y quitar el activador también explica cómo borrarlo a mano. El resumen, las decisiones y el formulario nunca usaron ese permiso.
 
+### Ajuste del 15-oct: el aviso a los solicitantes no tiene fecha de fin
+**Pedido de David:** *«me preocupa que una persona no entre de aquí al 25 y después, cuando vaya a entrar, el aviso ya no aparezca y diga que no fue informada»*.
+
+**Cambio:**
+- `_policyNoticeFor_` ya no mira la fecha (se quitó `POLICY_NOTICE_UNTIL`; `until` llega vacío). La ventana sale a cada solicitante hasta que toca **«Entendido»** y queda su constancia en `CONSTANCIA AVISOS`, entre cuando entre. No sale a los administradores ni con las reglas apagadas.
+- **Si la constancia no se guarda,** la ventana ya no se cierra en silencio (#A49). Muestra el error y deja tocar «Entendido» otra vez; también ofrece «Continuar sin guardar», para no bloquear a nadie si el servidor falla. Sin constancia, el aviso vuelve a salir la próxima vez que la persona entre.
+- El menú 14 dice que el aviso sale hasta que cada uno lo acepte, y cuántas constancias hay.
+
+**De paso:** `check-policy-approval` fallaba desde el 15-oct, porque la solicitud de ejemplo se creaba con el reloj real y la prueba fija «hoy» en el 14-oct (la anticipación daba un día menos). El reloj de `Code.gs` en la prueba también queda en ese día.
+
+**Verificado:**
+- `npm run verify` en verde.
+- La prueba del aviso ahora comprueba que el 26-oct y meses después sigue saliendo a quien no lo ha leído, y que no vuelve a quien lo aceptó.
+
+**Despliegue:**
+1. Pegar `Code.gs` y crear la versión nueva del web app **antes del domingo 25-oct**. Si no, el 26-oct deja de salir hasta que se pegue.
+2. Push del frontend (el error al guardar la constancia).
+
+Los dos funcionan con el otro lado en su versión anterior.
+
 ---
 
 ## **#A101 — Informe mensual de cumplimiento de la política, automático el primer día hábil**

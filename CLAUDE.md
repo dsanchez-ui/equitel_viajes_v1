@@ -368,7 +368,9 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   - **Tarifa superior a la del manual**: `REQUIERE APROB TARIFA` al confirmar costos y el voto del CFO en la aprobación (mismo rol
     `BUDGET_OVERRUN` y columna `APROBADO PRESUPUESTO` que el presupuesto: un voto cubre los dos; `_requiresCfoVote_`). Antes de comprar
     no se sube la tarifa por encima de la aprobada (solo Yurani y David).
-  - **Aviso a los solicitantes** hasta el 25-oct: ventana al entrar con «Entendido»; constancia en la hoja `CONSTANCIA AVISOS`.
+  - **Aviso a los solicitantes, sin fecha de fin** (David, 15-oct): la ventana sale al entrar hasta que cada persona toca «Entendido»;
+    constancia en la hoja `CONSTANCIA AVISOS`. Si la constancia no se guarda, la ventana lo dice y deja reintentar (o seguir, y vuelve
+    a salir en el próximo ingreso). Nunca volver a ponerle fecha de fin: nadie debe poder decir que no fue informado.
 - **Informe mensual de cumplimiento de la política** (#A101; Alejandro, 13-oct: *«se publicará cada mes»*; decisiones de David
   del 14-oct). Sale solo el **primer día hábil del mes** (festivos de Colombia; el de octubre, el martes 3-nov), en horario laboral,
   con la pasada de `procesarAprobacionesPolitica` (sin activador aparte), para quien aprueba (`budgetApproverEmail`) con copia a
@@ -602,8 +604,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
   - **21-oct:** termina el estudio de precios (#A84). Decidir si sigue (SerpApi gratis, 250 búsquedas al mes)
     y revisar la proyección con Yurani antes de mostrársela a Alejandro: sin 15 comparaciones exactas no da
     cifra al año (#A99).
-  - **25-oct:** la ventana del aviso a los solicitantes deja de salir sola (`POLICY_NOTICE_UNTIL`); la
-    constancia queda en `CONSTANCIA AVISOS`.
+  - **Antes del 25-oct:** pegar `Code.gs` (aviso sin fecha de fin) y crear la versión nueva; si no, el 26-oct la ventana
+    deja de salir hasta que se pegue.
   - **Martes 3-nov:** primer informe mensual automático (octubre) para Alejandro, con copia a Yurani y David.
     Revisar que llegó y que `INFORMES ENVIADOS` tiene su fila. Octubre trae poca tarifa (se registra desde el
     8-oct); desde noviembre sale completa.

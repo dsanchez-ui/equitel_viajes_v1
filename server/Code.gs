@@ -19440,7 +19440,7 @@ function menuVerAprobacionesPolitica() {
       'Aprueba: ' + (cfg.name || '—') + (cfg.email ? ' (' + cfg.email + ')' : '') + ' — se cambia en la configuración del dashboard de costos (budgetApproverEmail / budgetApproverName).\n' +
       'Resumen cada ' + POLICY_DIGEST_EVERY_HOURS + ' h: ' + (trig === true ? 'activo' : trig === false ? 'NO ACTIVO (menú 13)' :
         'revíselo en Activadores del editor (debe estar ' + POLICY_DIGEST_HANDLER + ', cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas; si no está, menú 13)') + '\n' +
-      'Aviso a los solicitantes hasta el ' + _policyFmtDay_(POLICY_NOTICE_UNTIL) + ': ' + _policyNoticeAckCount_() + ' constancia(s) de lectura en la hoja «' + POLICY_NOTICE_SHEET + '».\n' +
+      'Aviso a los solicitantes (sale hasta que cada uno toque «Entendido», sin fecha de fin): ' + _policyNoticeAckCount_() + ' constancia(s) de lectura en la hoja «' + POLICY_NOTICE_SHEET + '».\n' +
       (function() { var nx = _mrNextSend_(), last = _mrLastSent_(); return 'Informe mensual (#A101): el de ' + _mrMonthLabel_(nx.ym) + ' sale el ' + _policyFmtDay_(nx.dayKey) +
         ' con la pasada del resumen' + (last ? '; último enviado: ' + _mrMonthLabel_(last) : '') + '. Prueba: menú 15.'; })() + '\n\n' +
       (items.length ? 'En espera (' + items.length + '):\n' + lines.join('\n') : 'No hay solicitudes en espera.'), ui.ButtonSet.OK);
@@ -19453,12 +19453,14 @@ function menuVerAprobacionesPolitica() {
 // AVISO DE CÓMO FUNCIONAN AHORA LAS SOLICITUDES (#A100, semana del 19-oct)
 // ---------------------------------------------------------------------
 // Pedido de David (14-oct): una ventana que cada solicitante ve al entrar a la
-// app hasta que toca «Entendido», desde la publicación hasta el domingo 25-oct.
-// Cada «Entendido» deja una fila en la hoja CONSTANCIA AVISOS (fecha, correo,
-// aviso): la evidencia de que la persona lo leyó. No se usa Script Properties.
+// app hasta que toca «Entendido». Cada «Entendido» deja una fila en la hoja
+// CONSTANCIA AVISOS (fecha, correo, aviso): la evidencia de que la persona lo
+// leyó. No se usa Script Properties.
+// Sin fecha de fin (David, 15-oct): iba hasta el 25-oct, pero quien no entrara
+// antes no lo vería nunca y podría decir que no fue informado. Ahora sale hasta
+// que cada persona lo acepte, entre cuando entre.
 
 var POLICY_NOTICE_ID = 'politica-anticipacion-2026-10';
-var POLICY_NOTICE_UNTIL = '2026-10-25';
 var POLICY_NOTICE_SHEET = 'CONSTANCIA AVISOS';
 
 /** Filas de la hoja de constancias (sin el encabezado). */
@@ -19478,15 +19480,14 @@ function _policyNoticeAckCount_() {
   catch (e) { return 0; }
 }
 
-/** Lo que necesita la ventana del aviso (bootstrap). show = false fuera de la ventana, para administradores o si ya lo leyó. */
+/** Lo que necesita la ventana del aviso (bootstrap). show = false para administradores, si ya lo leyó o con las reglas apagadas. */
 function _policyNoticeFor_(email) {
   var cfg = _policyApprovalConfig_();
   var info = {
-    id: POLICY_NOTICE_ID, show: false, until: POLICY_NOTICE_UNTIL, approverName: cfg.enabled ? cfg.name : '',
+    id: POLICY_NOTICE_ID, show: false, until: '', approverName: cfg.enabled ? cfg.name : '',
     minDaysNational: POLICY_MIN_DAYS_NATIONAL, minDaysInternational: POLICY_MIN_DAYS_INTERNATIONAL, expiryDays: POLICY_HOLD_EXPIRY_DAYS
   };
   if (!cfg.enabled || !email) return info;
-  if (_todayBogotaIso_() > POLICY_NOTICE_UNTIL) return info;
   if (isUserAnalyst(email)) return info;
   if (_policyNoticeAcked_(email, POLICY_NOTICE_ID)) return info;
   info.show = true;

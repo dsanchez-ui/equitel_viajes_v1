@@ -301,7 +301,7 @@ Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), **toda de
 
 **Hoja de cálculo:** columnas `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION` (`Sí_correo_fecha`, `No_…`, `Vencida_sistema_…`), `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO`; las crea el sistema o el **menú 12**. El menú **13** activa el resumen cada 2 horas y el **14** muestra las solicitudes en espera, quién aprueba y cuántas personas leyeron el aviso.
 
-**Aviso a los solicitantes:** hasta el domingo 25 de octubre, cada solicitante ve al entrar una ventana con las reglas nuevas y debe tocar **«Entendido»**. Cada lectura queda en la hoja **CONSTANCIA AVISOS** (fecha y correo).
+**Aviso a los solicitantes:** cada solicitante ve al entrar una ventana con las reglas nuevas y debe tocar **«Entendido»**. No tiene fecha de fin: le sigue saliendo cada vez que entra hasta que lo acepta. Cada lectura queda en la hoja **CONSTANCIA AVISOS** (fecha y correo). Si la constancia no se puede guardar, la ventana lo dice y deja intentarlo otra vez.
 
 **Apagar las reglas sin tocar código:** `"policyApprovalEnabled": false` en la configuración del dashboard de costos. Las solicitudes que ya estén en espera se quedan así hasta que se decidan o venzan.
 

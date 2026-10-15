@@ -1007,10 +1007,11 @@ const App: React.FC = () => {
         <PolicyNoticeModal
           notice={policyNotice}
           onAcknowledge={async () => {
-            try { await gasService.ackPolicyNotice(policyNotice.id); }
-            catch (err) { console.error('No se pudo guardar la constancia del aviso:', err); }
+            // Si falla, el error sube a la ventana: lo muestra y deja reintentar (no se cierra en silencio).
+            await gasService.ackPolicyNotice(policyNotice.id);
             setPolicyNotice(null);
           }}
+          onSkip={() => setPolicyNotice(null)}
         />
       )}
 

@@ -55,6 +55,7 @@ export interface PolicyHeldResponse {
 export interface PolicyNotice {
   id: string;
   show: boolean;
+  /** Fecha de fin del aviso; '' = sin fecha de fin (desde el 15-oct sale hasta que cada persona lo acepte). */
   until: string;
   approverName: string;
   minDaysNational: number;

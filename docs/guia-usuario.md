@@ -4,7 +4,7 @@
 >
 > **¿Qué cubre?** Todo el ciclo de una solicitud, paso a paso, con ejemplos concretos y los errores típicos que la gente encuentra. Mantén este documento a la mano la primera vez que hagas una solicitud; después seguramente no lo vas a necesitar.
 
-> **Novedad de octubre de 2026 — lee esto primero.** Las solicitudes que se piden con menos anticipación de la que pide la política (8 días nacional, 30 internacional) **quedan en espera** hasta que las apruebe Alejandro Gómez de Greiff (o quien defina la organización). Mientras esperan, el área de viajes no cotiza ni compra. También necesita su aprobación una tarifa superior a la del manual. Detalle en [§2.4](#24-fechas-y-horario) y [§9.5](#95-solicitud-urgente-fuera-de-política). La semana del 19 de octubre, al entrar al portal verás una ventana con estas reglas: léela y toca **«Entendido»** (queda registrado que la leíste).
+> **Novedad de octubre de 2026 — lee esto primero.** Las solicitudes que se piden con menos anticipación de la que pide la política (8 días nacional, 30 internacional) **quedan en espera** hasta que las apruebe Alejandro Gómez de Greiff (o quien defina la organización). Mientras esperan, el área de viajes no cotiza ni compra. También necesita su aprobación una tarifa superior a la del manual. Detalle en [§2.4](#24-fechas-y-horario) y [§9.5](#95-solicitud-urgente-fuera-de-política). Al entrar al portal verás una ventana con estas reglas: léela y toca **«Entendido»** (queda registrado que la leíste). Te seguirá saliendo cada vez que entres hasta que lo hagas.
 
 ---
 
