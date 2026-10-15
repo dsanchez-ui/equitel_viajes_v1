@@ -636,6 +636,13 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A99, #A100 y #A101 desplegados el 14-oct-2026** (cifras del dashboard que se pueden presentar, aprobación del CFO
   por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
   hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
+- **Cambios de viaje simplificados** (pedido de Yurani, 15-oct): **solo plan y prototipo**, en
+  [docs/plan-cambios-de-viaje.md](docs/plan-cambios-de-viaje.md). Prototipo para Yurani y Laura:
+  <https://claude.ai/artifact/Ekx5v8GDaYnWvQ9B6aS1Nu>. No construir nada hasta su visto bueno y sus respuestas a la §9.
+  Reglas de David (15-oct): plazo hasta las 5 p. m. del día hábil anterior (sábado 12 m.); con el viaje en curso solo el
+  regreso; tiquete comprado con opciones y selección como hoy; todo cambio pasa por el aprobador, aunque cueste $0. Yurani
+  quiere ver el sobrecosto de cada cambio (la «jugada» de pedir Basic y después la maleta): la original comprada no se
+  anula, queda «Cambiada», y la hija lleva solo el costo del cambio.
 - **Manuales dentro de la app** (David, 14-oct): **solo plan**, en
   [docs/plan-manuales-en-app.md](docs/plan-manuales-en-app.md) — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
 - **Informe por unidad para cada jefe** (posible segunda etapa de #A101): la presentación de Alejandro dice que «su jefe
