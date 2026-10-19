@@ -228,6 +228,15 @@ function rpLeerHechas_(hoja) {
   return { hechas: hechas, consultasHoy: consultasHoy };
 }
 
+/** #A103: ¿la celda CAMBIO PEDIDO (JSON) es de un cambio de tiquete ya comprado? */
+function rpEsCambioComprado_(raw) {
+  if (!raw) return false;
+  try {
+    var o = typeof raw === 'object' ? raw : JSON.parse(String(raw));
+    return !!(o && o.v && o.comprado);
+  } catch (e) { return false; }
+}
+
 /**
  * Solicitudes que toca buscar ahora. Prioridad: COMPRA antes que COTIZACION y,
  * dentro de cada momento, la ida más próxima primero.
@@ -243,6 +252,9 @@ function rpCandidatos_(valores, hechas, cfg, ahoraMs) {
     var id = String(celda(fila, 'ID RESPUESTA') || '').trim();
     if (!id) continue;
     if (String(celda(fila, 'MODO_SOLICITUD') || '').trim() === 'SOLO_HOSPEDAJE') continue;
+    // #A103: un cambio de un tiquete ya comprado lleva solo el costo del cambio (penalidad y diferencia
+    // de tarifa): compararlo con el precio de un tiquete en Google no tiene sentido.
+    if (rpEsCambioComprado_(celda(fila, 'CAMBIO PEDIDO (JSON)'))) continue;
     var origen = cpCiudad(celda(fila, 'CIUDAD ORIGEN'));
     var destino = cpCiudad(celda(fila, 'CIUDAD DESTINO'));
     var ida = rpFecha_(celda(fila, 'FECHA IDA'));

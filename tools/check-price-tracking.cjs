@@ -80,7 +80,7 @@ function makeSpreadsheet(sheets) {
 const H = ['ID RESPUESTA', 'STATUS', 'MODO_SOLICITUD', 'CIUDAD ORIGEN', 'CIUDAD DESTINO', 'FECHA IDA', 'FECHA VUELTA',
   '# PERSONAS QUE VIAJAN', 'HORA LLEGADA VUELO IDA', 'EVENTOS_JSON', 'COSTO_FINAL_TIQUETES', 'AEROLINEA', 'CANAL DE COMPRA',
   'EMPRESA', 'UNIDAD DE NEGOCIO', 'CORREO ENCUESTADO', 'CÉDULA PERSONA 1', 'NOMBRE PERSONA 1',
-  'HORA LLEGADA VUELO VUELTA', 'ES INTERNACIONAL', 'AEROLINEA REGRESO', 'COSTO_FINAL_HOTEL', 'TOTAL FACTURA'];
+  'HORA LLEGADA VUELO VUELTA', 'ES INTERNACIONAL', 'AEROLINEA REGRESO', 'COSTO_FINAL_HOTEL', 'TOTAL FACTURA', 'VALOR COMPRA TIQUETES'];
 const ev = (o) => JSON.stringify(o);
 const hace = (h) => new Date(Date.now() - h * 3600000).toISOString();
 const priv = ['pasajero@ejemplo.test', 'CEDULA-FICTICIA-1', 'NOMBRE PRIVADO'];
@@ -530,7 +530,8 @@ function main() {
   const ap = d.summary.atPurchase;
   // COMPRA OK: SOL-1 (400000 vs 389200 + 389200 por tramos), SOL-12 (350000 vs 351700 del día, sin hora),
   // SOL-9 (600000 vs 389200), SOL-6 (432888 vs 351700: nada sale entre 08:40 y 12:40, referencia del día).
-  eq('resumen al comprar', [ap.n, ap.quoted, ap.market, ap.difference, ap.possibleSavings], [4, 1782888, 1871000, -88112, 291988]);
+  eq('resumen al comprar (neto: los que Google tenía más caros restan; #A104 sin «ahorro posible» de solo los positivos)',
+    [ap.n, ap.quoted, ap.market, ap.difference, ap.cheaperInGoogle, ap.possibleSavings], [4, 1782888, 1871000, -88112, 2, undefined]);
   const i6 = d.items.find((i) => i.requestId === 'SOL-6');
   eq('SOL-6: sin vuelos cerca de las 10:40, referencia del día; misma aerolínea del día', [i6.market, i6.atPurchase.referenceIsNear, i6.sameAirline], [351700, false, 389200]);
   const i9 = d.items.find((i) => i.requestId === 'SOL-9');
@@ -577,6 +578,36 @@ function main() {
   const sinTab = loadPlatform(makeSpreadsheet([makeSheet('Nueva Base Solicitudes', solicitudes())]));
   const vacio = sinTab.dispatch('getPriceTracking', { userEmail: 'dsanchez@equitel.com.co', sessionToken: 'x' });
   eq('sin el proyecto aparte instalado: vacío, sin error', [vacio.success, vacio.data.meta.installed, vacio.data.items.length], [true, false, 0]);
+
+  // #A104: cifras que se pueden presentar. Comprado = RESERVADO o PROCESADO; lo pagado manda sobre lo
+  // cotizado; lo denegado o anulado no entra; el vuelo de Google tiene que ser el mismo producto.
+  const i6x = d.items.find((i) => i.requestId === 'SOL-6'), i2x = d.items.find((i) => i.requestId === 'SOL-2');
+  eq('SOL-6 comprado: se compara con lo cotizado (sin valor pagado); búsqueda 2 h después de registrar la compra',
+    [i6x.bought, i6x.base, i6x.baseKind, i6x.searchLeadHours, i6x.difference], [true, 432888, 'cotizado', -2, 81188]);
+  eq('SOL-6: sin vuelo a ±2 h de la hora pedida → aproximada', [i6x.fare.quality, /±2 h/.test(i6x.fare.qualityReason)], ['aproximada', true]);
+  eq('por comprar y al cotizar: no comprado; al cotizar se compara con lo cotizado en ese momento', [i1.bought, i2x.bought, i2x.baseKind], [false, false, 'cotizado al buscar']);
+  eq('solo comprados: SOL-6 en «comprados», no en «comprados exactos»', [d.summary.purchased.overall.n, d.summary.purchased.overall.difference, d.summary.purchasedExact.overall.n],
+    [1, 81188, 0]);
+  eq('% sobre lo cotizado (#A99)', Math.round(d.summary.purchased.overall.pct * 10) / 10, Math.round(81188 / 432888 * 1000) / 10);
+  const row6 = t.base.data.find((r) => r[0] === 'SOL-6'), row12 = t.base.data.find((r) => r[0] === 'SOL-12');
+  row6[H.indexOf('VALOR COMPRA TIQUETES')] = 400000;
+  row12[H.indexOf('STATUS')] = 'DENEGADO';
+  const d4 = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
+  const i6p = d4.items.find((i) => i.requestId === 'SOL-6');
+  eq('con valor pagado: se compara lo pagado', [i6p.base, i6p.baseKind, i6p.difference, i6p.quoted], [400000, 'pagado', 48300, 432888]);
+  eq('lo denegado no se compara', d4.items.some((i) => i.requestId === 'SOL-12'), false);
+  row12[H.indexOf('STATUS')] = 'APROBADO';
+  row6[H.indexOf('VALOR COMPRA TIQUETES')] = '';
+  const legMed = (o) => Object.assign({ leg: 'IDA', from: 'CLO', to: 'MDE,EOH', hour: '07:00', referenceIsNear: true, near: { airline: 'LATAM' }, directOnly: true, ok: true }, o);
+  const snapMed = (o) => ({ result: 'OK', bags: 0, format: 3, referenceKind: 'TRAMOS', legs: [legMed(o)] });
+  eq('mismo producto: Clic (Olaya Herrera) frente a LATAM (Rionegro) → otro aeropuerto', [
+    /otro aeropuerto en Medellín: Clic opera desde Olaya Herrera y LATAM desde Rionegro/.test(q._ptProductGap_(snapMed(), { ida: 'Clic' })),
+    q._ptProductGap_(snapMed(), { ida: 'Avianca' }), q._ptProductGap_(snapMed({ near: { airline: 'Satena' } }), { ida: 'Clic' }),
+    q._ptQuality_(1, snapMed(), true, false, { ida: 'Clic' }).quality, q._ptQuality_(1, snapMed(), true, false, { ida: 'Avianca' }).quality],
+    [true, '', '', 'aproximada', 'exacta']);
+  eq('mismo producto: con escala o fuera de la hora pedida → aproximada', [
+    /escala/.test(q._ptProductGap_(snapMed({ directOnly: false }), {})), /±2 h/.test(q._ptProductGap_(snapMed({ referenceIsNear: false, cheapest: { airline: 'LATAM' } }), {})),
+    q._ptProductGap_(snapMed({ hour: '', referenceIsNear: false, cheapest: { airline: 'LATAM' } }), { ida: 'LATAM' })], [true, true, '']);
 
   if (failures.length) {
     console.error(`\n✗ Rastreo de precios: ${failures.length} problema(s).\n`);

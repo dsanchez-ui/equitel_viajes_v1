@@ -3,6 +3,9 @@ import React, { useState, useEffect } from 'react';
 import { TravelRequest } from '../types';
 import { gasService } from '../services/gasService';
 import { formatToDDMMYYYY } from '../utils/dateUtils';
+import { formatCop } from '../utils/money';
+import { fareShort } from '../utils/fare';
+import { TripChangeBox, tripChangeRows } from './TripChangeInfo';
 
 interface ChangeRequestModalProps {
   request: TravelRequest;
@@ -24,6 +27,37 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
   const [parentAction, setParentAction] = useState<'keep' | 'anulate' | 'consult'>('keep');
   const [error, setError] = useState('');
   const isHotelOnly = request.requestMode === 'HOTEL_ONLY';
+  // #A103: cambio pedido con «Cambiar mi viaje». Con el tiquete comprado, Laura ve lo que se compró
+  // (datos y archivos de la original) y un mensaje listo para pedirle el cambio a la agencia.
+  const info = request.tripChange && request.tripChange.v ? request.tripChange : null;
+  const [parent, setParent] = useState<TravelRequest | null>(null);
+  const [parentState, setParentState] = useState<'idle' | 'loading' | 'error' | 'ok'>('idle');
+  const [copied, setCopied] = useState('');
+  const loadParent = () => {
+    if (!info || !info.comprado) return;
+    setParentState('loading');
+    gasService.getRequestById(info.padre)
+      .then(p => { setParent(p); setParentState(p ? 'ok' : 'error'); })
+      .catch(() => setParentState('error'));
+  };
+  useEffect(() => { loadParent(); /* una vez al abrir */ // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const c = info?.compra;
+  const pnr = parent?.reservationNumber || c?.pnr || '';
+  const airline = parent?.purchaseAirline || c?.aerolinea || '';
+  const aviaturMsg = info
+    ? `Buenos días. Solicitamos un cambio sobre la reserva ${pnr || '(sin PNR)'}${airline ? ' (' + airline + ')' : ''}, ` +
+      `${request.passengers.length > 1 ? 'pasajeros' : 'pasajero'} ${request.passengers.map(p => p.name).join(', ')}, ` +
+      `${isHotelOnly ? 'hospedaje en ' + request.destination : (info.campos.destination ? info.campos.destination.antes : request.destination) ? request.origin + ' – ' + (info.campos.destination ? info.campos.destination.antes : request.destination) : ''}.\n` +
+      tripChangeRows(info).map(r => `- ${r[0]}: ${r[1]} → ${r[2]}`).join('\n') +
+      `\nPor favor cotizar la penalidad y la diferencia de tarifa. Solicitud ${request.requestId} del Portal de Viajes Equitel.`
+    : '';
+  const copyMsg = () => {
+    const done = () => { setCopied('Mensaje copiado.'); setTimeout(() => setCopied(''), 2500); };
+    try { navigator.clipboard.writeText(aviaturMsg).then(done, () => setCopied('Selecciónelo y cópielo con Ctrl+C.')); }
+    catch { setCopied('Selecciónelo y cópielo con Ctrl+C.'); }
+  };
+  const files = (parent?.supportData?.files || []);
 
   const handleStudy = async () => {
     setStep('processing');
@@ -114,8 +148,56 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
             </div>
           </div>
 
+          {/* #A103: qué cambia, motivo y lo que ya se compró */}
+          {info && <TripChangeBox request={request} isAdmin />}
+          {info && info.comprado && (
+            <div className="border border-gray-200 rounded-md p-3 text-sm space-y-2 bg-gray-50" data-change-parent-purchase>
+              <div className="font-bold text-gray-900">Lo que ya se compró ({info.padre})</div>
+              {parentState === 'loading' && <div className="text-xs text-gray-500">Cargando la compra original…</div>}
+              {parentState === 'error' && (
+                <div className="text-xs text-red-700">No se pudo cargar la solicitud original. <button type="button" className="underline font-semibold" onClick={loadParent}>Reintentar</button></div>
+              )}
+              <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-gray-500">Reserva (PNR)</dt><dd className="font-mono font-semibold">{pnr || '—'}</dd>
+                <dt className="text-gray-500">Aerolínea</dt><dd className="font-semibold">{airline || '—'}{(parent?.purchaseReturnAirline || c?.aerolineaRegreso) ? ` (regreso: ${parent?.purchaseReturnAirline || c?.aerolineaRegreso})` : ''}</dd>
+                <dt className="text-gray-500">Canal</dt><dd className="font-semibold">{parent?.purchaseChannel || c?.canal || '—'}</dd>
+                <dt className="text-gray-500">Tarifa</dt><dd className="font-semibold">{(parent?.fareType || c?.tarifa) ? fareShort(Number(parent?.fareType || c?.tarifa), airline) : '—'}{c?.maleta ? ', con maleta de bodega' : ''}</dd>
+                {(parent?.purchaseHotelName || c?.hotel) && (<><dt className="text-gray-500">Hotel</dt><dd className="font-semibold">{parent?.purchaseHotelName || c?.hotel}</dd></>)}
+                <dt className="text-gray-500">Valor pagado</dt>
+                <dd className="font-semibold">
+                  {typeof c?.pagadoTiquetes === 'number' ? `Tiquetes $${formatCop(c.pagadoTiquetes)}` : 'Tiquetes —'}
+                  {typeof c?.pagadoHotel === 'number' ? ` · Hotel $${formatCop(c.pagadoHotel)}` : ''}
+                  {` · Viaje: $${formatCop(Number(info.costoOriginal) || 0)} (${info.costoOriginalFuente === 'pagado' ? 'pagado' : 'cotizado'})`}
+                </dd>
+                <dt className="text-gray-500">Tarjeta</dt><dd className="font-semibold">{parent?.creditCard || c?.tarjeta || '—'}</dd>
+                <dt className="text-gray-500">Comprado el</dt><dd className="font-semibold">{(parent?.purchaseDate || c?.fechaCompra) ? formatToDDMMYYYY(parent?.purchaseDate || c?.fechaCompra) : '—'}</dd>
+              </dl>
+              {files.length > 0 && (
+                <ul className="space-y-1">
+                  {files.map(f => (
+                    <li key={f.id || f.url} className="flex items-center justify-between gap-2 bg-white border border-gray-200 rounded px-2 py-1 text-xs">
+                      <span className="min-w-0 break-all"><strong>{f.isReservation ? 'Reserva' : 'Soporte'}:</strong> {f.name}</span>
+                      <a href={f.url} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline font-semibold shrink-0">Abrir</a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {parent?.supportData?.folderUrl && (
+                <a href={parent.supportData.folderUrl} target="_blank" rel="noopener noreferrer" className="inline-block text-xs text-blue-700 underline font-semibold">Abrir la carpeta de la solicitud original</a>
+              )}
+              <div>
+                <div className="text-xs font-bold text-gray-700 mb-1">Mensaje para la agencia</div>
+                <textarea readOnly value={aviaturMsg} rows={6} className="w-full text-xs font-mono border border-gray-300 rounded p-2 bg-white" data-aviatur-msg onFocus={e => e.currentTarget.select()} />
+                <div className="flex items-center gap-2 mt-1">
+                  <button type="button" onClick={copyMsg} className="px-3 py-1.5 text-xs font-bold bg-white border border-gray-300 rounded hover:bg-gray-100">Copiar mensaje</button>
+                  {copied && <span className="text-xs text-green-700">{copied}</span>}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Motivo del cambio */}
-          {request.changeReason && (
+          {!info && request.changeReason && (
             <div className="bg-amber-50 border-l-4 border-amber-400 p-3 rounded">
               <div className="text-xs uppercase font-bold text-amber-900 mb-1">Motivo del cambio (del usuario)</div>
               <div className="text-sm text-amber-900 italic">"{request.changeReason}"</div>
@@ -123,7 +205,7 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
           )}
 
           {/* Aviso de costo extra */}
-          {request.parentWasReserved && (
+          {request.parentWasReserved && !info && (
             <div className="bg-red-50 border border-red-200 text-red-800 p-3 rounded text-sm">
               <strong>⚠️ Cambio con costo extra:</strong> la solicitud original ya estaba <strong>RESERVADA</strong>. Aceptar este cambio puede generar penalidades.
             </div>
@@ -140,8 +222,8 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
                   onClick={handleStudy}
                   className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-md font-bold text-sm flex flex-col items-center"
                 >
-                  <span className="text-base">✅ PASAR A ESTUDIO</span>
-                  <span className="text-xs font-normal mt-1 opacity-90">Aceptar y comenzar a gestionar</span>
+                  <span className="text-base">✅ {info ? 'ACEPTAR Y COTIZAR' : 'PASAR A ESTUDIO'}</span>
+                  <span className="text-xs font-normal mt-1 opacity-90">{info ? (info.comprado ? 'Cargar las opciones del cambio' : 'Cotizar como solicitud nueva') : 'Aceptar y comenzar a gestionar'}</span>
                 </button>
                 <button
                   onClick={() => { setError(''); setStep('confirmDeny'); }}

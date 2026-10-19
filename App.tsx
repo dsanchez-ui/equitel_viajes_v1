@@ -6,8 +6,9 @@ import { UserDashboard } from './components/UserDashboard';
 import { RequestDetail } from './components/RequestDetail';
 import { PinEntryModal } from './components/PinEntryModal';
 import { gasService, setOnSessionExpired, setOnHealthChange } from './services/gasService';
-import { TravelRequest, UserRole, Integrant, PolicyNotice } from './types';
+import { TravelRequest, UserRole, Integrant, PolicyNotice, TripChangeConfig } from './types';
 import { PolicyNoticeModal } from './components/PolicyNoticeModal';
+import { TripChangeModal } from './components/TripChangeModal';
 import { LOGO_URL, APP_VERSION } from './constants';
 
 const POLL_INTERVAL_MS = 30000;
@@ -66,6 +67,10 @@ type StoredRole = 'REQUESTER' | 'ANALYST' | 'SUPERADMIN';
 // #A77: permiso para saltar la etapa de aprobación, según bootstrap. Con un
 // backend anterior (sin el campo) se mantiene la regla vieja: superadmin. El
 // backend siempre revalida al ejecutar la acción.
+/** #A103: config de «Cambiar mi viaje» con la diferencia de reloj frente al servidor. null = servidor anterior. */
+const readTripChangeConfig = (tc: TripChangeConfig | null | undefined): TripChangeConfig | null =>
+  tc && tc.enabled ? { ...tc, clockOffset: tc.serverNow ? tc.serverNow - Date.now() : 0 } : null;
+
 const resolveCanSkipApproval = (data: { role?: string; canSkipApproval?: boolean }): boolean =>
   data.canSkipApproval === undefined ? data.role === 'SUPERADMIN' : data.canSkipApproval === true;
 
@@ -161,6 +166,9 @@ const App: React.FC = () => {
   const [canSkipApprovalFlag, setCanSkipApprovalFlag] = useState(false);
   // #A100: aviso de cómo funcionan ahora las solicitudes (lo decide el servidor en bootstrap).
   const [policyNotice, setPolicyNotice] = useState<PolicyNotice | null>(null);
+  // #A103: «Cambiar mi viaje» (lo activa el servidor en bootstrap) y el viaje que se está cambiando.
+  const [tripChangeConfig, setTripChangeConfig] = useState<TripChangeConfig | null>(null);
+  const [tripChangeTarget, setTripChangeTarget] = useState<TravelRequest | 'pick' | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [loginEmailInput, setLoginEmailInput] = useState('');
   const [showPinModal, setShowPinModal] = useState(false);
@@ -188,6 +196,7 @@ const App: React.FC = () => {
       setRole(UserRole.REQUESTER);
       setCanSkipApprovalFlag(false);
       setPolicyNotice(null);
+      setTripChangeTarget(null);
       setView('LIST');
       setLoading(false);
       alert('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
@@ -249,6 +258,7 @@ const App: React.FC = () => {
 
         setCanSkipApprovalFlag(resolveCanSkipApproval(data));
         setPolicyNotice(data.policyNotice && data.policyNotice.show ? data.policyNotice : null); // #A100
+        setTripChangeConfig(readTripChangeConfig(data.tripChange)); // #A103
 
         await handleLoginSuccess(stored.email, (data.role as StoredRole) || 'REQUESTER', resolvedIntegrantes, /*skipFetch=*/true);
       } catch (err: any) {
@@ -390,6 +400,7 @@ const App: React.FC = () => {
       setRole(UserRole.REQUESTER);
       setCanSkipApprovalFlag(false);
       setPolicyNotice(null);
+      setTripChangeTarget(null);
       setViewAsRequester(false);
       alert('No se pudo completar el inicio de sesión. Por favor intenta de nuevo.');
     } finally {
@@ -495,6 +506,7 @@ const App: React.FC = () => {
         // bootstrap ya retornó rol verificado server-side y los requests.
         setCanSkipApprovalFlag(resolveCanSkipApproval(data));
         setPolicyNotice(data.policyNotice && data.policyNotice.show ? data.policyNotice : null); // #A100
+        setTripChangeConfig(readTripChangeConfig(data.tripChange)); // #A103
         await handleLoginSuccess(pendingPinEmail, (data.role as StoredRole) || session.role, resolvedIntegrantes, /*skipFetch=*/true);
         return true;
       } catch (bootstrapErr) {
@@ -611,6 +623,7 @@ const App: React.FC = () => {
         setShowPinModal(false);
         setCanSkipApprovalFlag(resolveCanSkipApproval(data));
         setPolicyNotice(data.policyNotice && data.policyNotice.show ? data.policyNotice : null); // #A100
+        setTripChangeConfig(readTripChangeConfig(data.tripChange)); // #A103
         await handleLoginSuccess(pendingAdminEmail, (data.role as StoredRole) || sessionRole, loadedIntegrantes, /*skipFetch=*/true);
         return true;
       } catch (bootstrapErr) {
@@ -640,6 +653,7 @@ const App: React.FC = () => {
     setRole(UserRole.REQUESTER);
     setCanSkipApprovalFlag(false);
       setPolicyNotice(null);
+      setTripChangeTarget(null);
     setViewAsRequester(false);
     setLoginEmailInput('');
 
@@ -839,8 +853,18 @@ const App: React.FC = () => {
   // --- MODIFICATION FLOW ---
   const handleRequestModification = (req: TravelRequest) => {
     setSelectedRequest(null); // Close detail modal
+    // #A103: con un servidor que maneja «Cambiar mi viaje», se abre el formulario corto.
+    if (tripChangeConfig) { setTripChangeTarget(req); return; }
     setModificationRequest(req); // Set context
     setView('NEW'); // Go to form view
+  };
+
+  /** #A103: solo administradores: el formulario completo de siempre (pasajeros, centro de costo, hotel). */
+  const openFullModificationForm = (req: TravelRequest) => {
+    setTripChangeTarget(null);
+    setSelectedRequest(null);
+    setModificationRequest(req);
+    setView('NEW');
   };
 
   const handleFormCancel = () => {
@@ -1031,6 +1055,19 @@ const App: React.FC = () => {
           onNewRequest={() => setView('NEW')}
           onViewRequest={handleViewRequest}
           onRefresh={handleManualRefresh}
+          onChangeTrip={tripChangeConfig ? () => setTripChangeTarget('pick') : undefined}
+        />
+      )}
+
+      {tripChangeConfig && tripChangeTarget && (
+        <TripChangeModal
+          requests={requests}
+          initialRequest={tripChangeTarget === 'pick' ? null : tripChangeTarget}
+          isAdmin={isEffectiveAdmin}
+          config={tripChangeConfig}
+          onClose={() => setTripChangeTarget(null)}
+          onDone={handleManualRefresh}
+          onOpenFullForm={isEffectiveAdmin ? openFullModificationForm : undefined}
         />
       )}
 
@@ -1058,6 +1095,7 @@ const App: React.FC = () => {
           onModify={handleRequestModification}
           isAdmin={isEffectiveAdmin}
           canSkipApproval={isEffectiveSkipApprover}
+          tripChangeEnabled={!!tripChangeConfig}
         />
       )}
       {hydratingDetail && !selectedRequest && (

@@ -28,7 +28,9 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
+   Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
+   (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
@@ -45,7 +47,8 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + build + un solo .js  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + build + un solo .js  ← antes de cualquier push
+npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
 ```
@@ -381,6 +384,25 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     del viajero.
   - Cuadros de honor y de deshonor y «quién pide»: **últimos 3 meses**, 4 viajes o más (honor ≤ 20 % fuera; deshonor ≥ 60 %).
   - Correo + PDF + CSV del mes, sin cédulas. **Menú 15:** prueba que solo le llega a quien la corre (sin copia ni constancia).
+- **«Cambiar mi viaje»: cambios de viaje simplificados** (#A103; pedido de Yurani, reglas de David del 15-oct, prototipo aprobado
+  por Yurani el 19-oct). Botón grande 😕 en el panel del viajero; formulario corto (fechas, horas, destino, equipaje) y motivo.
+  - **Plazo:** hasta las **5:00 p. m. del día hábil anterior al vuelo** (sábado 12:00 m.; domingos y festivos no cuentan); la fecha
+    nueva también debe dar tiempo; con el viaje en curso, **solo el regreso**. El área de viajes registra a nombre del viajero **sin
+    plazo**. Gemelo `utils/changeWindow.ts` ↔ `_changeDeadline_` / `_tripChangeWindow_`.
+  - El navegador manda solo lo que cambia (`requestTripChange`); el servidor arma la hija con `requestModification`. La hija lleva
+    `CAMBIO PEDIDO (JSON)`, que **solo escribe el servidor** (nunca confiar en un `tripChange` del cliente).
+  - **Tiquete comprado:** la hija lleva **solo el costo del cambio** (penalidad en `PENALIDAD CAMBIO` + diferencia de tarifa + hotel); la
+    original **no se anula**: queda «Cambiada» (`REEMPLAZADA POR`) y su costo sigue contando. Cadena de Suministro se mide con el viaje
+    con el cambio. **Sin comprar:** se cotiza de nuevo y la original se anula al aprobar, como antes. Hijas sin JSON: reglas de antes.
+  - **Todo cambio pasa por el aprobador**, aunque cueste $0. Control en *Métricas → Cambios*, en la sección *Cambios de viaje* del
+    dashboard de costos (líder = sus unidades) y en el informe mensual.
+- **Comparador de precios: la cifra que se presenta** (#A104, auditoría del 19-oct). Por defecto el dashboard compara **solo viajes ya
+  comprados** (RESERVADO o PROCESADO, con la búsqueda al comprar) y **solo comparaciones exactas**, contra **lo pagado** (#A102) o, si
+  no se registró, lo cotizado; al lado, lo mismo **con la misma aerolínea**. Lo no comprado va aparte, nunca en el total; lo denegado o
+  anulado no se compara. «Exacta» exige además vuelo a ±2 h de la hora pedida, directo y al mismo aeropuerto (en Medellín, Clic y
+  Satena operan desde Olaya Herrera). La diferencia siempre es neta (nunca sumar solo los viajes a favor). Con la base del 19-oct:
+  4 viajes, $634.169 (22,6 %); con la misma aerolínea, $89.384 (3,2 %). Google se busca con el mismo número de pasajeros y su precio
+  es el total del grupo, como lo cotizado.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -425,7 +447,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, lo pagado al comprar; no son la factura 1), y `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO` (#A100) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, lo pagado al comprar; no son la factura 1), `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO` (#A100), y `CAMBIO PEDIDO (JSON)`, `PENALIDAD CAMBIO` y `REEMPLAZADA POR` (#A103) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -493,6 +515,9 @@ components/
   FareFields.tsx           Tarifa del manual COM-P-02: recomendada, excepción y aviso al cargar opciones (#A95); aviso del voto del CFO (#A100)
   PolicyNoticeModal.tsx    Ventana con las reglas nuevas de las solicitudes y «Entendido» con constancia (#A100)
   PolicyHeldPanel.tsx      Botón «En espera de preaprobación» del panel del analista: solo lectura (#A100)
+  TripChangeModal.tsx      «Cambiar mi viaje»: elegir el viaje, qué cambia, resumen y motivo (#A103)
+  TripChangeInfo.tsx       Antes / ahora, recuadro del cambio con su costo y aviso «Cambiada» (#A103)
+  ChangeControlPanel.tsx   Métricas → Cambios: costo de los cambios, penalidad y por unidad (#A103)
   InvoiceReviewPanel.tsx   Barra "Listas para cerrar" y "Facturas por revisar" del panel del analista (#A83)
   ReservationModal.tsx     Registrar reserva (+ guardado parcial, #A57)
   SupportUploadModal.tsx   Soportes post-aprobación
@@ -514,6 +539,7 @@ utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #
 utils/money.ts             Costos en pesos: formato, mínimo y valor pagado (gemelo de Code.gs, #A79, #A102)
 utils/purchase.ts          Aerolínea, canal de compra y hotel reservado (gemelo de Code.gs, #A82, #A94)
 utils/fare.ts              Tarifa del tiquete por noches y su justificación (gemelo de Code.gs, #A95)
+utils/changeWindow.ts      Plazo para pedir un cambio de viaje (gemelo de Code.gs, #A103)
 server/
   Code.gs                  Backend completo (~14.400 líneas)
   AdminSidebar.html        Sidebar de administración del Sheets
@@ -535,6 +561,8 @@ tools/check-fare-rules.cjs           Tarifa del manual; frontend y backend coinc
 tools/check-single-bundle.cjs        La app es un solo archivo JavaScript, sin cargas bajo demanda (#A96)
 tools/check-policy-approval.cjs      Aprobación del CFO por la política: espera, resumen, decisiones, vencimiento, tarifa y aviso (#A100)
 tools/check-monthly-report.cjs       Informe mensual de la política: primer día hábil, cifras, cuadros, CSV, envío una sola vez y prueba (#A101)
+tools/check-trip-change.cjs          Cambios de viaje: plazo igual en los dos lados, cambio con y sin compra, costo, aprobación, «Cambiada» (#A103)
+tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.gs real sobre una copia de la base; correos a una bandeja local (#A103)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
 tools/comparador-precios/apps-script/  Proyecto de Apps Script APARTE del rastreo de precios (#A84): Rastreo.gs, manifiesto y guía
@@ -636,13 +664,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A99, #A100 y #A101 desplegados el 14-oct-2026** (cifras del dashboard que se pueden presentar, aprobación del CFO
   por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
   hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
-- **Cambios de viaje simplificados** (pedido de Yurani, 15-oct): **solo plan y prototipo**, en
-  [docs/plan-cambios-de-viaje.md](docs/plan-cambios-de-viaje.md). Prototipo para Yurani y Laura:
-  <https://claude.ai/artifact/Ekx5v8GDaYnWvQ9B6aS1Nu>. No construir nada hasta su visto bueno y sus respuestas a la §9.
-  Reglas de David (15-oct): plazo hasta las 5 p. m. del día hábil anterior (sábado 12 m.); con el viaje en curso solo el
-  regreso; tiquete comprado con opciones y selección como hoy; todo cambio pasa por el aprobador, aunque cueste $0. Yurani
-  quiere ver el sobrecosto de cada cambio (la «jugada» de pedir Basic y después la maleta): la original comprada no se
-  anula, queda «Cambiada», y la hija lleva solo el costo del cambio.
+- **#A103 «Cambiar mi viaje» y #A104 cifras del comparador: construidos el 19-oct, pendientes de desplegar.** Antes del push,
+  David los prueba en el entorno local (`npm run prueba:local`). Despliegue: pegar `Code.gs`, `CostsDashboard.html` y `Rastreo.gs`
+  (proyecto aparte) → menú 12 (opcional) → versión nueva del web app → push del frontend. Después: avisarle a Laura del flujo nuevo
+  (el panel ya trae un aviso) y revisar con Yurani la cifra del comparador antes de mostrársela a Alejandro.
 - **Manuales dentro de la app** (David, 14-oct): **solo plan**, en
   [docs/plan-manuales-en-app.md](docs/plan-manuales-en-app.md) — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
 - **Informe por unidad para cada jefe** (posible segunda etapa de #A101): la presentación de Alejandro dice que «su jefe

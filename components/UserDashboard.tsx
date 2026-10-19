@@ -12,10 +12,13 @@ interface UserDashboardProps {
   onNewRequest: () => void;
   onViewRequest: (req: TravelRequest) => void;
   onRefresh?: () => void;
+  /** #A103: abre «Cambiar mi viaje». Sin él (servidor anterior) no se muestra el botón grande. */
+  onChangeTrip?: () => void;
 }
 
 const TERMINAL_STATUSES = ['ANULADO', 'PROCESADO', 'DENEGADO'];
 const PAGE_SIZE = 50;
+const CHANGE_NEWS_KEY = 'equitel_aviso_cambios_v1';
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
   requests,
@@ -23,11 +26,20 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
   isSyncing,
   onNewRequest,
   onViewRequest,
-  onRefresh
+  onRefresh,
+  onChangeTrip
 }) => {
   const [cancelRequest, setCancelRequest] = useState<TravelRequest | null>(null);
   const [dialog, setDialog] = useState<{ isOpen: boolean; title: string; message: string; type: 'ALERT' | 'SUCCESS'; onConfirm: () => void }>({ isOpen: false, title: '', message: '', type: 'ALERT', onConfirm: () => {} });
   const [page, setPage] = useState<number>(1);
+  // #A103: aviso del sistema nuevo de cambios, hasta que la persona lo cierre (en este navegador).
+  const [showChangeNews, setShowChangeNews] = useState<boolean>(() => {
+    try { return localStorage.getItem(CHANGE_NEWS_KEY) !== '1'; } catch { return true; }
+  });
+  const closeChangeNews = () => {
+    setShowChangeNews(false);
+    try { localStorage.setItem(CHANGE_NEWS_KEY, '1'); } catch { /* sin almacenamiento: vuelve a salir */ }
+  };
 
   // Orden descendente por timestamp para que las recientes salgan primero.
   // Si timestamp está vacío o inválido (sheet editado manualmente), cae al ID
@@ -80,6 +92,38 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
          </div>
          <button onClick={onNewRequest} className="bg-brand-red text-white px-5 py-2 rounded shadow hover:bg-red-700 transition font-bold uppercase text-xs tracking-wide">+ Nueva Solicitud</button>
        </div>
+
+       {/* #A103: aviso del sistema nuevo de cambios */}
+       {onChangeTrip && showChangeNews && (
+         <div role="status" className="bg-blue-50 border border-blue-200 text-blue-950 rounded-md p-4 text-sm leading-relaxed flex gap-3 items-start" data-change-news>
+           <span className="text-lg" aria-hidden="true">📣</span>
+           <div className="flex-1 space-y-1">
+             <p className="font-bold">Nuevo: los cambios de viaje se piden aquí, ya no por correo</p>
+             <p>
+               Con el botón <strong>«¿Necesita cambiar su viaje?»</strong> cambia la fecha, la hora, el destino o el equipaje en un minuto.
+               Se puede pedir <strong>hasta las 5:00 p. m. del día hábil anterior al vuelo</strong> (si ese día es sábado, hasta las 12:00 m.).
+               Si el tiquete ya está comprado, el cambio tiene costo y lo aprueba su jefe.
+             </p>
+           </div>
+           <button type="button" onClick={closeChangeNews} className="text-blue-800 hover:text-blue-950 text-xs font-bold underline shrink-0">Entendido</button>
+         </div>
+       )}
+
+       {onChangeTrip && (
+         <button
+           type="button"
+           onClick={onChangeTrip}
+           data-change-trip-button
+           className="w-full flex flex-wrap sm:flex-nowrap items-center gap-4 text-left rounded-xl border-2 border-amber-600 bg-amber-50 px-5 py-4 hover:shadow-md transition"
+         >
+           <span className="text-4xl leading-none" aria-hidden="true">😕</span>
+           <span className="flex-1 min-w-0">
+             <span className="block text-lg font-bold text-gray-900">¿Necesita cambiar su viaje?</span>
+             <span className="block text-sm text-gray-600">Fecha, hora, destino o equipaje. Toma un minuto.</span>
+           </span>
+           <span className="bg-brand-red text-white px-4 py-2 rounded font-bold uppercase text-xs tracking-wide shrink-0">Pedir un cambio</span>
+         </button>
+       )}
        
        {isLoading ? (
          <div className="flex justify-center items-center h-64 bg-white rounded-lg border border-gray-200">
@@ -157,7 +201,8 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                     )}
                  </div>
 
-                 {req.relatedRequestId && <p className="text-xs text-blue-500 mt-2">Vinculada a {req.relatedRequestId}</p>}
+                 {req.relatedRequestId && <p className="text-xs text-blue-500 mt-2">{req.tripChange ? 'Cambio de' : 'Vinculada a'} {req.relatedRequestId}</p>}
+                 {req.replacedBy && <p className="text-xs font-semibold text-gray-700 bg-gray-100 rounded px-2 py-1 mt-2" data-replaced-chip>🔄 Cambiada por {req.replacedBy}: el viaje vigente es esa.</p>}
 
                  {req.status === RequestStatus.PENDING_POLICY_APPROVAL && (
                    <p className="mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded p-2 leading-snug">
@@ -169,7 +214,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                  <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
                     <div className="flex items-center gap-3">
                       <span className="text-xs font-bold text-gray-400 uppercase">{req.passengers.length} Pasajero(s)</span>
-                      {!TERMINAL_STATUSES.includes(req.status) && (
+                      {!TERMINAL_STATUSES.includes(req.status) && !req.replacedBy && (
                         <button
                           onClick={(e) => { e.stopPropagation(); setCancelRequest(req); }}
                           className="text-[10px] text-gray-400 hover:text-red-600 transition-colors underline"

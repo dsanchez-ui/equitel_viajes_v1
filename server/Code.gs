@@ -398,6 +398,8 @@ function _resetPerExecutionCaches_() {
   _CS_ACCESS_CACHE = null;
   _CS_CONFIG_CACHE = null;
   _PASSPORT_FOLDER_CACHE = null;
+  _TRIP_CHANGE_KEEP_OT = null;
+  _TRIP_CHANGE_PENDING_INFO = null;
 }
 
 /**
@@ -600,7 +602,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['ackPolicyNotice', 'createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport', 'setPurchaseInfo', 'dismissInvoiceAlert'].includes(action);
+  const isWriteAction = ['ackPolicyNotice', 'createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport', 'setPurchaseInfo', 'dismissInvoiceAlert', 'requestTripChange'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -631,7 +633,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'getPolicyHeldRequests', 'dismissInvoiceAlert', 'getPriceTracking', 'getPriceTrackingDetail'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'getPolicyHeldRequests', 'dismissInvoiceAlert', 'getPriceTracking', 'getPriceTrackingDetail', 'getChangeControl'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -674,7 +676,7 @@ function dispatch(action, payload) {
 
     // #A100: una solicitud en espera de la aprobación del CFO no se gestiona
     // (no la ve el área de viajes; esto corta también llamadas directas al API).
-    const policyGuardedActions = ['updateRequest', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'setPurchaseInfo', 'uploadSupportFile', 'closeRequest', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'requestModification'];
+    const policyGuardedActions = ['updateRequest', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'setPurchaseInfo', 'uploadSupportFile', 'closeRequest', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'requestModification', 'requestTripChange'];
     if (policyGuardedActions.includes(action) && payload) {
       _assertNotPolicyHold_(payload.requestId || payload.id);
     }
@@ -798,6 +800,10 @@ function dispatch(action, payload) {
       // REFACTORED MODIFICATION LOGIC
       case 'requestModification': result = requestModification(payload.requestId, payload.modifiedRequest, payload.changeReason, payload.emailHtml, currentUserEmail); break;
       case 'processChangeDecision': result = processChangeDecision(payload); break;
+      // #A103: «Cambiar mi viaje»: el navegador manda solo lo que cambia; el servidor arma la hija.
+      case 'requestTripChange': result = requestTripChange(payload.requestId, payload.changes, payload.changeReason, currentUserEmail); break;
+      // #A103: control de cambios (solo administradores, solo lectura).
+      case 'getChangeControl': result = getChangeControl(); break;
 
       // SUPERADMIN: saltar etapa PENDIENTE_SELECCION
       case 'skipSelectionStage': result = skipSelectionStage(payload.requestId, payload.justification, currentUserEmail); break;
@@ -814,6 +820,7 @@ function dispatch(action, payload) {
       case 'resetCostsDashboardConfig': result = resetCostsDashboardConfig(currentUserEmail); break;
       case 'getCostsVarianceReport': result = getCostsVarianceReport(payload.filters, currentUserEmail, payload.fresh === true); break;
       case 'getPriceTracking': result = getPriceTracking(currentUserEmail, payload.fresh === true); break;
+      case 'getTripChangesForDashboard': result = getTripChangesForDashboard(currentUserEmail, payload.fresh === true); break; // #A103
       case 'getPriceTrackingDetail': result = getPriceTrackingDetail(currentUserEmail, payload.requestId, payload.fresh === true); break;
       case 'getMonthlyBudgetUsage': result = getMonthlyBudgetUsage(payload.empresa, payload.unidad); break;
 
@@ -2450,7 +2457,8 @@ function processApprovalFromEmail(e) {
           // solo interviene en solicitudes INTERNACIONALES (donde es OR con CDS).
           // El CDS sí interviene en ambos casos (internacional + alto costo).
           const requiresCeoApproval = isInternational;
-          const requiresCdsApproval = isInternational || totalCost > 1200000;
+          // #A103: en un cambio de tiquete comprado cuenta el viaje con el cambio.
+          const requiresCdsApproval = isInternational || _cdsCostBase_(totalCost, currentRow[H(TRIP_CHANGE_HEADER)]) > 1200000;
           const requiresExecutiveApproval = requiresCeoApproval || requiresCdsApproval;
 
           // #A100: en espera del CFO por la política de anticipación. Ningún enlace
@@ -3056,6 +3064,9 @@ function registerReservation(requestId, reservationNumber, files, creditCard, pu
 
     // METRICS: registrar evento de reserva completada
     _recordEvent_(requestId, 'reservationRegistered');
+
+    // #A103: si es un cambio nuevo, la solicitud original queda «Cambiada» (no crítico).
+    if (H(TRIP_CHANGE_HEADER) > -1) _markParentReplaced_(requestId, sheet, rowNumber);
 
     return true;
 }
@@ -3912,6 +3923,10 @@ function _ensureA82A83Columns_() {
     { header: POLICY_DECISION_HEADER, col: _ensureRequestColumn_(POLICY_DECISION_HEADER, POLICY_DECISION_NOTE) },
     { header: FARE_CFO_FLAG_HEADER, col: _ensureRequestColumn_(FARE_CFO_FLAG_HEADER, FARE_CFO_FLAG_NOTE) },
     { header: POLICY_GROUP_HEADER, col: _ensureRequestColumn_(POLICY_GROUP_HEADER, POLICY_GROUP_NOTE) },
+    // #A103: cambios de viaje.
+    { header: TRIP_CHANGE_HEADER, col: _ensureRequestColumn_(TRIP_CHANGE_HEADER, TRIP_CHANGE_NOTE) },
+    { header: CHANGE_PENALTY_HEADER, col: _ensureRequestColumn_(CHANGE_PENALTY_HEADER, CHANGE_PENALTY_NOTE) },
+    { header: REPLACED_BY_HEADER, col: _ensureRequestColumn_(REPLACED_BY_HEADER, REPLACED_BY_NOTE) },
     { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
       'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
   ];
@@ -4984,8 +4999,10 @@ const HtmlTemplates = {
         // mostrar ambos genera redundancia e inconsistencia textual).
         // R10: solo aporta info única en el caso ALTO COSTO NACIONAL.
         const totalCost = Number(request.totalCost) || 0;
-        if (totalCost > 1200000 && !isPriorityAppr && !request.isInternational) {
-            alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud ($${totalCost.toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Dirección de Cadena de Suministro y Aprobador de Área.</div>`;
+        // #A103: en un cambio de tiquete comprado, el tope se mide con el viaje con el cambio.
+        const cdsBaseAppr = request.cdsCostBase !== undefined ? Number(request.cdsCostBase) || 0 : totalCost;
+        if (cdsBaseAppr > 1200000 && !isPriorityAppr && !request.isInternational) {
+            alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> ${cdsBaseAppr !== totalCost ? 'El viaje con el cambio' : 'El costo total de esta solicitud'} ($${cdsBaseAppr.toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Dirección de Cadena de Suministro y Aprobador de Área.</div>`;
         }
 
         // INTERNATIONAL BANNER — mismo razonamiento.
@@ -5051,7 +5068,10 @@ const HtmlTemplates = {
             alertHtml += `<div style="background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 12px; border-radius: 4px; margin-bottom: 10px; font-size: 12px;"><strong>ℹ️ SOLICITUD VINCULADA:</strong> Esta solicitud reemplaza a la solicitud <strong>${request.relatedRequestId}</strong>, creada hace <strong>${diffDays} días</strong>.</div>`;
         }
 
-        if (request.parentWasReserved) {
+        // #A103: un cambio nuevo trae su propio bloque (qué cambia, motivo y costo del cambio).
+        const chgInfo = request.tripChange && request.tripChange.v ? request.tripChange : null;
+        if (chgInfo) alertHtml = this._tripChangeBlock(request, chgInfo) + alertHtml;
+        if (request.parentWasReserved && !chgInfo) {
             alertHtml += `<div style="background-color: #fee2e2; border: 1px solid #fecaca; color: #991b1b; padding: 12px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; border-left: 4px solid #ef4444;"><strong style="display:block; margin-bottom:4px; font-size:14px;">⚠️ CAMBIO CON COSTO EXTRA</strong>La solicitud original ya tenía ${isHotelOnlyAppr ? 'reserva de hotel' : 'tiquetes comprados'} (Etapa: RESERVADO).<br/>Este cambio generará penalidades o costos adicionales que se están aprobando.</div>`;
         }
 
@@ -5068,8 +5088,9 @@ const HtmlTemplates = {
 
             ${this._renderOptionsGallery(request)}
 
+            ${chgInfo && chgInfo.comprado ? this._tripChangeCosts(request, chgInfo) : ''}
             <!-- FINAL COSTS TABLE -->
-            <div style="background-color: #ffffff; border: 1px solid #e5e7eb; padding: 0; border-radius: 8px; margin-bottom: 25px; overflow: hidden;">
+            <div style="${chgInfo && chgInfo.comprado ? 'display:none; ' : ''}background-color: #ffffff; border: 1px solid #e5e7eb; padding: 0; border-radius: 8px; margin-bottom: 25px; overflow: hidden;">
                 <div style="background-color: #111827; color: white; padding: 10px 15px; font-size: 13px; font-weight: bold; text-transform: uppercase;">
                     Resumen de Costos (Aprobados por Analista)
                 </div>
@@ -5097,7 +5118,7 @@ const HtmlTemplates = {
             <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 30px 0;">
             ${this._getFullSummary(request)}
             `;
-        return this.layout(`${request.requestId}`, content, '#1f2937', 'APROBACIÓN REQUERIDA');
+        return this.layout(`${request.requestId}`, content, '#1f2937', chgInfo ? 'APROBACIÓN DE CAMBIO' : 'APROBACIÓN REQUERIDA');
     },
 
     // DECISION NOTIFICATION EMAIL (Updated with Full Summary)
@@ -5218,6 +5239,50 @@ const HtmlTemplates = {
             ${this._getFullSummary(request)}
         `;
         return this.layout(`${request.requestId}`, content, '#2563eb', isHotelOnly ? 'HOTEL RESERVADO' : 'TIQUETES COMPRADOS');
+    },
+
+    // #A103: bloque del cambio en el correo de aprobación: qué cambia, motivo y aviso de la maleta.
+    _tripChangeBlock: function(request, info) {
+        const parentId = escapeHtml_(info.padre || request.relatedRequestId || '');
+        const lead = info.comprado
+            ? `Usted aprueba el <strong>costo del cambio</strong>: el viaje original (${parentId}) ya se aprobó y se pagó.`
+            : `El viaje original (${parentId}) aún no se había comprado: usted aprueba el viaje completo con los cambios.`;
+        const bag = _tripChangeBagLater_(info)
+            ? `<div style="background-color:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:10px 12px; margin-top:10px; font-size:12px; color:#9a3412;"><strong>La maleta se pidió después de comprar el tiquete.</strong> Pedida desde el principio no habría penalidad.</div>` : '';
+        return `
+            <div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:8px; padding:14px 16px; margin-bottom:18px;">
+                <div style="font-size:12px; font-weight:bold; color:#92400e; text-transform:uppercase; margin-bottom:6px;">Cambio de ${parentId}${info.comprado ? ' · tiquete ya comprado' : ''}</div>
+                <p style="font-size:13px; color:#374151; margin:0 0 8px;">${lead}</p>
+                ${_tripChangeRowsHtml_(info)}
+                ${request.changeReason ? `<div style="font-size:12px; color:#6b7280; margin-top:8px;"><strong>Motivo:</strong> <em>"${escapeHtml_(request.changeReason)}"</em></div>` : ''}
+                ${bag}
+            </div>`;
+    },
+
+    // #A103: costo de un cambio de tiquete comprado, al lado de lo que costó el viaje.
+    _tripChangeCosts: function(request, info) {
+        const tickets = Number(request.finalCostTickets) || 0;
+        const hotel = Number(request.finalCostHotel) || 0;
+        const change = Number(request.totalCost) || (tickets + hotel);
+        const penalty = Math.min(tickets, Number(request.changePenalty) || 0);
+        const orig = Number(info.costoOriginal) || 0;
+        const fmt = (n) => '$' + Math.round(n).toLocaleString('es-CO');
+        const pct = orig > 0 ? Math.round(100 * change / orig) + ' %' : '';
+        const row = (label, value, style) => `<tr><td style="border-bottom:1px solid #e5e7eb; color:#6b7280; ${style || ''}">${label}</td><td style="border-bottom:1px solid #e5e7eb; text-align:right; font-weight:bold; ${style || ''}">${value}</td></tr>`;
+        return `
+            ${change === 0 ? '<div style="background-color:#eff6ff; border:1px solid #bfdbfe; color:#1e3a8a; padding:10px 12px; border-radius:6px; margin-bottom:12px; font-size:13px;"><strong>Este cambio no tiene costo.</strong> Igual necesita su aprobación.</div>' : ''}
+            <div style="background-color:#ffffff; border:1px solid #e5e7eb; border-radius:8px; margin-bottom:25px; overflow:hidden;">
+                <div style="background-color:#111827; color:white; padding:10px 15px; font-size:13px; font-weight:bold; text-transform:uppercase;">Costo del cambio</div>
+                <table width="100%" cellpadding="10" cellspacing="0">
+                    ${row('Viaje original (ya aprobado y pagado)', fmt(orig))}
+                    ${request.requestMode !== 'HOTEL_ONLY' ? row('Penalidad y cargos (lo que se pierde por cambiar)', fmt(penalty), 'padding-left:24px;') : ''}
+                    ${request.requestMode !== 'HOTEL_ONLY' ? row('Diferencia de tarifa', fmt(tickets - penalty), 'padding-left:24px;') : ''}
+                    ${row('Hotel', fmt(hotel), 'padding-left:24px;')}
+                    <tr style="background-color:#fef3c7;"><td style="color:#111827; font-weight:bold;">COSTO DEL CAMBIO: lo que usted aprueba</td><td style="color:#D71920; font-weight:bold; font-size:16px; text-align:right;">${fmt(change)}</td></tr>
+                    ${row('Viaje con el cambio', fmt(orig + change))}
+                </table>
+            </div>
+            ${pct ? `<p style="font-size:12px; color:#6b7280; margin:-14px 0 22px;">El cambio suma ${pct} sobre lo que costó el viaje.</p>` : ''}`;
     },
 
     modificationResult: function(request, decision) {
@@ -5386,6 +5451,14 @@ function renderMessagePage(title, message, color) {
  */
 function _hideFareInternals_(req) {
   if (req) { req.fareRecommended = ''; req.fareJustification = ''; req.purchasePaidTickets = ''; req.purchasePaidHotel = ''; }
+  // #A103: el desglose del cambio y lo pagado del viaje original, solo administradores.
+  if (req && req.changePenalty !== undefined) req.changePenalty = '';
+  if (req && req.tripChange) {
+    var tc = JSON.parse(JSON.stringify(req.tripChange));
+    if (tc.compra) { tc.compra.pagadoTiquetes = ''; tc.compra.pagadoHotel = ''; tc.compra.tarjeta = ''; }
+    if (tc.costoOriginalFuente === 'pagado') { tc.costoOriginal = 0; tc.costoOriginalFuente = ''; }
+    req.tripChange = tc;
+  }
   return req;
 }
 
@@ -5630,6 +5703,8 @@ function bootstrap(integrantesHash, sessionEmail, sessionToken) {
     canSkipApproval: _canSkipApproval_(sessionEmail),
     // #A100: aviso de cómo funcionan ahora las solicitudes (semana del 19-oct).
     policyNotice: (function() { try { return _policyNoticeFor_(sessionEmail); } catch (e) { console.warn('bootstrap policyNotice: ' + e); return null; } })(),
+    // #A103: que la clave llegue activa «Cambiar mi viaje» en la app (con un servidor anterior sigue el formulario de siempre).
+    tripChange: _tripChangePublicInfo_(),
     integrantesHash: currentHash,
     requestsLite: requestsLite
   };
@@ -5939,6 +6014,11 @@ function _normalizeWorkOrder_(raw) {
  */
 function _validateAndNormalizeWorkOrder_(data) {
   if (!data) return;
+  // #A103: un cambio de viaje copia la OT de la solicitud original tal como está (pudo crearse antes de #A66).
+  if (_TRIP_CHANGE_KEEP_OT !== null && String(data.workOrder == null ? '' : data.workOrder).trim() === _TRIP_CHANGE_KEEP_OT) {
+    data.workOrder = _TRIP_CHANGE_KEEP_OT;
+    return;
+  }
   var original = String(data.workOrder === null || data.workOrder === undefined ? '' : data.workOrder).trim();
   if (!original) { data.workOrder = ''; return; }
 
@@ -6183,6 +6263,8 @@ function createNewRequest(data, emailHtml, policy) {
   set("ID SOLICITUD PADRE", data.relatedRequestId || '');
   set("TIPO DE SOLICITUD", data.requestType || 'ORIGINAL');
   set("TEXTO_CAMBIO", safeSheetValue_(data.changeReason || ''));
+  // #A103: lo que pidió cambiar el viajero. Lo pone solo requestTripChange (nunca un dato del navegador).
+  if (_TRIP_CHANGE_PENDING_INFO) set(TRIP_CHANGE_HEADER, JSON.stringify(_TRIP_CHANGE_PENDING_INFO));
   if (data.hasChangeFlag) set("FLAG_CAMBIO_REALIZADO", "CAMBIO GENERADO");
 
   // METADATA COLUMNS
@@ -7335,6 +7417,14 @@ function updateRequestStatus(id, status, payload) {
                console.error('updateRequestStatus: no se pudo guardar aerolínea/canal de ' + id + ': ' + e);
            }
        }
+       // #A103: penalidad del cambio, ya validada en _normalizeChangePenalty_.
+       if (payload.changePenalty !== undefined) {
+           try {
+               sheet.getRange(rowNumber, _ensureRequestColumn_(CHANGE_PENALTY_HEADER, CHANGE_PENALTY_NOTE)).setValue(payload.changePenalty);
+           } catch (e) {
+               console.error('updateRequestStatus: no se pudo guardar la penalidad del cambio de ' + id + ': ' + e);
+           }
+       }
        // #A95: ya validada en _normalizeFarePayload_.
        if (payload.fare && payload.fare.ok) {
            try {
@@ -7411,7 +7501,11 @@ function updateRequestStatus(id, status, payload) {
             var _empresa = compIdx > -1 ? String(sheet.getRange(rowNumber, compIdx + 1).getValue() || '') : '';
             var _costo = costIdx > -1 ? Number(sheet.getRange(rowNumber, costIdx + 1).getValue() || 0) : 0;
             var _parentId = parentIdx > -1 ? String(sheet.getRange(rowNumber, parentIdx + 1).getValue() || '').trim() : '';
-            var _excludeIds = _parentId ? [id, _parentId] : [id];
+            // #A103: en un cambio nuevo de un tiquete comprado la padre NO se anula y su costo sigue
+            // contando; el cambio suma solo su costo. Entonces no se excluye la padre.
+            var _tcIdxB = H(TRIP_CHANGE_HEADER);
+            var _tcB = _tcIdxB > -1 ? _parseTripChangeInfo_(sheet.getRange(rowNumber, _tcIdxB + 1).getValue()) : null;
+            var _excludeIds = (_parentId && !(_tcB && _tcB.comprado)) ? [id, _parentId] : [id];
             var _chk = _calcularEjecutadoPeriodo_(_empresa, _unidad, _costo, _excludeIds);
             // IDEMPOTENCIA (2026-05-26): leer el valor actual de la columna
             // ANTES de decidir si escribir la nota. Si `updateRequestStatus`
@@ -7703,7 +7797,7 @@ function sendApprovalRequestEmail(req) {
     const totalCost = Number(req.totalCost) || 0;
     // R10: CEO se excluye del flujo de alto costo nacional.
     const requiresCeoApproval = req.isInternational;
-    const requiresCdsApproval = req.isInternational || totalCost > 1200000;
+    const requiresCdsApproval = req.isInternational || (req.cdsCostBase !== undefined ? Number(req.cdsCostBase) || 0 : totalCost) > 1200000; // #A103
     const subject = getStandardSubject(req) + " - APROBACIÓN REQUERIDA";
 
     const sendOne = function(email, role) {
@@ -8028,6 +8122,8 @@ function _authorizeStatusUpdate_(currentUserEmail, payload) {
     }
     // #A95: tarifa del tiquete (si la app la manda); la recomendada la calcula el servidor.
     inner = _normalizeFarePayload_(id, inner);
+    // #A103: penalidad de un cambio (la parte del costo del cambio que se pierde). Solo si la clave viene.
+    if (inner.changePenalty !== undefined) inner = _normalizeChangePenalty_(inner);
     return { id: id, status: status, payload: inner };
   }
   if (status !== 'PENDIENTE_CONFIRMACION_COSTO') {
@@ -8484,8 +8580,15 @@ function mapRowToRequest(row, lite) {
     // Valor pagado al comprar (#A102): pesos o '' si no se registró. Que la clave venga le dice a la
     // app que este servidor ya lo guarda. Solo administradores (_hideFareInternals_).
     purchasePaidTickets: _paidCellValue_(get(PAID_TICKETS_HEADER)),
-    purchasePaidHotel: _paidCellValue_(get(PAID_HOTEL_HEADER))
+    purchasePaidHotel: _paidCellValue_(get(PAID_HOTEL_HEADER)),
+    // #A103: lo que pidió cambiar el viajero (solo en las hijas nuevas; null en las demás) y, en la
+    // original, la solicitud que la reemplazó. Que las claves vengan le dice a la app que el servidor ya los maneja.
+    tripChange: _parseTripChangeInfo_(get(TRIP_CHANGE_HEADER)),
+    replacedBy: String(get(REPLACED_BY_HEADER) || '').trim(),
+    changePenalty: _paidCellValue_(get(CHANGE_PENALTY_HEADER))
   };
+  // #A103: en un cambio de tiquete comprado, Cadena de Suministro aprueba si el viaje CON el cambio supera el tope.
+  result.cdsCostBase = _cdsCostBase_(result.totalCost, result.tripChange);
 
   // Compute and attach the EFFECTIVE approval status (mirrors the rules in
   // sendApprovalRequestEmail and processApprovalFromEmail). This lets the
@@ -8517,7 +8620,7 @@ function mapRowToRequest(row, lite) {
       requesterEmailRaw,
       approverEmailRaw,
       result.isInternational,
-      result.totalCost,
+      result.cdsCostBase,
       get("APROBADO POR ÁREA? (AUTOMÁTICO)"),
       get("APROBADO CEO"),
       get("APROBADO CDS"),
@@ -8638,7 +8741,7 @@ function reevaluarAprobacionPendiente(requestId) {
 
   var totalCost = Number(req.totalCost) || 0;
   var requiresCeoApproval = req.isInternational;
-  var requiresCdsApproval = req.isInternational || totalCost > 1200000;
+  var requiresCdsApproval = req.isInternational || (req.cdsCostBase !== undefined ? Number(req.cdsCostBase) || 0 : totalCost) > 1200000; // #A103
   var requiresExec = requiresCeoApproval || requiresCdsApproval;
 
   var areaApproved = req.effectiveApprovalArea === 'APPROVED';
@@ -8897,7 +9000,7 @@ function sendPendingApprovalReminders() {
       const totalCost = Number(request.totalCost) || 0;
       // R10: CEO solo en internacional, CDS en internacional + alto costo.
       const requiresCeoApproval = request.isInternational;
-      const requiresCdsApproval = request.isInternational || totalCost > 1200000;
+      const requiresCdsApproval = request.isInternational || (request.cdsCostBase !== undefined ? Number(request.cdsCostBase) || 0 : totalCost) > 1200000; // #A103
       const requiresExecutiveApproval = requiresCeoApproval || requiresCdsApproval;
       const ceoLowerRem = String(CEO_EMAIL).toLowerCase().trim();
       const cdsLowerRem = String(DIRECTOR_EMAIL).toLowerCase().trim();
@@ -9753,6 +9856,13 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
     throw new Error("Esta solicitud ya está en estado " + currentStatus + " y no se puede anular.");
   }
 
+  // #A103: una original «Cambiada» no se anula: su tiquete se pagó. Se anula el cambio, si ya no viaja.
+  var _replacedIdx = H(REPLACED_BY_HEADER);
+  var _replacedBy = _replacedIdx > -1 ? String(sheet.getRange(rowNumber, _replacedIdx + 1).getValue() || '').trim() : '';
+  if (_replacedBy) {
+    throw new Error('Este viaje ya se cambió por ' + _replacedBy + '. Si ya no viaja, anule ' + _replacedBy + '.');
+  }
+
   // #A43: no anular si hay hija de cambio activa — dejaría huérfana.
   if (_parentHasActiveChild_(sheet, requestId)) {
     throw new Error('Esta solicitud tiene una solicitud de cambio activa. El área de viajes debe resolver el cambio antes de anular.');
@@ -9827,6 +9937,20 @@ function _cancelParentIfModificationApproved_(childId, sheet) {
     var parentStatus = String(sheet.getRange(parentRow, statusIdx + 1).getValue() || '').trim().toUpperCase();
     if (parentStatus === 'ANULADO' || parentStatus === 'PROCESADO' || parentStatus === 'DENEGADO') {
       return; // ya terminal — no sobrescribir (idempotente)
+    }
+
+    // #A103: en un cambio nuevo («Cambiar mi viaje») de un tiquete ya comprado, la original NO se anula:
+    // ese tiquete se pagó y su costo sigue contando; la hija lleva solo el costo del cambio. Queda
+    // «Cambiada» (REEMPLAZADA POR) cuando se registra el tiquete nuevo. Las hijas de antes siguen igual.
+    var tcIdx = H(TRIP_CHANGE_HEADER);
+    var tcInfo = tcIdx > -1 ? _parseTripChangeInfo_(sheet.getRange(childRow, tcIdx + 1).getValue()) : null;
+    if (tcInfo && parentStatus === 'RESERVADO') {
+      if (obsIdx > -1) {
+        var keepObs = sheet.getRange(parentRow, obsIdx + 1).getValue();
+        sheet.getRange(parentRow, obsIdx + 1).setValue((keepObs ? keepObs + '\n' : '') + '[SISTEMA]: Se aprobó el cambio ' + childId +
+          '. Esta solicitud no se anula (el tiquete se pagó); queda «Cambiada» cuando se registre el tiquete nuevo.');
+      }
+      return;
     }
 
     sheet.getRange(parentRow, statusIdx + 1).setValue('ANULADO');
@@ -14795,7 +14919,8 @@ function _psRecord_(row) {
   var invoiced = 0;
   ['TOTAL FACTURA', 'TOTAL FACTURA 2', 'TOTAL FACTURA 3', 'TOTAL FACTURA 4'].forEach(function(h) { invoiced += _csToNumber_(cell(h)); });
   return {
-    counted: PS_COUNTABLE_STATUSES.indexOf(status) !== -1,
+    // #A103: un cambio de tiquete comprado no es una compra de tiquetes nueva (su costo es el del cambio).
+    counted: PS_COUNTABLE_STATUSES.indexOf(status) !== -1 && !_rowIsBoughtChange_(row),
     flight: flight, international: international, route: route, destination: destination,
     requestKey: requestKey, purchaseKey: purchaseKey, baseKey: purchaseKey || requestKey || departKey,
     pax: pax, roundTrip: !!returnKey, tickets: tickets, nights: nights,
@@ -18035,6 +18160,7 @@ function _ptSnapshot_(r, withOptions) {
  * quality: qué tan comparable es el precio de Google con esa tarifa (_ptQuality_).
  */
 function _ptFare_(row, cell, snaps) {
+  var boughtAirlines = { ida: String(cell(row, 'AEROLINEA') || '').trim(), regreso: String(cell(row, 'AEROLINEA REGRESO') || '').trim() || String(cell(row, 'AEROLINEA') || '').trim() };
   var type = _fareOptionValue_(cell(row, FARE_TYPE_HEADER));
   var rec = _fareOptionValue_(cell(row, FARE_RECOMMENDED_HEADER)) ||
     _fareOptionForNights_(_fareNights_(_psDateKey_(cell(row, 'FECHA IDA')), _psDateKey_(cell(row, 'FECHA VUELTA')), cell(row, '# NOCHES (AUTOMÁTICO)')));
@@ -18046,7 +18172,7 @@ function _ptFare_(row, cell, snaps) {
   var ref = match || ok[0] || null;
   // #A98: si el viajero pidió maleta de bodega, Google no la deja pedir (salvo la Classic de Avianca, que la trae).
   var needsChecked = _checkedBaggageFromCell_(cell(row, CHECKED_BAG_HEADER)) === true;
-  var q = _ptQuality_(eff, ref, !!match, needsChecked);
+  var q = _ptQuality_(eff, ref, !!match, needsChecked, boughtAirlines);
   return {
     ref: ref,
     level: level,
@@ -18077,6 +18203,46 @@ function _ptRefAirlines_(snap) {
   return String(joined || '').split('/').map(function(x) { return x.trim(); }).filter(Boolean);
 }
 
+/** Tramos de una búsqueda que forman el precio de referencia (formato 2 o más). */
+function _ptRefLegs_(snap) {
+  var legs = (snap && snap.format >= 2 && snap.legs) || [];
+  var rt = legs.filter(function(l) { return l.leg === 'IDA Y VUELTA'; });
+  if (snap && snap.referenceKind === 'IDA Y VUELTA' && rt.length) return rt;
+  return legs.filter(function(l) { return l.leg === 'IDA' || l.leg === 'REGRESO'; });
+}
+
+/**
+ * Por qué el vuelo de Google no es el mismo producto que el comprado (#A104); '' si lo es.
+ *   - Se pidió una hora y Google no tenía vuelo a ±2 h: la referencia es la más barata del día.
+ *   - Ese día no había vuelo directo: la referencia tiene escala (a los viajeros no se les compran).
+ *   - Medellín: Clic y Satena operan desde Olaya Herrera (EOH) y las demás desde Rionegro (MDE).
+ *     Google busca los dos aeropuertos juntos; si la referencia es de otro aeropuerto que la compra,
+ *     no es el mismo viaje (SOL-000652: Clic a Olaya Herrera frente a LATAM a Rionegro).
+ */
+function _ptProductGap_(ref, boughtAirlines) {
+  var legs = _ptRefLegs_(ref).filter(function(l) { return l.ok !== false; });
+  for (var i = 0; i < legs.length; i++) {
+    if (legs[i].hour && legs[i].referenceIsNear === false) return 'Google no tenía vuelo directo a ±2 h de la hora pedida: se comparó con el más barato del día';
+  }
+  for (var j = 0; j < legs.length; j++) {
+    if (legs[j].directOnly === false) return 'ese día no había vuelo directo: el precio de Google es de un vuelo con escala';
+  }
+  var eoh = /clic|easyfly|satena/i;
+  for (var k = 0; k < legs.length; k++) {
+    var l = legs[k];
+    if (l.leg === 'IDA Y VUELTA' || !/EOH/.test(String(l.from) + String(l.to))) continue;
+    var o = l.referenceIsNear ? l.near : l.cheapest;
+    var refAir = o && o.airline ? String(o.airline) : '';
+    var bought = boughtAirlines ? String((l.leg === 'REGRESO' ? boughtAirlines.regreso : boughtAirlines.ida) || '') : '';
+    if (!refAir || !bought) continue;
+    if (eoh.test(refAir) !== eoh.test(bought)) {
+      return 'otro aeropuerto en Medellín: ' + (eoh.test(bought) ? bought + ' opera desde Olaya Herrera y ' + refAir + ' desde Rionegro'
+        : bought + ' opera desde Rionegro y ' + refAir + ' desde Olaya Herrera');
+    }
+  }
+  return '';
+}
+
 /**
  * Qué tan comparable es el precio de Google con la tarifa del viaje (#A97, #A98). Prueba
  * del 9-oct (Bogotá–Medellín, sin maleta y con maleta de mano): Avianca pasa de Basic a
@@ -18089,13 +18255,16 @@ function _ptRefAirlines_(snap) {
  *                  maleta de bodega y la tarifa de Google no la trae (#A98).
  *   no comparable: la búsqueda tiene otro equipaje que la tarifa.
  */
-function _ptQuality_(tipo, ref, matches, needsChecked) {
+function _ptQuality_(tipo, ref, matches, needsChecked, boughtAirlines) {
   if (!ref) return { quality: '', reason: 'sin precio de Google todavía' };
   if (!matches) {
     return { quality: 'no comparable', reason: tipo >= 2
       ? 'Google se buscó sin maleta y la tarifa TIPO ' + tipo + ' incluye maleta'
       : 'Google se buscó con maleta y la tarifa TIPO 1 no la incluye' };
   }
+  // #A104: el vuelo de Google tiene que ser el mismo producto: a la hora pedida, directo y al mismo aeropuerto.
+  var product = _ptProductGap_(ref, boughtAirlines);
+  if (product) return { quality: 'aproximada', reason: product };
   var airlines = _ptRefAirlines_(ref).map(function(a) { return a.toLowerCase(); });
   var has = function(re) { return airlines.length > 0 && airlines.every(function(a) { return re.test(a); }); };
   var any = function(re) { return airlines.some(function(a) { return re.test(a); }); };
@@ -18138,18 +18307,21 @@ function _ptSummary_(items, levelAware) {
     if (levelAware && (!eff || (s.bags > 0 ? 1 : 0) !== (eff >= 2 ? 1 : 0))) return null;
     return s.reference;
   };
+  // #A104: cada precio de Google se compara con lo de su momento: al cotizar, lo cotizado en ese
+  // momento; al comprar, lo pagado (#A102) o, si no se registró, lo cotizado.
+  var baseOf = function(it) { return it.base !== undefined ? it.base : it.quoted; };
   var channels = {};
   items.forEach(function(it) {
     var k = it.channel || 'Sin registrar';
-    (channels[k] = channels[k] || []).push({ quoted: it.quoted, market: it.market });
+    (channels[k] = channels[k] || []).push({ quoted: baseOf(it), market: it.market });
   });
   return {
     tracked: items.length,
     pendingPurchase: items.filter(function(it) { return it.status === 'APROBADO'; }).length,
-    atPurchase: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: refOf(it, it.atPurchase) }; })),
-    atQuote: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: refOf(it, it.atQuote) }; })),
-    overall: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.market }; })),
-    sameAirline: _ptAggregate_(items.map(function(it) { return { quoted: it.quoted, market: it.sameAirline }; })),
+    atPurchase: _ptAggregate_(items.map(function(it) { return { quoted: it.paid || it.quoted, market: refOf(it, it.atPurchase) }; })),
+    atQuote: _ptAggregate_(items.map(function(it) { return { quoted: (it.atQuote && it.atQuote.quotedAtSearch) || it.quoted, market: refOf(it, it.atQuote) }; })),
+    overall: _ptAggregate_(items.map(function(it) { return { quoted: baseOf(it), market: it.market }; })),
+    sameAirline: _ptAggregate_(items.map(function(it) { return { quoted: baseOf(it), market: it.sameAirline }; })),
     // Lo facturado frente a Google: solo viajes sin hotel (la factura no separa tiquetes y hotel).
     invoiced: _ptAggregate_(items.map(function(it) { return { quoted: it.invoicedVsGoogle === null ? null : it.invoiced, market: it.market }; })),
     byChannel: Object.keys(channels).sort().map(function(k) { var a = _ptAggregate_(channels[k]); a.channel = k; a.requests = channels[k].length; return a; })
@@ -18167,18 +18339,22 @@ function _ptInvoiced_(row, headerMap, config) {
   return { invoiced: t.total > 0 ? Math.round(t.total) : null, count: t.count, includesHotel: hotel > 0, hotelQuoted: Math.round(hotel) || 0 };
 }
 
-/** Suma lo cotizado contra una referencia (solo solicitudes con ambos valores). */
+/**
+ * Suma lo cotizado (o pagado) contra una referencia (solo solicitudes con ambos valores). La diferencia
+ * es neta: los viajes donde Google era más caro restan (#A104: nunca sumar solo los que salen a favor).
+ * pct = la diferencia sobre lo cotizado (#A99).
+ */
 function _ptAggregate_(pairs) {
-  var out = { n: 0, quoted: 0, market: 0, difference: 0, possibleSavings: 0, pct: null };
+  var out = { n: 0, quoted: 0, market: 0, difference: 0, cheaperInGoogle: 0, pct: null };
   pairs.forEach(function(p) {
     if (!(p.quoted > 0) || !(p.market > 0)) return;
     out.n++;
     out.quoted += p.quoted;
     out.market += p.market;
     out.difference += p.quoted - p.market;
-    out.possibleSavings += Math.max(0, p.quoted - p.market);
+    if (p.quoted - p.market >= 1000) out.cheaperInGoogle++;
   });
-  out.pct = out.market > 0 ? (out.quoted - out.market) / out.market * 100 : null;
+  out.pct = out.quoted > 0 ? out.difference / out.quoted * 100 : null;
   return out;
 }
 
@@ -18249,8 +18425,14 @@ function _ptBuildTracking_() {
     for (var r = 1; r < vals.length; r++) {
       var id = String(cell(vals[r], 'ID RESPUESTA') || '').trim();
       if (!id || !byId[id]) continue;
+      if (_rowIsBoughtChange_(vals[r], hm)) continue; // #A103: su cotizado es el costo del cambio, no el de un tiquete
       var row = vals[r];
+      var status = String(cell(row, 'STATUS') || '').trim();
+      // #A104: lo denegado o anulado nunca se compró: no se compara.
+      if (status === 'DENEGADO' || status === 'ANULADO') continue;
       var quoted = Math.round(_csToNumber_(cell(row, 'COSTO_FINAL_TIQUETES'))) || null;
+      var paidRaw = _paidCellValue_(cell(row, PAID_TICKETS_HEADER));
+      var paid = typeof paidRaw === 'number' && paidRaw >= COST_MIN_PESOS ? paidRaw : null;
       var snaps = byId[id];
       // #A95: la búsqueda que manda es la más reciente con el equipaje de la tarifa del viaje
       // (primero las de compra); una búsqueda que falló no tapa una anterior que salió bien.
@@ -18260,6 +18442,15 @@ function _ptBuildTracking_() {
       var market = ref ? ref.reference : null;
       var same = ref ? ref.sameAirline : null;
       var inv = _ptInvoiced_(row, hm, config);
+      // #A104: con qué se compara el precio de Google. Búsqueda al comprar: lo pagado (#A102) o, si no
+      // se registró, lo cotizado. Búsqueda al cotizar: lo cotizado en ese momento (después pudo cambiar).
+      var base = null, baseKind = '';
+      if (ref && ref.moment === 'COMPRA') { base = paid || quoted; baseKind = paid ? 'pagado' : 'cotizado'; }
+      else if (ref) { base = ref.quotedAtSearch || quoted; baseKind = ref.quotedAtSearch ? 'cotizado al buscar' : 'cotizado'; }
+      var events = {};
+      try { events = JSON.parse(cell(row, EVENTOS_JSON_HEADER) || '{}') || {}; } catch (e) { events = {}; }
+      var registeredAt = typeof events.reservationRegistered === 'string' ? events.reservationRegistered : '';
+      var leadMs = ref && ref.moment === 'COMPRA' && registeredAt && ref.at ? Date.parse(registeredAt) - Date.parse(ref.at) : NaN;
       items.push({
         requestId: id,
         origin: String(cell(row, 'CIUDAD ORIGEN') || '').split(',')[0].trim(),
@@ -18272,8 +18463,14 @@ function _ptBuildTracking_() {
         international: String(cell(row, 'ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI', // #A90
         company: String(cell(row, 'EMPRESA') || '').trim(),
         unit: String(cell(row, 'UNIDAD DE NEGOCIO') || '').trim(),
-        status: String(cell(row, 'STATUS') || '').trim(),
+        status: status,
+        // #A104: comprado = RESERVADO o PROCESADO (mismas reglas que las estadísticas de compra, #A80).
+        bought: PS_COUNTABLE_STATUSES.indexOf(status) !== -1,
         quoted: quoted,
+        paid: paid,
+        base: base, baseKind: baseKind,
+        // Horas entre la búsqueda de compra y el registro de la reserva (positivo = la búsqueda fue antes).
+        searchLeadHours: isNaN(leadMs) ? null : Math.round(leadMs / 360000) / 10,
         airline: String(cell(row, 'AEROLINEA') || '').trim(),
         returnAirline: String(cell(row, 'AEROLINEA REGRESO') || '').trim(), // #A85
         channel: String(cell(row, 'CANAL DE COMPRA') || '').trim(),
@@ -18282,8 +18479,8 @@ function _ptBuildTracking_() {
         market: market,
         marketMoment: ref ? ref.moment : '',
         sameAirline: same,
-        difference: quoted && market ? quoted - market : null,
-        differencePct: quoted && market ? (quoted - market) / market * 100 : null,
+        difference: base && market ? base - market : null,
+        differencePct: base && market ? (base - market) / base * 100 : null, // #A99: sobre lo cotizado (o pagado)
         // Lo ya comprado (#A87): lo facturado, igual que la variación cotizado vs facturado.
         invoiced: inv.invoiced, invoiceCount: inv.count, invoicedIncludesHotel: inv.includesHotel,
         invoicedVsGoogle: inv.invoiced && !inv.includesHotel && market ? inv.invoiced - market : null,
@@ -18302,6 +18499,12 @@ function _ptBuildTracking_() {
   summary.sameFare = _ptSummary_(items.filter(function(it) { return it.fare.match === true; }), true);
   // Solo las comparaciones exactas (#A97): TIPO 1, o con maleta en aerolíneas donde Google trae esa tarifa.
   summary.exact = _ptSummary_(items.filter(function(it) { return it.fare.quality === 'exacta'; }), true);
+  // #A104: lo que ya se compró, con la búsqueda al comprar. Es la cifra que se puede presentar: lo que
+  // espera aprobación o compra todavía no es un gasto.
+  var purchased = function(it) { return it.bought && it.marketMoment === 'COMPRA'; };
+  summary.purchased = _ptSummary_(items.filter(purchased), false);
+  summary.purchasedSameFare = _ptSummary_(items.filter(function(it) { return purchased(it) && it.fare.match === true; }), true);
+  summary.purchasedExact = _ptSummary_(items.filter(function(it) { return purchased(it) && it.fare.quality === 'exacta'; }), true);
   var count = function(f) { return items.filter(f).length; };
   summary.fareCounts = {
     match: count(function(it) { return it.fare.match === true; }),
@@ -18348,6 +18551,7 @@ function _saTrips_(vals, hm, config) {
     if (!String(cell(row, 'ID RESPUESTA') || '').trim()) continue;
     var status = String(cell(row, 'STATUS') || '').trim();
     if (status === POLICY_HOLD_STATUS) continue; // #A100: se cuenta cuando el CFO decida
+    if (_rowIsBoughtChange_(row, hm)) continue; // #A103: el costo de un cambio no es el de un viaje
     var reqKey = _psDateKey_(cell(row, 'FECHA SOLICITUD'));
     var buyKey = _psDateKey_(cell(row, 'FECHA DE COMPRA DE TIQUETE'));
     var depKey = _psDateKey_(cell(row, 'FECHA IDA'));
@@ -18565,6 +18769,11 @@ function costsDashboard_getVarianceReport(payload) {
 }
 function costsDashboard_getPriceTracking(payload) {
   return dispatch('getPriceTracking', payload || {});
+}
+
+/** Cambios de viaje por unidad (#A103). Payload: { userEmail, sessionToken, fresh }. */
+function costsDashboard_getTripChanges(payload) {
+  return dispatch('getTripChangesForDashboard', payload || {});
 }
 
 /** Detalle de un viaje del comparador de precios (#A86). Payload: { requestId, userEmail, sessionToken }. */
@@ -19803,6 +20012,8 @@ function _mrBuild_(ym) {
     traz: traz, mods: month.filter(function(t) { return t.mod; }).length, policy: policy, windowLabel: _mrMonthShort_(windowStart) + ' a ' + _mrMonthShort_(ym),
     monthTrips: month
   };
+  // #A103: cambios de viaje pedidos en el mes y su costo. Si algo falla, el informe sale sin esta sección.
+  try { report.changes = _mrChanges_(ym); } catch (e) { report.changes = null; console.warn('Informe mensual: sin sección de cambios: ' + e); }
   report.subject = MR_REPORT_KIND + ' · ' + report.label;
   report.html = _mrHtml_(report);
   report.csv = _mrCsv_(month.concat(data.trips.filter(function(t) { return t.buyMonth === ym && t.month !== ym; })), ym);
@@ -19930,7 +20141,15 @@ function _mrHtml_(r) {
 
   var foot = '<tr><td style="text-align:center; font-size:11px; color:#9ca3af; padding:18px 24px;">Informe automático de la plataforma de viajes. Llega el primer día hábil de cada mes. &copy; ' + r.ym.slice(0, 4) + ' Organización Equitel.</td></tr>' +
     '</table></td></tr></table></body></html>';
-  return head + tiles + policy + trend + units + honor + shame + reqs + traz + fares + method + foot;
+  var chg = r.changes && r.changes.n ? _mrSection_('Cambios de viaje', 'Pedidos en ' + e(r.label) + ' con «Cambiar mi viaje». ' +
+    'Con el tiquete ya comprado, el cambio cuesta aparte: penalidad, diferencia de tarifa y hotel.',
+    '<p style="font-size:13px; color:#374151; margin:0 0 10px;">' + r.changes.n + (r.changes.n === 1 ? ' cambio' : ' cambios') + ', ' + r.changes.bought +
+    ' con el tiquete ya comprado. Costo de esos cambios: <strong>' + e('$' + _formatCop_(r.changes.cost)) + '</strong>' +
+    (r.changes.penalty ? ', de eso penalidades y cargos ' + e('$' + _formatCop_(r.changes.penalty)) : '') + '.' +
+    (r.changes.bag ? ' Para agregar la maleta después de comprar: ' + r.changes.bag + '.' : '') + '</p>' +
+    (r.changes.top.length ? _mrTable_([{ t: 'Cambio' }, { t: 'Viaje' }, { t: 'Unidad' }, { t: 'Qué cambió' }, { t: 'Costo del cambio', right: true }, { t: '% sobre el viaje', right: true }],
+      r.changes.top.map(function (x) { return [e(x.id), e(x.parentId), e(x.unit), e(x.tipos.join(', ')), e('$' + _formatCop_(x.cost)), x.original ? Math.round(100 * x.cost / x.original) + ' %' : '—']; })) : '')) : '';
+  return head + tiles + policy + chg + trend + units + honor + shame + reqs + traz + fares + method + foot;
 }
 
 /**
@@ -20059,4 +20278,528 @@ function menuInformeMensualPrueba() {
   } catch (e) {
     ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
   }
+}
+
+// =====================================================================
+// #A103 — CAMBIAR MI VIAJE: CAMBIOS DE VIAJE SIMPLIFICADOS (2026-10-19)
+// =====================================================================
+// Pedido de Yurani (15-oct), reglas de David (15-oct), prototipo aprobado por
+// Yurani (19-oct). Plan: docs/plan-cambios-de-viaje.md.
+//
+// - El viajero pide el cambio con un formulario corto: fechas, horas, destino y
+//   equipaje. El navegador manda SOLO lo que cambia; el servidor arma la hija
+//   desde la fila de la padre (requestTripChange) y la crea con el mismo
+//   requestModification de siempre (dueño, estados, un cambio vivo #A63).
+// - Plazo: hasta las 17:00 del día hábil anterior al vuelo (sábado 12:00;
+//   domingos y festivos no cuentan). Con el viaje en curso, solo el regreso.
+//   Los administradores registran cambios a nombre del viajero sin plazo.
+// - La hija lleva `CAMBIO PEDIDO (JSON)` (v: 1): el antes y el ahora, si el
+//   tiquete ya estaba comprado y lo que costó el viaje original. Que exista
+//   activa las reglas de costo: con el tiquete comprado la hija lleva SOLO el
+//   costo del cambio y la padre NO se anula (queda «Cambiada», REEMPLAZADA POR);
+//   su costo sigue contando. Las hijas de antes (sin JSON) siguen como siempre.
+// - Todo cambio pasa por el aprobador, aunque cueste $0.
+// ⚠️ GEMELO de la regla del plazo: utils/changeWindow.ts. tools/check-trip-change.cjs
+// compara los dos lados dentro de npm run verify.
+
+var TRIP_CHANGE_HEADER = 'CAMBIO PEDIDO (JSON)';
+var TRIP_CHANGE_NOTE = 'Lo que pidió cambiar el viajero con «Cambiar mi viaje» (#A103): el antes y el ahora, si el tiquete ya estaba comprado y lo que costó el viaje original. Lo escribe el sistema: no editar.';
+var CHANGE_PENALTY_HEADER = 'PENALIDAD CAMBIO';
+var CHANGE_PENALTY_NOTE = 'De lo que costó el cambio, cuánto es penalidad y cargos de la aerolínea o la agencia (#A103), en pesos. La escribe el área de viajes al confirmar el costo del cambio.';
+var REPLACED_BY_HEADER = 'REEMPLAZADA POR';
+var REPLACED_BY_NOTE = 'Solicitud de cambio que reemplazó a esta (#A103). La original con tiquete comprado no se anula: queda «Cambiada» y su costo sigue contando.';
+var TRIP_CHANGE_REASON_MIN = 10;
+var TRIP_CHANGE_REASON_MAX = 500;
+var TRIP_CHANGE_KEYS = ['departureDate', 'returnDate', 'departureTimePreference', 'returnTimePreference', 'destination', 'checkedBaggage'];
+
+// Estado por ejecución: la OT de la padre se copia tal cual (no se revalida con la
+// regla de OT nueva, #A66) y el JSON del cambio se escribe en createNewRequest.
+// Los pone solo requestTripChange (servidor), nunca un dato del navegador.
+var _TRIP_CHANGE_KEEP_OT = null;
+var _TRIP_CHANGE_PENDING_INFO = null;
+
+/**
+ * Plazo de un cambio (#A103): 17:00 del día hábil anterior a la fecha dada
+ * ('AAAA-MM-DD'); si ese día es sábado, 12:00. Domingos y festivos de Colombia
+ * no cuentan. ms = instante en Bogotá (UTC−5, sin horario de verano).
+ * @return {{dayKey: string, hour: number, ms: number}|null}
+ */
+function _changeDeadline_(flightKey) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(flightKey || ''))) return null;
+  var n = _psDayNumber_(flightKey) - 1;
+  var holidays = {};
+  for (var guard = 0; guard < 20; guard++) {
+    var d = new Date(n * 86400000), y = d.getUTCFullYear();
+    if (!holidays[y]) holidays[y] = _psHolidaysCO_(y);
+    if (d.getUTCDay() !== 0 && !holidays[y][n]) break;
+    n--;
+  }
+  var hour = new Date(n * 86400000).getUTCDay() === 6 ? 12 : 17;
+  return { dayKey: _psKeyFromDayNumber_(n), hour: hour, ms: n * 86400000 + (hour + 5) * 3600000 };
+}
+
+/** 'AAAA-MM-DD' en Bogotá de un instante (ms). */
+function _bogotaKeyFromMs_(ms) {
+  return _psKeyFromDayNumber_(Math.floor((Number(ms) - 5 * 3600000) / 86400000));
+}
+
+/**
+ * Qué se puede cambiar de un viaje en este momento (#A103).
+ *   mode 'full'   → ida y regreso (la ida aún no sale)
+ *   mode 'return' → solo el regreso (la ida ya voló)
+ * reason: '' (abierto), 'deadline' (venció el plazo) o 'ended' (el viaje terminó).
+ * Un administrador (ignoreDeadline) puede registrar el cambio sin plazo, incluso el
+ * mismo día del vuelo.
+ */
+function _tripChangeWindow_(depKey, retKey, nowMs, ignoreDeadline) {
+  var today = _bogotaKeyFromMs_(nowMs);
+  var dep = String(depKey || ''), ret = String(retKey || '');
+  var mode = null;
+  if (dep && (ignoreDeadline ? dep >= today : dep > today)) mode = 'full';
+  else if (dep && ret && (ignoreDeadline ? ret >= today : ret > today)) mode = 'return';
+  if (!mode) {
+    var sameDay = dep === today || ret === today;
+    var dlToday = sameDay ? _changeDeadline_(today) : null;
+    return { open: false, mode: null, target: sameDay ? today : '', reason: sameDay ? 'deadline' : 'ended',
+      deadlineKey: dlToday ? dlToday.dayKey : '', deadlineHour: dlToday ? dlToday.hour : 0, deadlineMs: dlToday ? dlToday.ms : 0 };
+  }
+  var target = mode === 'full' ? dep : ret;
+  var dl = _changeDeadline_(target);
+  var open = !!ignoreDeadline || Number(nowMs) < dl.ms;
+  return { open: open, mode: mode, target: target, reason: open ? '' : 'deadline', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms };
+}
+
+/** 'miércoles 21 de octubre a las 5:00 p. m.' */
+function _changeDeadlineText_(dayKey, hour) {
+  return _policyFmtDayLong_(dayKey) + ' a las ' + (hour === 12 ? '12:00 m.' : '5:00 p. m.');
+}
+
+/** 'miércoles 21 de octubre' desde 'AAAA-MM-DD'. */
+function _policyFmtDayLong_(key) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+  if (!m) return String(key || '');
+  var d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12));
+  var days = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+  return days[d.getUTCDay()] + ' ' + (+m[3]) + ' de ' + MR_MONTHS_ES[+m[2] - 1];
+}
+
+/** JSON del cambio (v: 1) o null si la celda está vacía, es de antes o no se puede leer. */
+function _parseTripChangeInfo_(raw) {
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw === 'object') return raw && raw.v ? raw : null;
+  try {
+    var o = JSON.parse(String(raw));
+    return o && typeof o === 'object' && o.v ? o : null;
+  } catch (e) { return null; }
+}
+
+/** Costo con el que se decide si aprueba Cadena de Suministro: en un cambio de tiquete comprado, el viaje con el cambio (#A103). */
+function _cdsCostBase_(totalCost, infoRaw) {
+  var t = Number(totalCost) || 0;
+  var info = _parseTripChangeInfo_(infoRaw);
+  return info && info.comprado ? t + (Number(info.costoOriginal) || 0) : t;
+}
+
+/** ¿La fila es un cambio nuevo de un tiquete ya comprado? (su costo es el del cambio, no el de un viaje). */
+function _rowIsBoughtChange_(row, headerMap) {
+  var idx = headerMap ? headerMap[TRIP_CHANGE_HEADER] : H(TRIP_CHANGE_HEADER);
+  if (idx === undefined || idx < 0) return false;
+  var info = _parseTripChangeInfo_(row[idx]);
+  return !!(info && info.comprado);
+}
+
+/** Observaciones de la padre sin las notas del sistema (las líneas que empiezan con «[»), para el motivo del viaje de la hija. */
+function _tripChangeCleanComments_(text) {
+  var lines = String(text || '').split('\n').filter(function (l) { return l.trim() && l.trim().charAt(0) !== '['; });
+  return lines.join('\n').substring(0, 1800);
+}
+
+/** País de 'CIUDAD, PAÍS' (mayúsculas); '' si no lo trae. */
+function _tripChangeCountry_(city) {
+  var parts = String(city || '').split(',');
+  return parts.length > 1 ? parts[parts.length - 1].trim().toUpperCase() : '';
+}
+
+/** 'AAAA-MM-DD' → 'DD-MM-AAAA' (el formato con que el formulario manda las fechas). */
+function _tripChangeDdmm_(key) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : '';
+}
+
+function _tripChangeTimeKey_(v) {
+  var t = _ptHour_(v);
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(t) ? t : '';
+}
+
+/**
+ * Valida y aplica lo que pide cambiar el viajero sobre la padre. Lanza un error
+ * claro si algo no sirve; no escribe nada.
+ * @return {{next: Object, campos: Object, tipos: string[]}}
+ */
+function _normalizeTripChanges_(parent, changes, mode, isHotelOnly) {
+  if (!changes || typeof changes !== 'object') throw new Error('No llegó qué quiere cambiar.');
+  var next = { dep: parent.dep, ret: parent.ret, depTime: parent.depTime, retTime: parent.retTime, dest: parent.dest, bag: parent.bag };
+  var allowed = mode === 'return' ? ['returnDate', 'returnTimePreference', 'checkedBaggage'] : TRIP_CHANGE_KEYS;
+  Object.keys(changes).forEach(function (k) {
+    var v = changes[k];
+    if (TRIP_CHANGE_KEYS.indexOf(k) === -1) return;
+    if (allowed.indexOf(k) === -1) throw new Error('Con el viaje en curso solo se puede cambiar el regreso (fecha, hora o equipaje).');
+    if (k === 'departureDate' || k === 'returnDate') {
+      var key = _normalizeBirthdate_(v);
+      if (!key) throw new Error('La fecha nueva no es válida.');
+      if (k === 'returnDate' && !parent.ret) throw new Error('Este viaje es solo de ida: para agregar un regreso pida una solicitud nueva.');
+      if (k === 'departureDate') next.dep = key; else next.ret = key;
+    } else if (k === 'departureTimePreference' || k === 'returnTimePreference') {
+      if (isHotelOnly) throw new Error('Una solicitud de solo hospedaje no tiene horas de vuelo.');
+      var raw = String(v == null ? '' : v).trim();
+      var t = raw ? _tripChangeTimeKey_(raw) : '';
+      if (raw && !t) throw new Error('La hora nueva no es válida.');
+      if (k === 'returnTimePreference' && !parent.ret) throw new Error('Este viaje es solo de ida.');
+      if (k === 'departureTimePreference') next.depTime = t; else next.retTime = t;
+    } else if (k === 'destination') {
+      var dest = String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toUpperCase();
+      if (!dest || dest.length > 200) throw new Error('Elija el destino nuevo de la lista.');
+      next.dest = dest;
+    } else if (k === 'checkedBaggage') {
+      if (isHotelOnly) throw new Error('Una solicitud de solo hospedaje no lleva maleta de bodega.');
+      if (typeof v !== 'boolean') throw new Error('Indique si necesita maleta de bodega.');
+      next.bag = v;
+    }
+  });
+  if (next.ret && next.dep && next.ret < next.dep) throw new Error('El regreso no puede ser antes de la ida.');
+  if (isHotelOnly && next.ret && next.ret === next.dep) throw new Error('La salida del hotel tiene que ser después de la entrada.');
+  var campos = {}, tipos = [];
+  var add = function (k, a, b, tipo) {
+    if (a === b) return;
+    campos[k] = { antes: a, ahora: b };
+    if (tipos.indexOf(tipo) === -1) tipos.push(tipo);
+  };
+  add('departureDate', parent.dep, next.dep, 'Fecha');
+  add('returnDate', parent.ret, next.ret, 'Fecha');
+  add('departureTimePreference', parent.depTime, next.depTime, 'Hora');
+  add('returnTimePreference', parent.retTime, next.retTime, 'Hora');
+  add('destination', parent.dest, next.dest, 'Destino');
+  if (next.bag !== parent.bag && typeof next.bag === 'boolean') add('checkedBaggage', parent.bag === true, next.bag, 'Equipaje');
+  if (!tipos.length) throw new Error('No cambió nada: elija qué quiere cambiar y escriba el valor nuevo.');
+  return { next: next, campos: campos, tipos: tipos };
+}
+
+/**
+ * Pide un cambio de viaje (#A103). payload: { requestId, changes, changeReason }.
+ * Dueño de la solicitud (o administrador, que la registra a nombre del viajero, sin plazo).
+ * @return {{id: string, comprado: boolean, parentId: string}}
+ */
+function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
+  var actor = String(currentUserEmail || '').toLowerCase().trim();
+  var isAdmin = isUserAnalyst(actor);
+  var reason = String(changeReason == null ? '' : changeReason).replace(/\s+/g, ' ').trim();
+  if (reason.length < TRIP_CHANGE_REASON_MIN) throw new Error('Escriba el motivo del cambio (mínimo ' + TRIP_CHANGE_REASON_MIN + ' caracteres).');
+  if (reason.length > TRIP_CHANGE_REASON_MAX) throw new Error('El motivo es demasiado largo (máximo ' + TRIP_CHANGE_REASON_MAX + ' caracteres).');
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (!sheet || rowNumber === -1) throw new Error('Solicitud no encontrada.');
+  var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+  var p = mapRowToRequest(row);
+  if (!isAdmin && String(p.requesterEmail || '').toLowerCase().trim() !== actor) {
+    throw new Error('Solo quien pidió el viaje puede pedir el cambio. Si es un pasajero, pídale al solicitante o al área de viajes.');
+  }
+  var st = String(p.status || '').trim();
+  var blocked = {
+    ANULADO: 'La solicitud está anulada.', DENEGADO: 'La solicitud fue denegada.', PROCESADO: 'La solicitud ya está cerrada.',
+    PENDIENTE_ANALISIS_CAMBIO: 'Esta es una solicitud de cambio que el área de viajes aún no revisa.'
+  };
+  blocked[POLICY_HOLD_STATUS] = 'La solicitud todavía espera la aprobación por la política de anticipación. Puede anularla y pedir una nueva.';
+  if (blocked[st]) throw new Error('No se puede cambiar: ' + blocked[st]);
+  if (String(p.replacedBy || '').trim()) throw new Error('Este viaje ya se cambió: el vigente es ' + p.replacedBy + '. Pida el cambio sobre esa solicitud.');
+  var live = _findActiveChildOfParent_(sheet, p.requestId);
+  if (live) throw new Error('Esta solicitud ya tiene un cambio en curso: ' + live.id + '. Espere a que el área de viajes lo resuelva.');
+
+  var isHotelOnly = p.requestMode === 'HOTEL_ONLY';
+  var parentVals = {
+    dep: _psDateKey_(row[H('FECHA IDA')]), ret: _psDateKey_(row[H('FECHA VUELTA')]),
+    depTime: _tripChangeTimeKey_(row[H('HORA LLEGADA VUELO IDA')]), retTime: _tripChangeTimeKey_(row[H('HORA LLEGADA VUELO VUELTA')]),
+    dest: String(p.destination || '').trim().toUpperCase(), bag: p.checkedBaggage === true ? true : (p.checkedBaggage === false ? false : null)
+  };
+  var nowMs = Date.now();
+  var win = _tripChangeWindow_(parentVals.dep, parentVals.ret, nowMs, isAdmin);
+  if (!win.open) {
+    throw new Error(win.reason === 'ended'
+      ? 'El viaje ya terminó: no hay nada que cambiar.'
+      : 'El plazo para pedir el cambio por la plataforma venció el ' + _changeDeadlineText_(win.deadlineKey, win.deadlineHour) +
+        '. Comuníquese con el área de viajes: ' + ADMIN_EMAIL + '.');
+  }
+  var norm = _normalizeTripChanges_(parentVals, changes, win.mode, isHotelOnly);
+  var next = norm.next;
+  // La fecha nueva también tiene que dar tiempo (decisión de Yurani, 19-oct).
+  var newTarget = win.mode === 'full' ? next.dep : next.ret;
+  if (!isAdmin && newTarget !== win.target) {
+    var dlNew = _changeDeadline_(newTarget);
+    if (!dlNew || nowMs >= dlNew.ms) {
+      throw new Error('La fecha nueva (' + _policyFmtDayLong_(newTarget) + ') ya no da tiempo: para ese vuelo el plazo era el ' +
+        _changeDeadlineText_(dlNew.dayKey, dlNew.hour) + '.');
+    }
+  }
+  // El destino nuevo tiene que estar en la lista de ciudades (define si el viaje es internacional).
+  var intl = p.isInternational === true;
+  if (norm.campos.destination) {
+    var known = getCitiesList().some(function (c) { return (c.city + ', ' + c.country) === next.dest; });
+    if (!known) throw new Error('El destino «' + next.dest + '» no está en la lista de ciudades. Elíjalo de la lista.');
+    var oc = _tripChangeCountry_(p.origin), dc = _tripChangeCountry_(next.dest);
+    intl = (isHotelOnly ? false : (oc && oc !== 'COLOMBIA')) || (dc && dc !== 'COLOMBIA') ? true : false;
+  }
+
+  var comprado = st === 'RESERVADO';
+  var paidT = p.purchasePaidTickets, paidH = p.purchasePaidHotel;
+  var hasPaid = typeof paidT === 'number' || typeof paidH === 'number';
+  var costoOriginal = hasPaid ? (Number(paidT) || 0) + (Number(paidH) || 0) : (Number(p.totalCost) || 0);
+  // Cambio de un viaje que ya era un cambio comprado: lo que costó el viaje es el cambio anterior más su original.
+  var tcCol = H(TRIP_CHANGE_HEADER);
+  var parentInfo = tcCol > -1 ? _parseTripChangeInfo_(row[tcCol]) : null;
+  if (parentInfo && parentInfo.comprado) costoOriginal += Number(parentInfo.costoOriginal) || 0;
+  var info = {
+    v: 1, padre: p.requestId, estadoPadre: st, comprado: comprado, modo: win.mode, tipos: norm.tipos, campos: norm.campos,
+    costoOriginal: costoOriginal, costoOriginalFuente: hasPaid ? 'pagado' : 'cotizado',
+    registradoPor: actor, rol: (isAdmin && actor !== String(p.requesterEmail || '').toLowerCase().trim()) ? 'administrador' : 'viajero',
+    at: new Date(nowMs).toISOString()
+  };
+  if (comprado) {
+    info.compra = {
+      pnr: String(p.reservationNumber || ''), aerolinea: String(p.purchaseAirline || ''), aerolineaRegreso: String(p.purchaseReturnAirline || ''),
+      canal: String(p.purchaseChannel || ''), hotel: String(p.purchaseHotelName || ''), canalHotel: String(p.purchaseHotelChannel || ''),
+      tarifa: String(p.fareType || ''), tarifaNombre: String(p.fareName || ''), maleta: p.checkedBaggage === true,
+      tarjeta: String(p.creditCard || ''), fechaCompra: String(p.purchaseDate || ''),
+      pagadoTiquetes: typeof paidT === 'number' ? paidT : '', pagadoHotel: typeof paidH === 'number' ? paidH : ''
+    };
+  }
+
+  var nights = p.requiresHotel ? (next.ret ? Math.max(0, _psDayNumber_(next.ret) - _psDayNumber_(next.dep)) : (Number(p.nights) || 0)) : 0;
+  var data = {
+    requesterEmail: p.requesterEmail, company: p.company, origin: isHotelOnly ? '' : p.origin, destination: next.dest,
+    workOrder: p.workOrder || '', passengers: (p.passengers || []).map(function (x) { return { name: x.name, idNumber: x.idNumber, email: x.email || '' }; }),
+    costCenter: p.costCenter, variousCostCenters: p.variousCostCenters || '', costCenterName: p.costCenterName, businessUnit: p.businessUnit, site: p.site,
+    requiresHotel: p.requiresHotel, hotelName: p.hotelName || '', nights: nights,
+    departureDate: _tripChangeDdmm_(next.dep), returnDate: next.ret ? _tripChangeDdmm_(next.ret) : '',
+    departureTimePreference: isHotelOnly ? '' : next.depTime, returnTimePreference: isHotelOnly ? '' : next.retTime,
+    // Los cambios no se miden con la anticipación (#A100): su regla es el plazo de #A103.
+    isInternational: intl, policyViolation: false,
+    requestMode: p.requestMode, comments: _tripChangeCleanComments_(p.comments)
+  };
+  if (!isHotelOnly && typeof next.bag === 'boolean') data.checkedBaggage = next.bag;
+
+  _ensureRequestColumn_(TRIP_CHANGE_HEADER, TRIP_CHANGE_NOTE);
+  var emailHtml = _tripChangeEmailHtml_(p, data, info, reason);
+  _TRIP_CHANGE_KEEP_OT = String(p.workOrder || '').trim();
+  _TRIP_CHANGE_PENDING_INFO = info;
+  var childId;
+  try {
+    childId = requestModification(p.requestId, data, reason, emailHtml, actor);
+  } finally {
+    _TRIP_CHANGE_KEEP_OT = null;
+    _TRIP_CHANGE_PENDING_INFO = null;
+  }
+  try { _recordEvent_(childId, 'tripChangeRequested', null); } catch (e) { /* métricas: no crítico */ }
+  return { id: childId, comprado: comprado, parentId: p.requestId };
+}
+
+/** Filas «Qué / Antes / Ahora» de un cambio, en palabras. */
+function _tripChangeRows_(info) {
+  var c = (info && info.campos) || {};
+  var day = function (k) { return k ? _policyFmtDayLong_(k) : 'Sin fecha'; };
+  var hour = function (t) {
+    if (!t) return 'Sin hora';
+    var m = /^(\d{2}):(\d{2})$/.exec(t);
+    if (!m) return t;
+    var h = +m[1];
+    return h === 12 ? '12:' + m[2] + ' m.' : (h % 12 || 12) + ':' + m[2] + (h < 12 ? ' a. m.' : ' p. m.');
+  };
+  var out = [];
+  if (c.departureDate) out.push(['Fecha de ida', day(c.departureDate.antes), day(c.departureDate.ahora)]);
+  if (c.returnDate) out.push(['Fecha de regreso', day(c.returnDate.antes), day(c.returnDate.ahora)]);
+  if (c.departureTimePreference) out.push(['Hora del vuelo de ida', hour(c.departureTimePreference.antes), hour(c.departureTimePreference.ahora)]);
+  if (c.returnTimePreference) out.push(['Hora del vuelo de regreso', hour(c.returnTimePreference.antes), hour(c.returnTimePreference.ahora)]);
+  if (c.destination) out.push(['Destino', c.destination.antes || '—', c.destination.ahora]);
+  if (c.checkedBaggage) out.push(['Maleta de bodega', c.checkedBaggage.antes ? 'Sí' : 'No', c.checkedBaggage.ahora ? 'Sí' : 'No']);
+  return out;
+}
+
+/** Tabla HTML (correo) con el antes y el ahora. */
+function _tripChangeRowsHtml_(info) {
+  var rows = _tripChangeRows_(info);
+  if (!rows.length) return '';
+  var th = 'text-align:left; font-size:11px; color:#6b7280; text-transform:uppercase; padding:6px 8px; border-bottom:2px solid #d1d5db;';
+  var td = 'padding:7px 8px; border-bottom:1px solid #e5e7eb; font-size:13px;';
+  return '<table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; margin:8px 0;"><tr><th style="' + th + '">Qué</th><th style="' + th + '">Antes</th><th style="' + th + '">Ahora</th></tr>' +
+    rows.map(function (r) {
+      return '<tr><td style="' + td + ' color:#374151;">' + escapeHtml_(r[0]) + '</td><td style="' + td + ' color:#6b7280;">' + escapeHtml_(r[1]) +
+        '</td><td style="' + td + ' color:#111827; font-weight:bold; background-color:#fef3c7;">' + escapeHtml_(r[2]) + '</td></tr>';
+    }).join('') + '</table>';
+}
+
+/** ¿Se agregó la maleta de bodega a un tiquete ya comprado? */
+function _tripChangeBagLater_(info) {
+  return !!(info && info.comprado && info.campos && info.campos.checkedBaggage && info.campos.checkedBaggage.ahora === true);
+}
+
+/** Correo de la solicitud de cambio (#A103): plantilla con {{REQUEST_ID}} y {{ACTION_BUTTONS}} para sendRequestEmailWithHtml. */
+function _tripChangeEmailHtml_(parent, data, info, reason) {
+  var isHotelOnly = parent.requestMode === 'HOTEL_ONLY';
+  var route = isHotelOnly ? 'hospedaje en ' + parent.destination : parent.origin + ' → ' + parent.destination;
+  var c = info.compra || {};
+  var bought = info.comprado
+    ? '<div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#78350f; line-height:1.55;">' +
+      '<strong>El tiquete ya está comprado.</strong> El cambio tiene costo (penalidad y diferencia de tarifa) y lo aprueba el aprobador, viendo lo que costó el viaje.' +
+      (c.pnr ? '<br>Reserva <strong>' + escapeHtml_(c.pnr) + '</strong>' + (c.aerolinea ? ' · ' + escapeHtml_(c.aerolinea) : '') + (c.canal ? ' · ' + escapeHtml_(c.canal) : '') : '') + '</div>'
+    : '<div style="background-color:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#1e3a8a;">El tiquete aún no se había comprado: se cotiza de nuevo con los cambios, sin penalidad.</div>';
+  var bagLater = _tripChangeBagLater_(info)
+    ? '<div style="background-color:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:10px 12px; margin:10px 0; font-size:12px; color:#9a3412;">Se pidió la maleta de bodega después de comprar el tiquete: pedida desde el principio no habría penalidad.</div>' : '';
+  var who = info.rol === 'administrador' ? ' (lo registró el área de viajes: ' + escapeHtml_(info.registradoPor) + ')' : '';
+  var content =
+    '<p style="color:#111827; font-size:14px; margin:0 0 6px;"><strong>' + escapeHtml_(parent.requesterEmail) + '</strong> pide cambiar el viaje <strong>' + escapeHtml_(parent.requestId) +
+    '</strong> (' + escapeHtml_(route) + ')' + who + '.</p>' +
+    bought +
+    '<div style="font-size:12px; font-weight:bold; color:#374151; text-transform:uppercase; margin-top:6px;">Qué cambia</div>' + _tripChangeRowsHtml_(info) + bagLater +
+    '<div style="font-size:12px; font-weight:bold; color:#374151; text-transform:uppercase; margin-top:12px;">Motivo</div>' +
+    '<p style="font-size:13px; color:#374151; font-style:italic; border-left:3px solid #d1d5db; padding-left:10px; margin:6px 0 16px;">"' + escapeHtml_(reason) + '"</p>' +
+    '<div style="text-align:center; margin:18px 0;">{{ACTION_BUTTONS}}</div>' +
+    '<hr style="border:0; border-top:1px solid #e5e7eb; margin:24px 0;">' + HtmlTemplates._getFullSummary(data);
+  return HtmlTemplates.layout('{{REQUEST_ID}}', content, '#b45309', isHotelOnly ? 'CAMBIO DE HOSPEDAJE' : 'CAMBIO DE VIAJE');
+}
+
+/** Columnas de #A103 (las crea el menú 12 o el sistema, la primera vez). */
+function _ensureTripChangeColumns_() {
+  return [
+    { header: TRIP_CHANGE_HEADER, col: _ensureRequestColumn_(TRIP_CHANGE_HEADER, TRIP_CHANGE_NOTE) },
+    { header: CHANGE_PENALTY_HEADER, col: _ensureRequestColumn_(CHANGE_PENALTY_HEADER, CHANGE_PENALTY_NOTE) },
+    { header: REPLACED_BY_HEADER, col: _ensureRequestColumn_(REPLACED_BY_HEADER, REPLACED_BY_NOTE) }
+  ];
+}
+
+/**
+ * Al registrar la reserva de un cambio nuevo (#A103): la padre queda «Cambiada»
+ * (REEMPLAZADA POR = la hija). La padre con tiquete comprado no se anula; la que
+ * no estaba comprada ya se anuló al aprobarse el cambio. No crítico: nunca lanza.
+ */
+function _markParentReplaced_(childId, sheet, childRow) {
+  try {
+    var info = _parseTripChangeInfo_(sheet.getRange(childRow, H(TRIP_CHANGE_HEADER) + 1).getValue());
+    if (!info || !info.padre) return;
+    var parentRow = _getRowByRequestId_(info.padre);
+    if (parentRow === -1) return;
+    var col = _ensureRequestColumn_(REPLACED_BY_HEADER, REPLACED_BY_NOTE);
+    if (String(sheet.getRange(parentRow, col).getValue() || '').trim()) return;
+    sheet.getRange(parentRow, col).setValue(childId);
+    _policyAppendObs_(sheet, parentRow, '[SISTEMA]: Cambiada por ' + childId + ' (tiquete nuevo registrado). ' +
+      (info.comprado ? 'No se anula: este tiquete se pagó y su costo sigue contando.' : ''));
+  } catch (e) {
+    console.error('_markParentReplaced_ ' + childId + ': ' + e);
+  }
+}
+
+/**
+ * Control de cambios (#A103): cada cambio nuevo con lo que costó el viaje original y
+ * lo que suma el cambio. Solo administradores. Solo lectura.
+ */
+function getChangeControl() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var out = { items: [], legacy: 0, generatedAt: new Date().toISOString() };
+  if (!sheet || sheet.getLastRow() < 2) return out;
+  var values = sheet.getRange(1, 1, sheet.getLastRow(), sheet.getLastColumn()).getValues();
+  var hm = {};
+  values[0].forEach(function (h, i) { var k = String(h == null ? '' : h).trim(); if (k && hm[k] === undefined) hm[k] = i; });
+  var cell = function (row, k) { return hm[k] === undefined ? '' : row[hm[k]]; };
+  var byId = {};
+  for (var r = 1; r < values.length; r++) {
+    var id = String(cell(values[r], 'ID RESPUESTA') || '').trim();
+    if (id) byId[id] = values[r];
+  }
+  var config = _csLoadConfig_();
+  var names = _policyUserNames_();
+  for (var i = 1; i < values.length; i++) {
+    var row = values[i];
+    var cid = String(cell(row, 'ID RESPUESTA') || '').trim();
+    if (!cid || String(cell(row, 'TIPO DE SOLICITUD') || '').trim() !== 'MODIFICACION') continue;
+    var info = _parseTripChangeInfo_(cell(row, TRIP_CHANGE_HEADER));
+    if (!info) { out.legacy++; continue; }
+    var status = String(cell(row, 'STATUS') || '').trim();
+    var quoted = Math.round(_csToNumber_(cell(row, 'COSTO COTIZADO PARA VIAJE')));
+    var events = {};
+    try { events = JSON.parse(cell(row, 'EVENTOS_JSON') || '{}') || {}; } catch (e) { events = {}; }
+    var confirmed = !!events.costConfirmed || ['PENDIENTE_APROBACION', 'APROBADO', 'RESERVADO', 'PROCESADO'].indexOf(status) !== -1;
+    var parentRow = byId[info.padre];
+    var inv = _invoiceTotalsForClose_(row, hm, config);
+    var requester = String(cell(row, 'CORREO ENCUESTADO') || '').toLowerCase().trim();
+    var monthKey = (_psDateKey_(cell(row, 'FECHA DE COMPRA DE TIQUETE')) || _psDateKey_(cell(row, 'FECHA SOLICITUD')) || '').slice(0, 7);
+    out.items.push({
+      id: cid, parentId: info.padre, status: status, comprado: !!info.comprado, tipos: info.tipos || [], rows: _tripChangeRows_(info),
+      reason: String(cell(row, 'TEXTO_CAMBIO') || ''), month: monthKey, createdAt: info.at || '',
+      unit: String(cell(row, 'UNIDAD DE NEGOCIO') || '').trim(), company: String(cell(row, 'EMPRESA') || '').trim(),
+      requesterEmail: requester, requesterName: names[requester] || '', registeredBy: info.rol || 'viajero',
+      original: Number(info.costoOriginal) || 0, originalSource: info.costoOriginalFuente || '',
+      parentStatus: parentRow ? String(cell(parentRow, 'STATUS') || '').trim() : '',
+      changeCost: confirmed ? quoted : null, penalty: _paidCellValue_(cell(row, CHANGE_PENALTY_HEADER)),
+      invoiced: inv.total > 0 ? Math.round(inv.total) : null, bagLater: _tripChangeBagLater_(info)
+    });
+  }
+  out.items.sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0; });
+  return out;
+}
+
+/**
+ * Cambios de viaje por unidad para el dashboard de costos (#A103; Yurani, 19-oct). Un líder solo
+ * recibe los cambios de sus unidades: el filtro va en el servidor (#A76) y la llave de la caché
+ * lleva su alcance (#A89). Sin correos ni cédulas. Solo lectura.
+ */
+function getTripChangesForDashboard(currentUserEmail, fresh) {
+  var access = _csResolveAccess_(currentUserEmail);
+  if (!access.canView) throw new Error(COSTS_ACCESS_DENIED_MSG);
+  var scope = access.allUnits ? 'ALL' : access.units.slice().sort().join(',');
+  return _dashCached_(['tripChanges', scope], fresh, function() {
+    var data = getChangeControl();
+    var items = data.items.filter(function(x) { return access.allUnits || access.units.indexOf(_csNormalize_(x.unit)) !== -1; })
+      .map(function(x) {
+        return { id: x.id, parentId: x.parentId, status: x.status, comprado: x.comprado, tipos: x.tipos, rows: x.rows, reason: x.reason,
+          month: x.month, createdAt: x.createdAt, unit: x.unit, company: x.company, requesterName: x.requesterName, registeredBy: x.registeredBy,
+          original: x.original, changeCost: x.changeCost, penalty: x.penalty, bagLater: x.bagLater };
+      });
+    // Los cambios de antes (formulario anterior) solo los cuenta quien ve todas las unidades.
+    return { items: items, legacy: access.allUnits ? data.legacy : null, generatedAt: data.generatedAt };
+  });
+}
+
+/** Lo que la app necesita saber del cambio de viaje (bootstrap). Que llegue activa el botón nuevo. */
+function _tripChangePublicInfo_() {
+  return { enabled: true, contact: ADMIN_EMAIL, reasonMin: TRIP_CHANGE_REASON_MIN, reasonMax: TRIP_CHANGE_REASON_MAX, serverNow: Date.now() };
+}
+
+/**
+ * Penalidad de un cambio (#A103): '' o pesos (reglas de #A79) y nunca más que el costo
+ * del cambio. Se valida antes de escribir nada.
+ */
+function _normalizeChangePenalty_(inner) {
+  var v = _normalizePaidValue_(inner.changePenalty, 'de la penalidad del cambio');
+  if (!v.ok) throw new Error(v.error);
+  var total = (Number(inner.finalCostTickets) || 0) + (Number(inner.finalCostHotel) || 0);
+  if (inner.totalCost !== undefined) total = Number(inner.totalCost) || 0;
+  if (v.value !== '' && v.value > total) throw new Error('La penalidad ($' + _formatCop_(v.value) + ') no puede ser mayor que el costo del cambio ($' + _formatCop_(total) + ').');
+  var out = {};
+  Object.keys(inner).forEach(function (k) { out[k] = inner[k]; });
+  out.changePenalty = v.value;
+  return out;
+}
+
+/** Cambios de viaje (#A103) pedidos en el mes 'AAAA-MM' (hora de Bogotá), para el informe mensual. */
+function _mrChanges_(ym) {
+  var data = getChangeControl();
+  var inMonth = data.items.filter(function (x) { var t = Date.parse(x.createdAt); return !isNaN(t) && _bogotaKeyFromMs_(t).slice(0, 7) === ym; });
+  var bought = inMonth.filter(function (x) { return x.comprado && x.changeCost !== null && ['ANULADO', 'DENEGADO'].indexOf(x.status) === -1; });
+  var sum = function (list, f) { return list.reduce(function (a, x) { return a + (Number(f(x)) || 0); }, 0); };
+  return {
+    n: inMonth.length,
+    bought: inMonth.filter(function (x) { return x.comprado; }).length,
+    cost: sum(bought, function (x) { return x.changeCost; }),
+    penalty: sum(bought, function (x) { return x.penalty; }),
+    bag: inMonth.filter(function (x) { return x.bagLater; }).length,
+    top: bought.slice().sort(function (a, b) { return b.changeCost - a.changeCost; }).slice(0, 5)
+      .map(function (x) { return { id: x.id, parentId: x.parentId, unit: x.unit, tipos: x.tipos, cost: x.changeCost, original: x.original }; })
+  };
 }

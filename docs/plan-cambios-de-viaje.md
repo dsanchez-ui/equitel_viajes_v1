@@ -1,9 +1,9 @@
 # Plan — Cambios de viaje simplificados («Cambiar mi viaje»)
 
-> **Estado (2026-10-15): solo plan y prototipo, sin desarrollar.** Pedido de Yurani (15-oct).
-> Primero lo revisan Yurani y Laura con el prototipo:
-> <https://claude.ai/artifact/Ekx5v8GDaYnWvQ9B6aS1Nu> (privado: David lo comparte desde su menú).
-> Cuando lo aprueben, se construye según este plan y sus respuestas a las preguntas de la §9.
+> **Estado (2026-10-19): construido (#A103), pendiente de desplegar.** Yurani aprobó el prototipo
+> (<https://claude.ai/artifact/Ekx5v8GDaYnWvQ9B6aS1Nu>) y las propuestas de la §9 tal como se mostraron.
+> El detalle de lo construido está en BUG_REPORT.md (#A103). Se prueba antes de publicar con el entorno
+> local (`tools/entorno-prueba/README.md`).
 
 ---
 

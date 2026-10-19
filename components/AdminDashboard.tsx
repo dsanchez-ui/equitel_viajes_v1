@@ -12,6 +12,37 @@ import { CancellationModal } from './CancellationModal';
 import { MetricsPanel } from './MetricsPanel';
 import { InvoiceReviewPanel } from './InvoiceReviewPanel';
 import { PolicyHeldPanel } from './PolicyHeldPanel';
+
+const CHANGE_NEWS_ADMIN_KEY = 'equitel_aviso_cambios_admin_v1';
+
+/** #A103: aviso para el área de viajes del sistema nuevo de cambios. Se cierra con «Entendido» (en este navegador). */
+const ChangeNewsBanner: React.FC<{ pending: number }> = ({ pending }) => {
+  const [open, setOpen] = React.useState<boolean>(() => {
+    try { return localStorage.getItem(CHANGE_NEWS_ADMIN_KEY) !== '1'; } catch { return true; }
+  });
+  if (!open && pending === 0) return null;
+  return (
+    <div className="mb-4 bg-blue-50 border border-blue-200 text-blue-950 rounded-md p-4 text-sm leading-relaxed" role="status" data-change-news-admin>
+      {pending > 0 && <p className="font-bold text-amber-800 mb-1">🔄 Cambios por revisar: {pending}. Use «Revisar Cambio» en cada fila.</p>}
+      {open && (
+        <div className="flex gap-3 items-start">
+          <div className="flex-1 space-y-1">
+            <p className="font-bold">Nuevo: «Cambiar mi viaje»</p>
+            <p>
+              Los viajeros piden los cambios desde la app (fecha, hora, destino o equipaje) hasta las 5:00 p. m. del día hábil anterior al vuelo.
+              Al revisar un cambio verá lo de antes y lo de ahora, la compra original con sus archivos y un mensaje listo para la agencia.
+              Si el tiquete ya estaba comprado, en «Confirmar costos» escribe <strong>solo el costo del cambio</strong> (penalidad, diferencia de tarifa y hotel):
+              la solicitud original no se anula, queda «Cambiada». Si un cambio le llega por correo, regístrelo desde el detalle con «Solicitar cambio», sin plazo.
+              El costo de todos los cambios se ve en Métricas → Cambios.
+            </p>
+          </div>
+          <button type="button" className="text-blue-800 hover:text-blue-950 text-xs font-bold underline shrink-0"
+            onClick={() => { setOpen(false); try { localStorage.setItem(CHANGE_NEWS_ADMIN_KEY, '1'); } catch { /* vuelve a salir */ } }}>Entendido</button>
+        </div>
+      )}
+    </div>
+  );
+};
 import { ChangeRequestModal } from './ChangeRequestModal';
 import { gasService } from '../services/gasService';
 import { getDaysDiff, formatToDDMMYYYY, formatShortDateTime } from '../utils/dateUtils';
@@ -459,6 +490,9 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
       </div>
 
       {/* #A100: fuera de la política de anticipación, esperando al CFO (solo lectura, fuera de la lista principal) */}
+      {/* #A103: aviso del sistema nuevo de cambios (solo si el servidor ya lo maneja) */}
+      {requests.some(r => r.tripChange !== undefined) && <ChangeNewsBanner pending={requests.filter(r => r.status === RequestStatus.PENDING_CHANGE_APPROVAL).length} />}
+
       <PolicyHeldPanel />
 
       {/* #A83: viajes terminados con facturas incompletas */}

@@ -4,10 +4,12 @@ import { TravelRequest, SupportFile, RequestStatus, APPROVER_ROLE_LABELS } from 
 import { gasService } from '../services/gasService';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { HotelPurchaseFields, PAID_LABELS, PaidForm, PaidValueFields, PurchaseInfoFields } from './PurchaseInfoFields';
+import { withParentPurchase } from './TripChangeInfo';
 import { formatCop, normalizePaidValue } from '../utils/money';
 import { FareFields } from './FareFields';
 import { FareForm, fareFormFrom, fareRecommendation, fareShort, normalizeFare } from '../utils/fare';
 import { HotelForm, PurchaseForm, checkHotelForm, checkPurchaseForm, hotelFormFrom, hotelPurchaseLabel, purchaseAirlineLabel, purchaseChannelLabel, purchaseFormFrom } from '../utils/purchase';
+import { bogotaKeyFromMs } from '../utils/changeWindow';
 
 interface ReservationModalProps {
     request: TravelRequest;
@@ -43,13 +45,15 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
     }, [loading]);
 
     // Prefill con lo que ya se haya guardado (incluye reservas parciales).
-    const [reservationNumber, setReservationNumber] = useState(request.reservationNumber || '');
-    const [creditCard, setCreditCard] = useState(request.creditCard || '');
+    // #A103: en un cambio de tiquete comprado arranca con el PNR y la tarjeta de la compra original.
+    const [reservationNumber, setReservationNumber] = useState(withParentPurchase(request).reservationNumber || '');
+    const [creditCard, setCreditCard] = useState(withParentPurchase(request).creditCard || '');
     const [creditCards, setCreditCards] = useState<{ value: string, label: string }[]>([]);
     const [loadingCards, setLoadingCards] = useState(true);
     // #A102: la fecha guardada (al corregir, o la de una reserva parcial); si no hay, la de hoy.
     // Antes siempre era la de hoy y corregir una reserva cambiaba la fecha de compra.
-    const [purchaseDate, setPurchaseDate] = useState(() => request.purchaseDate || new Date().toISOString().split('T')[0]);
+    // #A104: la de hoy en Bogotá. Con toISOString() era la de UTC: después de las 7 p. m. quedaba el día siguiente.
+    const [purchaseDate, setPurchaseDate] = useState(() => request.purchaseDate || bogotaKeyFromMs(Date.now()));
 
     // New files selected locally (not yet uploaded)
     const [newFiles, setNewFiles] = useState<File[]>([]);
@@ -68,7 +72,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
     // si se escribe alguno.
     // #A85: aerolínea del regreso distinta, solo con regreso y si el servidor ya
     // la guarda (manda la clave purchaseReturnAirline).
-    const [purchase, setPurchase] = useState<PurchaseForm>(() => purchaseFormFrom(request));
+    const [purchase, setPurchase] = useState<PurchaseForm>(() => purchaseFormFrom(withParentPurchase(request)));
     const [triedPurchase, setTriedPurchase] = useState(false);
     const serverHasReturnAirline = request.purchaseReturnAirline !== undefined;
     const canSplitReturn = !!request.returnDate && serverHasReturnAirline;

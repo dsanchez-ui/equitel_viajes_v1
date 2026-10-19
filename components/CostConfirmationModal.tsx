@@ -11,6 +11,7 @@ import { FareForm, fareFormFrom, fareRecommendation, fareShort, normalizeFare } 
 import {
   BirthdatesLoadState, RequestTripCorporateInfo, RequestPassengersHotelInfo, RequestComments, RequestOptionsGallery,
 } from './RequestInfoSections';
+import { TripChangeBox, withParentPurchase } from './TripChangeInfo';
 
 interface CostConfirmationModalProps {
   request: TravelRequest;
@@ -85,7 +86,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
 
   // #A82: aerolínea y canal de compra previstos. #A85: aerolínea del regreso
   // distinta, solo con regreso y si el servidor ya la guarda (manda la clave).
-  const [purchase, setPurchase] = useState<PurchaseForm>(() => purchaseFormFrom(request));
+  // #A103: en un cambio de tiquete comprado, la compra de la original es el punto de partida.
+  const [purchase, setPurchase] = useState<PurchaseForm>(() => purchaseFormFrom(withParentPurchase(request)));
   const [triedSubmit, setTriedSubmit] = useState(false);
   const serverHasReturnAirline = request.purchaseReturnAirline !== undefined;
   const canSplitReturn = !!request.returnDate && serverHasReturnAirline;
@@ -100,10 +102,20 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
   const fareReturnAirline = purchaseCheck.ok ? purchaseCheck.returnAirline : (purchase.splitReturn ? purchase.returnAirline : '');
   const fareCheck = normalizeFare(fare.option, fare.justification, fareRec.option, fareAirline, fareReturnAirline);
 
+  // #A103: cambio de un tiquete ya comprado («Cambiar mi viaje»): se confirma SOLO el costo del
+  // cambio (penalidad + diferencia de tarifa + hotel). El viaje original ya se aprobó y se pagó.
+  const chg = request.tripChange && request.tripChange.v ? request.tripChange : null;
+  const changeMode = !!(chg && chg.comprado);
+  const [penaltyText, setPenaltyText] = useState<string>('');
+  const penaltyCheck = validateCostAmount(penaltyText, 'de la penalidad', changeMode && !isHotelOnly);
+  const penalty = changeMode && penaltyCheck.ok ? (penaltyCheck.value || 0) : 0;
+  const originalCost = changeMode ? Number(chg!.costoOriginal) || 0 : 0;
+
   // Vuelos: tiquetes obligatorio y hotel opcional. Solo hospedaje: hotel obligatorio.
-  const ticketsCheck = validateCostAmount(ticketsText, 'de los tiquetes', !isHotelOnly);
+  const ticketsCheck = validateCostAmount(ticketsText, changeMode ? 'de la diferencia de tarifa' : 'de los tiquetes', !isHotelOnly);
   const hotelCheck = validateCostAmount(hotelText, 'del hotel', isHotelOnly);
-  const costTickets = !isHotelOnly && ticketsCheck.ok ? (ticketsCheck.value || 0) : 0;
+  // En un cambio de vuelo, los tiquetes = penalidad + diferencia de tarifa.
+  const costTickets = !isHotelOnly && ticketsCheck.ok ? (ticketsCheck.value || 0) + (changeMode ? penalty : 0) : 0;
   const costHotel = hotelCheck.ok ? (hotelCheck.value || 0) : 0;
   const total = costTickets + costHotel;
 
@@ -114,16 +126,24 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
       if (!hotelCheck.ok && hotelCheck.error) problems.push(hotelCheck.error);
       if (!purchaseCheck.ok && purchaseCheck.error) problems.push(purchaseCheck.error);
       if (serverHasFare && !fareCheck.ok && fareCheck.error) problems.push(fareCheck.error);
+      if (changeMode && !penaltyCheck.ok && penaltyCheck.error) problems.push(penaltyCheck.error);
+      if (changeMode && isHotelOnly && penalty > costHotel) problems.push('La penalidad no puede ser mayor que el costo del cambio en el hotel.');
       if (problems.length > 0) {
           setDialog({ isOpen: true, title: 'Validación', message: problems.join('\n\n'), type: 'ALERT', onConfirm: closeDialog });
           return;
       }
 
-      let message = isHotelOnly
+      let message = changeMode
+          ? `Se registrará el COSTO DEL CAMBIO (el viaje original, $${formatCop(originalCost)}, ya se aprobó):\n\n` +
+            (isHotelOnly ? '' : `Penalidad y cargos: $${formatCop(penalty)}\nDiferencia de tarifa: $${formatCop(costTickets - penalty)}\n`) +
+            `Hotel: $${formatCop(costHotel)}\nCosto del cambio: $${formatCop(total)}\nViaje con el cambio: $${formatCop(originalCost + total)}\n\n`
+          : isHotelOnly
           ? `Se registrará el costo del hospedaje:\n\nHotel: $${formatCop(costHotel)}\nTotal: $${formatCop(total)}\n\n`
           : `Se registrarán los siguientes costos:\n\nTiquetes: $${formatCop(costTickets)}\nHotel: $${formatCop(costHotel)}\nTotal: $${formatCop(total)}\n\n`;
       if (total === 0) {
-          message += "⚠️ Se registrará SIN COSTO (por ejemplo, un apartamento corporativo).\n\n";
+          message += changeMode
+            ? "Este cambio no tiene costo: igual va al aprobador.\n\n"
+            : "⚠️ Se registrará SIN COSTO (por ejemplo, un apartamento corporativo).\n\n";
       }
       message += `Compra: ${purchaseCheck.airline ? purchaseAirlineLabel(purchaseCheck.airline, purchaseCheck.returnAirline) + ' · ' : ''}${purchaseChannelLabel(purchaseCheck.channel, isHotelOnly)}\n\n`;
       if (serverHasFare) {
@@ -142,7 +162,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
               return;
           }
           message += `⏭️ SE SALTARÁ LA ETAPA DE APROBACIÓN.\nLa solicitud pasará directamente a APROBADO.\n\nJustificación: "${skipJustification.trim()}"\n\n`;
-      } else if (!request.isInternational && total > 1200000) {
+      } else if (!request.isInternational && total + originalCost > 1200000) {
           message += "⚠️ ALERTA DE COSTO: El valor supera $1.200.000. Se solicitará aprobación adicional a Dirección de Cadena de Suministro y Aprobador de Área.\n\n";
       }
 
@@ -177,6 +197,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
               ...(serverHasReturnAirline ? { purchaseReturnAirline: purchaseCheck.returnAirline } : {}),
               // #A95: la recomendada la vuelve a calcular el servidor.
               ...(serverHasFare ? { fareOption: String(fareCheck.option), fareJustification: fareCheck.justification } : {}),
+              // #A103: de lo que costó el cambio, cuánto es penalidad (solo en un cambio de tiquete comprado).
+              ...(changeMode ? { changePenalty: String(penalty) } : {}),
               // Si vamos a saltar aprobación inmediatamente, le decimos al
               // backend que NO envíe correo a los aprobadores en este paso
               // intermedio — nunca van a actuar sobre la solicitud.
@@ -218,7 +240,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
   };
 
   /** Campo de costo: acepta 889518 o 889.518 y al salir lo deja con puntos de miles. */
-  const renderCostInput = (kind: 'tickets' | 'hotel', label: string, text: string, setText: (v: string) => void, check: ReturnType<typeof validateCostAmount>) => (
+  const renderCostInput = (kind: 'tickets' | 'hotel' | 'penalty', label: string, text: string, setText: (v: string) => void, check: ReturnType<typeof validateCostAmount>) => (
       <div>
           <label className="block text-sm font-bold text-gray-700 mb-1">{label}</label>
           <input
@@ -278,6 +300,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
                         <button type="button" onClick={loadDetail} className="px-2 py-1 bg-white border border-red-300 rounded font-bold hover:bg-red-100">Reintentar</button>
                     </div>
                 )}
+                {full.tripChange && <TripChangeBox request={full} isAdmin />}
                 <RequestTripCorporateInfo request={full} />
                 <RequestPassengersHotelInfo request={full} isAdmin={true}
                     passengerInfoState={passengerInfoState} passengerInfoByCedula={passengerInfoByCedula} />
@@ -296,6 +319,26 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
 
             <div className="space-y-4">
                   <p className="text-xs text-gray-500">Valores en pesos, con o sin puntos de miles (889.518 o 889518). Si no tiene costo, escriba 0.</p>
+                  {changeMode ? (
+                    <>
+                      <div className="bg-amber-50 border border-amber-200 rounded p-3 text-xs text-amber-950" data-change-cost-note>
+                        <strong className="block text-sm">Costo del cambio</strong>
+                        El viaje original ({chg!.padre}) ya se aprobó y se pagó: aquí va solo lo que cobra la agencia por el cambio.
+                        Si el cambio no tiene costo, escriba 0: igual va al aprobador.
+                      </div>
+                      {!isHotelOnly && renderCostInput('penalty', 'Penalidad y cargos *', penaltyText, setPenaltyText, penaltyCheck)}
+                      {!isHotelOnly && renderCostInput('tickets', 'Diferencia de tarifa *', ticketsText, setTicketsText, ticketsCheck)}
+                      {renderCostInput('hotel', isHotelOnly ? 'Costo del cambio en el hotel *' : 'Hotel (noches nuevas o penalidad)', hotelText, setHotelText, hotelCheck)}
+                      {isHotelOnly && renderCostInput('penalty', 'De eso, penalidad y cargos', penaltyText, setPenaltyText, penaltyCheck)}
+                      <div className="grid grid-cols-2 gap-px bg-gray-200 rounded overflow-hidden text-xs" data-change-cost-totals>
+                        <div className="bg-white p-2"><span className="block text-gray-500">Viaje original ({chg!.costoOriginalFuente === 'pagado' ? 'pagado' : 'cotizado'})</span><strong className="text-base tabular-nums">$ {formatCop(originalCost)}</strong></div>
+                        <div className="bg-white p-2"><span className="block text-gray-500">Este cambio: lo que se aprueba</span><strong className="text-base tabular-nums text-brand-red" data-cost-total>$ {formatCop(total)}</strong></div>
+                        <div className="bg-white p-2"><span className="block text-gray-500">Viaje con el cambio</span><strong className="text-base tabular-nums">$ {formatCop(originalCost + total)}</strong></div>
+                        <div className="bg-white p-2"><span className="block text-gray-500">El cambio suma</span><strong className="text-base tabular-nums">{originalCost > 0 ? Math.round((100 * total) / originalCost) + ' %' : '—'}</strong></div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
                   {/* Tiquetes — solo para solicitudes de vuelo (no hotel-only) */}
                   {!isHotelOnly && renderCostInput('tickets', 'Costo Final Tiquetes *', ticketsText, setTicketsText, ticketsCheck)}
                   {renderCostInput('hotel', isHotelOnly ? 'Costo Final Hotel *' : 'Costo Final Hotel', hotelText, setHotelText, hotelCheck)}
@@ -304,6 +347,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
                       <span className="font-bold text-gray-700">Total a Aprobar:</span>
                       <span className="text-xl font-bold text-brand-red" data-cost-total>$ {formatCop(total)}</span>
                   </div>
+                    </>
+                  )}
 
                   <PurchaseInfoFields
                       isHotelOnly={isHotelOnly}

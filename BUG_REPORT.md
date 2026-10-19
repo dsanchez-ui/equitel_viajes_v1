@@ -2653,3 +2653,126 @@ David pegó `Code.gs` y creó el activador `procesarAprobacionesPolitica` (uno s
 En cualquier orden funciona, pero el bloque solo aparece cuando están los dos lados.
 
 **Rollback:** frontend = revert; backend = versión anterior del web app. Las columnas nuevas pueden quedarse.
+
+---
+
+## **#A103 — «Cambiar mi viaje»: cambios de viaje simplificados, con su costo visible**
+**Fecha:** 2026-10-19 · **Pedido por:** Yurani (15-oct); reglas de David (15-oct); prototipo aprobado por Yurani (19-oct, con las propuestas de la §9 de [docs/plan-cambios-de-viaje.md](docs/plan-cambios-de-viaje.md)). · **Estado:** Implementado; pendiente desplegar.
+
+**Problema:**
+- Los viajeros no usaban el cambio de la plataforma: el botón estaba escondido en el detalle y abría el formulario completo. Pedían los cambios por correo o por teléfono, sin trazabilidad.
+- Con un tiquete comprado, la hija del cambio llevaba el costo del viaje entero y la original se anulaba: no se veía cuánto costaba **el cambio**. Yurani vio la «jugada» de pedir Basic y agregar la maleta después: el viaje salía casi al doble y nadie lo notaba.
+
+**Solución (viajero):**
+- **Botón grande 😕 «¿Necesita cambiar su viaje?»** en el panel y **«😕 Cambiar mi viaje»** en el detalle. Formulario corto: fechas, horas, destino y equipaje (varios a la vez), resumen antes / ahora y motivo obligatorio (10 a 500 caracteres).
+- **Plazo:** hasta las 5:00 p. m. del día hábil anterior al vuelo; si ese día es sábado, 12:00 m. Domingos y festivos de Colombia no cuentan. La fecha nueva también tiene que dar tiempo. Con el viaje en curso solo se cambia el regreso. Después del plazo, el portal dice a quién escribir (`ADMIN_EMAIL`).
+  - Gemelo `utils/changeWindow.ts` ↔ `_changeDeadline_` / `_tripChangeWindow_`.
+- Aviso de la maleta pedida después de comprar, en el formulario, el correo y el detalle. En el formulario de solicitudes, una línea junto a la casilla de la maleta: *«agregarla después cuesta el cambio y la diferencia de tarifa»*.
+- **Aviso del sistema nuevo** en el panel del viajero y en el del área de viajes, hasta tocar «Entendido» (por navegador).
+
+**Solución (servidor):**
+- Acción `requestTripChange`: el navegador manda **solo lo que cambia**. El servidor arma la hija desde la fila de la original y la crea con el mismo `requestModification` de siempre (dueño, estados, un cambio vivo #A63). La OT de la original se copia tal cual.
+  - La hija lleva `CAMBIO PEDIDO (JSON)` (v: 1): antes / ahora, tipos, si el tiquete estaba comprado, lo que costó el viaje (lo pagado #A102 o lo cotizado) y la compra de la original.
+  - Lo escribe solo el servidor (variables por ejecución); un cliente no lo puede inyectar.
+  - Las anticipaciones de #A100 no aplican a los cambios: su regla es el plazo.
+- **Tiquete ya comprado:** la hija lleva **solo el costo del cambio** (penalidad + diferencia de tarifa + hotel; columna `PENALIDAD CAMBIO`). La original **no se anula**: al registrar la reserva del cambio queda «Cambiada» (`REEMPLAZADA POR`) y su costo sigue contando. No se puede anular ni volver a cambiar; se cambia la vigente.
+  - Presupuesto: no se excluye la original.
+  - Cadena de Suministro: se mide con el viaje con el cambio (original + cambio > $1.200.000).
+  - Estadísticas de compra, proyección de ahorro y comparador de precios: un cambio comprado no es una compra de tiquetes nueva.
+  - El rastreo de precios (`Rastreo.gs`) no lo busca en Google.
+- **Sin comprar:** se cotiza de nuevo y la original se anula al aprobarse, como antes. Las hijas de antes (sin JSON) siguen igual.
+- **Todo cambio pasa por el aprobador**, aunque cueste $0. Correo **APROBACIÓN DE CAMBIO** con qué cambia, el motivo, lo que costó el viaje, el costo del cambio, la penalidad y el viaje con el cambio.
+- El área de viajes registra cambios a nombre del viajero **sin plazo** (queda quién lo registró), con enlace al formulario completo.
+
+**Solución (área de viajes y control):**
+- *Revisar cambio*: lo de antes y lo de ahora, **lo que ya se compró** (PNR, aerolínea, canal, tarifa, valor pagado, tarjeta, archivos) y un **mensaje para la agencia** con botón de copiar. Botón «ACEPTAR Y COTIZAR».
+- *Confirmar costos* en modo cambio: Penalidad y cargos, Diferencia de tarifa y Hotel, con el viaje original, el cambio y el total al lado.
+- *Registrar reserva*: la compra de la original como punto de partida.
+- **Control** (aprobado por Yurani):
+  - *Métricas → 🔄 Cambios* (filtros, totales, por unidad, CSV);
+  - sección **Cambios de viaje** del dashboard de costos (cada líder ve solo sus unidades; filtro en el servidor, en caché);
+  - sección «Cambios de viaje» del informe mensual.
+- Al solicitante no le llegan la penalidad, lo pagado ni la tarjeta (`_hideFareInternals_`).
+
+**Error encontrado de paso:** `ReservationModal` proponía la fecha de compra en UTC (`toISOString`): después de las 7 p. m. quedaba el día siguiente (SOL-000633, 637 y 638; en 637 la compra quedaba después del vuelo). Ahora es la fecha de Bogotá; los mínimos de fecha del formulario de solicitudes, la del navegador.
+
+**Compatibilidad:**
+- **App nueva con servidor anterior:** sin la clave `tripChange` en el bootstrap, todo sigue con el formulario de siempre.
+- **Servidor nuevo con app anterior:** el formulario completo sigue funcionando (`requestModification` sin JSON = reglas de antes).
+- Las columnas nuevas (`CAMBIO PEDIDO (JSON)`, `PENALIDAD CAMBIO`, `REEMPLAZADA POR`) las crea el menú 12 o el sistema la primera vez.
+
+**Verificado:**
+- `npm run verify` en verde, con el chequeo nuevo `tools/check-trip-change.cjs`:
+  - plazo igual en la app y en el servidor día por día de 2026 a 2031, y la ventana en más de 100 días a cinco horas distintas;
+  - dueño, motivo, que algo cambie, un cambio vivo, plazo (el área de viajes sin plazo), fecha nueva, solo el regreso, viaje terminado, destino de la lista, solo hospedaje, OT de antes;
+  - JSON no inyectable;
+  - penalidad (decimales, mayor que el costo), presupuesto, Cadena de Suministro;
+  - correo al aprobador;
+  - la original comprada no se anula y queda «Cambiada»; la no comprada y los cambios de antes, como siempre;
+  - cambio sobre un cambio;
+  - estadísticas, control de cambios, dashboard por unidad (permisos, sin correos), informe y lo que ve el viajero.
+- **Entorno de prueba local** (`npm run prueba:local`, nuevo: el build de producción contra `Code.gs` real con la base exportada del 19-oct; correos a una bandeja local, nunca enviados):
+  - recorrido completo por la API: pedir el cambio, aceptar, cotizar con penalidad, aprobar desde el botón del correo, registrar la reserva con PDF; la original queda «Cambiada»;
+  - en Chrome real: aviso, botón, lista con el plazo de cada viaje, formulario, aviso de la maleta, confirmación; panel de Laura, *Revisar cambio*, *Confirmar costos*; dashboard de costos. Sin errores de JavaScript.
+
+**Despliegue:**
+1. Pegar `server/Code.gs` y `server/CostsDashboard.html` (incluyen #A104).
+2. Pegar `tools/comparador-precios/apps-script/Rastreo.gs` en el proyecto aparte del rastreo.
+3. Menú 12 (opcional: las columnas se crean solas).
+4. Crear la versión nueva del web app.
+5. Push del frontend.
+
+Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
+
+**Rollback:** frontend = revert; backend = versión anterior del web app (las hijas creadas siguen el flujo de antes y las columnas pueden quedarse).
+
+---
+
+## **#A104 — Comparador de precios: la cifra de ahorro solo con lo comprado y comparaciones exactas**
+**Fecha:** 2026-10-19 · **Pedido por:** David (*«está arrojando 5.700.000 de ahorro… garantiza que sean reales… comparando tarifas equivalentes… cuando el vuelo es de 2 o 3 personas»*). · **Estado:** Implementado; pendiente desplegar (va con #A103).
+
+**Auditoría (base del 19-oct, 662 solicitudes, 60 búsquedas):**
+- La cifra que vio David ($5,77 M a las 9:16 a. m.; $6,06 M a las 10:45) era el titular por defecto («Con la tarifa del manual»).
+- **La aritmética estaba bien:** Google se busca con el mismo número de pasajeros y su precio es el total del grupo (SOL-000658, 3 pasajeros: $7.028.160 por los tres; SOL-000652, 2 pasajeros, Clic en Google $722.110 frente a $715.928 pagados). Ida y regreso bien sumados, solo directos a ±2 h, todo en pesos.
+- **No era «lo que nos podríamos haber ahorrado»:**
+  - el 46 % era de viajes sin comprar (esperando aprobación o compra), y había uno denegado;
+  - el 44 % eran comparaciones aproximadas (LATAM, Clic, TIPO 3, bodega), donde Google muestra una tarifa más barata que la del manual;
+  - un solo viaje internacional de 3 pasajeros, sin comprar y con el cotizado cambiado después de la búsqueda, ponía el 27 %;
+  - se usaba lo cotizado de hoy, no lo pagado;
+  - solo $1,04 M era con la misma aerolínea: el resto exigía cambiarse de aerolínea (Wingo, JetSMART) y, en SOL-000652, de aeropuerto (Olaya Herrera frente a Rionegro).
+
+**Arreglo (servidor, `_ptBuildTracking_`):**
+- Lo **denegado o anulado** no se compara.
+- Cada viaje dice si está **comprado** (RESERVADO o PROCESADO) y con qué se compara:
+  - búsqueda al comprar: **lo pagado** (#A102) o, si no se registró, lo cotizado;
+  - búsqueda al cotizar: lo cotizado **en ese momento**.
+  - El % va sobre eso (#A99).
+- Totales nuevos de **lo comprado** con búsqueda al comprar: `purchased`, `purchasedSameFare`, `purchasedExact`.
+- **«Exacta» exige el mismo producto:** si se pidió una hora y Google no tenía vuelo a ±2 h, si la referencia tiene escala o si llega a otro aeropuerto de Medellín (Clic y Satena en Olaya Herrera; las demás en Rionegro), es aproximada (`_ptProductGap_`).
+- Se quitó `possibleSavings` (sumaba solo los viajes a favor): la diferencia siempre es neta.
+
+**Arreglo (dashboard):**
+- Por defecto: **«Solo comparaciones exactas»** + casilla nueva **«Solo viajes ya comprados»** (marcada).
+- **El titular dice:** «En N viajes ya comprados con comparación exacta, se pagaron $A y lo más barato en Google sumaba $B: $C menos (P % de lo pagado). Con la misma aerolínea…».
+  - Aviso de muestra pequeña con menos de 15.
+  - Lo no comprado en una línea aparte, fuera del total.
+- Tarjeta «Diferencia con Google» con la misma aerolínea al lado.
+- Leyendas corregidas: el % es sobre lo pagado o cotizado; qué búsqueda se usa; Clic «no apareció en esta búsqueda».
+- Cada viaje muestra lo que se compara y, en su lectura, las horas entre la búsqueda y la compra.
+- La muestra de la **proyección** usa solo lo comprado y lo pagado.
+
+**Cifra con la base del 19-oct:**
+- **4 viajes ya comprados** con comparación exacta:
+  - se pagaron $2.802.534 y en Google había $2.168.365: **$634.169 menos (22,6 %)**;
+  - **con la misma aerolínea, $89.384 (3,2 %)**.
+- Es un indicio, no una cifra para proyectar: #A99 pide 15 comparaciones exactas.
+- SOL-000652 (2 pasajeros) sale de las exactas por el aeropuerto. La cuenta de pasajeros estaba bien.
+
+**Pendiente, sin código (decisión del 21-oct):** si el estudio sigue, repetir la búsqueda al registrar la compra cuando la última tiene más de 6 h. Hoy se busca al quedar APROBADO, a veces días antes de comprar (SOL-000647: 47 h). Cuesta búsquedas de SerpApi.
+
+**Verificado:**
+- `check-price-tracking`: comprado, lo pagado, cotizado al buscar, denegado fuera, totales de lo comprado, % sobre lo pagado, hora / escala / aeropuerto.
+- `check-savings-analysis`: por defecto exactas y comprados; la muestra solo con lo comprado y lo pagado; servidor anterior sin la casilla.
+- **Con la base real** (`Code.gs` y el JavaScript del dashboard en el entorno local y en Chrome): el titular da la cifra de arriba.
+
+**Despliegue y rollback:** con #A103 (`Code.gs` y `CostsDashboard.html`). Un dashboard nuevo con un `Code.gs` anterior no muestra la casilla y sigue como antes.

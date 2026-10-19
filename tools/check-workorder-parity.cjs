@@ -62,6 +62,8 @@ function extractFunction(source, name) {
 function loadBackend() {
   const gs = fs.readFileSync(path.join(ROOT, 'server', 'Code.gs'), 'utf8');
   const code =
+    // #A103: fuera de un cambio de viaje está en null (la OT de la original se copia tal cual solo ahí).
+    'var _TRIP_CHANGE_KEEP_OT = null;\n' +
     extractFunction(gs, '_normalizeWorkOrder_') +
     '\n' +
     extractFunction(gs, '_validateAndNormalizeWorkOrder_') +

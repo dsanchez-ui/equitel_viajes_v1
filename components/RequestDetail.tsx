@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TravelRequest, RequestStatus, Integrant, SupportFile, PassportStatus, PassengerAdminInfo, APPROVER_ROLE_LABELS } from '../types';
 import { gasService } from '../services/gasService';
+import { ReplacedBanner, TripChangeBox } from './TripChangeInfo';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { getDaysDiff, formatToDDMMYYYY, formatLongDateTime } from '../utils/dateUtils';
 import { PassportUploadModal } from './PassportUploadModal';
@@ -19,6 +20,8 @@ interface RequestDetailProps {
     onModify: (req: TravelRequest) => void;
     isAdmin?: boolean;
     canSkipApproval?: boolean;
+    /** #A103: el servidor maneja «Cambiar mi viaje»: el botón abre el formulario corto (sin el aviso de costo, que ya trae). */
+    tripChangeEnabled?: boolean;
 }
 
 
@@ -247,7 +250,7 @@ const PassportsPanel: React.FC<PassportsPanelProps> = ({ passengers, requestId }
     );
 };
 
-export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModify, isAdmin = false, canSkipApproval = false }: RequestDetailProps) => {
+export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModify, isAdmin = false, canSkipApproval = false, tripChangeEnabled = false }: RequestDetailProps) => {
     // Fecha de nacimiento y celular por pasajero (C2, #A74): solo administradores.
     // Con el backend actual llegan dentro de getRequestById, así que se muestran
     // al abrir el detalle sin otra llamada. Si no vienen (backend anterior, o
@@ -326,7 +329,9 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
         request.status !== RequestStatus.REJECTED &&
         request.status !== RequestStatus.PENDING_CHANGE_APPROVAL &&
         // #A100: mientras espera al CFO no se piden cambios (se puede anular y pedir de nuevo).
-        request.status !== RequestStatus.PENDING_POLICY_APPROVAL;
+        request.status !== RequestStatus.PENDING_POLICY_APPROVAL &&
+        // #A103: la original «Cambiada» no se vuelve a cambiar: se cambia la solicitud que la reemplazó.
+        !request.replacedBy;
     const isPolicyHold = request.status === RequestStatus.PENDING_POLICY_APPROVAL;
     // #A100: decisión del CFO guardada en la hoja ('Sí_correo_fecha' / 'No_…' / 'Vencida_…').
     const policyDecisionKind = /^s[ií]_/i.test(request.policyDecision || '') ? 'approved'
@@ -459,6 +464,8 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
     };
 
     const handleModifyClick = () => {
+        // #A103: el formulario corto ya explica el costo del cambio de un tiquete comprado.
+        if (tripChangeEnabled) { onModify(request); return; }
         if (request.status === RequestStatus.RESERVED) {
             setDialog({
                 isOpen: true,
@@ -629,6 +636,10 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
 
                             <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
 
+                                {/* #A103: «Cambiar mi viaje»: la original cambiada y el detalle del cambio */}
+                                <ReplacedBanner request={request} />
+                                {request.tripChange && <TripChangeBox request={request} isAdmin={isAdmin} />}
+
                                 {/* #A100: en espera de la aprobación del CFO por la política de anticipación */}
                                 {isPolicyHold && (
                                     <div className="bg-amber-50 border border-amber-300 text-amber-900 px-4 py-3 rounded-md text-sm leading-relaxed">
@@ -677,9 +688,9 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                 )}
 
                                 {/* Banner APROBACIÓN EXTRAORDINARIA — R10: solo para alto costo nacional (si es internacional, el banner INTERNACIONAL ya cubre quién aprueba) */}
-                                {(Number(request.totalCost) || 0) > 1200000 && !request.requesterIsCeo && !request.requesterIsCds && !request.isInternational && (
+                                {(request.cdsCostBase ?? (Number(request.totalCost) || 0)) > 1200000 && !request.requesterIsCeo && !request.requesterIsCds && !request.isInternational && (
                                     <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md text-sm">
-                                        <strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> El costo total de esta solicitud (${Number(request.totalCost).toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Dirección de Cadena de Suministro y Aprobador de Área.
+                                        <strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> {request.tripChange?.comprado ? 'El viaje con el cambio' : 'El costo total de esta solicitud'} (${Number(request.cdsCostBase ?? request.totalCost).toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Dirección de Cadena de Suministro y Aprobador de Área.
                                     </div>
                                 )}
 
@@ -1060,7 +1071,8 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                         className="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-orange-600 text-base font-medium text-white hover:bg-orange-700 focus:outline-none sm:text-sm"
                                         onClick={handleModifyClick}
                                     >
-                                        Solicitar Cambio
+                                        {/* #A103: el viajero ve el mismo nombre que el botón grande de su panel */}
+                                        {tripChangeEnabled && !isAdmin ? '😕 Cambiar mi viaje' : 'Solicitar Cambio'}
                                     </button>
                                 )}
 

@@ -332,6 +332,108 @@ export interface TravelRequest {
   // Llega dentro de getRequestById cuando quien consulta es administrador; no
   // viene para el solicitante, en las filas lite ni con un backend anterior.
   passengerAdminInfo?: PassengerAdminInfo[];
+
+  // CAMBIAR MI VIAJE (#A103). tripChange: lo que pidió cambiar el viajero (solo en las
+  // solicitudes de cambio nuevas; null en las demás). replacedBy: en la original, la
+  // solicitud de cambio que la reemplazó («Cambiada»). changePenalty: de lo que costó el
+  // cambio, cuánto es penalidad ('' si no se registró; solo administradores).
+  // cdsCostBase: costo con que se decide si aprueba Cadena de Suministro (en un cambio de
+  // tiquete comprado, el viaje con el cambio). undefined = el servidor aún no los maneja.
+  tripChange?: TripChangeInfo | null;
+  replacedBy?: string;
+  changePenalty?: number | '';
+  cdsCostBase?: number;
+}
+
+/** #A103: un campo de un cambio de viaje: el valor de antes y el nuevo. */
+export interface TripChangeField<T = string> {
+  antes: T;
+  ahora: T;
+}
+
+/** #A103: lo que pidió cambiar el viajero (columna CAMBIO PEDIDO (JSON)). */
+export interface TripChangeInfo {
+  v: number;
+  padre: string;
+  estadoPadre: string;
+  /** El tiquete de la original ya estaba comprado: la hija lleva solo el costo del cambio. */
+  comprado: boolean;
+  modo: 'full' | 'return';
+  tipos: string[];
+  campos: {
+    departureDate?: TripChangeField;
+    returnDate?: TripChangeField;
+    departureTimePreference?: TripChangeField;
+    returnTimePreference?: TripChangeField;
+    destination?: TripChangeField;
+    checkedBaggage?: TripChangeField<boolean>;
+  };
+  /** Lo que costó la original (lo pagado si se registró; si no, lo cotizado). 0 para el solicitante si era lo pagado. */
+  costoOriginal: number;
+  costoOriginalFuente: 'pagado' | 'cotizado' | '';
+  registradoPor: string;
+  rol: 'viajero' | 'administrador';
+  at: string;
+  compra?: {
+    pnr: string; aerolinea: string; aerolineaRegreso: string; canal: string; hotel: string; canalHotel: string;
+    tarifa: string; tarifaNombre: string; maleta: boolean; tarjeta: string; fechaCompra: string;
+    pagadoTiquetes: number | ''; pagadoHotel: number | '';
+  };
+}
+
+/** #A103: lo que manda la app al pedir un cambio: solo las claves que cambian. Fechas 'AAAA-MM-DD', horas 'HH:MM' o ''. */
+export interface TripChangeRequestChanges {
+  departureDate?: string;
+  returnDate?: string;
+  departureTimePreference?: string;
+  returnTimePreference?: string;
+  destination?: string;
+  checkedBaggage?: boolean;
+}
+
+/** #A103: lo que manda el servidor en bootstrap. Que llegue activa «Cambiar mi viaje». */
+export interface TripChangeConfig {
+  enabled: boolean;
+  contact: string;
+  reasonMin: number;
+  reasonMax: number;
+  /** Hora del servidor al responder (para corregir un reloj del computador desfasado). */
+  serverNow?: number;
+  /** Solo en la app: diferencia entre la hora del servidor y la del computador, en ms. */
+  clockOffset?: number;
+}
+
+/** #A103: una fila del control de cambios (solo administradores). */
+export interface ChangeControlItem {
+  id: string;
+  parentId: string;
+  status: string;
+  comprado: boolean;
+  tipos: string[];
+  rows: [string, string, string][];
+  reason: string;
+  month: string;
+  createdAt: string;
+  unit: string;
+  company: string;
+  requesterEmail: string;
+  requesterName: string;
+  registeredBy: 'viajero' | 'administrador';
+  original: number;
+  originalSource: string;
+  parentStatus: string;
+  /** Costo del cambio confirmado por el área de viajes; null si aún no se confirma. */
+  changeCost: number | null;
+  penalty: number | '';
+  invoiced: number | null;
+  bagLater: boolean;
+}
+
+export interface ChangeControl {
+  items: ChangeControlItem[];
+  /** Cambios pedidos con el formulario anterior: sin detalle. */
+  legacy: number;
+  generatedAt: string;
 }
 
 // Comentario opcional dejado por un aprobador al aprobar (ver Code.gs

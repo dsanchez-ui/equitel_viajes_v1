@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo, PolicyApprovalInfo, PolicyNotice, PolicyHeldResponse } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo, PolicyApprovalInfo, PolicyNotice, PolicyHeldResponse, TripChangeConfig, TripChangeRequestChanges, ChangeControl } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -353,6 +353,8 @@ class GasService {
     canSkipApproval?: boolean;
     // #A100: aviso de cómo funcionan ahora las solicitudes. Ausente con un backend anterior.
     policyNotice?: PolicyNotice | null;
+    // #A103: «Cambiar mi viaje». Ausente con un backend anterior (sigue el formulario de siempre).
+    tripChange?: TripChangeConfig | null;
     integrantesHash?: string;
     integrantes?: Integrant[];
     requestsLite?: TravelRequest[];
@@ -642,6 +644,20 @@ class GasService {
     const response = await this.runGas('requestModification', { requestId, modifiedRequest, changeReason, emailHtml });
     if (!response.success) throw new Error(response.error);
     return response.data as string;
+  }
+
+  /** #A103: pide un cambio de viaje con solo lo que cambia. El servidor arma la solicitud de cambio desde la original. */
+  async requestTripChange(requestId: string, changes: TripChangeRequestChanges, changeReason: string): Promise<{ id: string; comprado: boolean; parentId: string }> {
+    const response = await this.runGas('requestTripChange', { requestId, changes, changeReason });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
+  /** #A103: control de cambios: cada cambio con lo que costó el viaje y lo que suma. Solo administradores. */
+  async getChangeControl(): Promise<ChangeControl> {
+    const response = await this.runGas('getChangeControl', {});
+    if (!response.success) throw new Error(response.error);
+    return response.data;
   }
 
   /**

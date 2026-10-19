@@ -15,7 +15,7 @@
 3. [Qué pasa después de crear la solicitud](#3-qué-pasa-después-de-crear-la-solicitud)
 4. [Describir tu selección de opciones](#4-describir-tu-selección-de-opciones-la-etapa-más-importante)
 5. [Recibir los tiquetes o la confirmación del hotel](#5-recibir-los-tiquetes-o-la-confirmación-del-hotel)
-6. [Modificar una solicitud](#6-modificar-una-solicitud-en-curso)
+6. [Cambiar tu viaje](#6-cambiar-tu-viaje)
 7. [Anular tu solicitud](#7-anular-tu-solicitud)
 8. [Responder a una consulta del área](#8-responder-a-una-consulta-del-área-de-viajes)
 9. [Casos particulares](#9-casos-particulares)
@@ -294,41 +294,53 @@ Al regresar, si necesitas entregar soportes (facturas de taxi, recibos, etc.), e
 
 ---
 
-## 6. Modificar una solicitud en curso
+## 6. Cambiar tu viaje
 
-Si ya creaste la solicitud pero necesitas cambiar algo (fecha, destino, pasajeros, lo que sea), **no crees una solicitud nueva**. Úsa la opción de **modificar**.
+Si necesitas cambiar algo de un viaje que ya pediste, **no crees una solicitud nueva**: usa el botón grande **😕 ¿Necesita cambiar su viaje?** de tu panel (o **Cambiar mi viaje** en el detalle de la solicitud). Toma un minuto.
 
-### Cuándo puedes modificar
+### Qué puedes cambiar
 
-Puedes modificar mientras la solicitud **no esté en estado terminal**. Es decir, **no puedes modificar** si la solicitud está en:
+- **Fechas** (ida o regreso; en solo hospedaje, entrada o salida). Si el viaje lleva hotel, las noches se ajustan solas.
+- **Horas** de los vuelos.
+- **Destino** (se elige de la lista de ciudades).
+- **Equipaje**: agregar o quitar la maleta de bodega.
 
-- **ANULADO**
-- **DENEGADO**
-- **PROCESADO**
-- **EN ESPERA DE APROBACIÓN POR POLÍTICA** (mientras espera la aprobación de la excepción no se piden cambios: si necesitas otra fecha, anúlala y crea una nueva).
+Puedes elegir varias cosas a la vez. Para algo distinto (por ejemplo, quitar el hotel) escríbelo en el motivo. Para cambiar a quien viaja, pide una solicitud nueva.
 
-Si está en cualquier otro estado (pendiente de aprobación, pendiente de opciones, pendiente de selección, confirmación de costo, aprobado, e incluso RESERVADO), **sí puedes modificarla**. Pero atención: si ya estaba RESERVADO (tiquetes comprados), es probable que haya penalidades o costos extra — el portal te avisa con un banner rojo.
+### Hasta cuándo
 
-### Cómo se modifica
+- Hasta las **5:00 p. m. del día hábil anterior al vuelo**. Si ese día es sábado, hasta las **12:00 m.** Domingos y festivos no cuentan. Antes de ese límite lo puedes pedir a cualquier hora.
+- La **fecha nueva también tiene que dar tiempo**: no se puede mover el viaje a un día cuyo plazo ya pasó.
+- Si el viaje **ya empezó** (la ida ya voló), solo se cambia el **regreso**: fecha, hora o equipaje.
+- Después del plazo, el portal no deja pedir el cambio y te muestra a quién escribir: **compras.equitel@equitel.com.co**. El área de viajes lo registra a tu nombre.
 
-1. En tu dashboard, abre el detalle de la solicitud que quieres modificar.
-2. Busca el botón **`Modificar`** (o **`Solicitar cambio`**).
-3. Se abre un formulario **igual al de crear**, con los datos actuales pre-cargados. Cambia lo que necesitas.
-4. En la parte final del formulario hay un campo obligatorio llamado **"Motivo del cambio"**. Explica claramente por qué el cambio. Ejemplos:
-   - "El cliente pospuso la reunión al 15 de abril."
-   - "Se suma un pasajero adicional que antes no se había confirmado."
-   - "Cambio de destino: ya no es Medellín, ahora es Cali."
+La ventana te dice, viaje por viaje, hasta cuándo puedes pedir el cambio.
 
-   Si estás muy apurado, hay un botón **✨ Mejorar con IA** que reescribe tu borrador en un texto más formal (requiere que el área de viajes tenga esa función activa).
-5. Haz click en **`Confirmar cambio`**.
+### Cómo se pide
 
-### Qué pasa con la solicitud original
+1. Toca **😕 ¿Necesita cambiar su viaje?** y elige el viaje.
+2. Marca qué quieres cambiar y escribe el valor nuevo. Abajo verás un resumen **antes / ahora**.
+3. Escribe el **motivo** (obligatorio, mínimo 10 caracteres). Ejemplos: "El cliente pospuso la reunión al jueves.", "La visita se alargó un día."
+4. Toca **Enviar el cambio**.
 
-La solicitud original **NO se anula inmediatamente**. Queda activa mientras el área de viajes revisa tu cambio. Hay tres posibles desenlaces:
+### Si el tiquete ya está comprado
 
-1. **El área acepta el cambio:** la solicitud nueva (la de cambio) entra al flujo normal desde cotización, y cuando se apruebe, la original se anula automáticamente.
-2. **El área deniega el cambio** y la original queda **activa**: el proceso continúa sobre la original como si nada hubiera pasado.
-3. **El área deniega el cambio y te pregunta qué hacer**: recibes un correo de consulta con botones **`CONTINUAR`** (con la original) o **`ANULAR`** (cancelar todo). Ver §8.
+- El cambio **tiene costo**: la penalidad de la aerolínea o la agencia y la diferencia de tarifa. Tu jefe lo **aprueba siempre**, aunque cueste $0, y ve lo que costó el viaje y cuánto suma el cambio.
+- **La maleta cuesta más si se pide después.** Agregarla a un tiquete comprado se paga con la diferencia de tarifa y la penalidad del cambio. Si crees que la vas a necesitar, márcala desde el formulario de la solicitud.
+- El tiquete que tienes **sigue siendo el válido** hasta que recibas el nuevo. La solicitud original **no se anula**: queda «Cambiada» y la vigente es la del cambio.
+
+### Si todavía no se había comprado
+
+El área de viajes cotiza de nuevo con los cambios, **sin penalidad**. Cuando se aprueba el cambio, la solicitud original se anula.
+
+### Qué sigue después de enviarlo
+
+1. El área de viajes revisa tu cambio y lo pide a la agencia.
+2. Te llegan por correo las opciones del cambio y describes cuál eliges, como siempre (§4).
+3. Tu aprobador aprueba el costo del cambio.
+4. Recibes el tiquete nuevo por correo.
+
+Si el área de viajes no puede hacer el cambio, te avisa: puede seguir con la solicitud original o preguntarte qué hacer (ver §8). Solo puede haber **un cambio en curso** por solicitud.
 
 ---
 
@@ -506,9 +518,9 @@ En tu dashboard, cada solicitud tiene una **etiqueta de estado**. La más releva
 
 Todos los demás estados significan que el área de viajes o tu aprobador están trabajando. Tú no tienes nada que hacer.
 
-### ¿Puedo solicitar un cambio de silla / equipaje adicional?
+### ¿Puedo agregar la maleta de bodega después?
 
-Sí, usando el flujo de **modificación** (§6). Incluye en el motivo del cambio qué detalles adicionales necesitas (ej: "requiero equipaje de 23 kg facturado, confirmar tarifa con maleta"). El área de viajes cotizará la diferencia si hay lugar a costo extra.
+Sí, con **😕 Cambiar mi viaje** → **Equipaje** (§6). Si el tiquete ya está comprado, tiene costo (diferencia de tarifa y penalidad) y lo aprueba tu jefe. Por eso conviene marcarla desde el formulario de la solicitud si crees que la vas a necesitar. Para una silla u otro detalle, escríbelo en el motivo del cambio.
 
 ### El área me dijo que denegó mi solicitud
 
@@ -544,7 +556,7 @@ No debería pasar. Cada usuario solo ve sus propias solicitudes. Si ves algo rar
 | **Crear Solicitud** / **Confirmar Cambio** (al final del formulario) | Enviar la solicitud o la modificación. |
 | **INGRESAR Y SELECCIONAR** (en correo de opciones) | Entrar al portal a describir tu selección. |
 | **Enviar Selección** (en detalle) | Guardar tu descripción de opciones. |
-| **Modificar** (en detalle) | Pedir un cambio a una solicitud en curso. |
+| **😕 ¿Necesita cambiar su viaje?** (en tu panel) / **Cambiar mi viaje** (en detalle) | Pedir un cambio de fechas, horas, destino o equipaje (§6). |
 | **Anular** (en detalle) | Cancelar tu propia solicitud. |
 | **Subir soportes** (en detalle, post-viaje) | Cargar facturas, recibos, soportes. |
 | **CONTINUAR / ANULAR** (en correo de consulta) | Responder cuando el área pregunta qué hacer con una solicitud. |

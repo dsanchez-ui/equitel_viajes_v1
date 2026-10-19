@@ -395,12 +395,21 @@ corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53,
 <p><code>GRUPO MULTIDESTINO</code> (#A100): llave que enlaza los tramos de un mismo viaje multidestino (<code>MD-…</code>). Si un tramo no cumple la anticipación, todos esperan la misma aprobación del CFO.</p>
 </li>
 <li>
+<p><code>CAMBIO PEDIDO (JSON)</code> (#A103): en una solicitud de cambio pedida con «Cambiar mi viaje», lo de antes y lo de ahora, si el tiquete ya estaba comprado, lo que costó el viaje original y la compra de la original. La escribe el sistema: <strong>no editar</strong>. Si está llena y dice <code>&quot;comprado&quot;:true</code>, la solicitud lleva solo el costo del cambio.</p>
+</li>
+<li>
+<p><code>PENALIDAD CAMBIO</code> (#A103): de lo que costó un cambio, cuánto es penalidad y cargos (pesos). La escribe el área de viajes al confirmar el costo del cambio.</p>
+</li>
+<li>
+<p><code>REEMPLAZADA POR</code> (#A103): en la solicitud original, el ID del cambio que la reemplazó («Cambiada»). La original comprada no se anula: su tiquete se pagó y su costo sigue contando.</p>
+</li>
+<li>
 <p>Estado <code>PENDIENTE_APROBACION_POLITICA</code> (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de viajes no la ve hasta que se apruebe.</p>
 </li>
 </ul>
 <p>Todas las crea el menú <em>12. Columnas de compra y resumen de facturas</em> (o el sistema, la primera vez que las necesita).</p>
 <h3>12. Columnas de compra y resumen de facturas</h3>
-<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code>, <code>VALOR COMPRA TIQUETES</code>, <code>VALOR COMPRA HOTEL</code>, <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code>, <code>REQUIERE APROB TARIFA</code>, <code>GRUPO MULTIDESTINO</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
+<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code>, <code>VALOR COMPRA TIQUETES</code>, <code>VALOR COMPRA HOTEL</code>, <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code>, <code>REQUIERE APROB TARIFA</code>, <code>GRUPO MULTIDESTINO</code>, <code>CAMBIO PEDIDO (JSON)</code>, <code>PENALIDAD CAMBIO</code>, <code>REEMPLAZADA POR</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
 <ul>
 <li><strong>listas para cerrar:</strong> viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita</li>
 <li><strong>facturas por revisar:</strong> les faltan facturas o PDF, a partir del día 7 después del viaje</li>

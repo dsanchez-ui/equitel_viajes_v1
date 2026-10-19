@@ -1932,7 +1932,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">{isHotelOnly ? 'Fecha Check-in *' : 'Fecha Ida *'}</label>
-              <input type="date" name="departureDate" required min={new Date().toISOString().split('T')[0]} style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureDate} onChange={handleInputChange} onClick={handleOpenPicker} />
+              <input type="date" name="departureDate" required min={todayIsoLocal()} style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureDate} onChange={handleInputChange} onClick={handleOpenPicker} />
             </div>
             {/* Hora vuelo ida — solo para vuelos */}
             {!isHotelOnly && (
@@ -1951,7 +1951,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                     name="returnDate"
                     required
                     disabled={!formData.departureDate}
-                    min={formData.departureDate || new Date().toISOString().split('T')[0]}
+                    min={formData.departureDate || todayIsoLocal()}
                     style={{ colorScheme: 'light' }}
                     className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 ${!formData.departureDate ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer animate-pulse-subtle'}`}
                     value={formData.returnDate}
@@ -2025,7 +2025,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               totalLegs={extraTramos.length + 1}
               cities={cities}
               isCitiesLoading={isCitiesLoading}
-              minDate={(i === 0 ? formData.departureDate : extraTramos[i - 1].departureDate) || formData.departureDate || new Date().toISOString().split('T')[0]}
+              minDate={(i === 0 ? formData.departureDate : extraTramos[i - 1].departureDate) || formData.departureDate || todayIsoLocal()}
               intl={legIntl(t.origin, t.destination)}
               suggestedNights={suggestedNightsForLeg(i + 1)}
               disabled={loading || isLocked}
@@ -2050,6 +2050,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             <label htmlFor="checkedBaggage" className="text-sm text-gray-700">
               <span className="font-medium">¿Lleva maleta de bodega?</span>
               <span className="block text-xs text-gray-500">Márquela si algún pasajero necesita despachar equipaje, además de la maleta de mano. El área de viajes la tiene en cuenta al elegir la tarifa.</span>
+              {/* #A103: prevención (decisión de Yurani, 19-oct): pedirla después cuesta el cambio. */}
+              <span className="block text-xs text-amber-800 mt-0.5" data-baggage-later-hint>Si cree que la va a necesitar, márquela ahora: agregarla después cuesta el cambio y la diferencia de tarifa.</span>
             </label>
           </div>
         )}

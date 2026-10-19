@@ -281,7 +281,7 @@ function main() {
   eq('todas las búsquedas: también otro equipaje y sin tarifa', b.saSample(false, 'all').map((x) => x.it.requestId), ['S1', 'S2', 'S3']);
   eq('por qué un viaje no cuenta', [b.ptFareGap(its[0]), b.ptFareGap(its[1]), b.ptFareGap(its[2])],
     ['', 'Google se buscó sin maleta y la tarifa es TIPO 2', 'falta la tarifa del tiquete']);
-  eq('la vista por defecto es la misma tarifa', b.ptFareMode(), 'same');
+  eq('con un Code.gs sin comparaciones exactas, la vista por defecto es la misma tarifa', b.ptFareMode(), 'same');
   b.priceData = { summary: { overall: {} }, items: [I('S1', '1', true)].map((x) => { delete x.fare; return x; }) };
   eq('con un Code.gs anterior (sin tarifas) se ve todo, como antes', [b.ptFareMode(), b.saSample(false, 'same').length], ['all', 1]);
   // #A97: solo comparaciones exactas, solo TIPO 1, y la proyección solo de los viajes TIPO 1.
@@ -297,6 +297,18 @@ function main() {
   const pTodos = b.saProject(tripsTipo, ['2026-09'], sTipo, Object.assign({}, base, { how: 'fixed', base: 'trip', fixed: 100000 }));
   const pT1 = b.saProject(tripsTipo, ['2026-09'], sTipo, Object.assign({}, base, { how: 'fixed', base: 'trip', fixed: 100000, scope: 'tipo1' }));
   eq('proyección: todos los viajes o solo TIPO 1', [pTodos['2026-09'], pT1['2026-09']], [300000, 200000]);
+
+  // #A104: por defecto, solo comparaciones exactas de viajes ya comprados, con lo pagado si se registró.
+  const P = (id, o) => Object.assign(Q(id, '1', true, 'exacta'), { bought: true, marketMoment: 'COMPRA', base: 800000, baseKind: 'cotizado' }, o);
+  b.priceData = { summary: { sameFare: { overall: {} }, exact: { overall: { n: 9 } }, purchasedExact: { overall: { n: 2 } }, purchased: { overall: {} }, purchasedSameFare: { overall: {} } },
+    items: [P('B1', { paid: 700000, base: 700000, baseKind: 'pagado' }), P('B2'), P('N1', { bought: false }), P('N2', { bought: true, marketMoment: 'COTIZACION' })] };
+  eq('por defecto: solo exactas y solo lo ya comprado', [b.ptFareMode(), b.ptBoughtOnly(), b.ptSummaryFor('exact').overall.n, b.ptSummaryFor('exact', false).overall.n], ['exact', true, 2, 9]);
+  eq('la muestra de la proyección: solo lo comprado con búsqueda al comprar', b.saSample(false, 'exact').map((x) => x.it.requestId), ['B1', 'B2']);
+  eq('la muestra usa lo pagado si se registró', b.saSample(false, 'exact').map((x) => [x.base, x.diff, Math.round(x.pct * 1000) / 1000]), [[700000, 200000, 0.286], [800000, 300000, 0.375]]);
+  eq('por qué no cuenta lo que no se ha comprado', [b.ptFareGap(b.priceData.items[2], 'exact'), b.ptFareGap(b.priceData.items[3], 'exact'), b.ptFareGap(b.priceData.items[0], 'exact')],
+    ['todavía no se ha comprado', 'no hay búsqueda de Google al comprar, solo la de la cotización', '']);
+  b.priceData = { summary: { sameFare: { overall: {} }, exact: { overall: {} } }, items: [Q('E1', '1', true, 'exacta')] };
+  eq('con un Code.gs anterior (sin lo comprado): exactas, sin la casilla, todos cuentan', [b.ptFareMode(), b.ptBoughtOnly(), b.saSample(false, 'exact').length], ['exact', false, 1]);
 
   // #A99: claridad para presentar. Vista anual de 2026 desde abril (la plataforma arrancó el 27-mar).
   b.document.getElementById = (id) => ({ value: '', checked: id === 'f_includeEstimated' || id === 'f_includeNoPresupuesto' });

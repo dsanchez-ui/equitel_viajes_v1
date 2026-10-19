@@ -212,18 +212,27 @@ Lo facturado se suma igual que en el dashboard de costos, con las facturas 1 a 6
 
 Las listas se consultan al abrir el panel y con **↻ Actualizar**. No envían correos ni cambian nada en la hoja.
 
-### 5.6 Gestionar solicitudes de cambio
+### 5.6 Gestionar solicitudes de cambio («Cambiar mi viaje», #A103)
 
-Cuando un usuario pide modificar una solicitud ya en curso, se crea una solicitud "hija" con status `PENDIENTE_ANALISIS_CAMBIO`. El correo que te llega tiene botones directos **PASAR A ESTUDIO** y **RECHAZAR CAMBIO**. Pero también puedes gestionarlo desde el panel:
+Desde el 19-oct los viajeros piden los cambios con el botón **😕 ¿Necesita cambiar su viaje?**: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las **5:00 p. m. del día hábil anterior al vuelo** (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Después del plazo el portal les dice que escriban a compras.equitel@equitel.com.co.
 
-1. Fila con status `PENDIENTE_ANALISIS_CAMBIO`
-2. Abre el detalle → **"Revisar cambio"**
-3. Opciones:
-   - **Pasar a estudio** → la hija entra al flujo normal como cualquier solicitud (empieza en `PENDIENTE_OPCIONES`). La solicitud original se anula automáticamente cuando la hija se apruebe.
-   - **Denegar cambio** → requiere motivo. Luego decides qué hacer con la original:
-     - **Mantener activa** (default): la original sigue su curso.
-     - **Anular**: la original también se cancela.
-     - **Consultar al usuario**: envía un correo al solicitante con botones CONTINUAR / ANULAR para que él decida. Mientras responde, los recordatorios de la original quedan pausados.
+Se crea una solicitud "hija" en `PENDIENTE_ANALISIS_CAMBIO`, ligada a la original, con lo de antes y lo de ahora. Te llega el correo **CAMBIO DE VIAJE**.
+
+1. En el panel, la fila del cambio tiene **🔄 Revisar Cambio**. La ventana muestra:
+   - qué cambia (antes / ahora), el motivo y si la maleta se pidió después de comprar;
+   - **lo que ya se compró** de la original (PNR, aerolínea, canal, tarifa, valor pagado, tarjeta, fecha y archivos);
+   - un **mensaje listo para la agencia** con el botón para copiarlo.
+2. **ACEPTAR Y COTIZAR** → la hija sigue el flujo de siempre (opciones, selección del viajero o saltar la selección, confirmar costos, aprobación, reserva).
+   **Denegar** funciona igual que antes (mantener la original, anularla o consultar al usuario).
+3. **Confirmar costos** de un cambio de un tiquete **ya comprado**: se escribe **solo el costo del cambio** en tres campos: *Penalidad y cargos*, *Diferencia de tarifa* y *Hotel* (si cambió). Al lado ves lo que costó el viaje, el viaje con el cambio y cuánto suma. Si no tiene costo, escribe 0: igual va al aprobador.
+4. El aprobador recibe **APROBACIÓN DE CAMBIO** con lo que costó el viaje, el costo del cambio y el total. Cadena de Suministro aprueba si el **viaje con el cambio** supera $1.200.000.
+5. Al **registrar la reserva** del cambio, la aerolínea, el canal, el PNR y la tarjeta vienen de la compra original: corrige solo lo que cambió. La original **no se anula**: queda «Cambiada» (columna `REEMPLAZADA POR`) y su costo sigue contando.
+
+Si el tiquete **no se había comprado**, la hija se cotiza como el viaje completo y la original se anula al aprobarse el cambio, como antes.
+
+**Cambios por fuera del plazo o por correo:** ábrelos desde el detalle de la solicitud con **Solicitar Cambio**. Lo registras a nombre del viajero, sin plazo, y queda constancia de que lo registraste tú. Si hay que cambiar pasajeros, el centro de costo o el hotel, usa **el formulario completo** desde esa misma ventana.
+
+**Control:** *Métricas → 🔄 Cambios* muestra cada cambio con lo que costó el viaje, el costo del cambio, la penalidad, las maletas pedidas después y el total por unidad (y CSV). El dashboard de costos tiene la sección **Cambios de viaje** por unidad (cada líder ve las suyas) y el informe mensual trae la sección «Cambios de viaje».
 
 ### 5.7 Anular una solicitud
 
@@ -511,6 +520,10 @@ Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta antic
 - El panel no muestra nombres, cédulas ni correos de los pasajeros.
 
 ---
+
+### 8.3 Cambios (#A103)
+
+Pestaña **🔄 Cambios**: cada cambio pedido con «Cambiar mi viaje», con filtros de mes y tipo de cambio. Muestra cuántos fueron de tiquetes ya comprados, lo que costaron los cambios (penalidad, diferencia de tarifa y hotel), qué parte fue penalidad, las maletas pedidas después de comprar y el costo por unidad. Los cambios de antes (formulario anterior) se cuentan aparte porque no traen el detalle. *¿Cómo se calcula?* explica cada cifra. Exporta a CSV.
 
 ## 9. Triggers programados (4 triggers cada 2h)
 

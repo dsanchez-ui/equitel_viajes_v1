@@ -472,6 +472,8 @@
 
     /* ===== VARIANCE REPORT (solo admin/superadmin) ===== */
     #varianceSection { display: none; }
+    /* ===== CAMBIOS DE VIAJE (#A103) ===== */
+    #changesSection { display: none; }
     /* ===== COMPARADOR DE PRECIOS (estudio #A84, acceso restringido) ===== */
     #priceSection { display: none; }
     .pt-health { font-size: 12px; padding: 10px 12px; border-radius: 6px; margin-bottom: 14px; border: 1px solid var(--border); background: #f9fafb; color: var(--text); }
@@ -1227,6 +1229,41 @@
     </div>
 
     <!-- ============================================================== -->
+    <!-- CAMBIOS DE VIAJE (#A103) — mismo acceso que el dashboard; un    -->
+    <!-- líder solo ve sus unidades (filtro en el servidor)              -->
+    <!-- ============================================================== -->
+    <div id="changesSection" class="view-section">
+      <div class="view-title">
+        🔄 Cambios de viaje
+        <span class="view-subtitle">cuánto cuestan los cambios de los viajes ya comprados, por unidad</span>
+      </div>
+      <details class="pt-legend">
+        <summary>¿Cómo se calcula?</summary>
+        <dl>
+          <dt>Qué se cuenta</dt>
+          <dd>Los cambios pedidos con «Cambiar mi viaje» (desde el 19-oct), en el mes en que se pidieron. Los de antes, con el formulario
+            anterior, no traen el detalle y no se cuentan. Respeta los filtros de empresa y unidad de arriba.</dd>
+          <dt>Costo del cambio</dt>
+          <dd>Lo que confirmó el área de viajes para el cambio de un tiquete ya comprado: penalidad y cargos más la diferencia de tarifa
+            (y hotel, si cambió). Se suma a lo que costó el viaje, que no se anula. Un cambio sin confirmar todavía no suma. Si el viaje aún no
+            se había comprado, el cambio no tiene penalidad: se cotiza de nuevo y no aparece como costo.</dd>
+          <dt>% sobre el viaje</dt>
+          <dd>Costo de los cambios ÷ lo que costaron esos viajes antes del cambio (lo pagado o, si no se registró, lo cotizado).</dd>
+        </dl>
+      </details>
+      <div class="kpi-grid" id="chgKpis"></div>
+      <div class="card">
+        <h2>Por unidad</h2>
+        <div class="variance-table-wrap"><table class="variance" id="chgUnitTable"></table></div>
+      </div>
+      <div class="card">
+        <h2>Cambios</h2>
+        <div class="variance-table-wrap"><table class="variance" id="chgTable"></table></div>
+        <div id="chgEmpty" class="empty-state" style="display: none;">No hay cambios pedidos con estos filtros.</div>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
     <!-- COMPARADOR DE PRECIOS (estudio #A84) — acceso restringido       -->
     <!-- ============================================================== -->
     <div id="priceSection" class="view-section">
@@ -1241,11 +1278,12 @@
       <div class="sa-controls" id="ptFareBar" style="display: none;">
         <label>Comparar
           <select id="ptFareMode">
-            <option value="same">Con la tarifa del manual (peras con peras)</option>
             <option value="exact" id="ptFareExactOpt">Solo comparaciones exactas</option>
+            <option value="same">Con la tarifa del manual (incluye aproximadas)</option>
             <option value="all">Todas las búsquedas, sin distinguir tarifa</option>
           </select>
         </label>
+        <label id="ptBoughtWrap" style="display: none;"><input type="checkbox" id="ptBoughtOnly" checked> Solo viajes ya comprados</label>
       </div>
 
       <div class="pt-headline" id="ptHeadline">Cargando…</div>
@@ -1255,6 +1293,15 @@
         <dl>
           <dt>Valor cotizado</dt>
           <dd>Lo que el área de viajes confirmó para los tiquetes (ida y regreso, todos los pasajeros).</dd>
+          <dt>Lo pagado</dt>
+          <dd>Lo que el área de viajes registró como pagado al comprar los tiquetes. En lo ya comprado se compara lo pagado; si no se
+            registró, lo cotizado, que es lo que se aprobó.</dd>
+          <dt>Solo viajes ya comprados</dt>
+          <dd>Viajes con la reserva registrada (o cerrados), comparados con la búsqueda de Google hecha al comprar. Es la cifra que se puede
+            presentar. Lo que espera aprobación o compra todavía no es un gasto: se muestra aparte y no suma. Lo denegado o anulado no se compara.</dd>
+          <dt>Varios pasajeros</dt>
+          <dd>Google se busca con el mismo número de pasajeros (y una maleta de mano por persona en TIPO 2 y 3) y su precio es el total del
+            grupo, igual que lo cotizado: se comparan totales contra totales.</dd>
           <dt>Precio más barato en Google</dt>
           <dd>El vuelo directo más barato en Google Flights para las mismas ciudades, fechas y pasajeros, saliendo hasta 2 horas antes
             o después de la hora pedida (si a esa hora no hay, el más barato del día). La ida y el regreso se buscan por separado, como
@@ -1269,28 +1316,33 @@
             Basic, Light y Full; Clic, porque Google trae su tarifa más baja (VeLigera) y el manual pide VeEcono o VePreferencial; TIPO 3 fuera de
             Avianca y cuando el viajero pidió bodega, porque Google no la deja pedir. Ahí el precio de Google puede quedar por debajo.
             <b>No comparable:</b> Google se buscó con otro equipaje. Se probó el 9-oct en Bogotá–Medellín: con maleta, Avianca subía $73.780 en
-            25 de 25 vuelos y LATAM no cambiaba.</dd>
+            25 de 25 vuelos y LATAM no cambiaba. Además, para ser exacta el vuelo de Google tiene que salir a ±2 h de la hora pedida, ser
+            directo y llegar al mismo aeropuerto (en Medellín, Clic y Satena operan desde Olaya Herrera y las demás desde Rionegro); si no,
+            es aproximada.</dd>
           <dt>Precio con la misma aerolínea</dt>
           <dd>Lo más barato en Google con la misma aerolínea con que se cotizó.</dd>
           <dt>Diferencia</dt>
-          <dd>Valor cotizado − precio en Google. «Cotizado 34 % más que Google» = esa diferencia ÷ el precio en Google; menos de
-            $1.000 cuenta como igual. (En «Proyección de ahorro» el % se mide sobre lo cotizado: cuánto se habría ahorrado de lo pagado.)</dd>
+          <dd>Lo pagado (o cotizado) − precio en Google, sumado viaje por viaje: los viajes donde Google era más caro restan. El % es esa
+            diferencia ÷ lo pagado (o cotizado); menos de $1.000 cuenta como igual. Google no cobra el cargo de la agencia y lo cotizado sí:
+            esa parte de la diferencia no es un sobrecosto de la compra.</dd>
           <dt>Facturado</dt>
           <dd>Lo que se pagó según las facturas. Si el viaje lleva hotel no se compara: la factura no separa tiquetes y hotel.</dd>
           <dt>Cuándo se busca</dt>
-          <dd>Al confirmar los costos y al aprobarse (justo antes de comprar). Las cifras usan la búsqueda más reciente de cada viaje.</dd>
+          <dd>Al confirmar los costos y al aprobarse (justo antes de comprar). Lo ya comprado usa la búsqueda al comprar con el equipaje de su
+            tarifa; lo demás, la de la cotización, frente a lo cotizado en ese momento. El precio de Google cambia hasta 30 % en unas horas: una
+            diferencia de $50.000 a $100.000 en un viaje está dentro de ese vaivén.</dd>
           <dt>Ojo</dt>
           <dd>Google no deja pedir maleta de bodega: en TIPO 3 (LATAM Full) su precio queda por debajo. En LATAM, pedir maleta de mano no
-            cambia el precio de Google, que puede ser el de la Basic. En Avianca sí: con maleta muestra la Classic. Satena y Clic casi no
-            publican en Google Flights. Laura no ve esta sección y los filtros de arriba no aplican aquí.</dd>
+            cambia el precio de Google, que puede ser el de la Basic. En Avianca sí: con maleta muestra la Classic. Satena y Clic no siempre
+            aparecen en Google Flights. Laura no ve esta sección y los filtros de arriba no aplican aquí.</dd>
         </dl>
       </details>
 
       <div class="kpi-grid">
         <div class="kpi"><div class="label">Viajes comparados</div><div id="ptTracked" class="value">—</div><div class="extra" id="ptTrackedExtra">—</div></div>
-        <div class="kpi"><div class="label">Valor cotizado</div><div id="ptQuoted" class="value">—</div><div class="extra" id="ptQuotedExtra">—</div></div>
+        <div class="kpi"><div class="label" id="ptQuotedLabel">Valor cotizado</div><div id="ptQuoted" class="value">—</div><div class="extra" id="ptQuotedExtra">—</div></div>
         <div class="kpi"><div class="label">Precio más barato en Google</div><div id="ptMarket" class="value">—</div><div class="extra" id="ptMarketExtra">—</div></div>
-        <div class="kpi" id="ptDiffCard"><div class="label">Diferencia</div><div id="ptDiff" class="value">—</div><div class="extra" id="ptDiffExtra">—</div></div>
+        <div class="kpi" id="ptDiffCard"><div class="label">Diferencia con Google</div><div id="ptDiff" class="value">—</div><div class="extra" id="ptDiffExtra">—</div></div>
       </div>
 
       <div class="card">
@@ -1301,9 +1353,9 @@
               <tr>
                 <th>Comparación</th>
                 <th class="num">Viajes</th>
-                <th class="num">Valor cotizado</th>
+                <th class="num">Lo pagado o cotizado</th>
                 <th class="num">Precio más barato en Google</th>
-                <th class="num">Lo cotizado frente a Google</th>
+                <th class="num">Frente a Google</th>
               </tr>
             </thead>
             <tbody id="ptSummaryBody"></tbody>
@@ -1329,11 +1381,11 @@
               <tr>
                 <th>Solicitud</th>
                 <th>Viaje</th>
-                <th class="num">Valor cotizado</th>
+                <th class="num">Lo pagado o cotizado</th>
                 <th class="num">Facturado</th>
                 <th class="num">Precio más barato en Google</th>
                 <th class="num">Precio con la misma aerolínea</th>
-                <th class="num">Lo cotizado frente a Google</th>
+                <th class="num">Frente a Google</th>
               </tr>
             </thead>
             <tbody id="ptTableBody"></tbody>
@@ -1695,7 +1747,7 @@ function noteLoad(name, t0, data) {
 function renderLoadInfo() {
   var el = document.getElementById('loadInfo');
   if (!el) return;
-  var names = { data: 'Datos generales', variance: 'Variación', price: 'Comparador y proyección' };
+  var names = { data: 'Datos generales', variance: 'Variación', changes: 'Cambios de viaje', price: 'Comparador y proyección' };
   var parts = Object.keys(names).filter(function(k) { return loadTimes[k]; }).map(function(k) {
     var t = loadTimes[k];
     return names[k] + ' ' + (t.ms / 1000).toFixed(1).replace('.', ',') + ' s' +
@@ -1713,6 +1765,7 @@ function loadDashboard(fresh) {
   // servidor responde "restringido" a quien no tiene permiso y la sección no aparece.
   loadVarianceReport(fresh);
   loadPriceTracking(fresh);
+  loadTripChanges(fresh);
   var t0 = Date.now();
   google.script.run
     .withSuccessHandler(function(data) {
@@ -1792,6 +1845,7 @@ function refreshView() {
   // Variance: si ya hay datos cargados, refrescar con los nuevos filtros client-side.
   if (varianceData) renderVarianceView();
   if (priceData && priceData.analysis) renderSavings();
+  if (changesData) renderTripChanges();
 }
 
 /**
@@ -2853,6 +2907,89 @@ function csvTopTravelersLines(title, rows) {
 // Solo lo carga quien el backend autoriza (meta.access.canViewVariance: la
 // lista fija COSTS_VARIANCE_ALLOWED de Code.gs). El backend lo revalida.
 
+// ---------------------------------------------------------------------
+// CAMBIOS DE VIAJE (#A103): cuánto cuestan los cambios de lo ya comprado, por unidad.
+// ---------------------------------------------------------------------
+var changesData = null;
+function loadTripChanges(fresh) {
+  var t0 = Date.now();
+  google.script.run
+    .withSuccessHandler(function(response) {
+      if (!response || !response.success) {
+        // Un Code.gs anterior no conoce la acción: la sección no aparece.
+        console.warn('Cambios de viaje:', (response && response.error) || 'sin respuesta');
+        return;
+      }
+      changesData = response.data;
+      noteLoad('changes', t0, changesData);
+      document.getElementById('changesSection').style.display = 'block';
+      renderTripChanges();
+    })
+    .withFailureHandler(function(err) { console.warn('Cambios de viaje:', (err && err.message) || 'error de conexión'); })
+    .costsDashboard_getTripChanges({ userEmail: session.email, sessionToken: session.token, fresh: fresh === true });
+}
+/** Los cambios con los filtros de empresa y unidad de arriba. */
+function chgFiltered() {
+  var norm = function(x) { return String(x || '').toLowerCase().trim(); };
+  var company = norm((document.getElementById('f_company') || {}).value);
+  var unit = norm((document.getElementById('f_unit') || {}).value);
+  return ((changesData && changesData.items) || []).filter(function(x) {
+    return (!company || norm(x.company) === company) && (!unit || norm(x.unit) === unit);
+  });
+}
+var CHG_STATUS = { PENDIENTE_ANALISIS_CAMBIO: 'Por revisar', PENDIENTE_OPCIONES: 'Cotizando', PENDIENTE_SELECCION: 'Eligiendo opción',
+  PENDIENTE_CONFIRMACION_COSTO: 'Cotizando', PENDIENTE_APROBACION: 'Esperando aprobación', APROBADO: 'Aprobado', RESERVADO: 'Comprado',
+  PROCESADO: 'Cerrado', DENEGADO: 'No aprobado', ANULADO: 'Anulado' };
+/** Totales de una lista de cambios: solo cuentan los de tiquetes comprados con costo confirmado y no anulados ni denegados. */
+function chgTotals(list) {
+  var paid = list.filter(function(x) { return x.comprado && x.changeCost !== null && x.status !== 'ANULADO' && x.status !== 'DENEGADO'; });
+  var sum = function(l, f) { return l.reduce(function(t, x) { return t + (Number(f(x)) || 0); }, 0); };
+  return { n: list.length, bought: list.filter(function(x) { return x.comprado; }).length, costed: paid.length,
+    cost: sum(paid, function(x) { return x.changeCost; }), penalty: sum(paid, function(x) { return x.penalty; }),
+    original: sum(paid, function(x) { return x.original; }), bag: list.filter(function(x) { return x.bagLater; }).length };
+}
+function renderTripChanges() {
+  if (!changesData) return;
+  var list = chgFiltered();
+  var t = chgTotals(list);
+  var pct = function(a, b) { return b > 0 ? ptPctText(a / b * 100) : '—'; };
+  var kpi = function(label, value, extra) {
+    return '<div class="kpi"><div class="label">' + escHtml(label) + '</div><div class="value">' + escHtml(value) + '</div><div class="extra">' + escHtml(extra) + '</div></div>';
+  };
+  document.getElementById('chgKpis').innerHTML =
+    kpi('Cambios pedidos', String(t.n), t.bought + ' con el tiquete ya comprado' + (changesData.legacy ? ' · ' + changesData.legacy + ' de antes, sin detalle' : '')) +
+    kpi('Costo de los cambios', fmtMoney(t.cost), t.costed ? 'en ' + ptPlural(t.costed, 'cambio con costo confirmado', 'cambios con costo confirmado') : 'ninguno confirmado todavía') +
+    kpi('De eso, penalidad', fmtMoney(t.penalty), 'lo que cobran la aerolínea o la agencia por cambiar') +
+    kpi('% sobre el viaje', pct(t.cost, t.original), 'lo que suman los cambios a lo que costaron esos viajes') +
+    kpi('Maleta pedida después', String(t.bag), 'pedida desde el principio no habría penalidad');
+  var units = {};
+  list.forEach(function(x) { var k = x.unit || '(sin unidad)'; (units[k] = units[k] || []).push(x); });
+  var keys = Object.keys(units).sort(function(a, b) { return chgTotals(units[b]).cost - chgTotals(units[a]).cost || (a < b ? -1 : 1); });
+  document.getElementById('chgUnitTable').innerHTML = '<thead><tr><th>Unidad</th><th class="num">Cambios</th><th class="num">Con el tiquete comprado</th>' +
+    '<th class="num">Costo de los cambios</th><th class="num">De eso, penalidad</th><th class="num">% sobre el viaje</th></tr></thead><tbody>' +
+    (keys.length ? keys.map(function(k) {
+      var u = chgTotals(units[k]);
+      return '<tr><td>' + escHtml(k) + '</td><td class="num">' + u.n + '</td><td class="num">' + u.bought + '</td><td class="num">' + fmtMoney(u.cost) +
+        '</td><td class="num">' + fmtMoney(u.penalty) + '</td><td class="num">' + pct(u.cost, u.original) + '</td></tr>';
+    }).join('') : '<tr><td colspan="6" style="color: var(--muted);">Sin cambios con estos filtros.</td></tr>') + '</tbody>';
+  document.getElementById('chgEmpty').style.display = list.length ? 'none' : '';
+  document.getElementById('chgTable').innerHTML = list.length ? '<thead><tr><th>Cambio</th><th>Unidad</th><th>Qué cambió</th>' +
+    '<th class="num">Lo que costó el viaje</th><th class="num">Costo del cambio</th><th>Estado</th></tr></thead><tbody>' +
+    list.slice(0, 100).map(function(x) {
+      var what = (x.rows || []).map(function(r) { return r[0] + ': ' + r[1] + ' → ' + r[2]; }).join(' · ');
+      var who = x.registeredBy === 'administrador' ? 'registrado por el área de viajes' : (x.requesterName || '');
+      var cost = !x.comprado ? '<span class="pt-sub">sin comprar: se cotizó de nuevo</span>'
+        : x.changeCost === null ? '<span class="pt-sub">por cotizar</span>'
+        : '<span class="pt-main">' + fmtMoney(x.changeCost) + '</span>' + (typeof x.penalty === 'number' ? '<span class="pt-sub">penalidad ' + fmtMoney(x.penalty) + '</span>' : '');
+      return '<tr><td><span class="pt-id">' + escHtml(x.id) + '</span><span class="pt-sub">cambio de ' + escHtml(x.parentId) + (who ? ' · ' + escHtml(who) : '') + '</span></td>' +
+        '<td>' + escHtml(x.unit || '—') + '</td><td>' + escHtml(what || (x.tipos || []).join(', ')) +
+        (x.bagLater ? '<span class="pt-sub">maleta pedida después de comprar</span>' : '') +
+        (x.reason ? '<span class="pt-sub">«' + escHtml(x.reason) + '»</span>' : '') + '</td>' +
+        '<td class="num">' + (x.comprado && x.original ? fmtMoney(x.original) : '—') + '</td><td class="num">' + cost + '</td>' +
+        '<td>' + escHtml(CHG_STATUS[x.status] || x.status) + '</td></tr>';
+    }).join('') + '</tbody>' : '';
+}
+
 function loadVarianceReport(fresh) {
   // La sección se muestra cuando llega la respuesta (#A89: se pide en paralelo y,
   // para quien no tiene permiso, nunca aparece). 'block' explícito: la regla CSS
@@ -3323,30 +3460,45 @@ function _ptRenderHealth(meta) {
 /** ¿El servidor ya distingue la tarifa? (Code.gs anterior a #A95: no). */
 function ptHasFare() { return !!(priceData && priceData.summary && priceData.summary.sameFare); }
 // Tres maneras de comparar (#A97): con la tarifa del manual, solo las exactas o todas las búsquedas.
+// #A104: «bought» = los mismos totales, solo con lo ya comprado (la cifra que se puede presentar).
 var PT_FARE_MODES = {
-  same: { key: 'sameFare', label: 'Con la tarifa del manual (peras con peras)', short: 'con la tarifa del manual',
+  same: { key: 'sameFare', bought: 'purchasedSameFare', label: 'Con la tarifa del manual (incluye aproximadas)', short: 'con la tarifa del manual',
     sub: 'la registrada o, si falta, la que corresponde por noches, buscada con su equipaje', lead: 'Con la tarifa del manual' },
-  exact: { key: 'exact', label: 'Solo comparaciones exactas', short: 'en comparaciones exactas',
-    sub: 'TIPO 1, o con maleta donde Google trae esa tarifa (Avianca, JetSMART, Wingo)', lead: 'En comparaciones exactas' },
-  all: { key: null, label: 'Todas las búsquedas, sin distinguir tarifa', short: '',
+  exact: { key: 'exact', bought: 'purchasedExact', label: 'Solo comparaciones exactas', short: 'con comparación exacta',
+    sub: 'mismo equipaje de la tarifa, vuelo directo a la hora pedida y mismo aeropuerto', lead: 'Con comparación exacta' },
+  all: { key: null, bought: 'purchased', label: 'Todas las búsquedas, sin distinguir tarifa', short: '',
     sub: 'como antes: puede comparar una tarifa con maleta contra una sin maleta', lead: '' }
 };
-/** 'same', 'exact' (si el servidor ya las calcula) o 'all'. */
+/** 'exact' por defecto (#A104), 'same' o 'all'; con un Code.gs anterior, lo que haya. */
 function ptFareMode() {
   var el = document.getElementById('ptFareMode');
-  var v = el ? el.value : 'same';
+  var v = el ? el.value : 'exact';
   if (!ptHasFare()) return 'all';
   if (v === 'exact' && !priceData.summary.exact) return 'same';
-  return PT_FARE_MODES[v] ? v : 'same';
+  return PT_FARE_MODES[v] ? v : 'exact';
 }
-/** Los totales de una manera de comparar. */
-function ptSummaryFor(mode) {
+/** ¿El servidor ya separa lo comprado? (Code.gs anterior a #A104: no). */
+function ptHasBought() { return !!(priceData && priceData.summary && priceData.summary.purchasedExact); }
+/** ¿Solo lo ya comprado? Por defecto sí (#A104). */
+function ptBoughtOnly() {
+  if (!ptHasBought()) return false;
+  var el = document.getElementById('ptBoughtOnly');
+  return el ? !!el.checked : true;
+}
+/** ¿Ya se compró y se compara con la búsqueda al comprar? Con un Code.gs anterior, todos cuentan. */
+function ptIsPurchased(it) { return it.bought === undefined ? true : !!it.bought && it.marketMoment === 'COMPRA'; }
+/** Los totales de una manera de comparar (con lo ya comprado, si está marcado). */
+function ptSummaryFor(mode, bought) {
   var all = priceData && priceData.summary;
   if (!all) return null;
+  if (bought === undefined) bought = ptBoughtOnly();
+  if (bought && all[PT_FARE_MODES[mode].bought]) return all[PT_FARE_MODES[mode].bought];
   return mode === 'all' ? all : (all[PT_FARE_MODES[mode].key] || null);
 }
 /** ¿El viaje cuenta en esa manera de comparar? */
-function ptCounts(it, mode) {
+function ptCounts(it, mode, bought) {
+  if (bought === undefined) bought = ptBoughtOnly();
+  if (bought && !ptIsPurchased(it)) return false;
   if (mode === 'all') return true;
   var f = it.fare;
   return !!f && (mode === 'exact' ? f.quality === 'exacta' : f.match === true);
@@ -3362,6 +3514,7 @@ function ptBagsText(bags) { return bags > 0 ? 'con maleta de mano' : 'sin maleta
 function ptFareGap(it, mode) {
   var f = it.fare;
   mode = mode || 'same';
+  if (ptBoughtOnly() && !ptIsPurchased(it)) return it.bought ? 'no hay búsqueda de Google al comprar, solo la de la cotización' : 'todavía no se ha comprado';
   if (!f || ptCounts(it, mode)) return '';
   if (mode === 'exact' && f.match === true) return f.qualityReason || 'comparación aproximada';
   if (f.match === false) return f.qualityReason || ('Google se buscó ' + ptBagsText(f.searchedBags) + ' y la tarifa es TIPO ' + (f.effective || f.type));
@@ -3385,11 +3538,21 @@ function ptMainSnap(it) {
 
 function _ptRenderHeadline(s, items, mode) {
   var box = document.getElementById('ptHeadline');
+  var bought = ptBoughtOnly();
   var o = s ? s.overall : null;
+  // Lo que todavía no se compró (o no tiene búsqueda al comprar): aparte, nunca en el total (#A104).
+  var pend = bought ? items.filter(function(it) { return !ptIsPurchased(it) && ptCounts(it, mode, false) && it.difference !== null; }) : [];
+  var pendDiff = pend.reduce(function(t, it) { return t + it.difference; }, 0);
+  var pendHtml = pend.length ? '<div class="pt-note">Sin contar: ' + ptPlural(pend.length, 'viaje', 'viajes') +
+    ' todavía sin comprar o sin búsqueda al comprar (ahí lo cotizado frente a Google: ' +
+    (Math.abs(pendDiff) < PT_SAME ? 'igual' : fmtMoney(Math.abs(pendDiff)) + (pendDiff > 0 ? ' más caro' : ' más barato')) +
+    '). Todavía no es un gasto. Para verlos, quite «Solo viajes ya comprados».</div>' : '';
   if (!o || !o.n) {
     box.className = 'pt-headline';
     box.innerHTML = !items.length
       ? 'Todavía no hay viajes comparados. Cada viaje en avión se busca en Google Flights cuando se confirman sus costos y cuando se aprueba.'
+      : bought
+        ? 'Todavía no hay viajes ya comprados ' + (mode === 'exact' ? 'con comparación exacta' : mode === 'same' ? 'con la tarifa del manual' : 'con búsqueda al comprar') + '.' + pendHtml
       : mode !== 'all'
         ? 'Todavía no hay viajes ' + (mode === 'exact' ? 'con comparación exacta' : 'buscados en Google con el equipaje de su tarifa') + '. ' +
           escHtml(_ptFareCountsText()) + ' Para ver lo de antes, elija «Todas las búsquedas» en «Comparar».'
@@ -3397,19 +3560,49 @@ function _ptRenderHeadline(s, items, mode) {
     return;
   }
   var counted = items.filter(function(it) { return ptCounts(it, mode); });
-  var cheaper = counted.filter(function(it) { return it.difference !== null && it.difference >= PT_SAME; }).length;
-  var v = ptVerdict(o.difference, o.quoted);
-  var html = (mode !== 'all' ? PT_FARE_MODES[mode].lead + ', en <strong>' : 'En <strong>') + ptPlural(o.n, 'viaje comparado', 'viajes comparados') + '</strong>, lo cotizado suma <strong>' + fmtMoney(o.quoted) +
-    '</strong> y lo más barato en Google Flights sumaba <strong>' + fmtMoney(o.market) + '</strong>. ';
-  if (v.cls === 'over') html += 'Lo cotizado fue <strong class="pt-over">' + fmtMoney(o.difference) + ' más caro</strong>: en Google se habría pagado <strong>' + ptPctText(o.difference / o.quoted * 100) + ' menos</strong>.';
-  else if (v.cls === 'under') html += 'Lo cotizado fue <strong class="pt-under">' + fmtMoney(-o.difference) + ' más barato que Google</strong>.';
-  else html += 'Lo cotizado y Google <strong>salen iguales</strong>.';
+  var cheaper = o.cheaperInGoogle !== undefined ? o.cheaperInGoogle : counted.filter(function(it) { return it.difference !== null && it.difference >= PT_SAME; }).length;
+  var what = bought ? 'lo pagado' : 'lo cotizado';
+  var v = ptVerdict(o.difference, o.quoted, what);
+  var html;
+  if (bought) {
+    html = 'En <strong>' + ptPlural(o.n, 'viaje ya comprado', 'viajes ya comprados') + '</strong>' + (mode === 'all' ? '' : ' ' + PT_FARE_MODES[mode].short) +
+      ', se pagaron <strong>' + fmtMoney(o.quoted) + '</strong> y lo más barato en Google Flights sumaba <strong>' + fmtMoney(o.market) + '</strong>. ';
+    if (v.cls === 'over') html += 'En Google había opciones por <strong class="pt-over">' + fmtMoney(o.difference) + ' menos</strong> (' + ptPctText(o.difference / o.quoted * 100) + ' de lo pagado).';
+    else if (v.cls === 'under') html += 'Lo pagado fue <strong class="pt-under">' + fmtMoney(-o.difference) + ' menos que Google</strong>.';
+    else html += 'Lo pagado y Google <strong>salen iguales</strong>.';
+  } else {
+    html = (mode !== 'all' ? PT_FARE_MODES[mode].lead + ', en <strong>' : 'En <strong>') + ptPlural(o.n, 'viaje comparado', 'viajes comparados') + '</strong>, lo cotizado suma <strong>' + fmtMoney(o.quoted) +
+      '</strong> y lo más barato en Google Flights sumaba <strong>' + fmtMoney(o.market) + '</strong>. ';
+    if (v.cls === 'over') html += 'Lo cotizado fue <strong class="pt-over">' + fmtMoney(o.difference) + ' más caro</strong>: en Google se habría pagado <strong>' + ptPctText(o.difference / o.quoted * 100) + ' menos</strong>.';
+    else if (v.cls === 'under') html += 'Lo cotizado fue <strong class="pt-under">' + fmtMoney(-o.difference) + ' más barato que Google</strong>.';
+    else html += 'Lo cotizado y Google <strong>salen iguales</strong>.';
+  }
   html += ' Google tenía un precio más bajo en <strong>' + cheaper + ' de ' + o.n + '</strong>.';
-  html += '<div class="pt-note">' + (mode !== 'all'
-    ? escHtml(_ptFareCountsText()) + (mode === 'exact'
-      ? ' Solo cuentan TIPO 1 y las tarifas con maleta donde Google trae esa tarifa.'
-      : ' Ojo: en LATAM y en TIPO 3 el precio de Google puede quedar por debajo, y no incluye el cargo de la agencia.')
-    : 'Sin distinguir tarifa: Google muestra la más económica, normalmente sin maleta, y lo cotizado puede tener maleta, cambios o el cargo de la agencia.') + '</div>';
+  // Con la misma aerolínea: lo que se habría ahorrado sin cambiarse de aerolínea (#A104).
+  var sa = s.sameAirline;
+  if (sa && sa.n) {
+    var sv = ptVerdict(sa.difference, sa.quoted, what);
+    html += ' <strong>Con la misma aerolínea</strong> (' + sa.n + ' de ' + o.n + ' con dato): ' +
+      (sv.cls === 'over' ? 'en Google había <strong>' + fmtMoney(sa.difference) + ' menos</strong> (' + ptPctText(sa.difference / sa.quoted * 100) + ')'
+        : sv.cls === 'under' ? 'Google era <strong>' + fmtMoney(-sa.difference) + ' más caro</strong>' : '<strong>sale igual</strong>') +
+      (o.difference - sa.difference >= PT_SAME ? '; el resto de la diferencia exige cambiarse de aerolínea.' : '.');
+  }
+  var notes = [];
+  if (bought) {
+    var paidN = counted.filter(function(it) { return it.baseKind === 'pagado'; }).length;
+    notes.push(paidN === o.n ? 'Se compara lo pagado en todos.' : 'Lo pagado está registrado en ' + paidN + ' de ' + o.n + '; en los demás se usa lo cotizado, que es lo que se aprobó.');
+  }
+  notes.push(mode === 'exact'
+    ? 'Exacta: mismos pasajeros, mismo equipaje de la tarifa del manual, vuelo directo a ±2 h de la hora pedida y mismo aeropuerto. Google no cobra el cargo de la agencia.'
+    : mode === 'same'
+      ? escHtml(_ptFareCountsText()) + ' Ojo: incluye comparaciones aproximadas (LATAM, Clic, TIPO 3, bodega, otro aeropuerto), donde el precio de Google puede quedar por debajo.'
+      : 'Sin distinguir tarifa: Google muestra la más económica, normalmente sin maleta, y lo cotizado puede tener maleta, cambios o el cargo de la agencia.');
+  html += '<div class="pt-note">' + notes.join(' ') + '</div>';
+  if (bought && o.n < SA_MIN_EXACT) {
+    html += '<div class="pt-note"><b>Muestra pequeña:</b> ' + ptPlural(o.n, 'viaje', 'viajes') + ' (se necesitan al menos ' + SA_MIN_EXACT +
+      ' para presentar una cifra). Es un indicio, no una cifra para proyectar.</div>';
+  }
+  html += pendHtml;
   box.className = 'pt-headline ' + v.cls;
   box.innerHTML = html;
 }
@@ -3432,7 +3625,9 @@ function renderPriceTracking() {
   if (!priceData) return;
   _ptRenderHealth(priceData.meta || {});
   document.getElementById('ptFareBar').style.display = ptHasFare() ? '' : 'none';
+  document.getElementById('ptBoughtWrap').style.display = ptHasBought() ? '' : 'none';
   var mode = ptFareMode();
+  var bought = ptBoughtOnly();
   var all = priceData.summary;
   var s = ptSummaryFor(mode);
   var items = priceData.items || [];
@@ -3447,30 +3642,34 @@ function renderPriceTracking() {
   } else {
     // Mismo grupo de viajes que las demás cifras de la tarjeta (#A95).
     var waiting = items.filter(function(it) { return it.status === 'PENDIENTE_APROBACION' && ptCounts(it, mode); }).length;
+    var apart = bought ? items.filter(function(it) { return !ptIsPurchased(it) && ptCounts(it, mode, false); }).length : 0;
     setText('ptTracked', String(s.overall.n));
-    setText('ptTrackedExtra', [mode !== 'all' ? PT_FARE_MODES[mode].short + ', de ' + ptPlural(all.tracked, 'buscado', 'buscados') : ptPlural(all.tracked, 'buscado', 'buscados'),
-      s.pendingPurchase ? s.pendingPurchase + ' por comprar' : '', waiting ? waiting + ' esperando aprobación' : ''].filter(Boolean).join(' · '));
+    setText('ptTrackedExtra', [(bought ? 'ya comprados ' : '') + (mode !== 'all' ? PT_FARE_MODES[mode].short + ', de ' : 'de ') + ptPlural(all.tracked, 'buscado', 'buscados'),
+      !bought && s.pendingPurchase ? s.pendingPurchase + ' por comprar' : '', waiting ? waiting + ' esperando aprobación' : '',
+      apart ? apart + ' sin comprar, aparte' : ''].filter(Boolean).join(' · '));
+    setText('ptQuotedLabel', bought ? 'Lo pagado' : 'Valor cotizado');
     setText('ptQuoted', s.overall.n ? fmtMoney(s.overall.quoted) : '—');
-    setText('ptQuotedExtra', 'tiquetes de esos viajes');
+    setText('ptQuotedExtra', bought ? 'tiquetes de esos viajes (si falta lo pagado, lo cotizado)' : 'tiquetes de esos viajes');
     setText('ptMarket', s.overall.n ? fmtMoney(s.overall.market) : '—');
     setText('ptMarketExtra', 'a la hora pedida (±2 h)' + (mode !== 'all' ? ', con el equipaje de la tarifa' : ''));
-    var v = ptVerdict(s.overall.n ? s.overall.difference : null, s.overall.quoted);
+    var v = ptVerdict(s.overall.n ? s.overall.difference : null, s.overall.quoted, bought ? 'lo pagado' : 'lo cotizado');
+    var sa = s.sameAirline;
     setText('ptDiff', v.main);
-    setText('ptDiffExtra', v.sub || '—');
+    setText('ptDiffExtra', [v.sub, sa && sa.n ? 'con la misma aerolínea: ' + ptVerdict(sa.difference, sa.quoted).main.toLowerCase() : ''].filter(Boolean).join(' · ') || '—');
     if (v.cls !== 'equal') card.className = 'kpi ' + v.cls;
     var rows = [
-      ['Al cotizar', 'el precio de Google en el mismo momento de la cotización', s.atQuote,
-        'Aún sin datos: se llena con los costos que se confirmen desde el inicio del estudio.'],
-      ['Al aprobarse', 'el precio de Google justo antes de comprar', s.atPurchase, 'Aún sin datos.'],
-      ['Con la misma aerolínea', 'lo más barato en Google con la aerolínea de la compra', s.sameAirline, 'Aún sin datos.'],
+      ['Al cotizar', 'lo cotizado en ese momento frente a Google en ese mismo momento', s.atQuote,
+        'Aún sin datos: se llena con los costos que se confirmen desde el inicio del estudio.', 'lo cotizado'],
+      ['Al aprobarse', 'lo pagado (o cotizado) frente a Google justo antes de comprar', s.atPurchase, 'Aún sin datos.', bought ? 'lo pagado' : 'lo cotizado'],
+      ['Con la misma aerolínea', 'lo más barato en Google con la aerolínea de la compra', s.sameAirline, 'Aún sin datos.', bought ? 'lo pagado' : 'lo cotizado'],
       s.invoiced ? ['Lo facturado (ya comprado)', 'lo que se pagó frente a Google; solo viajes sin hotel', s.invoiced,
         'Aún sin datos: las facturas se suben después del viaje.', 'lo facturado'] : null
-    ].filter(Boolean).concat(s.byChannel.map(function(c) { return [PT_CHANNELS[c.channel] || ('Comprado por ' + c.channel), 'según el canal registrado', c, 'Aún sin datos.']; }));
+    ].filter(Boolean).concat(s.byChannel.map(function(c) { return [PT_CHANNELS[c.channel] || ('Comprado por ' + c.channel), 'según el canal registrado', c, 'Aún sin datos.', bought ? 'lo pagado' : 'lo cotizado']; }));
     // Las otras maneras de comparar, como referencia (#A95, #A97).
     if (ptHasFare()) {
       ['same', 'exact', 'all'].forEach(function(m) {
         var sm = ptSummaryFor(m);
-        if (m !== mode && sm) rows.push([PT_FARE_MODES[m].label, PT_FARE_MODES[m].sub, sm.overall, 'Aún sin viajes.']);
+        if (m !== mode && sm) rows.push([PT_FARE_MODES[m].label, PT_FARE_MODES[m].sub, sm.overall, 'Aún sin viajes.', bought ? 'lo pagado' : 'lo cotizado']);
       });
     }
     document.getElementById('ptSummaryBody').innerHTML = rows.map(function(r) {
@@ -3558,9 +3757,16 @@ function ptLink(url, text) {
   return url ? '<a class="pt-link" href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escHtml(text) + ' ↗</a>' : '';
 }
 
+/** Qué se compara en la fila (#A104): lo pagado o lo cotizado al buscar, con lo cotizado de hoy al lado si es otro valor. */
+function _ptBaseNote(it) {
+  if (it.baseKind === 'pagado') return '<span class="pt-sub">pagado · cotizado ' + fmtMoney(it.quoted) + '</span>';
+  if (it.baseKind === 'cotizado al buscar' && it.quoted && it.base !== it.quoted) return '<span class="pt-sub">cotizado al buscar · hoy ' + fmtMoney(it.quoted) + '</span>';
+  return '';
+}
+
 function _ptSameAirlineCell(it) {
   if (!it.airline) return '<span class="pt-sub">sin aerolínea registrada</span>';
-  if (!it.sameAirline && /satena|clic/i.test(ptAirlines(it))) return '<span class="pt-sub">' + escHtml(ptAirlines(it)) + ': no publica en Google Flights</span>';
+  if (!it.sameAirline && /satena|clic/i.test(ptAirlines(it))) return '<span class="pt-sub">' + escHtml(ptAirlines(it)) + ': no apareció en esta búsqueda</span>';
   if (!it.sameAirline) return '<span class="pt-sub">' + escHtml(ptAirlines(it)) + ' no aparece en Google</span>';
   return '<span class="pt-main">' + fmtMoney(it.sameAirline) + '</span><span class="pt-sub">' + escHtml(ptAirlines(it)) + '</span>';
 }
@@ -3571,9 +3777,9 @@ function renderPriceTable() {
   document.getElementById('ptEmpty').style.display = items.length ? 'none' : '';
   var mode = ptFareMode();
   document.getElementById('ptTableBody').innerHTML = items.map(function(it) {
-    var v = ptVerdict(it.difference, it.quoted);
-    // #A95: con «misma tarifa», un viaje sin su búsqueda equivalente se muestra pero no cuenta.
-    var gap = mode !== 'all' && it.quoted && it.difference !== null ? ptFareGap(it, mode) : '';
+    var v = ptVerdict(it.difference, it.base || it.quoted, it.baseKind === 'pagado' ? 'lo pagado' : 'lo cotizado');
+    // #A95: con «misma tarifa», un viaje sin su búsqueda equivalente se muestra pero no cuenta (#A104: ni lo que no se ha comprado).
+    var gap = (mode !== 'all' || ptBoughtOnly()) && it.quoted && it.difference !== null ? ptFareGap(it, mode) : '';
     if (gap) v = { cls: 'equal', main: v.main, sub: 'no cuenta: ' + gap };
     var trip = (it.returnDate ? 'ida ' + ptDay(it.departure) + ' · regreso ' + ptDay(it.returnDate) : 'solo ida ' + ptDay(it.departure)) +
       ' · ' + ptPlural(it.passengers, 'pasajero', 'pasajeros');
@@ -3582,7 +3788,8 @@ function renderPriceTable() {
     return '<tr class="pt-row ' + v.cls + (it.status === 'APROBADO' ? ' pt-pending' : '') + (open ? ' open' : '') + '" data-req="' + escHtml(it.requestId) + '" title="Ver el detalle">' +
       '<td class="pt-id"><span class="pt-caret">' + (open ? '▾' : '▸') + '</span>' + escHtml(it.requestId) + '<span class="pt-sub">' + escHtml(PT_STATUS[it.status] || it.status) + '</span></td>' +
       '<td><span class="pt-main">' + escHtml((it.origin || '—') + ' → ' + (it.destination || '—')) + '</span><span class="pt-sub">' + escHtml(trip) + '</span></td>' +
-      '<td class="num pt-money"><span class="pt-main">' + (it.quoted ? fmtMoney(it.quoted) : '—') + '</span><span class="pt-sub">' + escHtml(bought || 'sin compra registrada') + '</span>' +
+      '<td class="num pt-money"><span class="pt-main">' + (it.base || it.quoted ? fmtMoney(it.base || it.quoted) : '—') + '</span>' + _ptBaseNote(it) +
+        '<span class="pt-sub">' + escHtml(bought || 'sin compra registrada') + '</span>' +
         (it.fare ? '<span class="pt-sub">' + escHtml(ptFareText(it.fare)) + '</span>' : '') + '</td>' +
       '<td class="num">' + _ptInvoicedCell(it) + '</td>' +
       '<td class="num pt-money">' + _ptGoogleCell(it) + '</td>' +
@@ -3838,9 +4045,17 @@ function _ptAirlineSummaryHtml(name, list) {
  * de dónde sale la diferencia, aeropuerto, bodega, anticipación y qué tan comparable es.
  */
 function _ptReadingHtml(it, r, snap, ida, reg, rt) {
-  var quoted = r.quoted || it.quoted;
+  // #A104: en la búsqueda al comprar se compara lo pagado, si se registró.
+  var paidBase = snap.moment === 'COMPRA' && it.paid ? it.paid : null;
+  var quoted = paidBase || r.quoted || it.quoted;
+  var what = paidBase ? 'lo pagado' : 'lo cotizado';
   if (!quoted || !snap.reference) return '';
   var lines = [];
+  if (paidBase) lines.push('<b>Se compara lo pagado</b> (' + fmtMoney(paidBase) + '); lo cotizado era ' + fmtMoney(r.quoted || it.quoted) + '.');
+  if (snap.moment === 'COMPRA' && it.marketMoment === 'COMPRA' && typeof it.searchLeadHours === 'number' && it.searchLeadHours > 6) {
+    lines.push('<b>Momento:</b> Google se buscó ' + (it.searchLeadHours < 48 ? Math.round(it.searchLeadHours) + ' horas' : Math.round(it.searchLeadHours / 24) + ' días') +
+      ' antes de registrar la compra; el precio de Google cambia hasta 30 % en unas horas.');
+  }
   var tramos = [ida, reg].filter(Boolean);
   var refs = tramos.map(ptLegRef);
   var low = function(x) { return String(x || '').toLowerCase(); };
@@ -3851,10 +4066,10 @@ function _ptReadingHtml(it, r, snap, ida, reg, rt) {
     var tot = same.reduce(function(t, o) { return t + (o.price || 0); }, 0);
   }
   if (tot > 0) {
-    var vs = ptVerdict(quoted - tot, quoted);
+    var vs = ptVerdict(quoted - tot, quoted, what);
     lines.push('<b>Con ' + (r.returnAirline && reg ? 'las mismas aerolíneas' : 'la misma aerolínea') + '</b> (' +
       escHtml(r.returnAirline && reg ? r.airline + ' / ' + r.returnAirline : r.airline) + '), Google daba ' +
-      fmtMoney(tot) + ': lo cotizado es <b>' + escHtml(vs.main) + '</b>' + (vs.cls === 'equal' ? '' : ' (' + escHtml(vs.sub) + ')') + '.');
+      fmtMoney(tot) + ': ' + what + ' es <b>' + escHtml(vs.main) + '</b>' + (vs.cls === 'equal' ? '' : ' (' + escHtml(vs.sub) + ')') + '.');
   }
   // 2. De dónde sale la diferencia con lo más barato.
   var regIda = low(r.airline), regReg = low(r.returnAirline || r.airline);
@@ -3984,11 +4199,12 @@ function exportPriceCsv() {
   var head = ['Solicitud', 'Origen', 'Destino', 'Ida', 'Regreso', 'Pasajeros', 'Empresa', 'Unidad', 'Estado', 'Aerolínea (ida)', 'Aerolínea regreso (si es otra)', 'Canal de compra', 'Cotizado tiquetes',
     'Al cotizar: fecha de búsqueda', 'Al cotizar: resultado', 'Al cotizar: más barato en Google', 'Al cotizar: criterio', 'Al cotizar: aerolínea', 'Al cotizar: salida', 'Al cotizar: misma aerolínea', 'Al cotizar: Aviatur en Google',
     'Al aprobarse: fecha de búsqueda', 'Al aprobarse: resultado', 'Al aprobarse: más barato en Google', 'Al aprobarse: criterio', 'Al aprobarse: aerolínea', 'Al aprobarse: salida', 'Al aprobarse: misma aerolínea', 'Al aprobarse: Aviatur en Google',
-    'Diferencia (cotizado - Google)', '% sobre lo cotizado',
+    'Diferencia (pagado o cotizado - Google)', '% sobre lo pagado o cotizado',
     'Hora pedida ida', 'Hora pedida regreso', 'Cómo se compara', 'Ida: más barato en Google', 'Ida: aerolínea y salida', 'Regreso: más barato en Google', 'Regreso: aerolínea y salida', 'Ida y vuelta en un solo tiquete',
     'Facturado', 'Facturas', 'Facturado incluye hotel', 'Facturado - Google',
     'Tarifa (TIPO)', 'Tarifa (nombre)', 'Tarifa recomendada', 'Motivo de otra tarifa', 'Google buscado', 'Misma tarifa',
-    'Tarifa con que se compara', 'De dónde sale', 'Qué tan comparable', 'Por qué'];
+    'Tarifa con que se compara', 'De dónde sale', 'Qué tan comparable', 'Por qué',
+    'Ya comprado', 'Pagado tiquetes', 'Se compara con', 'Horas de la búsqueda antes de registrar la compra'];
   var legCols = function(it) {
     var s = ptMainSnap(it);
     if (s && s.result !== 'OK') s = null;
@@ -4020,7 +4236,8 @@ function exportPriceCsv() {
   var lines = [head.join(';')].concat(items.map(function(it) {
     return [it.requestId, it.origin, it.destination, it.departure, it.returnDate, it.passengers, it.company, it.unit, it.status, it.airline, it.returnAirline || '', it.channel, it.quoted || '']
       .concat(snapCols(it.atQuote), snapCols(it.atPurchase),
-        [it.difference === null ? '' : it.difference, it.difference === null || !it.quoted ? '' : (it.difference / it.quoted * 100).toFixed(1).replace('.', ',')], legCols(it))
+        [it.difference === null ? '' : it.difference, it.difference === null || !(it.base || it.quoted) ? '' : (it.difference / (it.base || it.quoted) * 100).toFixed(1).replace('.', ',')], legCols(it),
+        [it.bought === undefined ? '' : it.bought ? 'sí' : 'no', it.paid || '', it.baseKind || '', it.searchLeadHours === null || it.searchLeadHours === undefined ? '' : String(it.searchLeadHours).replace('.', ',')])
       .map(q).join(';');
   }));
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -4166,17 +4383,19 @@ function saVolume(trips, months) {
  */
 function saSample(includeIntl, fare, scope) {
   return ((priceData && priceData.items) || []).filter(function(it) {
+    if (!ptIsPurchased(it)) return false; // #A104: solo lo ya comprado, con la búsqueda al comprar
     if (fare === 'same' && it.fare && it.fare.match !== true) return false;
     if (fare === 'exact' && it.fare && it.fare.quality !== 'exacta') return false;
     if (scope === 'tipo1' && it.fare && String(it.fare.effective || it.fare.type) !== '1') return false;
-    return it.quoted && it.market && (includeIntl || !it.international);
+    return (it.base || it.quoted) && it.market && (includeIntl || !it.international);
   }).map(function(it) {
     var tk = saTickets(it.passengers || 1, !!it.returnDate);
-    var diff = it.quoted - it.market;
-    var ch = it.sameAirline ? it.quoted - it.sameAirline : null;
+    var b = it.base || it.quoted; // lo pagado o, si no se registró, lo cotizado (#A104)
+    var diff = b - it.market;
+    var ch = it.sameAirline ? b - it.sameAirline : null;
     return {
-      it: it, tickets: tk, rt: !!it.returnDate, diff: diff, perTicket: diff / tk, pct: diff / it.quoted,
-      channel: ch, channelPerTicket: ch === null ? null : ch / tk, channelPct: ch === null ? null : ch / it.quoted,
+      it: it, base: b, tickets: tk, rt: !!it.returnDate, diff: diff, perTicket: diff / tk, pct: diff / b,
+      channel: ch, channelPerTicket: ch === null ? null : ch / tk, channelPct: ch === null ? null : ch / b,
       flightPart: it.sameAirline ? it.sameAirline - it.market : null
     };
   });
@@ -4316,7 +4535,7 @@ function _saRenderHeadline(st) {
       'un <b>valor fijo</b> en «Cómo calcular» o espere a que el comparador acumule viajes. El volumen de abajo ya está completo.');
   } else if (!st.ready) {
     parts.push('<b>Todavía no se proyecta un ahorro al año.</b> Hay ' + ptPlural(st.exactN, 'comparación exacta', 'comparaciones exactas') +
-      ' y se necesitan al menos ' + SA_MIN_EXACT + ' (viajes de 0 a 1 noche, o con maleta donde Google trae esa tarifa). ' +
+      ' de viajes ya comprados' + (st.opts.intl ? '' : ' (nacionales)') + ' y se necesitan al menos ' + SA_MIN_EXACT + '. ' +
       'Hasta entonces, las cifras por mes de abajo son un ejercicio con la configuración elegida, no una estimación para presentar.');
   } else {
     var total = _saSum(st.proj, months), avg = total / months.length;
@@ -4533,7 +4752,7 @@ function _saRenderSample(sample, opts) {
     kpi('Viajes comparados', String(n), n ? 'Google tenía un precio más bajo en ' + cheaper + ' de ' + n : '—') +
     kpi('Diferencia típica por viaje', saM(saStat(sample.map(function(x) { return x.diff; }), 'median')), 'la menor: ' + saM(saStat(sample.map(function(x) { return x.diff; }), 'min'))) +
     kpi('Diferencia típica por tiquete', saM(saStat(sample.map(function(x) { return x.perTicket; }), 'median')), 'la menor: ' + saM(saStat(sample.map(function(x) { return x.perTicket; }), 'min'))) +
-    kpi('% de ahorro típico sobre lo cotizado', saPct(saStat(sample.map(function(x) { return x.pct; }), 'median')),
+    kpi('% de ahorro típico sobre lo pagado', saPct(saStat(sample.map(function(x) { return x.pct; }), 'median')),
       saPct(saStat(sample.map(function(x) { return x.channelPct; }), 'median')) + ' solo con la misma aerolínea');
   // Verde: Google tenía un precio más bajo (ahorro posible). Rojo: Google era más caro.
   var sign = function(v) {
@@ -4542,13 +4761,13 @@ function _saRenderSample(sample, opts) {
   };
   document.getElementById('saSampleTable').innerHTML = '<thead>' +
     '<tr class="sa-th-groups"><th colspan="6"></th><th colspan="2" class="sa-th-group">¿De dónde sale la diferencia?</th></tr>' +
-    '<tr><th>Solicitud</th><th class="num">Valor cotizado</th><th class="num">Precio más barato en Google</th>' +
-    '<th class="num">Diferencia</th><th class="num">Diferencia por tiquete</th><th class="num">% de ahorro sobre lo cotizado</th>' +
+    '<tr><th>Solicitud</th><th class="num">Lo pagado (o cotizado)</th><th class="num">Precio más barato en Google</th>' +
+    '<th class="num">Diferencia</th><th class="num">Diferencia por tiquete</th><th class="num">% de ahorro sobre lo pagado</th>' +
     '<th class="num">Comprando la misma aerolínea</th><th class="num">Cambiando de vuelo o aerolínea</th></tr></thead><tbody>' +
     (n ? sample.map(function(x) {
       var trip = x.it.origin + ' → ' + x.it.destination + ' · ' + (x.rt ? 'ida y vuelta' : 'solo ida') + ' · ' + ptPlural(x.tickets, 'tiquete', 'tiquetes');
       return '<tr><td><span class="pt-id">' + escHtml(x.it.requestId) + '</span><span class="pt-sub">' + escHtml(trip) + '</span></td>' +
-        '<td class="num">' + fmtMoney(x.it.quoted) + '</td><td class="num">' + fmtMoney(x.it.market) + '</td>' +
+        '<td class="num">' + fmtMoney(x.base || x.it.quoted) + '</td><td class="num">' + fmtMoney(x.it.market) + '</td>' +
         '<td class="num">' + sign(x.diff) + '</td><td class="num">' + sign(x.perTicket) + '</td><td class="num">' + saPct(x.pct) + '</td>' +
         '<td class="num">' + sign(x.channel) + (x.it.sameAirline ? '<span class="pt-sub">' + escHtml(ptAirlines(x.it)) + ' en Google: ' + fmtMoney(x.it.sameAirline) + '</span>' : '') + '</td>' +
         '<td class="num">' + sign(x.flightPart) + '</td></tr>';
@@ -4673,10 +4892,10 @@ function exportSavingsCsv() {
       r(st.detail.months[m].cut), saCalcText(st, m)].map(q).join(';'));
   });
   lines.push('');
-  lines.push(['Muestra: solicitud', 'Origen', 'Destino', 'Tiquetes', 'Valor cotizado', 'Precio más barato en Google', 'Diferencia', 'Diferencia por tiquete',
-    '% de ahorro sobre lo cotizado', 'Comprando la misma aerolínea', 'Cambiando de vuelo o aerolínea'].map(q).join(';'));
+  lines.push(['Muestra: solicitud', 'Origen', 'Destino', 'Tiquetes', 'Lo pagado (o cotizado)', 'Precio más barato en Google', 'Diferencia', 'Diferencia por tiquete',
+    '% de ahorro sobre lo pagado', 'Comprando la misma aerolínea', 'Cambiando de vuelo o aerolínea'].map(q).join(';'));
   st.sample.forEach(function(x) {
-    lines.push([x.it.requestId, x.it.origin, x.it.destination, x.tickets, x.it.quoted, x.it.market, r(x.diff), r(x.perTicket), (x.pct * 100).toFixed(1).replace('.', ','),
+    lines.push([x.it.requestId, x.it.origin, x.it.destination, x.tickets, x.base || x.it.quoted, x.it.market, r(x.diff), r(x.perTicket), (x.pct * 100).toFixed(1).replace('.', ','),
       x.channel === null ? '' : r(x.channel), x.flightPart === null ? '' : r(x.flightPart)].map(q).join(';'));
   });
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -5066,6 +5285,8 @@ document.addEventListener('DOMContentLoaded', function() {
   if (ptFilterSel) ptFilterSel.addEventListener('change', function() { if (priceData) renderPriceTable(); });
   var ptFareSel = document.getElementById('ptFareMode');
   if (ptFareSel) ptFareSel.addEventListener('change', function() { if (priceData) renderPriceTracking(); });
+  var ptBoughtChk = document.getElementById('ptBoughtOnly'); // #A104
+  if (ptBoughtChk) ptBoughtChk.addEventListener('change', function() { if (priceData) renderPriceTracking(); });
   // Detalle de un viaje (#A86): tocar la fila lo abre o lo cierra; los botones cambian de búsqueda.
   var ptBody = document.getElementById('ptTableBody');
   if (ptBody) ptBody.addEventListener('click', function(e) {

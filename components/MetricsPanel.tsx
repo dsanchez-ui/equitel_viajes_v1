@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { MetricsResponse, MetricsFilters, RequestMetrics } from '../types';
 import { gasService } from '../services/gasService';
 import { PurchaseStatsPanel } from './PurchaseStatsPanel';
+import { ChangeControlPanel } from './ChangeControlPanel';
 
 interface MetricsPanelProps {
   onClose: () => void;
@@ -77,11 +78,14 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
   const [hideNoEvents, setHideNoEvents] = useState(true);
   // Pestañas: tiempos del flujo (original) y compras y costos (#A80). La de
   // compras se monta al abrirla por primera vez y luego se conserva.
-  const [tab, setTab] = useState<'times' | 'purchases'>('times');
+  const [tab, setTab] = useState<'times' | 'purchases' | 'changes'>('times');
   const [purchasesOpened, setPurchasesOpened] = useState(false);
-  const openTab = (next: 'times' | 'purchases') => {
+  // #A103: control de cambios (se monta al abrirlo por primera vez).
+  const [changesOpened, setChangesOpened] = useState(false);
+  const openTab = (next: 'times' | 'purchases' | 'changes') => {
     setTab(next);
     if (next === 'purchases') setPurchasesOpened(true);
+    if (next === 'changes') setChangesOpened(true);
   };
 
   const fetchMetrics = async () => {
@@ -136,7 +140,8 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
             {([
               { v: 'times', l: '⏱️ Tiempos del flujo' },
               { v: 'purchases', l: '💰 Compras y costos' },
-            ] as { v: 'times' | 'purchases'; l: string }[]).map(t => (
+              { v: 'changes', l: '🔄 Cambios' },
+            ] as { v: 'times' | 'purchases' | 'changes'; l: string }[]).map(t => (
               <button
                 key={t.v}
                 role="tab"
@@ -152,12 +157,19 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
           <p className="text-xs text-gray-500 mb-4">
             {tab === 'times'
               ? 'Diagnóstico de cuánto tiempo toma cada etapa del flujo. Tiempos calculados en horario laboral (L-V 7-17, Sáb 8-12).'
+              : tab === 'changes'
+              ? 'Cada cambio de viaje con lo que costó el viaje y lo que sumó el cambio, para ver dónde se paga de más.'
               : 'Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta anticipación. Base para comparar precios con otras agencias.'}
           </p>
 
           {purchasesOpened && (
             <div hidden={tab !== 'purchases'}>
               <PurchaseStatsPanel />
+            </div>
+          )}
+          {changesOpened && (
+            <div hidden={tab !== 'changes'}>
+              <ChangeControlPanel />
             </div>
           )}
 

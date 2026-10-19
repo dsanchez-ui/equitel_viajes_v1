@@ -364,13 +364,16 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 - `APROBACION CFO ANTICIPACION` (#A100): la decisión sobre esa solicitud: `Sí_correo_fecha` (aprobada), `No_correo_fecha` (rechazada) o `Vencida_sistema_fecha` (nadie la aprobó en 7 días o antes del viaje). Vacía = no la necesitó.
 - `REQUIERE APROB TARIFA` (#A100): `SI` cuando la tarifa confirmada es superior a la del manual; entonces la aprobación pide el voto del CFO (el mismo de `APROBADO PRESUPUESTO`). La marca el sistema al confirmar costos.
 - `GRUPO MULTIDESTINO` (#A100): llave que enlaza los tramos de un mismo viaje multidestino (`MD-…`). Si un tramo no cumple la anticipación, todos esperan la misma aprobación del CFO.
+- `CAMBIO PEDIDO (JSON)` (#A103): en una solicitud de cambio pedida con «Cambiar mi viaje», lo de antes y lo de ahora, si el tiquete ya estaba comprado, lo que costó el viaje original y la compra de la original. La escribe el sistema: **no editar**. Si está llena y dice `"comprado":true`, la solicitud lleva solo el costo del cambio.
+- `PENALIDAD CAMBIO` (#A103): de lo que costó un cambio, cuánto es penalidad y cargos (pesos). La escribe el área de viajes al confirmar el costo del cambio.
+- `REEMPLAZADA POR` (#A103): en la solicitud original, el ID del cambio que la reemplazó («Cambiada»). La original comprada no se anula: su tiquete se pagó y su costo sigue contando.
 - Estado `PENDIENTE_APROBACION_POLITICA` (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de viajes no la ve hasta que se apruebe.
 
 Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
 
 ### 12. Columnas de compra y resumen de facturas
 
-Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION`, `MALETA DE BODEGA`, `VALOR COMPRA TIQUETES`, `VALOR COMPRA HOTEL`, `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA`, `GRUPO MULTIDESTINO` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
+Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION`, `MALETA DE BODEGA`, `VALOR COMPRA TIQUETES`, `VALOR COMPRA HOTEL`, `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA`, `GRUPO MULTIDESTINO`, `CAMBIO PEDIDO (JSON)`, `PENALIDAD CAMBIO`, `REEMPLAZADA POR` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
 - **listas para cerrar:** viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita
 - **facturas por revisar:** les faltan facturas o PDF, a partir del día 7 después del viaje
 - avisos omitidos y solicitudes en espera
