@@ -585,7 +585,7 @@ function main() {
   eq('SOL-6 comprado: se compara con lo cotizado (sin valor pagado); búsqueda 2 h después de registrar la compra',
     [i6x.bought, i6x.base, i6x.baseKind, i6x.searchLeadHours, i6x.difference], [true, 432888, 'cotizado', -2, 81188]);
   eq('SOL-6: sin vuelo a ±2 h de la hora pedida → aproximada', [i6x.fare.quality, /±2 h/.test(i6x.fare.qualityReason)], ['aproximada', true]);
-  eq('por comprar y al cotizar: no comprado; al cotizar se compara con lo cotizado en ese momento', [i1.bought, i2x.bought, i2x.baseKind], [false, false, 'cotizado al buscar']);
+  eq('por comprar y al cotizar: no comprado; se compara con lo cotizado vigente', [i1.bought, i2x.bought, i2x.baseKind, i2x.base], [false, false, 'cotizado', 800000]);
   eq('solo comprados: SOL-6 en «comprados», no en «comprados exactos»', [d.summary.purchased.overall.n, d.summary.purchased.overall.difference, d.summary.purchasedExact.overall.n],
     [1, 81188, 0]);
   eq('% sobre lo cotizado (#A99)', Math.round(d.summary.purchased.overall.pct * 10) / 10, Math.round(81188 / 432888 * 1000) / 10);
@@ -600,11 +600,10 @@ function main() {
   row6[H.indexOf('VALOR COMPRA TIQUETES')] = '';
   const legMed = (o) => Object.assign({ leg: 'IDA', from: 'CLO', to: 'MDE,EOH', hour: '07:00', referenceIsNear: true, near: { airline: 'LATAM' }, directOnly: true, ok: true }, o);
   const snapMed = (o) => ({ result: 'OK', bags: 0, format: 3, referenceKind: 'TRAMOS', legs: [legMed(o)] });
-  eq('mismo producto: Clic (Olaya Herrera) frente a LATAM (Rionegro) → otro aeropuerto', [
-    /otro aeropuerto en Medellín: Clic opera desde Olaya Herrera y LATAM desde Rionegro/.test(q._ptProductGap_(snapMed(), { ida: 'Clic' })),
-    q._ptProductGap_(snapMed(), { ida: 'Avianca' }), q._ptProductGap_(snapMed({ near: { airline: 'Satena' } }), { ida: 'Clic' }),
-    q._ptQuality_(1, snapMed(), true, false, { ida: 'Clic' }).quality, q._ptQuality_(1, snapMed(), true, false, { ida: 'Avianca' }).quality],
-    [true, '', '', 'aproximada', 'exacta']);
+  // David, 20-oct: en Medellín, Rionegro y Olaya Herrera son el mismo destino (Clic frente a LATAM sigue siendo exacta en TIPO 1).
+  eq('mismo producto: el aeropuerto de Medellín no cambia la comparación', [q._ptProductGap_(snapMed()),
+    q._ptQuality_(1, snapMed(), true, false).quality, q._ptQuality_(1, snapMed({ near: { airline: 'Clic' } }), true, false).quality],
+    ['', 'exacta', 'exacta']);
   eq('mismo producto: con escala o fuera de la hora pedida → aproximada', [
     /escala/.test(q._ptProductGap_(snapMed({ directOnly: false }), {})), /±2 h/.test(q._ptProductGap_(snapMed({ referenceIsNear: false, cheapest: { airline: 'LATAM' } }), {})),
     q._ptProductGap_(snapMed({ hour: '', referenceIsNear: false, cheapest: { airline: 'LATAM' } }), { ida: 'LATAM' })], [true, true, '']);

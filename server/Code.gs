@@ -18160,7 +18160,6 @@ function _ptSnapshot_(r, withOptions) {
  * quality: qué tan comparable es el precio de Google con esa tarifa (_ptQuality_).
  */
 function _ptFare_(row, cell, snaps) {
-  var boughtAirlines = { ida: String(cell(row, 'AEROLINEA') || '').trim(), regreso: String(cell(row, 'AEROLINEA REGRESO') || '').trim() || String(cell(row, 'AEROLINEA') || '').trim() };
   var type = _fareOptionValue_(cell(row, FARE_TYPE_HEADER));
   var rec = _fareOptionValue_(cell(row, FARE_RECOMMENDED_HEADER)) ||
     _fareOptionForNights_(_fareNights_(_psDateKey_(cell(row, 'FECHA IDA')), _psDateKey_(cell(row, 'FECHA VUELTA')), cell(row, '# NOCHES (AUTOMÁTICO)')));
@@ -18172,7 +18171,7 @@ function _ptFare_(row, cell, snaps) {
   var ref = match || ok[0] || null;
   // #A98: si el viajero pidió maleta de bodega, Google no la deja pedir (salvo la Classic de Avianca, que la trae).
   var needsChecked = _checkedBaggageFromCell_(cell(row, CHECKED_BAG_HEADER)) === true;
-  var q = _ptQuality_(eff, ref, !!match, needsChecked, boughtAirlines);
+  var q = _ptQuality_(eff, ref, !!match, needsChecked);
   return {
     ref: ref,
     level: level,
@@ -18215,30 +18214,16 @@ function _ptRefLegs_(snap) {
  * Por qué el vuelo de Google no es el mismo producto que el comprado (#A104); '' si lo es.
  *   - Se pidió una hora y Google no tenía vuelo a ±2 h: la referencia es la más barata del día.
  *   - Ese día no había vuelo directo: la referencia tiene escala (a los viajeros no se les compran).
- *   - Medellín: Clic y Satena operan desde Olaya Herrera (EOH) y las demás desde Rionegro (MDE).
- *     Google busca los dos aeropuertos juntos; si la referencia es de otro aeropuerto que la compra,
- *     no es el mismo viaje (SOL-000652: Clic a Olaya Herrera frente a LATAM a Rionegro).
+ * El aeropuerto de Medellín NO cuenta: Rionegro y Olaya Herrera son el mismo destino (David, 20-oct).
+ * La lectura de cada viaje lo sigue mencionando como dato.
  */
-function _ptProductGap_(ref, boughtAirlines) {
+function _ptProductGap_(ref) {
   var legs = _ptRefLegs_(ref).filter(function(l) { return l.ok !== false; });
   for (var i = 0; i < legs.length; i++) {
     if (legs[i].hour && legs[i].referenceIsNear === false) return 'Google no tenía vuelo directo a ±2 h de la hora pedida: se comparó con el más barato del día';
   }
   for (var j = 0; j < legs.length; j++) {
     if (legs[j].directOnly === false) return 'ese día no había vuelo directo: el precio de Google es de un vuelo con escala';
-  }
-  var eoh = /clic|easyfly|satena/i;
-  for (var k = 0; k < legs.length; k++) {
-    var l = legs[k];
-    if (l.leg === 'IDA Y VUELTA' || !/EOH/.test(String(l.from) + String(l.to))) continue;
-    var o = l.referenceIsNear ? l.near : l.cheapest;
-    var refAir = o && o.airline ? String(o.airline) : '';
-    var bought = boughtAirlines ? String((l.leg === 'REGRESO' ? boughtAirlines.regreso : boughtAirlines.ida) || '') : '';
-    if (!refAir || !bought) continue;
-    if (eoh.test(refAir) !== eoh.test(bought)) {
-      return 'otro aeropuerto en Medellín: ' + (eoh.test(bought) ? bought + ' opera desde Olaya Herrera y ' + refAir + ' desde Rionegro'
-        : bought + ' opera desde Rionegro y ' + refAir + ' desde Olaya Herrera');
-    }
   }
   return '';
 }
@@ -18255,15 +18240,15 @@ function _ptProductGap_(ref, boughtAirlines) {
  *                  maleta de bodega y la tarifa de Google no la trae (#A98).
  *   no comparable: la búsqueda tiene otro equipaje que la tarifa.
  */
-function _ptQuality_(tipo, ref, matches, needsChecked, boughtAirlines) {
+function _ptQuality_(tipo, ref, matches, needsChecked) {
   if (!ref) return { quality: '', reason: 'sin precio de Google todavía' };
   if (!matches) {
     return { quality: 'no comparable', reason: tipo >= 2
       ? 'Google se buscó sin maleta y la tarifa TIPO ' + tipo + ' incluye maleta'
       : 'Google se buscó con maleta y la tarifa TIPO 1 no la incluye' };
   }
-  // #A104: el vuelo de Google tiene que ser el mismo producto: a la hora pedida, directo y al mismo aeropuerto.
-  var product = _ptProductGap_(ref, boughtAirlines);
+  // #A104: el vuelo de Google tiene que ser el mismo producto: a la hora pedida y directo.
+  var product = _ptProductGap_(ref);
   if (product) return { quality: 'aproximada', reason: product };
   var airlines = _ptRefAirlines_(ref).map(function(a) { return a.toLowerCase(); });
   var has = function(re) { return airlines.length > 0 && airlines.every(function(a) { return re.test(a); }); };
@@ -18443,10 +18428,11 @@ function _ptBuildTracking_() {
       var same = ref ? ref.sameAirline : null;
       var inv = _ptInvoiced_(row, hm, config);
       // #A104: con qué se compara el precio de Google. Búsqueda al comprar: lo pagado (#A102) o, si no
-      // se registró, lo cotizado. Búsqueda al cotizar: lo cotizado en ese momento (después pudo cambiar).
+      // se registró, lo cotizado. Si aún no se compra: los costos que dejó el área de viajes (los vigentes;
+      // David, 20-oct: la primera cotización de Miami, después corregida, sumaba $3 M que no eran reales).
       var base = null, baseKind = '';
       if (ref && ref.moment === 'COMPRA') { base = paid || quoted; baseKind = paid ? 'pagado' : 'cotizado'; }
-      else if (ref) { base = ref.quotedAtSearch || quoted; baseKind = ref.quotedAtSearch ? 'cotizado al buscar' : 'cotizado'; }
+      else if (ref) { base = quoted || ref.quotedAtSearch; baseKind = 'cotizado'; }
       var events = {};
       try { events = JSON.parse(cell(row, EVENTOS_JSON_HEADER) || '{}') || {}; } catch (e) { events = {}; }
       var registeredAt = typeof events.reservationRegistered === 'string' ? events.reservationRegistered : '';

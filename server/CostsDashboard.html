@@ -1316,9 +1316,8 @@
             Basic, Light y Full; Clic, porque Google trae su tarifa más baja (VeLigera) y el manual pide VeEcono o VePreferencial; TIPO 3 fuera de
             Avianca y cuando el viajero pidió bodega, porque Google no la deja pedir. Ahí el precio de Google puede quedar por debajo.
             <b>No comparable:</b> Google se buscó con otro equipaje. Se probó el 9-oct en Bogotá–Medellín: con maleta, Avianca subía $73.780 en
-            25 de 25 vuelos y LATAM no cambiaba. Además, para ser exacta el vuelo de Google tiene que salir a ±2 h de la hora pedida, ser
-            directo y llegar al mismo aeropuerto (en Medellín, Clic y Satena operan desde Olaya Herrera y las demás desde Rionegro); si no,
-            es aproximada.</dd>
+            25 de 25 vuelos y LATAM no cambiaba. Además, para ser exacta el vuelo de Google tiene que salir a ±2 h de la hora pedida y ser
+            directo; si no, es aproximada. En Medellín, Rionegro y Olaya Herrera cuentan como el mismo destino.</dd>
           <dt>Precio con la misma aerolínea</dt>
           <dd>Lo más barato en Google con la misma aerolínea con que se cotizó.</dd>
           <dt>Diferencia</dt>
@@ -3465,7 +3464,7 @@ var PT_FARE_MODES = {
   same: { key: 'sameFare', bought: 'purchasedSameFare', label: 'Con la tarifa del manual (incluye aproximadas)', short: 'con la tarifa del manual',
     sub: 'la registrada o, si falta, la que corresponde por noches, buscada con su equipaje', lead: 'Con la tarifa del manual' },
   exact: { key: 'exact', bought: 'purchasedExact', label: 'Solo comparaciones exactas', short: 'con comparación exacta',
-    sub: 'mismo equipaje de la tarifa, vuelo directo a la hora pedida y mismo aeropuerto', lead: 'Con comparación exacta' },
+    sub: 'mismo equipaje de la tarifa y vuelo directo a la hora pedida', lead: 'Con comparación exacta' },
   all: { key: null, bought: 'purchased', label: 'Todas las búsquedas, sin distinguir tarifa', short: '',
     sub: 'como antes: puede comparar una tarifa con maleta contra una sin maleta', lead: '' }
 };
@@ -3593,9 +3592,9 @@ function _ptRenderHeadline(s, items, mode) {
     notes.push(paidN === o.n ? 'Se compara lo pagado en todos.' : 'Lo pagado está registrado en ' + paidN + ' de ' + o.n + '; en los demás se usa lo cotizado, que es lo que se aprobó.');
   }
   notes.push(mode === 'exact'
-    ? 'Exacta: mismos pasajeros, mismo equipaje de la tarifa del manual, vuelo directo a ±2 h de la hora pedida y mismo aeropuerto. Google no cobra el cargo de la agencia.'
+    ? 'Exacta: mismos pasajeros, mismo equipaje de la tarifa del manual y vuelo directo a ±2 h de la hora pedida. Google no cobra el cargo de la agencia.'
     : mode === 'same'
-      ? escHtml(_ptFareCountsText()) + ' Ojo: incluye comparaciones aproximadas (LATAM, Clic, TIPO 3, bodega, otro aeropuerto), donde el precio de Google puede quedar por debajo.'
+      ? escHtml(_ptFareCountsText()) + ' Ojo: incluye comparaciones aproximadas (LATAM, Clic, TIPO 3, bodega), donde el precio de Google puede quedar por debajo.'
       : 'Sin distinguir tarifa: Google muestra la más económica, normalmente sin maleta, y lo cotizado puede tener maleta, cambios o el cargo de la agencia.');
   html += '<div class="pt-note">' + notes.join(' ') + '</div>';
   if (bought && o.n < SA_MIN_EXACT) {
@@ -3757,10 +3756,9 @@ function ptLink(url, text) {
   return url ? '<a class="pt-link" href="' + escHtml(url) + '" target="_blank" rel="noopener noreferrer">' + escHtml(text) + ' ↗</a>' : '';
 }
 
-/** Qué se compara en la fila (#A104): lo pagado o lo cotizado al buscar, con lo cotizado de hoy al lado si es otro valor. */
+/** Qué se compara en la fila (#A104): si ya se registró lo pagado, eso, con lo cotizado al lado. */
 function _ptBaseNote(it) {
   if (it.baseKind === 'pagado') return '<span class="pt-sub">pagado · cotizado ' + fmtMoney(it.quoted) + '</span>';
-  if (it.baseKind === 'cotizado al buscar' && it.quoted && it.base !== it.quoted) return '<span class="pt-sub">cotizado al buscar · hoy ' + fmtMoney(it.quoted) + '</span>';
   return '';
 }
 

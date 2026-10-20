@@ -401,10 +401,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
 - **Comparador de precios: la cifra que se presenta** (#A104, auditoría del 19-oct). Por defecto el dashboard compara **solo viajes ya
   comprados** (RESERVADO o PROCESADO, con la búsqueda al comprar) y **solo comparaciones exactas**, contra **lo pagado** (#A102) o, si
   no se registró, lo cotizado; al lado, lo mismo **con la misma aerolínea**. Lo no comprado va aparte, nunca en el total; lo denegado o
-  anulado no se compara. «Exacta» exige además vuelo a ±2 h de la hora pedida, directo y al mismo aeropuerto (en Medellín, Clic y
-  Satena operan desde Olaya Herrera). La diferencia siempre es neta (nunca sumar solo los viajes a favor). Con la base del 19-oct:
-  4 viajes, $634.169 (22,6 %); con la misma aerolínea, $89.384 (3,2 %). Google se busca con el mismo número de pasajeros y su precio
-  es el total del grupo, como lo cotizado.
+  anulado no se compara; lo no comprado se compara con los costos **vigentes** del área de viajes. «Exacta» exige además vuelo a
+  ±2 h de la hora pedida y directo; **Rionegro y Olaya Herrera son el mismo destino** (David, 20-oct). La diferencia siempre es neta
+  (nunca sumar solo los viajes a favor). Con la base del 19-oct: 5 viajes comprados, $1.009.757 (28,7 %); con la misma aerolínea,
+  $89.384 (3,2 %). Todos los rastreados contra lo cotizado, tarifa con tarifa: TIPO 1 $1,35 M (30,5 %); TIPO 2 con maleta frente a
+  Avianca/JetSMART/Wingo, Google $358 mil más caro; nacionales en total $275 mil (2 %). Google se busca con el mismo número de
+  pasajeros y su precio es el total del grupo, como lo cotizado.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de

@@ -2747,10 +2747,10 @@ Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
 - Lo **denegado o anulado** no se compara.
 - Cada viaje dice si está **comprado** (RESERVADO o PROCESADO) y con qué se compara:
   - búsqueda al comprar: **lo pagado** (#A102) o, si no se registró, lo cotizado;
-  - búsqueda al cotizar: lo cotizado **en ese momento**.
+  - sin comprar: **los costos vigentes** que dejó el área de viajes (David, 20-oct; al principio era lo cotizado en el momento de la búsqueda, y la primera cotización de Miami, después corregida, sumaba $3 M que no eran reales).
   - El % va sobre eso (#A99).
 - Totales nuevos de **lo comprado** con búsqueda al comprar: `purchased`, `purchasedSameFare`, `purchasedExact`.
-- **«Exacta» exige el mismo producto:** si se pidió una hora y Google no tenía vuelo a ±2 h, si la referencia tiene escala o si llega a otro aeropuerto de Medellín (Clic y Satena en Olaya Herrera; las demás en Rionegro), es aproximada (`_ptProductGap_`).
+- **«Exacta» exige el mismo producto:** si se pidió una hora y Google no tenía vuelo a ±2 h, o si la referencia tiene escala, es aproximada (`_ptProductGap_`). El aeropuerto de Medellín no cuenta: **Rionegro y Olaya Herrera son el mismo destino** (David, 20-oct; la primera versión lo marcaba aproximado).
 - Se quitó `possibleSavings` (sumaba solo los viajes a favor): la diferencia siempre es neta.
 
 **Arreglo (dashboard):**
@@ -2763,17 +2763,21 @@ Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
 - Cada viaje muestra lo que se compara y, en su lectura, las horas entre la búsqueda y la compra.
 - La muestra de la **proyección** usa solo lo comprado y lo pagado.
 
-**Cifra con la base del 19-oct:**
-- **4 viajes ya comprados** con comparación exacta:
-  - se pagaron $2.802.534 y en Google había $2.168.365: **$634.169 menos (22,6 %)**;
-  - **con la misma aerolínea, $89.384 (3,2 %)**.
-- Es un indicio, no una cifra para proyectar: #A99 pide 15 comparaciones exactas.
-- SOL-000652 (2 pasajeros) sale de las exactas por el aeropuerto. La cuenta de pasajeros estaba bien.
+**Cifra con la base del 19-oct** (con el aeropuerto de Medellín como un solo destino):
+- **5 viajes ya comprados** con comparación exacta:
+  - se pagaron $3.518.462 y en Google había $2.508.705: **$1.009.757 menos (28,7 %)**;
+  - **con la misma aerolínea (4 con dato), $89.384 (3,2 %)**.
+- **Todos los rastreados, comprados o no, contra lo cotizado por el área de viajes** (lo que pidió David el 20-oct), tarifa con tarifa:
+  - TIPO 1 (sin maleta), 6 viajes: $1.350.270 (30,5 %); con la misma aerolínea, $159.509 (4,6 %);
+  - TIPO 2 con maleta de mano, frente a lo más barato de Avianca (Classic), JetSMART o Wingo, que son las aerolíneas en que Google muestra el precio con maleta: 9 viajes, Google **$358.497 más caro** (−5,5 %); Google más barato en 6;
+  - con bodega o TIPO 3 nacional, frente a Avianca Classic: 4 viajes, Google $716.474 más caro;
+  - todos los nacionales, 19 viajes: **$275.299 (2,0 %)**; Miami (3 pasajeros): $1.641.342, y con LATAM, la misma aerolínea, $112.011.
+- Es un indicio, no una cifra para proyectar: #A99 pide 15 comparaciones exactas. La cuenta de pasajeros estaba bien.
 
 **Pendiente, sin código (decisión del 21-oct):** si el estudio sigue, repetir la búsqueda al registrar la compra cuando la última tiene más de 6 h. Hoy se busca al quedar APROBADO, a veces días antes de comprar (SOL-000647: 47 h). Cuesta búsquedas de SerpApi.
 
 **Verificado:**
-- `check-price-tracking`: comprado, lo pagado, cotizado al buscar, denegado fuera, totales de lo comprado, % sobre lo pagado, hora / escala / aeropuerto.
+- `check-price-tracking`: comprado, lo pagado, cotizado vigente, denegado fuera, totales de lo comprado, % sobre lo pagado, hora y escala (el aeropuerto de Medellín no cuenta).
 - `check-savings-analysis`: por defecto exactas y comprados; la muestra solo con lo comprado y lo pagado; servidor anterior sin la casilla.
 - **Con la base real** (`Code.gs` y el JavaScript del dashboard en el entorno local y en Chrome): el titular da la cifra de arriba.
 
