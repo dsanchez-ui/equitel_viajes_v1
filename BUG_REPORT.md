@@ -2667,6 +2667,7 @@ En cualquier orden funciona, pero el bloque solo aparece cuando están los dos l
 - **Botón grande 😕 «¿Necesita cambiar su viaje?»** en el panel y **«😕 Cambiar mi viaje»** en el detalle. Formulario corto: fechas, horas, destino y equipaje (varios a la vez), resumen antes / ahora y motivo obligatorio (10 a 500 caracteres).
 - **Plazo:** hasta las 5:00 p. m. del día hábil anterior al vuelo; si ese día es sábado, 12:00 m. Domingos y festivos de Colombia no cuentan. La fecha nueva también tiene que dar tiempo. Con el viaje en curso solo se cambia el regreso. Después del plazo, el portal dice a quién escribir (`ADMIN_EMAIL`).
   - Gemelo `utils/changeWindow.ts` ↔ `_changeDeadline_` / `_tripChangeWindow_`.
+- Bajo cada fecha, el día elegido en palabras («Miércoles 4 de noviembre»; «(no cambia)» si es la misma) y bajo cada hora, la de antes. Nunca «Hoy:», que se leía como la fecha de hoy (David, 20-oct, al probar en el entorno local).
 - Aviso de la maleta pedida después de comprar, en el formulario, el correo y el detalle. En el formulario de solicitudes, una línea junto a la casilla de la maleta: *«agregarla después cuesta el cambio y la diferencia de tarifa»*.
 - **Aviso del sistema nuevo** en el panel del viajero y en el del área de viajes, hasta tocar «Entendido» (por navegador).
 

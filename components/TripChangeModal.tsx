@@ -56,6 +56,20 @@ const fmtTime = (t: string): string => {
   return `${h % 12 || 12}:${mm} ${h < 12 ? 'a. m.' : 'p. m.'}`;
 };
 
+const cap = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+/** Bajo un campo de fecha: el día elegido en palabras («Miércoles 4 de noviembre»); si es la misma de antes, lo dice. */
+const DateHint: React.FC<{ value: string; before: string }> = ({ value, before }) => (
+  <span className={`block font-normal mt-0.5 ${value && value !== before ? 'text-gray-700' : 'text-gray-400'}`}>
+    {!value ? 'Elija la fecha' : cap(fmtDayLong(value)) + (value === before ? ' (no cambia)' : '')}
+  </span>
+);
+
+/** Bajo un campo de hora: la hora de antes, para compararla (como la tabla «Antes / Ahora» del resumen). */
+const TimeHint: React.FC<{ value: string; before: string }> = ({ value, before }) => (
+  <span className="block text-gray-400 font-normal mt-0.5">{value === before ? 'No cambia' : `Antes: ${fmtTime(before)}`}</span>
+);
+
 const nightsBetween = (dep: string, ret: string): number => {
   if (!dep || !ret) return 0;
   const a = Date.UTC(+dep.slice(0, 4), +dep.slice(5, 7) - 1, +dep.slice(8, 10));
@@ -356,7 +370,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {choice('fechas', 'Fechas', hotelOnly ? 'Entrada o salida' : mode === 'return' ? 'Del regreso' : 'Ida o regreso')}
                   {!hotelOnly && choice('horas', 'Horas', mode === 'return' ? 'Del vuelo de regreso' : 'De los vuelos')}
-                  {choice('destino', hotelOnly ? 'Ciudad' : 'Destino', mode === 'return' ? 'No, con el viaje en curso' : `Hoy: ${(base.dest.split(',')[0] || '').trim()}`, mode === 'return')}
+                  {choice('destino', hotelOnly ? 'Ciudad' : 'Destino', mode === 'return' ? 'No, con el viaje en curso' : `Actual: ${(base.dest.split(',')[0] || '').trim()}`, mode === 'return')}
                   {!hotelOnly && choice('equipaje', 'Equipaje', 'Maleta de bodega')}
                 </div>
                 <p className="text-xs text-gray-500 mt-2">Si necesita cambiar algo más (por ejemplo, quitar el hotel), escríbalo en el motivo. Para cambiar a quien viaja, pida una solicitud nueva.</p>
@@ -369,7 +383,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                     <label className="block text-xs font-semibold text-gray-600">
                       {hotelOnly ? 'Nueva entrada al hotel' : 'Nueva fecha de ida'}
                       <input type="date" data-change-field="dep" min={isAdmin ? undefined : todayKey} style={{ colorScheme: 'light' }} className={inputCls} value={form.dep} onChange={e => setF({ dep: e.target.value })} />
-                      <span className="block text-gray-400 font-normal mt-0.5">Hoy: {fmtDayLong(base.dep)}</span>
+                      <DateHint value={form.dep} before={base.dep} />
                     </label>
                   ) : (
                     <p className="text-xs text-gray-600"><span className="font-semibold block">Ida</span>Ya voló el {fmtDayLong(base.dep)}.</p>
@@ -378,7 +392,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                     <label className="block text-xs font-semibold text-gray-600">
                       {hotelOnly ? 'Nueva salida del hotel' : 'Nueva fecha de regreso'}
                       <input type="date" data-change-field="ret" min={form.dep || todayKey} style={{ colorScheme: 'light' }} className={inputCls} value={form.ret} onChange={e => setF({ ret: e.target.value })} />
-                      <span className="block text-gray-400 font-normal mt-0.5">Hoy: {fmtDayLong(base.ret)}</span>
+                      <DateHint value={form.ret} before={base.ret} />
                     </label>
                   ) : (
                     <p className="text-xs text-gray-500">Viaje solo de ida: para agregar un regreso pida una solicitud nueva.</p>
@@ -393,14 +407,14 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                     <label className="block text-xs font-semibold text-gray-600">
                       Hora del vuelo de ida
                       <input type="time" data-change-field="depTime" style={{ colorScheme: 'light' }} className={inputCls} value={form.depTime} onChange={e => setF({ depTime: e.target.value })} />
-                      <span className="block text-gray-400 font-normal mt-0.5">Hoy: {fmtTime(base.depTime)}</span>
+                      <TimeHint value={form.depTime} before={base.depTime} />
                     </label>
                   )}
                   {base.ret && (
                     <label className="block text-xs font-semibold text-gray-600">
                       Hora del vuelo de regreso
                       <input type="time" data-change-field="retTime" style={{ colorScheme: 'light' }} className={inputCls} value={form.retTime} onChange={e => setF({ retTime: e.target.value })} />
-                      <span className="block text-gray-400 font-normal mt-0.5">Hoy: {fmtTime(base.retTime)}</span>
+                      <TimeHint value={form.retTime} before={base.retTime} />
                     </label>
                   )}
                 </fieldset>
@@ -414,7 +428,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   ) : (
                     <>
                       <CityCombobox name="dest" value={form.dest === base.dest ? '' : form.dest} cities={cities} isLoading={citiesState === 'loading'} onChange={(_n, v) => setF({ dest: v || base.dest })} />
-                      <p className="text-xs text-gray-400 mt-1">Hoy: {base.dest}{req.origin && !hotelOnly ? ` · Origen: ${req.origin}` : ''}</p>
+                      <p className="text-xs text-gray-400 mt-1">Destino actual: {base.dest}{req.origin && !hotelOnly ? ` · Origen: ${req.origin}` : ''}</p>
                     </>
                   )}
                 </fieldset>
@@ -425,7 +439,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   <legend className="text-xs font-bold text-gray-700 px-1">Equipaje</legend>
                   <label className="flex items-start gap-2 cursor-pointer">
                     <input type="checkbox" data-change-field="bag" className="mt-1 accent-red-700" checked={form.bag} onChange={e => setF({ bag: e.target.checked })} />
-                    <span>Necesito maleta de bodega<br /><span className="text-xs text-gray-500">Hoy: {base.bag ? 'con maleta de bodega' : 'sin maleta de bodega'}. La tarifa la elige el área de viajes según el manual; si pide maleta, elige una que la incluya.</span></span>
+                    <span>Necesito maleta de bodega<br /><span className="text-xs text-gray-500">Su viaje va {base.bag ? 'con' : 'sin'} maleta de bodega. La tarifa la elige el área de viajes según el manual; si pide maleta, elige una que la incluya.</span></span>
                   </label>
                 </fieldset>
               )}
