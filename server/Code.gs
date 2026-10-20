@@ -5704,7 +5704,7 @@ function bootstrap(integrantesHash, sessionEmail, sessionToken) {
     // #A100: aviso de cómo funcionan ahora las solicitudes (semana del 19-oct).
     policyNotice: (function() { try { return _policyNoticeFor_(sessionEmail); } catch (e) { console.warn('bootstrap policyNotice: ' + e); return null; } })(),
     // #A103: que la clave llegue activa «Cambiar mi viaje» en la app (con un servidor anterior sigue el formulario de siempre).
-    tripChange: _tripChangePublicInfo_(),
+    tripChange: _tripChangePublicInfo_(sessionEmail),
     integrantesHash: currentHash,
     requestsLite: requestsLite
   };
@@ -19703,11 +19703,15 @@ function _policyNoticeFor_(email) {
   return info;
 }
 
-/** «Entendido»: deja la constancia (una sola por persona y aviso). */
+/**
+ * «Entendido»: deja la constancia (una sola por persona y aviso). Sirve para el aviso de las
+ * reglas (#A100) y para la explicación de «Cambiar mi viaje» (#A103); cualquier otro id se ignora.
+ */
 function ackPolicyNotice(noticeId, currentUserEmail) {
   var email = String(currentUserEmail || '').toLowerCase().trim();
-  if (!email || String(noticeId || '') !== POLICY_NOTICE_ID) return false;
-  if (_policyNoticeAcked_(email, POLICY_NOTICE_ID)) return true;
+  var id = String(noticeId || '');
+  if (!email || [POLICY_NOTICE_ID, TRIP_CHANGE_NOTICE_ID].indexOf(id) === -1) return false;
+  if (_policyNoticeAcked_(email, id)) return true;
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(POLICY_NOTICE_SHEET);
   if (!sheet) {
@@ -19715,7 +19719,7 @@ function ackPolicyNotice(noticeId, currentUserEmail) {
     sheet.appendRow(['FECHA', 'CORREO', 'AVISO']);
     try { sheet.setFrozenRows(1); } catch (e) { /* no crítico */ }
   }
-  sheet.appendRow([new Date(), email, POLICY_NOTICE_ID]);
+  sheet.appendRow([new Date(), email, id]);
   return true;
 }
 
@@ -20310,6 +20314,9 @@ var REPLACED_BY_HEADER = 'REEMPLAZADA POR';
 var REPLACED_BY_NOTE = 'Solicitud de cambio que reemplazó a esta (#A103). La original con tiquete comprado no se anula: queda «Cambiada» y su costo sigue contando.';
 var TRIP_CHANGE_REASON_MIN = 10;
 var TRIP_CHANGE_REASON_MAX = 500;
+// Explicación de «Cambiar mi viaje» la primera vez que se toca el botón (David, 20-oct): su
+// «Entendido» queda en CONSTANCIA AVISOS con este id, como el aviso de #A100.
+var TRIP_CHANGE_NOTICE_ID = 'cambios-de-viaje-2026-10';
 var TRIP_CHANGE_KEYS = ['departureDate', 'returnDate', 'departureTimePreference', 'returnTimePreference', 'destination', 'checkedBaggage'];
 
 // Estado por ejecución: la OT de la padre se copia tal cual (no se revalida con la
@@ -20766,9 +20773,18 @@ function getTripChangesForDashboard(currentUserEmail, fresh) {
   });
 }
 
-/** Lo que la app necesita saber del cambio de viaje (bootstrap). Que llegue activa el botón nuevo. */
-function _tripChangePublicInfo_() {
-  return { enabled: true, contact: ADMIN_EMAIL, reasonMin: TRIP_CHANGE_REASON_MIN, reasonMax: TRIP_CHANGE_REASON_MAX, serverNow: Date.now() };
+/**
+ * Lo que la app necesita saber del cambio de viaje (bootstrap). Que llegue activa el botón nuevo.
+ * showNotice: mostrar la explicación al tocar el botón (solicitantes que aún no tocaron «Entendido»).
+ */
+function _tripChangePublicInfo_(email) {
+  var e = String(email || '').toLowerCase().trim();
+  var showNotice = false;
+  if (e && !isUserAnalyst(e)) {
+    try { showNotice = !_policyNoticeAcked_(e, TRIP_CHANGE_NOTICE_ID); } catch (err) { showNotice = true; } // si no se puede leer, se explica de nuevo
+  }
+  return { enabled: true, contact: ADMIN_EMAIL, reasonMin: TRIP_CHANGE_REASON_MIN, reasonMax: TRIP_CHANGE_REASON_MAX, serverNow: Date.now(),
+    noticeId: TRIP_CHANGE_NOTICE_ID, showNotice: showNotice };
 }
 
 /**

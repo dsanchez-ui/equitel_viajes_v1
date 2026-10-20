@@ -128,7 +128,9 @@ nada de la plataforma depende de ellas.
 
 ### CONSTANCIA AVISOS
 
-La crea la app (#A100) la primera vez que alguien toca **«Entendido»** en la ventana que explica cómo funcionan ahora las solicitudes (se muestra a cada solicitante, sin fecha de fin, hasta que lo acepta). Una fila por persona: `FECHA`, `CORREO` y `AVISO`. Es la constancia de que cada uno lo leyó. No la edites; si se borra una fila, a esa persona le vuelve a salir la ventana.
+La crea la app (#A100) la primera vez que alguien toca **«Entendido»** en la ventana que explica cómo funcionan ahora las solicitudes (se muestra a cada solicitante, sin fecha de fin, hasta que lo acepta). Una fila por persona y aviso: `FECHA`, `CORREO` y `AVISO`. Es la constancia de que cada uno lo leyó. No la edites; si se borra una fila, a esa persona le vuelve a salir la ventana.
+
+Desde el 20-oct también guarda, con el aviso `cambios-de-viaje-2026-10` (#A103), quién leyó la explicación de «Cambiar mi viaje», que sale la primera vez que el viajero toca el botón de cambio.
 
 ### INFORMES ENVIADOS
 

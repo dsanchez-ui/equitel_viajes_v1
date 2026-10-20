@@ -9,6 +9,7 @@ import { gasService, setOnSessionExpired, setOnHealthChange } from './services/g
 import { TravelRequest, UserRole, Integrant, PolicyNotice, TripChangeConfig } from './types';
 import { PolicyNoticeModal } from './components/PolicyNoticeModal';
 import { TripChangeModal } from './components/TripChangeModal';
+import { TripChangeIntroModal } from './components/TripChangeIntroModal';
 import { LOGO_URL, APP_VERSION } from './constants';
 
 const POLL_INTERVAL_MS = 30000;
@@ -169,6 +170,8 @@ const App: React.FC = () => {
   // #A103: «Cambiar mi viaje» (lo activa el servidor en bootstrap) y el viaje que se está cambiando.
   const [tripChangeConfig, setTripChangeConfig] = useState<TripChangeConfig | null>(null);
   const [tripChangeTarget, setTripChangeTarget] = useState<TravelRequest | 'pick' | null>(null);
+  // #A103: la explicación se saltó por una falla al guardar la constancia (vuelve a salir en el próximo ingreso).
+  const [tripChangeIntroSkipped, setTripChangeIntroSkipped] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [loginEmailInput, setLoginEmailInput] = useState('');
   const [showPinModal, setShowPinModal] = useState(false);
@@ -197,6 +200,7 @@ const App: React.FC = () => {
       setCanSkipApprovalFlag(false);
       setPolicyNotice(null);
       setTripChangeTarget(null);
+      setTripChangeIntroSkipped(false);
       setView('LIST');
       setLoading(false);
       alert('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
@@ -401,6 +405,7 @@ const App: React.FC = () => {
       setCanSkipApprovalFlag(false);
       setPolicyNotice(null);
       setTripChangeTarget(null);
+      setTripChangeIntroSkipped(false);
       setViewAsRequester(false);
       alert('No se pudo completar el inicio de sesión. Por favor intenta de nuevo.');
     } finally {
@@ -654,6 +659,7 @@ const App: React.FC = () => {
     setCanSkipApprovalFlag(false);
       setPolicyNotice(null);
       setTripChangeTarget(null);
+      setTripChangeIntroSkipped(false);
     setViewAsRequester(false);
     setLoginEmailInput('');
 
@@ -1059,7 +1065,21 @@ const App: React.FC = () => {
         />
       )}
 
-      {tripChangeConfig && tripChangeTarget && (
+      {/* #A103: la primera vez, la explicación de cómo se cambia un viaje ahora; después, el formulario. */}
+      {tripChangeConfig && tripChangeTarget && !isEffectiveAdmin && tripChangeConfig.showNotice === true && !tripChangeIntroSkipped && (
+        <TripChangeIntroModal
+          config={tripChangeConfig}
+          onAcknowledge={async () => {
+            // Si falla, el error sube a la ventana: lo muestra y deja reintentar (no se cierra en silencio).
+            await gasService.ackPolicyNotice(tripChangeConfig.noticeId || '');
+            setTripChangeConfig((c) => (c ? { ...c, showNotice: false } : c));
+          }}
+          onContinueWithoutSaving={() => setTripChangeIntroSkipped(true)}
+          onCancel={() => setTripChangeTarget(null)}
+        />
+      )}
+
+      {tripChangeConfig && tripChangeTarget && (isEffectiveAdmin || tripChangeConfig.showNotice !== true || tripChangeIntroSkipped) && (
         <TripChangeModal
           requests={requests}
           initialRequest={tripChangeTarget === 'pick' ? null : tripChangeTarget}

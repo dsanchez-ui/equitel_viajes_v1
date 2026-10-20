@@ -450,6 +450,22 @@ function main() {
     [dl1.success && dl1.data.items.length === ctrl.items.length, dl2.success && dl2.data.items.length, dl3.success && dl3.data.legacy, dl1.data && dl1.data.legacy, dl4.success],
     [true, 0, 1, null, false]);
   ok('dashboard por unidad: sin correos', dl1.success && !/@/.test(JSON.stringify(dl1.data.items.map((x) => [x.requesterName, x.unit, x.id]))) && dl1.data.items.every((x) => x.requesterEmail === undefined));
+  // Explicación de «Cambiar mi viaje» la primera vez (20-oct): constancia en CONSTANCIA AVISOS, como #A100.
+  reset();
+  eq('explicación: al viajero sí, al área de viajes no', [ctx._tripChangePublicInfo_('ana@p.co').showNotice, ctx._tripChangePublicInfo_('admin@p.co').showNotice,
+    ctx._tripChangePublicInfo_('ana@p.co').noticeId], [true, false, 'cambios-de-viaje-2026-10']);
+  reset();
+  let ack = ctx.dispatch('ackPolicyNotice', { userEmail: 'ana@p.co', sessionToken: 't', noticeId: 'cambios-de-viaje-2026-10' });
+  const avisos = sheets['CONSTANCIA AVISOS'] && sheets['CONSTANCIA AVISOS']._t;
+  ok('explicación: «Entendido» deja la constancia', ack.success && ack.data === true && avisos && avisos.some((r) => r[1] === 'ana@p.co' && r[2] === 'cambios-de-viaje-2026-10'));
+  reset();
+  eq('explicación: ya no vuelve a salir (a otra persona sí)', [ctx._tripChangePublicInfo_('ana@p.co').showNotice, ctx._tripChangePublicInfo_('luis@p.co').showNotice], [false, true]);
+  reset();
+  ctx.dispatch('ackPolicyNotice', { userEmail: 'ana@p.co', sessionToken: 't', noticeId: 'cambios-de-viaje-2026-10' });
+  eq('explicación: una sola constancia por persona', avisos.filter((r) => r[1] === 'ana@p.co' && r[2] === 'cambios-de-viaje-2026-10').length, 1);
+  reset();
+  ack = ctx.dispatch('ackPolicyNotice', { userEmail: 'luis@p.co', sessionToken: 't', noticeId: 'otro-aviso' });
+  ok('explicación: un id desconocido no deja constancia', ack.success && ack.data === false && !avisos.some((r) => r[1] === 'luis@p.co'));
   eq('bootstrap: la app recibe la regla', [ctx._tripChangePublicInfo_().enabled, ctx._tripChangePublicInfo_().reasonMin, ctx._tripChangePublicInfo_().contact], [true, 10, 'compras.equitel@equitel.com.co']);
 
   if (failures.length) {

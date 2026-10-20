@@ -401,6 +401,9 @@ export interface TripChangeConfig {
   serverNow?: number;
   /** Solo en la app: diferencia entre la hora del servidor y la del computador, en ms. */
   clockOffset?: number;
+  /** Explicación de «Cambiar mi viaje» la primera vez (hasta tocar «Entendido»; constancia en el servidor). */
+  noticeId?: string;
+  showNotice?: boolean;
 }
 
 /** #A103: una fila del control de cambios (solo administradores). */

@@ -2670,6 +2670,7 @@ En cualquier orden funciona, pero el bloque solo aparece cuando están los dos l
 - Bajo cada fecha, el día elegido en palabras («Miércoles 4 de noviembre»; «(no cambia)» si es la misma) y bajo cada hora, la de antes. Nunca «Hoy:», que se leía como la fecha de hoy (David, 20-oct, al probar en el entorno local).
 - Aviso de la maleta pedida después de comprar, en el formulario, el correo y el detalle. En el formulario de solicitudes, una línea junto a la casilla de la maleta: *«agregarla después cuesta el cambio y la diferencia de tarifa»*.
 - **Aviso del sistema nuevo** en el panel del viajero y en el del área de viajes, hasta tocar «Entendido» (por navegador).
+- **Explicación al tocar el botón la primera vez** (David, 20-oct): ventana corta *«Así se cambia un viaje ahora»* (dónde se pide, el plazo, el costo si ya está comprado, el tiquete actual sigue valiendo). «Entendido, continuar» deja la constancia en `CONSTANCIA AVISOS` con el aviso `cambios-de-viaje-2026-10` (el mismo `ackPolicyNotice` de #A100, que ahora acepta los dos ids) y no vuelve a salir, entre desde donde entre; «Ahora no» la deja para la próxima. Solo solicitantes. Si la constancia no se guarda, lo dice y deja reintentar o seguir.
 
 **Solución (servidor):**
 - Acción `requestTripChange`: el navegador manda **solo lo que cambia**. El servidor arma la hija desde la fila de la original y la crea con el mismo `requestModification` de siempre (dueño, estados, un cambio vivo #A63). La OT de la original se copia tal cual.

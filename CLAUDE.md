@@ -396,6 +396,8 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     con el cambio. **Sin comprar:** se cotiza de nuevo y la original se anula al aprobar, como antes. Hijas sin JSON: reglas de antes.
   - **Todo cambio pasa por el aprobador**, aunque cueste $0. Control en *Métricas → Cambios*, en la sección *Cambios de viaje* del
     dashboard de costos (líder = sus unidades) y en el informe mensual.
+  - **La primera vez que el viajero toca el botón**, una explicación corta; «Entendido» deja constancia en `CONSTANCIA AVISOS`
+    (aviso `cambios-de-viaje-2026-10`, mismo `ackPolicyNotice` de #A100) y no vuelve a salir en ningún equipo (David, 20-oct).
 - **Comparador de precios: la cifra que se presenta** (#A104, auditoría del 19-oct). Por defecto el dashboard compara **solo viajes ya
   comprados** (RESERVADO o PROCESADO, con la búsqueda al comprar) y **solo comparaciones exactas**, contra **lo pagado** (#A102) o, si
   no se registró, lo cotizado; al lado, lo mismo **con la misma aerolínea**. Lo no comprado va aparte, nunca en el total; lo denegado o

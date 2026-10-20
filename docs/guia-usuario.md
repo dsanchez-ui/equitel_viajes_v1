@@ -318,6 +318,8 @@ La ventana te dice, viaje por viaje, hasta cuándo puedes pedir el cambio.
 
 ### Cómo se pide
 
+La primera vez que tocas el botón sale una explicación corta de cómo funciona. Cuando tocas **Entendido, continuar**, no vuelve a salir.
+
 1. Toca **😕 ¿Necesita cambiar su viaje?** y elige el viaje.
 2. Marca qué quieres cambiar y escribe el valor nuevo. Abajo verás un resumen **antes / ahora**.
 3. Escribe el **motivo** (obligatorio, mínimo 10 caracteres). Ejemplos: "El cliente pospuso la reunión al jueves.", "La visita se alargó un día."
