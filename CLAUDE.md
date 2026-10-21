@@ -628,22 +628,18 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-10-14)
+### Para retomar (estado al 2026-10-21)
 
-- **Todo está desplegado hasta #A101.** El 14-oct David pegó `Code.gs` y `CostsDashboard.html`, corrió el
-  menú 12, creó el activador `procesarAprobacionesPolitica` (uno solo, cada 2 h), publicó la versión nueva del
-  web app y el frontend, y probó el informe mensual con el menú 15: todo bien.
-- **Pendiente de pegar (lo hace David):** `Code.gs` y `CostsDashboard.html` con la tarifa del informe por mes de compra
-  (ajuste de #A101) y el valor pagado (#A102) → menú 12 (opcional) → versión nueva del web app → push del frontend. Si solo
-  se pega `Code.gs`, el informe del 3-nov ya sale con la tarifa por mes de compra.
+- **Todo está desplegado hasta #A105.** El 21-oct David pegó `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y
+  `AdminMobile.html`, pegó `Rastreo.gs` en el proyecto aparte, corrió el menú 12 y publicó la versión nueva del web app;
+  después se publicó el frontend. Incluye #A102 (valor pagado; su frontend ya estaba desde el 14-oct), el ajuste de #A101
+  (tarifa por mes de compra), el aviso de #A100 sin fecha de fin, #A103 «Cambiar mi viaje», #A104 y #A105.
 - **Fechas de compra cambiadas por correcciones (#A102):** SOL-000100, 107, 202, 230, 249, 270, 435, 465, 494, 495, 516,
   526, 527, 545, 552 y 635. Si se quieren corregir, que el área de viajes confirme cada fecha y la corrija a mano.
 - **Fechas que vienen (sin código):**
   - **21-oct:** termina el estudio de precios (#A84). Decidir si sigue (SerpApi gratis, 250 búsquedas al mes)
     y revisar la proyección con Yurani antes de mostrársela a Alejandro: sin 15 comparaciones exactas no da
     cifra al año (#A99).
-  - **Antes del 25-oct:** pegar `Code.gs` (aviso sin fecha de fin) y crear la versión nueva; si no, el 26-oct la ventana
-    deja de salir hasta que se pegue.
   - **Martes 3-nov:** primer informe mensual automático (octubre) para Alejandro, con copia a Yurani y David.
     Revisar que llegó y que `INFORMES ENVIADOS` tiene su fila. Octubre trae poca tarifa (se registra desde el
     8-oct); desde noviembre sale completa.
@@ -674,11 +670,11 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A99, #A100 y #A101 desplegados el 14-oct-2026** (cifras del dashboard que se pueden presentar, aprobación del CFO
   por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
   hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
-- **#A103 «Cambiar mi viaje», #A104 cifras del comparador y #A105 fechas día/mes/año: construidos del 19 al 21-oct, pendientes de
-  desplegar.** Antes del push, David los prueba en el entorno local (`npm run prueba:local`). Despliegue: pegar `Code.gs`,
-  `CostsDashboard.html`, `AdminSidebar.html`, `AdminMobile.html` y `Rastreo.gs` (proyecto aparte) → menú 12 (opcional) → versión
-  nueva del web app → push del frontend. Después: avisarle a Laura del flujo nuevo
-  (el panel ya trae un aviso) y revisar con Yurani la cifra del comparador antes de mostrársela a Alejandro.
+- **#A103 «Cambiar mi viaje», #A104 y #A105: desplegados el 21-oct.** Después del despliegue:
+  - **Prueba en producción** con PRUEBA1. Su aprobador (PRUEBA2) tiene un correo que no es de David: cambiarlo antes por
+    `dsanchez+qa@equitel.com.co`. Avisarle a Laura, porque le llegan los correos del cambio.
+  - **Entregarle a Laura la guía** «Cómo gestionar un cambio de viaje» (Claude Docs, con pantallazos del entorno de prueba).
+  - Revisar con Yurani la cifra del comparador antes de mostrársela a Alejandro.
 - **Manuales dentro de la app** (David, 14-oct): **solo plan**, en
   [docs/plan-manuales-en-app.md](docs/plan-manuales-en-app.md) — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
 - **Informe por unidad para cada jefe** (posible segunda etapa de #A101): la presentación de Alejandro dice que «su jefe

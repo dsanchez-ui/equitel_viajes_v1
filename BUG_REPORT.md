@@ -2586,7 +2586,7 @@ David pegó `Code.gs` y creó el activador `procesarAprobacionesPolitica` (uno s
 ---
 
 ## **#A102 — Valor pagado en «Registrar reserva» y la corrección ya no cambia la fecha de compra**
-**Fecha:** 2026-10-14 · **Pedido por:** David (*"sería bueno poner ahí el valor"*), con la pregunta abierta desde el 7-oct de tener el precio real sin esperar las facturas. Decisión de David: **opcional**. · **Estado:** Implementado; pendiente desplegar.
+**Fecha:** 2026-10-14 · **Pedido por:** David (*"sería bueno poner ahí el valor"*), con la pregunta abierta desde el 7-oct de tener el precio real sin esperar las facturas. Decisión de David: **opcional**. · **Estado:** Desplegado (frontend el 14-oct; `Code.gs` y `CostsDashboard.html` el 21-oct, con #A103).
 
 **Problema:**
 - Entre la compra y la factura pasan semanas. Mientras tanto, el dashboard de costos cuenta lo cotizado («Comprado sin factura»), aunque el área de viajes ya sabe cuánto pagó.
@@ -2657,7 +2657,7 @@ En cualquier orden funciona, pero el bloque solo aparece cuando están los dos l
 ---
 
 ## **#A103 — «Cambiar mi viaje»: cambios de viaje simplificados, con su costo visible**
-**Fecha:** 2026-10-19 · **Pedido por:** Yurani (15-oct); reglas de David (15-oct); prototipo aprobado por Yurani (19-oct, con las propuestas de la §9 de [docs/plan-cambios-de-viaje.md](docs/plan-cambios-de-viaje.md)). · **Estado:** Implementado; pendiente desplegar.
+**Fecha:** 2026-10-19 · **Pedido por:** Yurani (15-oct); reglas de David (15-oct); prototipo aprobado por Yurani (19-oct, con las propuestas de la §9 de [docs/plan-cambios-de-viaje.md](docs/plan-cambios-de-viaje.md)). · **Estado:** Desplegado el 2026-10-21.
 
 **Problema:**
 - Los viajeros no usaban el cambio de la plataforma: el botón estaba escondido en el detalle y abría el formulario completo. Pedían los cambios por correo o por teléfono, sin trazabilidad.
@@ -2731,7 +2731,7 @@ Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
 ---
 
 ## **#A104 — Comparador de precios: la cifra de ahorro solo con lo comprado y comparaciones exactas**
-**Fecha:** 2026-10-19 · **Pedido por:** David (*«está arrojando 5.700.000 de ahorro… garantiza que sean reales… comparando tarifas equivalentes… cuando el vuelo es de 2 o 3 personas»*). · **Estado:** Implementado; pendiente desplegar (va con #A103).
+**Fecha:** 2026-10-19 · **Pedido por:** David (*«está arrojando 5.700.000 de ahorro… garantiza que sean reales… comparando tarifas equivalentes… cuando el vuelo es de 2 o 3 personas»*). · **Estado:** Desplegado el 2026-10-21, con #A103 (`Rastreo.gs` pegado en el proyecto aparte).
 
 **Auditoría (base del 19-oct, 662 solicitudes, 60 búsquedas):**
 - La cifra que vio David ($5,77 M a las 9:16 a. m.; $6,06 M a las 10:45) era el titular por defecto («Con la tarifa del manual»).
@@ -2786,7 +2786,7 @@ Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
 ---
 
 ## **#A105 — Las fechas siempre se ven y se escriben día/mes/año**
-**Fecha:** 2026-10-21 · **Pedido por:** David (*«ninguna persona debería ver las fechas en un formato diferente, ni debería tener que ingresarlas tampoco en un formato diferente… y que en el Google Sheets se registren correctamente»*). · **Estado:** Implementado; pendiente desplegar (va con #A103).
+**Fecha:** 2026-10-21 · **Pedido por:** David (*«ninguna persona debería ver las fechas en un formato diferente, ni debería tener que ingresarlas tampoco en un formato diferente… y que en el Google Sheets se registren correctamente»*). · **Estado:** Desplegado el 2026-10-21, con #A103.
 
 **Síntoma:**
 - El campo de fecha del navegador (`<input type="date">`) se ve con el formato del idioma del computador. Con Chrome en inglés salía `10/21/2026` (mes/día/año), por ejemplo en *Registrar reserva*, y se escribía en ese orden.
