@@ -415,6 +415,7 @@
   function init() {
     restoreSession();
     wireEvents();
+    attachDmyDateField('f_fechaNac'); // se ve y se escribe DD/MM/AAAA
     document.getElementById('f_fechaNac').max = todayIsoLocal();
     if (session) {
       showForm();
@@ -804,6 +805,56 @@
   function todayIsoLocal() {
     var d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  // Fecha DD/MM/AAAA (David, 21-oct-2026). El campo de fecha del navegador muestra el formato del
+  // idioma del computador (en inglés, MM/DD/AAAA) y en Colombia eso confunde. Aquí la fecha se ve y se
+  // escribe día/mes/año (las barras se ponen solas) y el calendario sigue con el botón. El campo
+  // original queda oculto y sigue guardando 'AAAA-MM-DD': el código que lo lee o lo llena no cambia.
+  function attachDmyDateField(id) {
+    var el = document.getElementById(id);
+    if (!el || el.getAttribute('data-dmy')) return;
+    el.setAttribute('data-dmy', '1');
+    var proto = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    var toDmy = function(iso) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : ''; };
+    var toIso = function(t) {
+      var m = /^\s*(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})\s*$/.exec(String(t || ''));
+      if (!m) return '';
+      var d = +m[1], mo = +m[2], y = +m[3], dt = new Date(Date.UTC(y, mo - 1, d));
+      if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return '';
+      return y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+    };
+    var wrap = document.createElement('div');
+    wrap.style.position = 'relative';
+    el.parentNode.insertBefore(wrap, el);
+    var txt = document.createElement('input');
+    txt.type = 'text'; txt.id = id + '_dmy'; txt.setAttribute('inputmode', 'numeric'); txt.autocomplete = 'off';
+    txt.placeholder = 'DD/MM/AAAA'; txt.maxLength = 10; txt.style.paddingRight = '40px';
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.title = 'Abrir el calendario'; btn.setAttribute('aria-label', 'Abrir el calendario');
+    btn.innerHTML = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>';
+    btn.style.cssText = 'position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#6b7280;cursor:pointer;padding:4px;width:auto;margin:0;line-height:0;';
+    wrap.appendChild(txt); wrap.appendChild(btn); wrap.appendChild(el);
+    el.tabIndex = -1; el.setAttribute('aria-hidden', 'true');
+    el.style.cssText = 'position:absolute;right:6px;bottom:0;width:32px;height:2px;min-height:0;opacity:0;pointer-events:none;padding:0;margin:0;border:0;';
+    // Lo que el código escribe en el campo original (al cargar o limpiar el formulario) se muestra.
+    Object.defineProperty(el, 'value', { configurable: true,
+      get: function() { return proto.get.call(el); },
+      set: function(v) { proto.set.call(el, v); txt.value = toDmy(proto.get.call(el)); } });
+    txt.addEventListener('input', function() {
+      var digits = txt.value.replace(/\D/g, '').slice(0, 8);
+      txt.value = digits.length > 4 ? digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4)
+        : digits.length > 2 ? digits.slice(0, 2) + '/' + digits.slice(2) : digits;
+      proto.set.call(el, toIso(txt.value));
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    el.addEventListener('change', function() { var iso = proto.get.call(el); if (iso && toIso(txt.value) !== iso) txt.value = toDmy(iso); });
+    btn.addEventListener('click', function() {
+      try { if (el.showPicker) { el.showPicker(); return; } } catch (e) { /* sin showPicker */ }
+      el.style.pointerEvents = 'auto'; el.focus();
+    });
+    txt.value = toDmy(proto.get.call(el));
   }
 
   function clearForm() {

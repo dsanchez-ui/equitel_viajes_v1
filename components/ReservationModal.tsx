@@ -10,6 +10,7 @@ import { FareFields } from './FareFields';
 import { FareForm, fareFormFrom, fareRecommendation, fareShort, normalizeFare } from '../utils/fare';
 import { HotelForm, PurchaseForm, checkHotelForm, checkPurchaseForm, hotelFormFrom, hotelPurchaseLabel, purchaseAirlineLabel, purchaseChannelLabel, purchaseFormFrom } from '../utils/purchase';
 import { bogotaKeyFromMs } from '../utils/changeWindow';
+import { DateInput } from './DateInput';
 
 interface ReservationModalProps {
     request: TravelRequest;
@@ -664,10 +665,9 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                             {/* Purchase Date */}
                             <div>
                                 <label className="block text-sm font-bold text-gray-700 mb-1">Fecha de Compra</label>
-                                <input
-                                    type="date"
+                                <DateInput
                                     value={purchaseDate}
-                                    onChange={(e) => setPurchaseDate(e.target.value)}
+                                    onChange={setPurchaseDate}
                                     className="w-full border border-gray-300 rounded p-2 text-gray-900 bg-white focus:ring-brand-red focus:border-brand-red"
                                     disabled={loading}
                                 />

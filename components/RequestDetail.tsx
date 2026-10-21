@@ -690,7 +690,7 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                 {/* Banner APROBACIÓN EXTRAORDINARIA — R10: solo para alto costo nacional (si es internacional, el banner INTERNACIONAL ya cubre quién aprueba) */}
                                 {(request.cdsCostBase ?? (Number(request.totalCost) || 0)) > 1200000 && !request.requesterIsCeo && !request.requesterIsCds && !request.isInternational && (
                                     <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md text-sm">
-                                        <strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> {request.tripChange?.comprado ? 'El viaje con el cambio' : 'El costo total de esta solicitud'} (${Number(request.cdsCostBase ?? request.totalCost).toLocaleString()}) excede el tope establecido ($1,200,000), por lo que requiere aprobación adicional de Dirección de Cadena de Suministro y Aprobador de Área.
+                                        <strong>⚠️ APROBACIÓN EXTRAORDINARIA:</strong> {request.tripChange?.comprado ? 'El viaje con el cambio' : 'El costo total de esta solicitud'} (${Number(request.cdsCostBase ?? request.totalCost).toLocaleString('es-CO')}) excede el tope establecido ($1.200.000), por lo que requiere aprobación adicional de Dirección de Cadena de Suministro y Aprobador de Área.
                                     </div>
                                 )}
 
@@ -939,9 +939,9 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                         </div>
                                         {(request.totalCost || 0) > 0 ? (
                                             <div className="grid grid-cols-3 gap-2 text-sm bg-gray-50 p-2 rounded">
-                                                <div><span className="block text-xs text-gray-400">Tiquetes</span>${request.finalCostTickets?.toLocaleString()}</div>
-                                                <div><span className="block text-xs text-gray-400">Hotel</span>${request.finalCostHotel?.toLocaleString()}</div>
-                                                <div className="font-bold text-brand-red"><span className="block text-xs text-gray-400 font-normal">Total</span>${request.totalCost?.toLocaleString()}</div>
+                                                <div><span className="block text-xs text-gray-400">Tiquetes</span>${request.finalCostTickets?.toLocaleString('es-CO')}</div>
+                                                <div><span className="block text-xs text-gray-400">Hotel</span>${request.finalCostHotel?.toLocaleString('es-CO')}</div>
+                                                <div className="font-bold text-brand-red"><span className="block text-xs text-gray-400 font-normal">Total</span>${request.totalCost?.toLocaleString('es-CO')}</div>
                                             </div>
                                         ) : null}
                                         {/* #A82: aerolínea y canal de compra (solo administradores) */}

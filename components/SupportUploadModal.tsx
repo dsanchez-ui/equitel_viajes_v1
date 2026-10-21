@@ -297,7 +297,7 @@ export const SupportUploadModal: React.FC<SupportUploadModalProps> = ({ request,
                           </a>
                         </div>
                         <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-xs text-gray-400">{new Date(file.date).toLocaleDateString()}</span>
+                          <span className="text-xs text-gray-400">{new Date(file.date).toLocaleDateString('es-CO', { timeZone: 'America/Bogota' })}</span>
                           {!isProcessed && (
                             <button
                               type="button"

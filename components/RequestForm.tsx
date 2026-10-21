@@ -15,6 +15,7 @@ import { validateOptionalPhone } from '../utils/phone';
 // no podía enviar la solicitud ("Failed to fetch dynamically imported module").
 // tools/check-single-bundle.cjs falla si vuelve a aparecer un import() en la app.
 import { generateTravelRequestEmail } from '../utils/EmailGenerator';
+import { DateInput } from './DateInput';
 
 interface RequestFormProps {
   userEmail: string;
@@ -124,11 +125,10 @@ const TramoFields: React.FC<TramoFieldsProps> = ({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Fecha Salida *</label>
-          <input type="date" required min={minDate} style={{ colorScheme: 'light' }}
-            className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer"
+          <DateInput required min={minDate}
+            className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900"
             value={tramo.departureDate}
-            onChange={(e) => onUpdate(index, 'departureDate', e.target.value)}
-            onClick={onOpenPicker}
+            onChange={(v) => onUpdate(index, 'departureDate', v)}
             disabled={disabled}
           />
         </div>
@@ -1651,17 +1651,14 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                     <label className="block text-xs font-medium text-sky-900">
                       🎂 Fecha de nacimiento de {(p.name || '').trim() || `el pasajero ${idx + 1}`} *
                     </label>
-                    <input
-                      type="date"
+                    <DateInput
                       required
                       max={todayIsoLocal()}
-                      data-birthdate-for={birthKey}
-                      className="mt-1 block w-full sm:w-56 bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900"
+                      dataAttrs={{ 'data-birthdate-for': birthKey }}
+                      wrapperClassName="w-full sm:w-56"
+                      className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900"
                       value={birthValue}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setPassengerBirthdates(prev => ({ ...prev, [birthKey]: v }));
-                      }}
+                      onChange={(v) => setPassengerBirthdates(prev => ({ ...prev, [birthKey]: v }))}
                     />
                     {birthCheck && !birthCheck.ok && (
                       <p className="text-[11px] text-red-600 mt-1">{birthCheck.error}</p>
@@ -1932,7 +1929,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">{isHotelOnly ? 'Fecha Check-in *' : 'Fecha Ida *'}</label>
-              <input type="date" name="departureDate" required min={todayIsoLocal()} style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureDate} onChange={handleInputChange} onClick={handleOpenPicker} />
+              <DateInput name="departureDate" required min={todayIsoLocal()} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.departureDate} onChange={(v) => setFormData(prev => ({ ...prev, departureDate: v }))} />
             </div>
             {/* Hora vuelo ida — solo para vuelos */}
             {!isHotelOnly && (
@@ -1946,17 +1943,14 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               <>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">{isHotelOnly ? 'Fecha Check-out *' : 'Fecha Vuelta *'}</label>
-                  <input
-                    type="date"
+                  <DateInput
                     name="returnDate"
                     required
                     disabled={!formData.departureDate}
                     min={formData.departureDate || todayIsoLocal()}
-                    style={{ colorScheme: 'light' }}
-                    className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 ${!formData.departureDate ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer animate-pulse-subtle'}`}
+                    className={`mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 ${!formData.departureDate ? 'bg-gray-100 cursor-not-allowed' : 'bg-white animate-pulse-subtle'}`}
                     value={formData.returnDate}
-                    onChange={handleInputChange}
-                    onClick={handleOpenPicker}
+                    onChange={(v) => setFormData(prev => ({ ...prev, returnDate: v }))}
                   />
                 </div>
                 {/* Hora vuelo vuelta — solo para vuelos round-trip, NO para hotel-only */}

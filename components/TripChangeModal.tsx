@@ -5,6 +5,7 @@ import { ChangeWindow, changeDeadline, fmtDayLong, fmtHourLabel, toDateKey, trip
 import { fareLabel, fareOptionForNights } from '../utils/fare';
 import { formatCop } from '../utils/money';
 import { CityCombobox } from './CityCombobox';
+import { DateInput } from './DateInput';
 
 interface TripChangeModalProps {
   /** Solicitudes que ve la persona: las suyas, o todas si es administrador. */
@@ -382,7 +383,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   {mode === 'full' ? (
                     <label className="block text-xs font-semibold text-gray-600">
                       {hotelOnly ? 'Nueva entrada al hotel' : 'Nueva fecha de ida'}
-                      <input type="date" data-change-field="dep" min={isAdmin ? undefined : todayKey} style={{ colorScheme: 'light' }} className={inputCls} value={form.dep} onChange={e => setF({ dep: e.target.value })} />
+                      <DateInput dataAttrs={{ 'data-change-field': 'dep' }} min={isAdmin ? undefined : todayKey} className={inputCls} value={form.dep} onChange={v => setF({ dep: v })} />
                       <DateHint value={form.dep} before={base.dep} />
                     </label>
                   ) : (
@@ -391,7 +392,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   {base.ret ? (
                     <label className="block text-xs font-semibold text-gray-600">
                       {hotelOnly ? 'Nueva salida del hotel' : 'Nueva fecha de regreso'}
-                      <input type="date" data-change-field="ret" min={form.dep || todayKey} style={{ colorScheme: 'light' }} className={inputCls} value={form.ret} onChange={e => setF({ ret: e.target.value })} />
+                      <DateInput dataAttrs={{ 'data-change-field': 'ret' }} min={form.dep || todayKey} className={inputCls} value={form.ret} onChange={v => setF({ ret: v })} />
                       <DateHint value={form.ret} before={base.ret} />
                     </label>
                   ) : (

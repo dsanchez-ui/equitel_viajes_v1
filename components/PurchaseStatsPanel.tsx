@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { PurchaseStats, PurchaseStatsFilters } from '../types';
 import { gasService } from '../services/gasService';
 import { formatCop } from '../utils/money';
+import { DateInput } from './DateInput';
 
 /**
  * Pestaña «Compras y costos» del panel de Métricas (#A80). Solo administradores:
@@ -175,11 +176,11 @@ export const PurchaseStatsPanel: React.FC = () => {
             <>
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Desde</label>
-                <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="px-2 py-1 border border-gray-300 rounded text-xs" />
+                <DateInput value={customFrom} onChange={setCustomFrom} wrapperClassName="w-36" className="w-full px-2 py-1 border border-gray-300 rounded text-xs" ariaLabel="Desde" />
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Hasta</label>
-                <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="px-2 py-1 border border-gray-300 rounded text-xs" />
+                <DateInput value={customTo} onChange={setCustomTo} wrapperClassName="w-36" className="w-full px-2 py-1 border border-gray-300 rounded text-xs" ariaLabel="Hasta" />
               </div>
             </>
           )}

@@ -194,6 +194,11 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   (`COST_MIN_PESOS`). El backend rechaza decimales y valores imposibles en `updateRequest`
   y recalcula el cotizado como tiquetes + hotel. **Nunca volver a un
   `<input type="number">` para dinero**: con él, `889.518` se guardaba como 889,518 pesos.
+- **Fechas siempre día/mes/año** (#A105, David, 21-oct): nadie ve ni escribe una fecha en otro orden. En la app,
+  todo campo de fecha es `DateInput` (`DD/MM/AAAA` con barras automáticas y el calendario del navegador detrás de
+  un botón; entra y sale `AAAA-MM-DD`). **Nunca un `<input type="date">` a la vista**: con Chrome en inglés sale
+  mes/día/año. En el panel móvil y el sidebar, `attachDmyDateField`. `toLocaleString` / `toLocaleDateString` siempre con
+  `'es-CO'`. En la hoja las fechas ya son fechas de verdad: no se cambia cómo se guardan.
 - **Estadísticas de compra de tiquetes y hospedaje** (#A80, pedido de David para comparar
   agencias, 2026-09-29): pestaña *Compras y costos* del panel de Métricas, **solo
   administradores** (`getPurchaseStats` en `adminOnlyActions`), solo agregados (sin nombres,
@@ -533,6 +538,7 @@ components/
   PinEntryModal.tsx        Login por PIN
   CancellationModal.tsx    Anulaciones
   CityCombobox.tsx         Autocompletado de ciudades (custom, reemplazó datalist)
+  DateInput.tsx            Campo de fecha DD/MM/AAAA con calendario; reemplaza a <input type="date"> (#A105)
   Layout.tsx, ConfirmationDialog.tsx
 services/gasService.ts     Cliente HTTP hacia GAS (timeout 30 s + AbortController)
 utils/dateUtils.ts         Parseo/formato de fechas (zona America/Bogota)
@@ -668,9 +674,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A99, #A100 y #A101 desplegados el 14-oct-2026** (cifras del dashboard que se pueden presentar, aprobación del CFO
   por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
   hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
-- **#A103 «Cambiar mi viaje» y #A104 cifras del comparador: construidos el 19-oct, pendientes de desplegar.** Antes del push,
-  David los prueba en el entorno local (`npm run prueba:local`). Despliegue: pegar `Code.gs`, `CostsDashboard.html` y `Rastreo.gs`
-  (proyecto aparte) → menú 12 (opcional) → versión nueva del web app → push del frontend. Después: avisarle a Laura del flujo nuevo
+- **#A103 «Cambiar mi viaje», #A104 cifras del comparador y #A105 fechas día/mes/año: construidos del 19 al 21-oct, pendientes de
+  desplegar.** Antes del push, David los prueba en el entorno local (`npm run prueba:local`). Despliegue: pegar `Code.gs`,
+  `CostsDashboard.html`, `AdminSidebar.html`, `AdminMobile.html` y `Rastreo.gs` (proyecto aparte) → menú 12 (opcional) → versión
+  nueva del web app → push del frontend. Después: avisarle a Laura del flujo nuevo
   (el panel ya trae un aviso) y revisar con Yurani la cifra del comparador antes de mostrársela a Alejandro.
 - **Manuales dentro de la app** (David, 14-oct): **solo plan**, en
   [docs/plan-manuales-en-app.md](docs/plan-manuales-en-app.md) — hoy David los pasa uno por uno (`docs/guia-*.pdf`).

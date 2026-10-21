@@ -2782,3 +2782,57 @@ Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
 - **Con la base real** (`Code.gs` y el JavaScript del dashboard en el entorno local y en Chrome): el titular da la cifra de arriba.
 
 **Despliegue y rollback:** con #A103 (`Code.gs` y `CostsDashboard.html`). Un dashboard nuevo con un `Code.gs` anterior no muestra la casilla y sigue como antes.
+
+---
+
+## **#A105 — Las fechas siempre se ven y se escriben día/mes/año**
+**Fecha:** 2026-10-21 · **Pedido por:** David (*«ninguna persona debería ver las fechas en un formato diferente, ni debería tener que ingresarlas tampoco en un formato diferente… y que en el Google Sheets se registren correctamente»*). · **Estado:** Implementado; pendiente desplegar (va con #A103).
+
+**Síntoma:**
+- El campo de fecha del navegador (`<input type="date">`) se ve con el formato del idioma del computador. Con Chrome en inglés salía `10/21/2026` (mes/día/año), por ejemplo en *Registrar reserva*, y se escribía en ese orden.
+- Dos cifras en pesos del detalle dependían del idioma del navegador (`toLocaleString()` sin `'es-CO'`): el aviso de Cadena de Suministro y los costos confirmados podían salir con comas. El aviso traía el tope escrito como `$1,200,000`.
+- La fecha de *Soportes* (`toLocaleDateString()`) también dependía del idioma.
+
+**Causa raíz:** el campo nativo de fecha no deja elegir el formato; lo decide el navegador.
+
+**Arreglo:**
+- **`components/DateInput.tsx`**, un campo propio que reemplaza los 10 campos de fecha de la app:
+  - formulario (tramos, ida, regreso, fecha de nacimiento);
+  - «Cambiar mi viaje»;
+  - *Registrar reserva* (fecha de compra);
+  - los filtros *Desde/Hasta* de Métricas y de *Compras y costos*.
+- **Cómo funciona:**
+  - se ve y se escribe `DD/MM/AAAA`, y las barras se ponen solas (`04112026` → `04/11/2026`);
+  - el botón del calendario abre el del navegador (`showPicker`), que queda invisible y solo sirve para elegir;
+  - el navegador no deja enviar una fecha que no existe (31/02) ni una fuera del mínimo o el máximo, y dice por qué (*«La fecha no puede ser antes del 21/10/2026.»*).
+  - El valor que entra y sale sigue siendo `AAAA-MM-DD`, así que el servidor, la hoja y el resto de la app no cambian.
+- **Panel móvil y sidebar** (`AdminMobile.html`, `AdminSidebar.html`): `attachDmyDateField('f_fechaNac')` hace lo mismo en la fecha de nacimiento. El campo original queda oculto con el valor `AAAA-MM-DD`, así que la lectura y el guardado no cambian.
+- **Pesos y fechas del detalle y de *Soportes*:** con `'es-CO'` (y `America/Bogota`), y el tope escrito como `$1.200.000`.
+- **Notas de trazabilidad en `OBSERVACIONES`** (reserva parcial, etapa saltada, reversión a selección, aprobación saltada, corrección de costos): la hora va `dd/MM/yyyy HH:mm`. Antes iba `yyyy-MM-dd HH:mm`. Son texto: nada las lee de vuelta y las anteriores se quedan como están.
+
+**Google Sheets:** ya estaba bien y no se tocó.
+- Revisado en la base del 19-oct: `FECHA IDA` (662), `FECHA VUELTA` (505), `FECHA SOLICITUD` (653) y `FECHA DE COMPRA` (471) son fechas de verdad, no texto. Ningún día pasa de 31, así que ninguna quedó con día y mes al revés.
+- Cómo se ven en la hoja lo decide el formato de la columna, no la app.
+- La columna de fecha de aprobación de «aprobación saltada» se sigue escribiendo `AAAA-MM-DD HH:mm`, que la hoja entiende igual con cualquier configuración regional. Cambiarla podía invertir día y mes.
+
+**Lo que queda igual:** los campos de hora (`type="time"`) siguen el idioma del navegador (7:00 a. m. o 07:00). Son horas, no fechas, y se leen igual.
+
+**Verificado:**
+- `npm run verify` en verde.
+- **Prueba de punta a punta en la app real**: entorno local con `Code.gs` y la base del 19-oct, en Chrome **en inglés** (`en-US`), donde antes salía mes/día/año.
+  - **Formulario:**
+    - escribir `10112026` muestra `10/11/2026` y el calendario queda igual;
+    - lo elegido en el calendario se ve `12/11/2026`;
+    - una fecha pasada y el 31/02 no pasan, con su mensaje.
+  - **«Cambiar mi viaje»:** el regreso escrito `15/11/2026` llega al servidor como `2026-11-15` (día y mes en su lugar).
+  - **Registrar reserva:** la fecha de compra se ve `21/10/2026`.
+  - **Panel móvil:** la fecha de nacimiento guardada se ve `25/07/1990`; escribir `03111985` guarda `1985-11-03`.
+  - Sin errores de JavaScript.
+- `check-gas-syntax`, `check-trip-change`, `check-policy-approval` y `check-invoice-review` en verde.
+
+**Despliegue:**
+- **Frontend:** con el push.
+- **`Code.gs`, `AdminSidebar.html` y `AdminMobile.html`:** pegar con los de #A103.
+- **En cualquier orden:** ningún lado depende del otro.
+
+**Rollback:** revert del commit; backend = versión anterior del web app.

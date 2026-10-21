@@ -3163,7 +3163,7 @@ function saveReservationDraft(requestId, reservationNumber, files, creditCard, p
 
     // Nota de trazabilidad. NO cambia estado, NO envía correo.
     if (obsIdx > -1) {
-        var timestampStr = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyy-MM-dd HH:mm');
+        var timestampStr = Utilities.formatDate(new Date(), 'America/Bogota', 'dd/MM/yyyy HH:mm');
         var currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
         var note = '[RESERVA PARCIAL]: guardado sin enviar (' + files.length + ' archivo' +
                    (files.length > 1 ? 's' : '') + ') ' + timestampStr;
@@ -10144,7 +10144,7 @@ function skipSelectionStage(requestId, justification, currentUserEmail) {
   }
 
   var now = new Date();
-  var timestampStr = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd HH:mm');
+  var timestampStr = Utilities.formatDate(now, 'America/Bogota', 'dd/MM/yyyy HH:mm');
   var actorEmail = String(currentUserEmail || 'desconocido').toLowerCase().trim();
 
   // 1. SELECCION_TEXTO: texto visible del caso
@@ -10266,7 +10266,7 @@ function revertToSelectionStage(requestId, reason, notifyUser, currentUserEmail)
   }
 
   var now = new Date();
-  var timestampStr = Utilities.formatDate(now, 'America/Bogota', 'yyyy-MM-dd HH:mm');
+  var timestampStr = Utilities.formatDate(now, 'America/Bogota', 'dd/MM/yyyy HH:mm');
   var actorEmail = String(currentUserEmail || 'desconocido').toLowerCase().trim();
   var notify = notifyUser !== false; // default true
 
@@ -10401,7 +10401,7 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
 
   // 2. OBSERVACIONES con trazabilidad
   var currentObs = String(sheet.getRange(rowNumber, obsIdx + 1).getValue() || '');
-  var note = '[APROBACIÓN SALTADA por ' + actorEmail + ' - ' + timestampStr + ']: ' + just;
+  var note = '[APROBACIÓN SALTADA por ' + actorEmail + ' - ' + Utilities.formatDate(now, 'America/Bogota', 'dd/MM/yyyy HH:mm') + ']: ' + just;
   sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + '\n' : '') + note);
 
   // 3. EVENTOS_JSON para métricas
@@ -11809,7 +11809,7 @@ function corregirCostosMalDigitados(apply) {
     _clearReqHeadersCache_();
     var plan = _planCostCorrections_(sheet);
     var obsIdx = H('OBSERVACIONES');
-    var stamp = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyy-MM-dd HH:mm');
+    var stamp = Utilities.formatDate(new Date(), 'America/Bogota', 'dd/MM/yyyy HH:mm');
     var units = {};
     plan.fixes.forEach(function(f) {
       f.cells.forEach(function(c) { sheet.getRange(f.row, c.col).setValue(c.to); });
