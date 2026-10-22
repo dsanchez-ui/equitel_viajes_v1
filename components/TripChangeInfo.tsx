@@ -90,6 +90,7 @@ export const TripChangeBox: React.FC<{ request: TravelRequest; isAdmin?: boolean
         {info.comprado
           ? 'Este cambio lleva solo su costo (penalidad, diferencia de tarifa y hotel). El viaje original ya se aprobó y se pagó: no se anula y su costo sigue contando.'
           : 'El viaje original aún no se había comprado: este cambio se cotiza como el viaje completo y la original se anula al aprobarse.'}
+        {isAdmin && info.parcial && !info.compraConfirmada && ' La reserva de la original se guardó por partes: el área de compras la confirma antes de cotizar el cambio.'}
       </p>
       {rows.length > 0 && <TripChangeRowsTable rows={rows} />}
       {request.changeReason && <p className="text-xs text-gray-700"><strong>Motivo:</strong> <em>"{request.changeReason}"</em></p>}

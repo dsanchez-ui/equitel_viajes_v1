@@ -139,6 +139,10 @@ requestTripChange({ requestId, changes: { departureDate?, returnDate?, departure
 - *Cuánto lleva este viaje*: lo pagado en la padre + el cambio (por cotizar).
 - *Aceptar y cargar opciones* (= `study`, hacia `PENDIENTE_OPCIONES`) o *Rechazar* con motivo, como hoy.
 - Arriba del panel, un aviso «Cambios por revisar: N», como las facturas por revisar (#A83).
+- **Reserva por partes (#A109, 22-oct, caso SOL-000659):** si la padre está en APROBADO con la reserva guardada
+  («Guardar sin enviar»), el tiquete ya está comprado. *Aceptar* queda bloqueado (también en el servidor) hasta que
+  Laura confirme lo que se compró con «Confirmar lo que se compró» (Registrar reserva de la padre, sin correo al
+  viajero; «No se reservó hotel» si el hotel no se alcanzó a reservar). Al aceptar, el JSON del cambio se pone al día.
 
 ### 4.5 El costo del cambio (tiquete comprado)
 

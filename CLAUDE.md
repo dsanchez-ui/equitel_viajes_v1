@@ -416,6 +416,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     orden: la tabla `CONTACTO CAMBIOS` de MISC (correo, nombre y cargo; **menú 16**) y el celular de la columna `Celular` de USUARIOS.
     Hoy: Laura Molina (área de compras) y, si no responde, Diego Caballero (director de compras). Si alguien cambia de rol, se cambia la
     fila; sin tabla, el correo del área de compras.
+  - **Reserva por partes = tiquete comprado** (#A109, David, 22-oct, caso SOL-000659): una solicitud en APROBADO con un archivo de
+    reserva guardado («Guardar sin enviar») ya tiene el tiquete comprado (gemelo `isTripBought` ↔ `_tripChangeIsBought_`). Su cambio se
+    pide como de tiquete comprado y **no se puede aceptar hasta que el área de compras confirme lo que se compró** (botón en «Revisar
+    Cambio», sin correo al viajero; «No se reservó hotel» si el hotel no se alcanzó a reservar). Al aceptarlo, el JSON del cambio se pone
+    al día. **Nunca se anula una original con lo comprado** (cambios de «Cambiar mi viaje»; los del formulario completo siguen las reglas de
+    antes). En el dashboard, «No se reservó hotel» = $0 de hotel mientras llega la factura.
 - **Comparador de precios: la cifra que se presenta** (#A104, auditoría del 19-oct). Por defecto el dashboard compara **solo viajes ya
   comprados** (RESERVADO o PROCESADO, con la búsqueda al comprar) y **solo comparaciones exactas**, contra **lo pagado** (#A102) o, si
   no se registró, lo cotizado; al lado, lo mismo **con la misma aerolínea**. Lo no comprado va aparte, nunca en el total; lo denegado o
@@ -650,7 +656,7 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-10-21)
+### Para retomar (estado al 2026-10-22)
 
 - **Todo está desplegado hasta #A105.** El 21-oct David pegó `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y
   `AdminMobile.html`, pegó `Rastreo.gs` en el proyecto aparte, corrió el menú 12 y publicó la versión nueva del web app;
@@ -696,14 +702,11 @@ autorización) y verificar antes de crear una versión nueva del web app.
   #A108 (revisión de seguridad: Node 24 en la imagen, `serve` corregido, SRI de Chart.js): DESPLEGADOS el 22-oct.** David cambió el
   celular de Diego, pegó los cuatro archivos, corrió el menú 16 y publicó la versión nueva; el frontend `51ae8de` se construyó con
   `node:24.22.1-alpine` (0 vulnerabilidades) y es la revisión `00218` de Cloud Run. El PC Linux ya tiene Node 24.22.1 (`~/.local`).
-  Queda: Node 24 en el Mac; el 30-oct fijar markdown-it 14.3.3. **SOL-000659** (reserva parcial + cambio de Alexandra): se le pasó a
-  Laura el arreglo (denegar manteniendo la original, completar la reserva con «No se reservó hotel», registrar el cambio a nombre de la
-  viajera). Propuestas sin construir (preguntar): que «No se reservó hotel» cuente $0 de hotel en el dashboard y que «Revisar Cambio»
-  avise si la original tiene una reserva parcial (hoy «Cambiar mi viaje» solo da por comprado lo que está en RESERVADO).
-  Antes, al construirlo: Además, de #A108: Node 24.22.1 en el PC y el Mac; Python 3.14.9 en el PC;
-  revisar el manifiesto de Apps Script; el 30-oct fijar markdown-it 14.3.3. Pasos de David: actualizar el celular de Diego en USUARIOS a 323 295 8507 (en la copia
-  del 19-oct tiene 310 245 1569) → pegar `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y `AdminMobile.html` → **menú 16** (crea la
-  tabla en MISC y muestra el mensaje) → versión nueva del web app → push del frontend. `Rastreo.gs` solo cambió en comentarios.
+  Queda: Node 24 en el Mac; `sudo apt update && sudo apt upgrade` en el PC (Python lo parchea Ubuntu); el 30-oct fijar markdown-it 14.3.3.
+- **#A109 (reserva por partes = tiquete comprado en los cambios; «No se reservó hotel» = $0 en el dashboard): implementado el 22-oct,
+  pendiente desplegar.** Pegar `Code.gs` → versión nueva del web app → push del frontend, seguidos. Nació de **SOL-000659** (compra
+  guardada por partes) y su cambio **SOL-000667**: con el arreglo desplegado, Laura abre «Revisar Cambio», toca «Confirmar lo que se
+  compró de SOL-000659» («No se reservó hotel», sin correo) y acepta; ya no hace falta denegar y volver a pedir el cambio.
 - **#A103 «Cambiar mi viaje», #A104 y #A105: desplegados el 21-oct.** Después del despliegue:
   - **Prueba en producción** con PRUEBA1. Su aprobador (PRUEBA2) tiene un correo que no es de David: cambiarlo antes por
     `dsanchez+qa@equitel.com.co`. Avisarle a Laura, porque le llegan los correos del cambio.

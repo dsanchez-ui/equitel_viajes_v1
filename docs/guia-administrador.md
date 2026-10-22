@@ -230,6 +230,11 @@ Se crea una solicitud "hija" en `PENDIENTE_ANALISIS_CAMBIO`, ligada a la origina
 
 Si el tiquete **no se había comprado**, la hija se cotiza como el viaje completo y la original se anula al aprobarse el cambio, como antes.
 
+**Si la original tiene la reserva guardada por partes** («Guardar sin enviar», sigue en APROBADO; #A109): para la plataforma el tiquete **ya está comprado**. En **Revisar Cambio** sale un aviso amarillo y *ACEPTAR Y COTIZAR* queda desactivado hasta que confirmes lo que se compró:
+1. Toca **Confirmar lo que se compró de SOL-…**. Se abre *Registrar reserva* de la original, con el PNR, la compra y lo pagado ya puestos y **sin correo al viajero** (ya pidió otras fechas).
+2. Si el hotel no se alcanzó a reservar, marca **No se reservó hotel**: el hotel de las fechas nuevas va en el cambio. Si sí se reservó, escribe el hotel y lo pagado.
+3. **Confirmar lo que se compró** → la original queda RESERVADO y sale un aviso verde. Ahora sí, **ACEPTAR Y COTIZAR**: el cambio se cotiza como cambio de un tiquete comprado (penalidad, diferencia de tarifa y hotel) y la original no se anula.
+
 **Si un viajero te pide un cambio por correo, teléfono o WhatsApp** (#A106, Yurani y David, 22-oct):
 - **Si todavía está en plazo**, pídele que lo haga en la plataforma con «Cambiar mi viaje»: así queda con su motivo y a su nombre. Si abres **Solicitar Cambio** en un viaje así, la ventana te avisa en amarillo que el viajero todavía puede pedirlo él mismo y hasta cuándo.
 - **Si ya pasó el plazo y es urgente**, ábrelo desde el detalle de la solicitud con **Solicitar Cambio**. Lo registras a nombre del viajero, sin plazo, y queda constancia de que lo registraste tú. Si hay que cambiar pasajeros, el centro de costo o el hotel, usa **el formulario completo** desde esa misma ventana.

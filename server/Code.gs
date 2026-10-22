@@ -1932,6 +1932,7 @@ function _applyChangeDecision_(childRequestId, decision, reason) {
   const baseSubject = getStandardSubject(req);
 
   if (decision === 'study') {
+    _tripChangeBeforeStudy_(sheet, rowNumber, req); // #A109: la reserva por partes de la original se confirma antes
     sheet.getRange(rowNumber, statusIdx + 1).setValue('PENDIENTE_OPCIONES');
     SpreadsheetApp.flush();
     sendEmailRich(
@@ -9945,6 +9946,13 @@ function _cancelParentIfModificationApproved_(childId, sheet) {
     // «Cambiada» (REEMPLAZADA POR) cuando se registra el tiquete nuevo. Las hijas de antes siguen igual.
     var tcIdx = H(TRIP_CHANGE_HEADER);
     var tcInfo = tcIdx > -1 ? _parseTripChangeInfo_(sheet.getRange(childRow, tcIdx + 1).getValue()) : null;
+    // #A109: tampoco la que tiene la reserva guardada por partes (lo comprado ya se pagó).
+    if (tcInfo && parentStatus === 'APROBADO' &&
+        _tripChangeHasSavedReservation_(mapRowToRequest(sheet.getRange(parentRow, 1, 1, sheet.getLastColumn()).getValues()[0]))) {
+      _policyAppendObs_(sheet, parentRow, '[SISTEMA]: Se aprobó el cambio ' + childId + ', pero esta solicitud no se anula: tiene una reserva ' +
+        'guardada por partes (lo comprado). Confírmela y revise el costo del cambio.');
+      return;
+    }
     if (tcInfo && parentStatus === 'RESERVADO') {
       if (obsIdx > -1) {
         var keepObs = sheet.getRange(parentRow, obsIdx + 1).getValue();
@@ -16193,6 +16201,11 @@ function _csComputeRowHash_(row, headerMap, config, configHashPrefix) {
     parts.push(String(_csReadCell_(row, headerMap, config.estimateFallback.ticketsHeader) || ''));
     parts.push(String(_csReadCell_(row, headerMap, config.estimateFallback.hotelHeader) || ''));
   }
+  // Lo pagado (#A102) y «No se reservó hotel» (#A109) también cambian lo estimado.
+  [PAID_TICKETS_HEADER, PAID_HOTEL_HEADER, PURCHASE_HOTEL_CHANNEL_HEADER].forEach(function (h) {
+    var v = _csReadCell_(row, headerMap, h);
+    parts.push(v === undefined || v === null ? '' : String(v)); // 0 (hotel pagado en $0) no es lo mismo que vacío
+  });
   try {
     var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, parts.join('||'));
     return digest.map(function(b) { return ('0' + ((b & 0xFF).toString(16))).slice(-2); }).join('');
@@ -16331,7 +16344,9 @@ function _csComputeRowExecuted_(row, headerMap, config) {
     var paidT = _paidCellValue_(_csReadCell_(row, headerMap, PAID_TICKETS_HEADER));
     var paidH = _paidCellValue_(_csReadCell_(row, headerMap, PAID_HOTEL_HEADER));
     var tickets = paidT !== '' ? paidT : _csToNumber_(_csReadCell_(row, headerMap, config.estimateFallback.ticketsHeader));
-    var hotel = paidH !== '' ? paidH : _csToNumber_(_csReadCell_(row, headerMap, config.estimateFallback.hotelHeader));
+    // #A109: si el área de compras marcó «No se reservó hotel», el hotel cotizado no se gastó.
+    var noHotel = _purchaseKey_(_csReadCell_(row, headerMap, PURCHASE_HOTEL_CHANNEL_HEADER)) === _purchaseKey_(HOTEL_NOT_BOOKED);
+    var hotel = paidH !== '' ? paidH : (noHotel ? 0 : _csToNumber_(_csReadCell_(row, headerMap, config.estimateFallback.hotelHeader)));
     if (tickets + hotel > 0) {
       estimated = tickets + hotel;
       isEstimated = true;
@@ -20291,7 +20306,12 @@ function menuInformeMensualPrueba() {
 //   costo del cambio y la padre NO se anula (queda «Cambiada», REEMPLAZADA POR);
 //   su costo sigue contando. Las hijas de antes (sin JSON) siguen como siempre.
 // - Todo cambio pasa por el aprobador, aunque cueste $0.
-// ⚠️ GEMELO de la regla del plazo: utils/changeWindow.ts. tools/check-trip-change.cjs
+// - Reserva por partes (#A109, SOL-000659, 22-oct): una solicitud en APROBADO con la
+//   reserva guardada con «Guardar sin enviar» ya tiene el tiquete comprado. El cambio
+//   se pide como de tiquete comprado, y antes de cotizarlo el área de compras confirma
+//   esa reserva (lo que se compró y lo pagado, sin correo al viajero). Nunca se anula
+//   una original con lo comprado.
+// ⚠️ GEMELO de la regla del plazo y de «comprado»: utils/changeWindow.ts. tools/check-trip-change.cjs
 // compara los dos lados dentro de npm run verify.
 
 var TRIP_CHANGE_HEADER = 'CAMBIO PEDIDO (JSON)';
@@ -20401,6 +20421,73 @@ function _rowIsBoughtChange_(row, headerMap) {
   if (idx === undefined || idx < 0) return false;
   var info = _parseTripChangeInfo_(row[idx]);
   return !!(info && info.comprado);
+}
+
+/**
+ * ¿Tiene la reserva guardada por partes (#A109)? «Guardar sin enviar» deja la solicitud en
+ * APROBADO con el PNR y los archivos de la reserva: lo que se compró ya se pagó.
+ * ⚠️ GEMELO: hasSavedReservation en utils/changeWindow.ts.
+ */
+function _tripChangeHasSavedReservation_(p) {
+  var files = p && p.supportData && Array.isArray(p.supportData.files) ? p.supportData.files : [];
+  return String((p && p.status) || '').trim() === 'APROBADO' && files.some(function (f) { return f && f.isReservation; });
+}
+
+/** ¿El tiquete ya está comprado? RESERVADO, o APROBADO con la reserva guardada por partes (#A109). GEMELO: isTripBought. */
+function _tripChangeIsBought_(p) {
+  return String((p && p.status) || '').trim() === 'RESERVADO' || _tripChangeHasSavedReservation_(p);
+}
+
+/** Lo que se compró de la original, para el JSON del cambio (#A103). */
+function _tripChangePurchase_(p) {
+  var paidT = p.purchasePaidTickets, paidH = p.purchasePaidHotel;
+  return {
+    pnr: String(p.reservationNumber || ''), aerolinea: String(p.purchaseAirline || ''), aerolineaRegreso: String(p.purchaseReturnAirline || ''),
+    canal: String(p.purchaseChannel || ''), hotel: String(p.purchaseHotelName || ''), canalHotel: String(p.purchaseHotelChannel || ''),
+    tarifa: String(p.fareType || ''), tarifaNombre: String(p.fareName || ''), maleta: p.checkedBaggage === true,
+    tarjeta: String(p.creditCard || ''), fechaCompra: String(p.purchaseDate || ''),
+    pagadoTiquetes: typeof paidT === 'number' ? paidT : '', pagadoHotel: typeof paidH === 'number' ? paidH : ''
+  };
+}
+
+/** Lo que costó el viaje original (#A103): lo pagado si se registró; si no, lo cotizado. Si era un cambio comprado, más su original. */
+function _tripChangeOriginalCost_(p) {
+  var paidT = p.purchasePaidTickets, paidH = p.purchasePaidHotel;
+  var hasPaid = typeof paidT === 'number' || typeof paidH === 'number';
+  var cost = hasPaid ? (Number(paidT) || 0) + (Number(paidH) || 0) : (Number(p.totalCost) || 0);
+  var prev = p.tripChange && p.tripChange.v ? p.tripChange : null;
+  if (prev && prev.comprado) cost += Number(prev.costoOriginal) || 0;
+  return { costo: cost, fuente: hasPaid ? 'pagado' : 'cotizado' };
+}
+
+/**
+ * Antes de cotizar un cambio nuevo (#A109). Si la original tiene la reserva guardada por partes,
+ * no deja seguir: el área de compras la confirma primero (lo que se compró y lo pagado), para que
+ * el cambio se cotice como de tiquete comprado y la original no se anule. Si la original ya está
+ * en RESERVADO y el JSON la daba por no comprada o por partes, lo pone al día. No envía correos.
+ */
+function _tripChangeBeforeStudy_(sheet, childRow, childReq) {
+  var tcIdx = H(TRIP_CHANGE_HEADER);
+  var info = childReq && childReq.tripChange && childReq.tripChange.v ? childReq.tripChange : null;
+  if (tcIdx < 0 || !info || !info.padre) return; // cambios de antes: reglas de siempre
+  var parentRow = _getRowByRequestId_(info.padre);
+  if (parentRow === -1) return;
+  var parent = mapRowToRequest(sheet.getRange(parentRow, 1, 1, sheet.getLastColumn()).getValues()[0]);
+  if (_tripChangeHasSavedReservation_(parent)) {
+    throw new Error('Antes de cotizar el cambio, confirme la reserva de ' + info.padre + ': se guardó por partes y no se ha confirmado. ' +
+      'En «Revisar Cambio» use «Confirmar lo que se compró»: registre lo que se pagó y, si el hotel no se ' +
+      'alcanzó a reservar, marque «No se reservó hotel». Al viajero no le llega correo. Después acepte el cambio.');
+  }
+  if (String(parent.status || '').trim() !== 'RESERVADO' || (info.comprado && !info.parcial)) return;
+  var cost = _tripChangeOriginalCost_(parent);
+  info.comprado = true;
+  info.estadoPadre = 'RESERVADO';
+  info.compra = _tripChangePurchase_(parent);
+  info.costoOriginal = cost.costo;
+  info.costoOriginalFuente = cost.fuente;
+  info.compraConfirmada = new Date().toISOString();
+  sheet.getRange(childRow, tcIdx + 1).setValue(JSON.stringify(info));
+  _policyAppendObs_(sheet, childRow, '[SISTEMA]: La reserva de ' + info.padre + ' quedó confirmada antes de cotizar: este cambio es de un tiquete ya comprado (#A109).');
 }
 
 /** Observaciones de la padre sin las notas del sistema (las líneas que empiezan con «[»), para el motivo del viaje de la hija. */
@@ -20543,29 +20630,18 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
     intl = (isHotelOnly ? false : (oc && oc !== 'COLOMBIA')) || (dc && dc !== 'COLOMBIA') ? true : false;
   }
 
-  var comprado = st === 'RESERVADO';
-  var paidT = p.purchasePaidTickets, paidH = p.purchasePaidHotel;
-  var hasPaid = typeof paidT === 'number' || typeof paidH === 'number';
-  var costoOriginal = hasPaid ? (Number(paidT) || 0) + (Number(paidH) || 0) : (Number(p.totalCost) || 0);
-  // Cambio de un viaje que ya era un cambio comprado: lo que costó el viaje es el cambio anterior más su original.
-  var tcCol = H(TRIP_CHANGE_HEADER);
-  var parentInfo = tcCol > -1 ? _parseTripChangeInfo_(row[tcCol]) : null;
-  if (parentInfo && parentInfo.comprado) costoOriginal += Number(parentInfo.costoOriginal) || 0;
+  // #A109: la reserva guardada por partes (APROBADO con el PNR y sus archivos) también es tiquete comprado.
+  var parcial = _tripChangeHasSavedReservation_(p);
+  var comprado = st === 'RESERVADO' || parcial;
+  var cost = _tripChangeOriginalCost_(p);
   var info = {
     v: 1, padre: p.requestId, estadoPadre: st, comprado: comprado, modo: win.mode, tipos: norm.tipos, campos: norm.campos,
-    costoOriginal: costoOriginal, costoOriginalFuente: hasPaid ? 'pagado' : 'cotizado',
+    costoOriginal: cost.costo, costoOriginalFuente: cost.fuente,
     registradoPor: actor, rol: (isAdmin && actor !== String(p.requesterEmail || '').toLowerCase().trim()) ? 'administrador' : 'viajero',
     at: new Date(nowMs).toISOString()
   };
-  if (comprado) {
-    info.compra = {
-      pnr: String(p.reservationNumber || ''), aerolinea: String(p.purchaseAirline || ''), aerolineaRegreso: String(p.purchaseReturnAirline || ''),
-      canal: String(p.purchaseChannel || ''), hotel: String(p.purchaseHotelName || ''), canalHotel: String(p.purchaseHotelChannel || ''),
-      tarifa: String(p.fareType || ''), tarifaNombre: String(p.fareName || ''), maleta: p.checkedBaggage === true,
-      tarjeta: String(p.creditCard || ''), fechaCompra: String(p.purchaseDate || ''),
-      pagadoTiquetes: typeof paidT === 'number' ? paidT : '', pagadoHotel: typeof paidH === 'number' ? paidH : ''
-    };
-  }
+  if (parcial) info.parcial = true;
+  if (comprado) info.compra = _tripChangePurchase_(p);
 
   var nights = p.requiresHotel ? (next.ret ? Math.max(0, _psDayNumber_(next.ret) - _psDayNumber_(next.dep)) : (Number(p.nights) || 0)) : 0;
   var data = {
@@ -20643,7 +20719,8 @@ function _tripChangeEmailHtml_(parent, data, info, reason) {
   var bought = info.comprado
     ? '<div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#78350f; line-height:1.55;">' +
       '<strong>El tiquete ya está comprado.</strong> El cambio tiene costo (penalidad y diferencia de tarifa) y lo aprueba el aprobador, viendo lo que costó el viaje.' +
-      (c.pnr ? '<br>Reserva <strong>' + escapeHtml_(c.pnr) + '</strong>' + (c.aerolinea ? ' · ' + escapeHtml_(c.aerolinea) : '') + (c.canal ? ' · ' + escapeHtml_(c.canal) : '') : '') + '</div>'
+      (c.pnr ? '<br>Reserva <strong>' + escapeHtml_(c.pnr) + '</strong>' + (c.aerolinea ? ' · ' + escapeHtml_(c.aerolinea) : '') + (c.canal ? ' · ' + escapeHtml_(c.canal) : '') : '') +
+      (info.parcial ? '<br><strong>La reserva se guardó por partes y no se ha confirmado.</strong> Antes de cotizar el cambio, confírmela en la plataforma con lo que se compró («Revisar Cambio»).' : '') + '</div>'
     : '<div style="background-color:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#1e3a8a;">El tiquete aún no se había comprado: se cotiza de nuevo con los cambios, sin penalidad.</div>';
   var bagLater = _tripChangeBagLater_(info)
     ? '<div style="background-color:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:10px 12px; margin:10px 0; font-size:12px; color:#9a3412;">Se pidió la maleta de bodega después de comprar el tiquete: pedida desde el principio no habría penalidad.</div>' : '';

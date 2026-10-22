@@ -2965,3 +2965,58 @@ Claude, desde el 30-oct: fijar markdown-it 14.3.3.
 **Despliegue:** pegar `CostsDashboard.html` (ya hace falta por #A107) → push del frontend (lo construye Cloud Build con Node 24). Si la construcción falla, Cloud Run sigue con la versión anterior.
 
 **Rollback:** revert del commit; el `CostsDashboard.html` anterior.
+
+---
+
+## **#A109 — Cambio de un viaje con la reserva guardada por partes: ya no se trata como «sin comprar»**
+**Fecha:** 2026-10-22 · **Pedido por:** David (caso de Laura con SOL-000659: *«que el sistema ya sepa que ella ya hizo una compra parcial»*). · **Estado:** Implementado; pendiente desplegar.
+
+**Síntoma (SOL-000659 → SOL-000667):**
+- Laura compró el tiquete el 21-oct (LATAM por Aviatur, $515.848) y lo guardó con «Guardar sin enviar» mientras llegaba el hotel. La solicitud quedó en APROBADO.
+- Al día siguiente la viajera pidió un cambio con «Cambiar mi viaje», y la plataforma lo trató como «Aún sin comprar»:
+  - se cotizaría como un viaje nuevo, sin penalidad;
+  - la original **se anularía al aprobarlo**, y con ella el tiquete ya pagado.
+
+**Causa raíz:** para #A103, «comprado» era solo `STATUS = RESERVADO`. La reserva por partes (#A57) deja la solicitud en APROBADO con el PNR y los archivos de la reserva, y nadie la miraba. No es raro:
+- **Uso:** desde agosto, 79 de 669 solicitudes (1 de cada 8) pasaron por «Guardar sin enviar».
+- **Duración:** la mayoría se completa el mismo día, pero 20 tardaron más de un día y 9 más de tres (hasta 6).
+- **Hotel:** 69 de las 79 llevaban hotel, que suele llegar después.
+
+**Arreglo:**
+- **«Comprado» = RESERVADO, o APROBADO con un archivo de reserva guardado.**
+  - Validador gemelo: `_tripChangeHasSavedReservation_` / `_tripChangeIsBought_` (`Code.gs`) ↔ `hasSavedReservation` / `isTripBought` (`utils/changeWindow.ts`).
+  - `requestTripChange` crea el cambio como de tiquete comprado, con `parcial: true` y lo que se compró (PNR, aerolínea, lo pagado).
+  - El viajero ve «TIQUETE COMPRADO» y «El tiquete ya está comprado» (el cambio tiene costo).
+  - El correo al área de compras avisa que la reserva está por partes.
+- **Antes de cotizar, el área de compras confirma lo que se compró** (decisión de David: *sugerir y que una persona confirme*):
+  - **Qué ve Laura:** en «Revisar Cambio» un aviso amarillo, «ACEPTAR Y COTIZAR» desactivado y el botón **«Confirmar lo que se compró de SOL-…»**.
+  - **Qué hace el botón:** abre «Registrar reserva» de la original en un modo especial: sin correo al viajero, sin «Guardar sin enviar», con el PNR y lo pagado ya puestos. Si el hotel no se alcanzó a reservar, se marca «No se reservó hotel» (el hotel de las fechas nuevas va en el cambio).
+  - **Al confirmar:** la original queda RESERVADO y se puede aceptar el cambio.
+  - **En el servidor:** `_tripChangeBeforeStudy_` no deja pasar a estudio (ni desde la app ni desde el enlace del correo) mientras la original siga por partes.
+  - **Al aceptar:** pone al día el JSON del cambio (comprado, la compra confirmada, lo pagado, `compraConfirmada`). Así también se arreglan los cambios pedidos antes de este arreglo, como SOL-000667, sin denegarlos ni pedirlos de nuevo.
+- **Nunca se anula una original con lo comprado:** si al aprobar un cambio la original sigue en APROBADO con la reserva guardada (p. ej. se guardó después de aceptar el cambio), no se anula y queda una nota para revisarla.
+- **Dashboard de costos** (los dos van juntos con la reserva por partes):
+  - **«No se reservó hotel» = $0 de hotel** mientras llega la factura. Antes seguía sumando el hotel cotizado y, con el cambio, el hotel contaba dos veces.
+  - **La copia guardada del cálculo de cada fila** (en Drive) ahora se rehace también si cambia lo pagado (#A102) o el canal del hotel. Antes, corregir solo el valor pagado no se veía hasta que cambiara otra cosa de la fila.
+
+**Verificado:**
+- `npm run verify` en verde. `tools/check-trip-change.cjs` cubre:
+  - «comprado» igual en la app y en el servidor;
+  - el cambio de una reserva por partes y su correo;
+  - que no deje aceptarlo sin confirmar, y que confirmar no mande correo al viajero;
+  - el JSON al día al aceptarlo, el caso SOL-000667 y que la original no se anula;
+  - «No se reservó hotel» = $0 y la copia guardada que se rehace.
+  
+  Probado al revés: si se quita el arreglo, fallan.
+- **Entorno local con la base del 22-oct (el caso real):** se abrió SOL-000667 como Laura y se confirmó lo comprado de SOL-000659 (PNR, LATAM, $515.848, «No se reservó hotel», sin correo). Quedaron:
+  - SOL-000659 en RESERVADO;
+  - SOL-000667 en cotización como cambio de tiquete comprado (original $515.848, pagado).
+  
+  Además, un viaje de PRUEBA1 guardado por partes sale como «TIQUETE COMPRADO» en «Cambiar mi viaje». Sin errores de JavaScript; el único correo fue el de siempre al aceptar un cambio («CAMBIO EN ESTUDIO»).
+
+**Despliegue:** pegar `Code.gs` → versión nueva del web app → push del frontend, en ese orden y seguidos.
+- **Con el servidor nuevo y la app vieja:** el servidor no deja aceptar el cambio y pide confirmar la reserva desde un botón que aún no existe. Por eso el push va enseguida.
+- **Con la app nueva y el servidor viejo:** confirmar funciona, pero el cambio no se pone al día.
+- **Dashboard:** la primera vez que se abra recalcula todas las filas, una sola vez.
+
+**Rollback:** versión anterior del web app + revert del commit.

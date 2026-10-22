@@ -17,6 +17,8 @@
  *   5. Al aprobar: la original comprada NO se anula; la no comprada y los cambios
  *      de antes sí (igual que siempre). Al registrar el tiquete: «Cambiada».
  *   6. Estadísticas, control de cambios, informe mensual y lo que ve el viajero.
+ *   7. Reserva por partes (#A109): cuenta como comprada (igual en la app), se confirma
+ *      antes de cotizar el cambio, nunca se anula; «No se reservó hotel» = $0 de hotel.
  *
  * Uso: node tools/check-trip-change.cjs  (sale con código 1 si algo falla)
  */
@@ -508,12 +510,105 @@ function main() {
   try { ctx.prepararTablaContactosCambios(); } catch (e) { threw = e.message; }
   ok('contactos: con un encabezado suelto, el menú no adivina', /solo algunos encabezados/.test(threw));
 
+  // ───────────── Reserva por partes (#A109, SOL-000659, 22-oct) ─────────────
+  // «Guardar sin enviar» deja la solicitud en APROBADO con el PNR y la reserva: el tiquete ya se compró.
+  const SAVED = JSON.stringify({ folderId: 'F9', folderUrl: 'https://drive.google.com/drive/folders/F9',
+    files: [{ id: 'R1', name: 'Reserva parcial', url: 'https://drive.google.com/file/d/R1', isReservation: true }] });
+  const partial = (over, extra) => bought(Object.assign({ departureDate: '05-11-2026', returnDate: '07-11-2026', requiresHotel: true, hotelName: 'PORTON', nights: 2 }, over || {}),
+    Object.assign({ STATUS: 'APROBADO', 'SOPORTES (JSON)': SAVED, 'No RESERVA': 'LA0357307NXXE', AEROLINEA: 'LATAM', 'COSTO_FINAL_TIQUETES': 600000,
+      'COSTO_FINAL_HOTEL': 400000, 'COSTO COTIZADO PARA VIAJE': 1000000, 'VALOR COMPRA TIQUETES': 515848, 'FECHA DE COMPRA DE TIQUETE': '21/10/2026' }, extra || {}));
+  const study = (id) => { reset(); return ctx.dispatch('processChangeDecision', { userEmail: 'admin@p.co', sessionToken: 't', childRequestId: id, decision: 'study' }); };
+  const confirmPurchase = (id) => {
+    reset();
+    const a = ctx.dispatch('setPurchaseInfo', { userEmail: 'admin@p.co', sessionToken: 't', requestId: id, airline: 'LATAM', channel: 'Aviatur', hotelChannel: 'No se reservó' });
+    reset();
+    const b = ctx.dispatch('registerReservation', { userEmail: 'admin@p.co', sessionToken: 't', requestId: id, reservationNumber: 'LA0357307NXXE', creditCard: 'VISA 1234',
+      purchaseDate: '2026-10-21', files: [], skipNotification: true });
+    return a.success && b.success ? '' : (a.error || b.error);
+  };
+  const boughtCases = [['RESERVADO', ''], ['APROBADO', SAVED], ['APROBADO', ''], ['APROBADO', JSON.stringify({ files: [{ id: 'x', isReservation: false }] })],
+    ['PROCESADO', SAVED], ['PENDIENTE_OPCIONES', SAVED]];
+  eq('comprado: igual en la app y en el servidor (RESERVADO o APROBADO con la reserva guardada)',
+    boughtCases.map(([st, sop]) => { const q = { status: st, supportData: sop ? JSON.parse(sop) : null }; return [ctx._tripChangeIsBought_(q), TS.isTripBought(q)]; }),
+    [[true, true], [true, true], [false, false], [false, false], [false, false], [false, false]]);
+  const PP = partial();
+  reset();
+  ok('reserva por partes: el viajero la ve como tiquete comprado', TS.isTripBought(ctx._hideFareInternals_(ctx.mapRowToRequest(rowOf(PP)))));
+  at(NOW);
+  log.mails.length = 0;
+  r = change(PP, { departureDate: '2026-11-04' }, 'La reunión se adelantó un día.');
+  const CP = r.success && r.data.id;
+  ok('reserva por partes: el cambio es de tiquete comprado', !!CP && r.data.comprado === true);
+  const ip = CP && info(CP);
+  eq('reserva por partes: el JSON dice comprado, por partes y lo que se compró', ip && ip.compra && [ip.comprado, ip.parcial, ip.estadoPadre, ip.compra.pnr, ip.compra.aerolinea,
+    ip.compra.pagadoTiquetes, ip.costoOriginal, ip.costoOriginalFuente], [true, true, 'APROBADO', 'LA0357307NXXE', 'LATAM', 515848, 515848, 'pagado']);
+  const mPP = log.mails.find((m) => /compras\.equitel/.test(m.to));
+  ok('correo: el tiquete está comprado y la reserva por partes se confirma antes de cotizar', mPP && /El tiquete ya está comprado/.test(mPP.html) && /se guardó por partes/.test(mPP.html));
+  log.mails.length = 0;
+  r = study(CP);
+  ok('aceptar el cambio sin confirmar la reserva por partes: no deja y dice qué hacer', !r.success && /confirme la reserva de SOL-/.test(r.error) && /No se reservó hotel/.test(r.error));
+  eq('... el cambio sigue igual y no sale ningún correo', [cell(CP, 'STATUS'), log.mails.length], ['PENDIENTE_ANALISIS_CAMBIO', 0]);
+  eq('confirmar lo que se compró: sin archivos nuevos, sin hotel y sin correo al viajero', [confirmPurchase(PP), cell(PP, 'STATUS'), cell(PP, 'CANAL DE COMPRA HOTEL'),
+    log.mails.filter((m) => m.to === 'ana@p.co').length], ['', 'RESERVADO', 'No se reservó', 0]);
+  r = study(CP);
+  ok('confirmada la reserva, el cambio se acepta: ' + (r.error || 'ok'), r.success && cell(CP, 'STATUS') === 'PENDIENTE_OPCIONES');
+  const ip2 = info(CP);
+  eq('... y el JSON queda al día con la reserva confirmada', ip2 && ip2.compra && [ip2.comprado, ip2.parcial, ip2.estadoPadre, !!ip2.compraConfirmada, ip2.compra.canalHotel, ip2.costoOriginal],
+    [true, true, 'RESERVADO', true, 'No se reservó', 515848]);
+  setCell(CP, 'STATUS', 'PENDIENTE_APROBACION');
+  approve(CP);
+  eq('aprobar el cambio: la original con lo comprado no se anula', [cell(CP, 'STATUS'), cell(PP, 'STATUS')], ['APROBADO', 'RESERVADO']);
+  // Como SOL-000667: el cambio dice «sin comprar» (se pidió antes de #A109, o la reserva se guardó después)
+  const PL = partial({ departureDate: '12-11-2026', returnDate: '14-11-2026' }, { 'SOPORTES (JSON)': '' });
+  at(NOW);
+  r = change(PL, { returnDate: '2026-11-15' }, 'Se alarga la visita un día.');
+  const CL = r.success && r.data.id;
+  ok('sin reserva guardada: el cambio es «sin comprar» (igual que antes)', !!CL && info(CL).comprado === false && !info(CL).parcial);
+  setCell(PL, 'SOPORTES (JSON)', SAVED);
+  r = study(CL);
+  ok('el cambio «sin comprar» con la original ya reservada por partes: tampoco deja aceptarlo', !r.success && /confirme la reserva de/.test(r.error));
+  confirmPurchase(PL);
+  r = study(CL);
+  const iL = info(CL);
+  eq('... al confirmarla y aceptarlo, pasa a cambio de tiquete comprado', [r.success, iL.comprado, iL.compra && iL.compra.pnr, iL.costoOriginal, iL.costoOriginalFuente],
+    [true, true, 'LA0357307NXXE', 515848, 'pagado']);
+  ok('... con su nota en observaciones', /quedó confirmada antes de cotizar/.test(cell(CL, 'OBSERVACIONES')));
+  // Si la reserva por partes se guarda cuando el cambio ya va en camino: aprobarlo no anula la original
+  const PR = partial({ departureDate: '19-11-2026', returnDate: '21-11-2026' }, { 'SOPORTES (JSON)': '' });
+  at(NOW);
+  r = change(PR, { returnDate: '2026-11-22' }, 'Se alarga la visita un día.');
+  const CR = r.success && r.data.id;
+  ok('sin nada comprado se acepta como siempre', study(CR).success);
+  setCell(PR, 'SOPORTES (JSON)', SAVED);
+  setCell(CR, 'STATUS', 'PENDIENTE_APROBACION');
+  approve(CR);
+  eq('una original con la reserva guardada por partes nunca se anula', [cell(CR, 'STATUS'), cell(PR, 'STATUS')], ['APROBADO', 'APROBADO']);
+  ok('... y la nota dice qué revisar', /no se anula: tiene una reserva guardada por partes/.test(cell(PR, 'OBSERVACIONES')));
+  // Dashboard: «No se reservó hotel» = $0 de hotel mientras llega la factura; el cálculo guardado de la fila se rehace
+  reset();
+  const dcfg = ctx._csLoadConfig_();
+  const dhm = {}; req[0].forEach((h, i) => { dhm[h] = i; });
+  const drow = (paidT, paidH, ch) => {
+    const x = new Array(req[0].length).fill('');
+    x[dhm.STATUS] = 'RESERVADO'; x[dhm.COSTO_FINAL_TIQUETES] = 800000; x[dhm.COSTO_FINAL_HOTEL] = 300000;
+    x[dhm['VALOR COMPRA TIQUETES']] = paidT; x[dhm['VALOR COMPRA HOTEL']] = paidH; x[dhm['CANAL DE COMPRA HOTEL']] = ch || '';
+    return x;
+  };
+  const est = (...a) => ctx._csComputeRowExecuted_(drow(...a), dhm, dcfg).estimated;
+  eq('dashboard: «No se reservó hotel» no suma el hotel cotizado; con hotel, igual que antes',
+    [est('', '', 'No se reservó'), est(720000, '', 'No se reservó'), est(720000, '', 'Aviatur'), est('', '', ''), est(720000, 250000, 'No se reservó')],
+    [800000, 720000, 1020000, 1100000, 970000]);
+  const hash = (...a) => ctx._csComputeRowHash_(drow(...a), dhm, dcfg, 'cfg');
+  ok('dashboard: el cálculo guardado de la fila se rehace si cambia lo pagado o el canal del hotel',
+    hash('', '', '') !== hash(720000, '', '') && hash(720000, '', '') !== hash(720000, 0, '') && hash(720000, '', '') !== hash(720000, '', 'No se reservó') &&
+    hash(720000, '', '') === hash(720000, '', ''));
+
   if (failures.length) {
     console.error('✗ Cambios de viaje (#A103): ' + failures.length + ' problema(s):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('✓ Cambios de viaje (#A103, #A106): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe y a quién llamar después del plazo.');
+  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard).');
 }
 
 main();

@@ -16,9 +16,11 @@ interface ReservationModalProps {
     request: TravelRequest;
     onClose: () => void;
     onSuccess: () => void;
+    /** #A109: confirmar la reserva por partes de una original antes de cotizar su cambio (id del cambio). Sin correo al viajero. */
+    forTripChange?: string;
 }
 
-export const ReservationModal = ({ request, onClose, onSuccess }: ReservationModalProps) => {
+export const ReservationModal = ({ request, onClose, onSuccess, forTripChange }: ReservationModalProps) => {
     // Modo AMEND (corrección) SOLO cuando la solicitud ya está RESERVADA. En
     // APROBADO — con o sin reserva parcial ya guardada — usamos el flujo nuevo:
     // "Guardar sin enviar" (draft, no notifica, queda APROBADO) + "Confirmar
@@ -192,7 +194,8 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
 
     // R8: Controla si se envía el correo automático al usuario. Default: sí.
     // Solo aplica en modo NEW (en edit siempre se envía correo de corrección).
-    const [sendUserNotification, setSendUserNotification] = useState(true);
+    // #A109: al confirmar lo comprado antes de un cambio, no: el viajero ya pidió otras fechas.
+    const [sendUserNotification, setSendUserNotification] = useState(!forTripChange);
 
     const [dialog, setDialog] = useState<{
         isOpen: boolean;
@@ -367,7 +370,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
         // R8: si se desmarcó "Enviar correo", primero exigir confirmación
         // explícita con advertencia antes de siquiera llegar al confirm normal.
         // Esto evita olvidos accidentales (la reserva queda sin notificar).
-        if (!isEditMode && !sendUserNotification) {
+        if (!isEditMode && !sendUserNotification && !forTripChange) {
             setDialog({
                 isOpen: true,
                 title: '⚠️ El usuario NO recibirá correo automático',
@@ -628,7 +631,12 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                 Está editando una reserva existente. Los cambios se aplicarán y se enviará un correo de corrección al usuario.
                             </p>
                         )}
-                        {!isEditMode && (
+                        {!isEditMode && forTripChange && (
+                            <p className="text-xs text-amber-900 bg-amber-50 border border-amber-300 rounded p-2 mb-3 leading-relaxed" data-reservation-for-change>
+                                <strong>Confirmar lo que se compró, antes del cambio {forTripChange}.</strong> Registre la reserva como quedó comprada y lo que se pagó. Si el hotel no se alcanzó a reservar, marque <strong>«No se reservó hotel»</strong>: el hotel de las fechas nuevas va en el cambio. Al viajero no le llega correo.
+                            </p>
+                        )}
+                        {!isEditMode && !forTripChange && (
                             <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded p-2 mb-3 leading-relaxed">
                                 <strong>Reserva por partes:</strong> use <strong>"Guardar sin enviar"</strong> para cargar el tiquete hoy y el hotel después, sin notificar al usuario (la solicitud sigue en APROBADO). Cuando tenga el paquete completo, use <strong>"Confirmar reserva y enviar"</strong> para notificarle todo junto.
                             </p>
@@ -884,7 +892,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
 
                             <div className="mt-6 flex flex-wrap justify-end gap-3 border-t pt-4">
                                 <button type="button" onClick={handleClose} className="px-4 py-2 border rounded text-gray-700 bg-white hover:bg-gray-50">Cancelar</button>
-                                {!isEditMode && (
+                                {!isEditMode && !forTripChange && (
                                     <button
                                         type="button"
                                         onClick={handleSaveDraft}
@@ -896,7 +904,7 @@ export const ReservationModal = ({ request, onClose, onSuccess }: ReservationMod
                                     </button>
                                 )}
                                 <button type="submit" disabled={loading} className={`px-4 py-2 text-white rounded font-bold disabled:opacity-50 ${isEditMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-brand-red hover:bg-red-700'}`}>
-                                    {loading ? 'Procesando...' : (isEditMode ? 'Guardar Corrección' : 'Confirmar reserva y enviar')}
+                                    {loading ? 'Procesando...' : (isEditMode ? 'Guardar Corrección' : forTripChange ? 'Confirmar lo que se compró' : 'Confirmar reserva y enviar')}
                                 </button>
                             </div>
                         </form>

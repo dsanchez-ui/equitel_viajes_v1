@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CityMaster, RequestStatus, TravelRequest, TripChangeConfig, TripChangeRequestChanges } from '../types';
 import { gasService } from '../services/gasService';
-import { ChangeWindow, changeDeadline, fmtDayLong, fmtHourLabel, toDateKey, tripChangeWindow, untilText } from '../utils/changeWindow';
+import { ChangeWindow, changeDeadline, fmtDayLong, fmtHourLabel, isTripBought, toDateKey, tripChangeWindow, untilText } from '../utils/changeWindow';
 import { fareLabel, fareOptionForNights } from '../utils/fare';
 import { formatCop } from '../utils/money';
 import { CityCombobox } from './CityCombobox';
@@ -175,7 +175,8 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   const travelerWin = req && isAdmin ? tripChangeWindow(toDateKey(req.departureDate), toDateKey(req.returnDate), nowMs, false) : null;
   const mode = elig?.win?.mode || 'full';
   const hotelOnly = req?.requestMode === 'HOTEL_ONLY';
-  const bought = req?.status === RequestStatus.RESERVED;
+  // #A109: la reserva guardada por partes (APROBADO) también es tiquete comprado.
+  const bought = isTripBought(req);
   const base = req ? baseOf(req) : null;
 
   const changes: TripChangeRequestChanges = {};
@@ -330,7 +331,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">{r.requestId}</span>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{r.status === RequestStatus.RESERVED ? 'TIQUETE COMPRADO' : r.status}</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{isTripBought(r) ? 'TIQUETE COMPRADO' : r.status}</span>
                       </div>
                       <p className="font-bold text-gray-900 mt-1">{r.requestMode === 'HOTEL_ONLY' ? `Hospedaje en ${r.destination}` : `${r.origin} → ${r.destination}`}</p>
                       <p className="text-xs text-gray-500">

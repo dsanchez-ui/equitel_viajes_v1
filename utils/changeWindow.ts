@@ -1,5 +1,5 @@
-// Plazo para pedir un cambio de viaje (#A103, «Cambiar mi viaje»).
-// ⚠️ GEMELO de `_changeDeadline_` y `_tripChangeWindow_` en server/Code.gs:
+// Plazo para pedir un cambio de viaje (#A103, «Cambiar mi viaje») y si el tiquete ya está comprado (#A109).
+// ⚠️ GEMELO de `_changeDeadline_`, `_tripChangeWindow_` y `_tripChangeIsBought_` en server/Code.gs:
 // tools/check-trip-change.cjs compara los dos lados dentro de `npm run verify`.
 //
 // Regla (David, 15-oct; aprobada por Yurani, 19-oct): se puede pedir el cambio hasta
@@ -130,6 +130,20 @@ export const untilText = (w: Pick<ChangeWindow, 'deadlineKey' | 'deadlineHour'>,
   if (w.deadlineKey === tomorrow) return 'mañana ' + fmtDayLong(w.deadlineKey) + ' hasta las ' + fmtHourLabel(w.deadlineHour);
   return 'hasta el ' + fmtDayLong(w.deadlineKey) + ', ' + fmtHourLabel(w.deadlineHour);
 };
+
+/** Lo que miran las reglas de «comprado»: el estado y los archivos de la reserva. */
+interface BoughtCheck { status?: string; supportData?: { files?: { isReservation?: boolean }[] } | null }
+
+/**
+ * ¿Tiene la reserva guardada por partes (#A109)? «Guardar sin enviar» deja la solicitud en APROBADO
+ * con el PNR y los archivos de la reserva: lo que se compró ya se pagó. Igual que `_tripChangeHasSavedReservation_`.
+ */
+export const hasSavedReservation = (r: BoughtCheck | null | undefined): boolean =>
+  !!r && String(r.status || '').trim() === 'APROBADO' && (r.supportData?.files || []).some((f) => !!f && !!f.isReservation);
+
+/** ¿El tiquete ya está comprado? RESERVADO, o APROBADO con la reserva guardada por partes (#A109). Igual que `_tripChangeIsBought_`. */
+export const isTripBought = (r: BoughtCheck | null | undefined): boolean =>
+  !!r && (String(r.status || '').trim() === 'RESERVADO' || hasSavedReservation(r));
 
 /** Fecha de una solicitud ('AAAA-MM-DD', 'DD-MM-AAAA' o 'DD/MM/AAAA') a 'AAAA-MM-DD'; '' si no se reconoce. */
 export const toDateKey = (v: string | undefined | null): string => {

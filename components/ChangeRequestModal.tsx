@@ -1,7 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { TravelRequest } from '../types';
+import { RequestStatus, TravelRequest } from '../types';
 import { gasService } from '../services/gasService';
+import { hasSavedReservation } from '../utils/changeWindow';
+import { ReservationModal } from './ReservationModal';
 import { formatToDDMMYYYY } from '../utils/dateUtils';
 import { formatCop } from '../utils/money';
 import { fareShort } from '../utils/fare';
@@ -16,11 +18,14 @@ interface ChangeRequestModalProps {
 type Step = 'initial' | 'confirmDeny' | 'parentDecision' | 'processing' | 'error';
 
 export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request, onClose, onSuccess }) => {
+  // #A109: confirmar la reserva por partes de la original, en su propia ventana encima de esta.
+  const [confirmingParent, setConfirmingParent] = useState(false);
+  const [parentConfirmed, setParentConfirmed] = useState(false);
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !confirmingParent) onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, [onClose, confirmingParent]);
 
   const [step, setStep] = useState<Step>('initial');
   const [reason, setReason] = useState('');
@@ -33,8 +38,9 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
   const [parent, setParent] = useState<TravelRequest | null>(null);
   const [parentState, setParentState] = useState<'idle' | 'loading' | 'error' | 'ok'>('idle');
   const [copied, setCopied] = useState('');
+  // #A109: la original se carga siempre: puede tener la reserva guardada por partes aunque el cambio diga «sin comprar».
   const loadParent = () => {
-    if (!info || !info.comprado) return;
+    if (!info) return;
     setParentState('loading');
     gasService.getRequestById(info.padre)
       .then(p => { setParent(p); setParentState(p ? 'ok' : 'error'); })
@@ -43,6 +49,10 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
   useEffect(() => { loadParent(); /* una vez al abrir */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const c = info?.compra;
+  const parentPartial = hasSavedReservation(parent);
+  const bought = !!info && (info.comprado || parentPartial || parent?.status === RequestStatus.RESERVED);
+  const paidT = parent ? parent.purchasePaidTickets : c?.pagadoTiquetes;
+  const paidH = parent ? parent.purchasePaidHotel : c?.pagadoHotel;
   const pnr = parent?.reservationNumber || c?.pnr || '';
   const airline = parent?.purchaseAirline || c?.aerolinea || '';
   const aviaturMsg = info
@@ -150,7 +160,21 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
 
           {/* #A103: qué cambia, motivo y lo que ya se compró */}
           {info && <TripChangeBox request={request} isAdmin />}
-          {info && info.comprado && (
+          {info && parentPartial && (
+            <div className="bg-amber-50 border-l-4 border-amber-500 rounded-md p-3 text-sm text-amber-950 space-y-2" data-change-parent-partial>
+              <p><strong>La reserva de {info.padre} se guardó por partes y no se ha confirmado.</strong> Lo que ya se compró cuenta: este cambio es de un tiquete comprado (penalidad, diferencia de tarifa y hotel) y la original no se anula.</p>
+              <p className="text-xs">Antes de cotizar, confírmela con lo que se compró y lo que se pagó. Si el hotel no se alcanzó a reservar, marque «No se reservó hotel»: el hotel de las fechas nuevas va en el cambio. Al viajero no le llega correo.</p>
+              <button type="button" onClick={() => setConfirmingParent(true)} className="px-3 py-1.5 text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white rounded" data-confirm-parent-purchase>
+                Confirmar lo que se compró de {info.padre}
+              </button>
+            </div>
+          )}
+          {info && parentConfirmed && !parentPartial && parent?.status === RequestStatus.RESERVED && (
+            <div className="bg-green-50 border border-green-200 text-green-900 rounded-md p-3 text-sm" data-change-parent-confirmed>
+              ✓ Quedó confirmada la reserva de {info.padre}. Ya puede aceptar el cambio: se cotiza como cambio de un tiquete comprado.
+            </div>
+          )}
+          {info && bought && (
             <div className="border border-gray-200 rounded-md p-3 text-sm space-y-2 bg-gray-50" data-change-parent-purchase>
               <div className="font-bold text-gray-900">Lo que ya se compró ({info.padre})</div>
               {parentState === 'loading' && <div className="text-xs text-gray-500">Cargando la compra original…</div>}
@@ -165,9 +189,9 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
                 {(parent?.purchaseHotelName || c?.hotel) && (<><dt className="text-gray-500">Hotel</dt><dd className="font-semibold">{parent?.purchaseHotelName || c?.hotel}</dd></>)}
                 <dt className="text-gray-500">Valor pagado</dt>
                 <dd className="font-semibold">
-                  {typeof c?.pagadoTiquetes === 'number' ? `Tiquetes $${formatCop(c.pagadoTiquetes)}` : 'Tiquetes —'}
-                  {typeof c?.pagadoHotel === 'number' ? ` · Hotel $${formatCop(c.pagadoHotel)}` : ''}
-                  {` · Viaje: $${formatCop(Number(info.costoOriginal) || 0)} (${info.costoOriginalFuente === 'pagado' ? 'pagado' : 'cotizado'})`}
+                  {typeof paidT === 'number' ? `Tiquetes $${formatCop(paidT)}` : 'Tiquetes —'}
+                  {typeof paidH === 'number' ? ` · Hotel $${formatCop(paidH)}` : ''}
+                  {info.comprado && !parentPartial && !info.parcial ? ` · Viaje: $${formatCop(Number(info.costoOriginal) || 0)} (${info.costoOriginalFuente === 'pagado' ? 'pagado' : 'cotizado'})` : ''}
                 </dd>
                 <dt className="text-gray-500">Tarjeta</dt><dd className="font-semibold">{parent?.creditCard || c?.tarjeta || '—'}</dd>
                 <dt className="text-gray-500">Comprado el</dt><dd className="font-semibold">{(parent?.purchaseDate || c?.fechaCompra) ? formatToDDMMYYYY(parent?.purchaseDate || c?.fechaCompra) : '—'}</dd>
@@ -220,10 +244,13 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={handleStudy}
-                  className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-md font-bold text-sm flex flex-col items-center"
+                  disabled={!!info && (parentPartial || parentState === 'loading')}
+                  title={parentPartial ? 'Primero confirme lo que se compró de la original.' : undefined}
+                  className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-md font-bold text-sm flex flex-col items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-change-study
                 >
                   <span className="text-base">✅ {info ? 'ACEPTAR Y COTIZAR' : 'PASAR A ESTUDIO'}</span>
-                  <span className="text-xs font-normal mt-1 opacity-90">{info ? (info.comprado ? 'Cargar las opciones del cambio' : 'Cotizar como solicitud nueva') : 'Aceptar y comenzar a gestionar'}</span>
+                  <span className="text-xs font-normal mt-1 opacity-90">{info ? (parentPartial ? 'Primero confirme lo que se compró' : bought ? 'Cargar las opciones del cambio' : 'Cotizar como solicitud nueva') : 'Aceptar y comenzar a gestionar'}</span>
                 </button>
                 <button
                   onClick={() => { setError(''); setStep('confirmDeny'); }}
@@ -381,6 +408,14 @@ export const ChangeRequestModal: React.FC<ChangeRequestModalProps> = ({ request,
           )}
         </div>
       </div>
+      {confirmingParent && parent && (
+        <ReservationModal
+          request={parent}
+          forTripChange={request.requestId}
+          onClose={() => setConfirmingParent(false)}
+          onSuccess={() => { setConfirmingParent(false); setParentConfirmed(true); loadParent(); }}
+        />
+      )}
     </div>
   );
 };

@@ -358,6 +358,10 @@ export interface TripChangeInfo {
   estadoPadre: string;
   /** El tiquete de la original ya estaba comprado: la hija lleva solo el costo del cambio. */
   comprado: boolean;
+  /** #A109: la original tenía la reserva guardada por partes (APROBADO) al pedir el cambio. */
+  parcial?: boolean;
+  /** #A109: cuándo quedó confirmada la reserva de la original, antes de cotizar el cambio. */
+  compraConfirmada?: string;
   modo: 'full' | 'return';
   tipos: string[];
   campos: {
