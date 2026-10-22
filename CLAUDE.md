@@ -6,6 +6,9 @@
 > del proyecto y la fuente de verdad sobre por qué las cosas son como son.
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
+>
+> **Si esta sesión corre en macOS:** antes de cualquier tarea, haz lo que diga [MIGRACION.md §0](MIGRACION.md) mientras no
+> diga «Hecho» (Node 24 y el recordatorio de seguridad para todos los proyectos del Mac, pendiente desde el 22-oct-2026).
 
 ## Qué es
 
@@ -666,10 +669,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-10-22)
 
-- **Todo está desplegado hasta #A105.** El 21-oct David pegó `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y
-  `AdminMobile.html`, pegó `Rastreo.gs` en el proyecto aparte, corrió el menú 12 y publicó la versión nueva del web app;
-  después se publicó el frontend. Incluye #A102 (valor pagado; su frontend ya estaba desde el 14-oct), el ajuste de #A101
-  (tarifa por mes de compra), el aviso de #A100 sin fecha de fin, #A103 «Cambiar mi viaje», #A104 y #A105.
+- **En el Mac, antes de nada: [MIGRACION.md §0](MIGRACION.md)** (Node 24, revisión del equipo y el recordatorio para todos sus
+  proyectos). En el PC Linux ya está hecho.
+- **Todo está desplegado hasta #A110 (22-oct).** El 21-oct salieron #A102–#A105 (David pegó `Code.gs`, `CostsDashboard.html`,
+  `AdminSidebar.html`, `AdminMobile.html` y `Rastreo.gs`, corrió el menú 12 y publicó la versión nueva); el 22-oct, #A106–#A110.
 - **Fechas de compra cambiadas por correcciones (#A102):** SOL-000100, 107, 202, 230, 249, 270, 435, 465, 494, 495, 516,
   526, 527, 545, 552 y 635. Si se quieren corregir, que el área de compras confirme cada fecha y la corrija a mano.
 - **Fechas que vienen (sin código):**
@@ -710,20 +713,22 @@ autorización) y verificar antes de crear una versión nueva del web app.
   #A108 (revisión de seguridad: Node 24 en la imagen, `serve` corregido, SRI de Chart.js): DESPLEGADOS el 22-oct.** David cambió el
   celular de Diego, pegó los cuatro archivos, corrió el menú 16 y publicó la versión nueva; el frontend `51ae8de` se construyó con
   `node:24.22.1-alpine` (0 vulnerabilidades) y es la revisión `00218` de Cloud Run. El PC Linux ya tiene Node 24.22.1 (`~/.local`).
-  Queda: Node 24 en el Mac; `sudo apt update && sudo apt upgrade` en el PC (Python lo parchea Ubuntu); el 30-oct fijar markdown-it 14.3.3.
+  Queda: Node 24 en el Mac ([MIGRACION.md §0](MIGRACION.md)); en el PC, 26 paquetes del sistema sin actualizar (`sudo apt update &&
+  sudo apt upgrade`; Python ya trae los parches de octubre en `3.14.4-1ubuntu0.2`); revisar el manifiesto de Apps Script
+  ([docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md) §5, punto 5); el 30-oct fijar markdown-it 14.3.3 (lo hace Claude).
 - **#A109 (reserva por partes = tiquete comprado en los cambios; «No se reservó hotel» = $0 en el dashboard) y #A110 («Excluir del
-  ahorro» en el comparador y la respuesta en una frase): implementados el 22-oct, pendientes de desplegar** (pegar `Code.gs` y
-  `CostsDashboard.html`, versión nueva, push). Reunión del 22-oct (Yurani, David): el ahorro de comprar directo no paga una persona; los
-  análisis con nombre (tarifa, quién viaja, quién pide tarde, quién cambia) están en el artefacto de costos
-  (https://claude.ai/artifact/AoWDaTnRmtwBH83yX56zQ7). Pendientes de esa reunión: excepciones del manual por cargo (con Alejandro; falta el
-  cargo, que está en la lista de RR. HH.), informes gerenciales de Aviatur (los manda Yurani) y el caso de Sandra Omaña (SOL-000665). Pegar `Code.gs` → versión nueva del web app → push del frontend, seguidos. Nació de **SOL-000659** (compra
-  guardada por partes) y su cambio **SOL-000667**: con el arreglo desplegado, Laura abre «Revisar Cambio», toca «Confirmar lo que se
-  compró de SOL-000659» («No se reservó hotel», sin correo) y acepta; ya no hace falta denegar y volver a pedir el cambio.
-- **#A103 «Cambiar mi viaje», #A104 y #A105: desplegados el 21-oct.** Después del despliegue:
-  - **Prueba en producción** con PRUEBA1. Su aprobador (PRUEBA2) tiene un correo que no es de David: cambiarlo antes por
-    `dsanchez+qa@equitel.com.co`. Avisarle a Laura, porque le llegan los correos del cambio.
-  - **Entregarle a Laura la guía** «Cómo gestionar un cambio de viaje» (Claude Docs, con pantallazos del entorno de prueba).
-  - Revisar con Yurani la cifra del comparador antes de mostrársela a Alejandro.
+  ahorro» en el comparador y la respuesta en una frase): DESPLEGADOS el 22-oct.** David pegó `Code.gs` y `CostsDashboard.html` y publicó
+  la versión nueva; el frontend `0d71592` es la revisión `00220` de Cloud Run. **SOL-000659** (compra guardada por partes) y su cambio
+  **SOL-000667**: David asume que Laura ya lo resolvió a mano; si no, ahora basta «Confirmar lo que se compró» en «Revisar Cambio».
+  Pendientes de David:
+  - Excluir del ahorro el viaje a Miami (SOL-000658) en el dashboard de costos, con su motivo: queda en 7 viajes y $1.215.647.
+  - Reunión del 22-oct (Yurani, David): el ahorro de comprar directo no paga una persona con el salario mínimo ($2,7 M al mes con
+    prestaciones). El artefacto de costos (https://claude.ai/artifact/AoWDaTnRmtwBH83yX56zQ7, privado) lo comparte David después de
+    reunirse con Alejandro el 23-oct. Siguen: excepciones del manual por cargo (con Alejandro; falta el cargo, que está en la lista de
+    RR. HH.), los informes gerenciales de Aviatur (los consigue Yurani), el valor exacto del cargo de Aviatur (por escrito), si la empresa
+    tiene la exoneración de aportes (contabilidad), el caso de Sandra Omaña (SOL-000665) y la cifra del comparador con Yurani.
+- **#A103 «Cambiar mi viaje», #A104 y #A105: desplegados el 21-oct.** Ya se probó en producción (lo probó otra persona, David, 22-oct) y
+  Laura ya tiene la guía «Cómo gestionar un cambio de viaje».
 - **Manuales dentro de la app** (David, 14-oct): **solo plan**, en
   [docs/plan-manuales-en-app.md](docs/plan-manuales-en-app.md) — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
 - **Informe por unidad para cada jefe** (posible segunda etapa de #A101): la presentación de Alejandro dice que «su jefe

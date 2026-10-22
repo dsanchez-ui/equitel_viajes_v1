@@ -3014,7 +3014,8 @@ Claude, desde el 30-oct: fijar markdown-it 14.3.3.
   
   Además, un viaje de PRUEBA1 guardado por partes sale como «TIQUETE COMPRADO» en «Cambiar mi viaje». Sin errores de JavaScript; el único correo fue el de siempre al aceptar un cambio («CAMBIO EN ESTUDIO»).
 
-**Despliegue:** pegar `Code.gs` → versión nueva del web app → push del frontend, en ese orden y seguidos.
+**Despliegue:** pegar `Code.gs` → versión nueva del web app → push del frontend, en ese orden y seguidos. **Desplegado el 22-oct** con #A110: David pegó `Code.gs` y
+`CostsDashboard.html` y publicó la versión nueva; el frontend `0d71592` es la revisión `00220` de Cloud Run (build `8e6c19e7`, SUCCESS).
 - **Con el servidor nuevo y la app vieja:** el servidor no deja aceptar el cambio y pide confirmar la reserva desde un botón que aún no existe. Por eso el push va enseguida.
 - **Con la app nueva y el servidor viejo:** confirmar funciona, pero el cambio no se pone al día.
 - **Dashboard:** la primera vez que se abra recalcula todas las filas, una sola vez.
@@ -3054,7 +3055,8 @@ Claude, desde el 30-oct: fijar markdown-it 14.3.3.
   Probado al revés: sin el filtro, falla.
 - **Entorno local con la base del 22-oct, en Chrome:** el titular abre con la frase. Al excluir Miami queda en 7 viajes y $1.215.647, dice «Con él, la diferencia sería $2.792.291» y la proyección no lo usa. Al volver a contarlo, regresa a $2.792.291. Sin errores de JavaScript; observaciones guarda las dos constancias.
 
-**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` → versión nueva del web app. Va junto con #A109.
+**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` → versión nueva del web app. Va junto con #A109. **Desplegado el 22-oct** (revisión `00220`).
+Falta que David excluya el viaje a Miami (SOL-000658) con su motivo.
 - **Con el `Code.gs` viejo:** el botón responde «Acción desconocida» y nada cambia.
 - **Con el `CostsDashboard.html` viejo:** no hay botón, y los totales igual excluyen lo marcado.
 

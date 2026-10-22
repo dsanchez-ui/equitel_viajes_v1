@@ -9,6 +9,50 @@ dependencias, no.
 
 ---
 
+## 0. Pendiente en el Mac (desde el 22-oct-2026)
+
+> **Agente que trabaja en el Mac (macOS): haz esto antes de cualquier otra tarea** y cuéntale a David qué
+> hiciste y qué le toca a él. Cuando todo esté hecho, cambia «Estado» por la fecha y pásalo a «Hecho» en el
+> «Para retomar» de `CLAUDE.md`. Ese cambio es solo de documentos, pero subirlo a `main` despliega: avísale
+> a David antes del push.
+
+**Estado:** pendiente. El PC Linux ya está al día (Node 24.22.1 desde el 22-oct).
+
+1. **Node 24.22.1 o más nueva en la línea 24** (revisión de seguridad del 22-oct,
+   [docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md)). Node 20 ya no recibe correcciones y la de octubre
+   trae 10 fallas de seguridad. `node --version` lo dice; `which node` dice con qué se instaló (Homebrew,
+   nvm o el instalador de nodejs.org). Se actualiza con ese mismo gestor. Si pide la contraseña, lo hace David.
+2. Con Node 24 (que trae npm 11): `git pull`, `rm -rf node_modules && npm ci` y `npm run verify` en verde.
+3. `ssh -T git@github.com` debe saludar a `dsanchez-ui` (sección 6: se sube por SSH, sin tokens).
+4. **Recordatorio para todos los proyectos del Mac.** Copia el bloque de abajo **al final** del
+   `~/.claude/CLAUDE.md` del Mac (créalo si no existe; no borres ni cambies lo que ya tenga). Ese archivo lo
+   leen los agentes de **todos** los proyectos de ese equipo; el de este repo solo lo lee el de este proyecto.
+5. Si el `~/.claude/CLAUDE.md` del Mac no tiene la regla del correo de David (ningún agente envía correos,
+   28-sep-2026), díselo: en el PC Linux esa regla tiene un candado (`~/.claude/hooks/bloquear-correo.py`)
+   que no viaja con git.
+
+```markdown
+## Equipo al día (todos los proyectos de este Mac; David, 22-oct-2026)
+
+David quiere que cada agente le recuerde mantener el equipo al día, no solo su proyecto.
+
+- **Al empezar una sesión**, mira la línea «Última revisión» de abajo. Si tiene más de 30 días o dice
+  «pendiente», díselo a David en una línea antes de seguir. No lo hagas tú: varias cosas piden su contraseña.
+- **Qué se revisa:**
+  - Sistema: Configuración del Sistema → General → Actualización de software; con Homebrew, también
+    `brew update && brew upgrade`.
+  - Node en una línea con soporte: hoy la 24, 24.22.1 o más nueva (`node --version`).
+  - Python, si se instaló aparte (Homebrew o python.org): 3.14.9 o 3.13.17 o más nuevas (`python3 --version`).
+  - git por SSH, sin tokens en los remotos (`git remote -v`).
+  - En cada proyecto, que su agente revise sus dependencias (`npm audit`) y el Node de su imagen o servidor,
+    sin instalar versiones publicadas hace menos de dos semanas.
+- Cuando David diga que ya lo hizo, actualiza la fecha.
+
+**Última revisión:** pendiente desde el 22-oct-2026 (Node 24 y actualizaciones del sistema).
+```
+
+---
+
 ## 1. Instalación en una máquina nueva
 
 ### Requisitos

@@ -28,8 +28,8 @@ Las dos cosas quedaron corregidas en el repositorio y probadas, y `npm audit` pa
 
 | Componente | Versión antes → después | Avisos | ¿Afectaba? | Estado |
 |---|---|---|---|---|
-| **Node.js en producción** (imagen) | 20 (sin fijar) → **24.22.1** | CVE-2026-111497 (Brotli, ejecución de código), CVE-2026-105482, CVE-2026-105483, CVE-2026-106069 y otros 6 del [aviso del 20/21-oct](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases) | **Sí.** Node 20 no tiene soporte desde abril de 2026 y no recibe la corrección | **Corregido** en el repo; falta desplegar |
-| Node.js en el PC de desarrollo | 20.20.2 | Los mismos | Sí, solo en desarrollo | **Pendiente:** lo instala David (§5) |
+| **Node.js en producción** (imagen) | 20 (sin fijar) → **24.22.1** | CVE-2026-111497 (Brotli, ejecución de código), CVE-2026-105482, CVE-2026-105483, CVE-2026-106069 y otros 6 del [aviso del 20/21-oct](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases) | **Sí.** Node 20 no tiene soporte desde abril de 2026 y no recibe la corrección | **Corregido y desplegado** el 22-oct |
+| Node.js en el PC de desarrollo | 20.20.2 | Los mismos | Sí, solo en desarrollo | **Hecho** en el PC el 22-oct (24.22.1). Falta el Mac (§5) |
 | **compression** (producción, dentro de `serve`) | 1.8.1 → **1.8.2** | [GHSA-vc2v-76pw-4v95](https://github.com/advisories/GHSA-vc2v-76pw-4v95) (alta, denegación de servicio) | **Sí.** Es el servidor que atiende a los usuarios | **Corregido** con `overrides`. Además, `serve` ahora se instala desde el lockfile (antes era global y no lo usaba) |
 | brace-expansion (producción, dentro de `serve`) | 1.1.18 → **1.1.21** | [GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr), [GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7) (altas, denegación de servicio) | Poco: solo actúa con la configuración propia de `serve` | **Corregido** |
 | fast-uri (producción, dentro de `serve`) | 3.1.7 → **3.1.8** | [GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) (moderada) | Poco: validación de la configuración de `serve` | **Corregido.** No se usó la 3.1.9, publicada hace 3 días |
@@ -44,7 +44,7 @@ Las dos cosas quedaron corregidas en el repositorio y probadas, y `npm audit` pa
 | Paquetes comprometidos de 2026 (Shai-Hulud y variantes, MALFEX, node-ipc) | Ninguno en el lockfile; los 236 paquetes vienen del registro oficial con integridad | — | No | Revisado |
 | PHP | No hay | CVE-2026-109618, CVE-2026-109619 (según la lista recibida) | No | No aplica |
 | PostgreSQL | No hay (Google Sheets) | CVE-2026-6473 (según la lista recibida) | No | No aplica |
-| Python del PC | 3.14.4 | CVE-2026-15308 (HTMLParser). Además, [3.14.9](https://www.python.org/downloads/release/python-3149/) (21-oct) actualiza los certificados por el caso eMudhra | Solo el PC. El script del proyecto no usa HTMLParser | **Pendiente:** actualizar el sistema (David) |
+| Python del PC | 3.14.4 | CVE-2026-15308 (HTMLParser). Además, [3.14.9](https://www.python.org/downloads/release/python-3149/) (21-oct) actualiza los certificados por el caso eMudhra | Solo el PC. El script del proyecto no usa HTMLParser | **Resuelto:** Ubuntu lo parchó en `3.14.4-1ubuntu0.2` (20-ago) sin cambiar el número de versión; ya está instalado |
 | openpyxl | 3.1.5 | Ninguno en OSV | — | Sin cambios |
 | markdown-it (generador de PDF de `docs/`) | Se instala al vuelo, sin versión fija | GHSA-gfr2-rv44-r23c, GHSA-vfgh-jcmw-g37q (corregidos en 14.3.3, publicada el 16-oct) | Bajo: solo procesa documentos propios en el PC | **Pendiente:** fijar 14.3.3 cuando cumpla dos semanas (30-oct) |
 | Apps Script principal | — | No tiene versiones que parchear. 0 llamadas a internet (`UrlFetchApp`), sin librerías de terceros en el código | — | Revisado. Su manifiesto no está en el repo: **David revisa los permisos** (§5) |
@@ -105,8 +105,10 @@ Los avisos marcados «según la lista recibida» no se verificaron contra la fue
 2. ~~Confirmar que Cloud Build usa el Dockerfile.~~ **Resuelto el 22-oct con `gcloud`** (solo lectura):
    - El activador `rmgpgab-sistematiquetesequitel-us-west1-dsanchez-ui-equitel-rxk` (proyecto `gen-lang-client-0192295875`) corre `docker build .` con este Dockerfile, sube la imagen y actualiza el servicio `sistematiquetesequitel` (us-west1). No usa buildpacks.
    - La última construcción (21-oct, commit `8869b09`, la que está sirviendo) usó `FROM node:20-alpine` y `npm install -g serve@14.2.6`: **producción tiene hoy Node 20 y compression 1.8.1**. El próximo push lo corrige.
-3. **Node 24.22.1 en el PC Linux y en el Mac** (David). Se instala desde nodejs.org o con el gestor que use cada equipo. Este informe no cambió el Node del sistema: las pruebas usaron una copia aparte.
-4. **Python del PC a 3.14.9** con las actualizaciones del sistema operativo (David). El proyecto no lo usa en producción.
+3. **Node 24.22.1 en el PC Linux y en el Mac** (David). PC: hecho el 22-oct (en `~/.local`). Mac: pendiente, con los pasos de
+   [MIGRACION.md §0](../MIGRACION.md), que también deja un recordatorio para todos los proyectos de ese equipo.
+4. ~~Python del PC a 3.14.9~~ **Resuelto:** Ubuntu ya trae el arreglo de HTMLParser en `3.14.4-1ubuntu0.2`
+   (`apt-get changelog python3.14`). Quedan 26 paquetes del sistema por actualizar (`sudo apt update && sudo apt upgrade`).
 5. **Permisos del proyecto principal de Apps Script** (David). En el editor: *Configuración del proyecto* → *Mostrar el archivo de manifiesto «appsscript.json»*. Confirmar que no tenga `script.external_request` (#A62) ni librerías que nadie reconozca.
 6. **markdown-it 14.3.3 fija como dependencia de desarrollo** desde el 30-oct, cuando cumpla dos semanas publicada. Lo hace Claude en una próxima sesión.
 
