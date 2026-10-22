@@ -18,11 +18,11 @@ export enum RequestStatus {
   PROCESSED = 'PROCESADO',
   CANCELLED = 'ANULADO',
   // #A100: fuera de la política de anticipación; espera la aprobación del CFO.
-  // El área de viajes no la ve (el servidor la filtra) ni corren sus tiempos.
+  // El área de compras no la ve (el servidor la filtra) ni corren sus tiempos.
   PENDING_POLICY_APPROVAL = 'PENDIENTE_APROBACION_POLITICA'
 }
 
-/** #A100: solicitud (o viaje multidestino) en espera del CFO, para el panel del área de viajes (solo lectura). */
+/** #A100: solicitud (o viaje multidestino) en espera del CFO, para el panel del área de compras (solo lectura). */
 export interface PolicyHeldItem {
   id: string;
   ids: string[];
@@ -435,7 +435,7 @@ export interface ChangeControlItem {
   original: number;
   originalSource: string;
   parentStatus: string;
-  /** Costo del cambio confirmado por el área de viajes; null si aún no se confirma. */
+  /** Costo del cambio confirmado por el área de compras; null si aún no se confirma. */
   changeCost: number | null;
   penalty: number | '';
   invoiced: number | null;
@@ -703,7 +703,7 @@ export interface InvoiceReviewItem {
 export interface InvoiceReview {
   /** Viaje terminado hace graceDays o más y facturado menor que lo cotizado (sin aviso omitido). */
   alerts: InvoiceReviewItem[];
-  /** Listas para cerrar: viaje terminado, facturas que suman lo cotizado y sus PDF. El área de viajes las cierra; no se cierran solas. */
+  /** Listas para cerrar: viaje terminado, facturas que suman lo cotizado y sus PDF. El área de compras las cierra; no se cierran solas. */
   pendingClose: InvoiceReviewItem[];
   dismissedCount: number;
   waitingCount: number;

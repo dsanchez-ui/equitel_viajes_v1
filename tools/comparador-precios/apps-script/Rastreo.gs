@@ -81,7 +81,7 @@ var RP_ENCABEZADOS = [
 // equipaje de la tarifa del viaje (manual COM-P-02). TIPO 1 (Basic) sin maleta; TIPO 2
 // y 3 con una maleta de mano por pasajero (parámetro bags de Google Flights): en
 // Avianca ese precio es el de la Classic, que también trae bodega. La tarifa es la
-// registrada por el área de viajes (TIPO DE COMPRA DE TKT) o, si falta, la recomendada
+// registrada por el área de compras (TIPO DE COMPRA DE TKT) o, si falta, la recomendada
 // (TARIFA RECOMENDADA). Sin ninguna, se busca sin maleta como antes. Una búsqueda hecha
 // con otro equipaje se repite una vez si la solicitud sigue en su momento.
 // Se guardan como texto: Sheets convertiría '2026-10-20' o '07:00' en fecha u hora.
@@ -275,7 +275,7 @@ function rpCandidatos_(valores, hechas, cfg, ahoraMs) {
       aerolinea: String(celda(fila, 'AEROLINEA') || '').trim(),
       aerolineaRegreso: String(celda(fila, 'AEROLINEA REGRESO') || '').trim(),
       canal: String(celda(fila, 'CANAL DE COMPRA') || '').trim(),
-      // La registrada por el área de viajes; si falta, la recomendada; si tampoco, la que
+      // La registrada por el área de compras; si falta, la recomendada; si tampoco, la que
       // corresponde por las noches del viaje (#A97), como la compara el dashboard.
       tarifa: rpTarifa_(celda(fila, 'TIPO DE COMPRA DE TKT')) || rpTarifa_(celda(fila, 'TARIFA RECOMENDADA')) ||
         rpTarifaPorNoches_(ida, rpFecha_(celda(fila, 'FECHA VUELTA')), celda(fila, '# NOCHES (AUTOMÁTICO)'))

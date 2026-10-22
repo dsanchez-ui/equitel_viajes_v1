@@ -16,7 +16,7 @@
 
 ## 1. La pregunta que responde
 
-**Si el área de viajes comprara lo que recomienda el comparador, ¿cuánto se habría
+**Si el área de compras comprara lo que recomienda el comparador, ¿cuánto se habría
 ahorrado en un mes cualquiera?**
 
 Hacen falta tres piezas, y la sección las muestra en este orden:

@@ -11,7 +11,7 @@
 
 Plataforma web de gestión de viajes corporativos de la Organización Equitel
 (Colombia). Los empleados solicitan viajes, sus jefes aprueban por correo, y el
-equipo de viajes (analista) gestiona opciones de vuelo/hotel, costos y reservas.
+equipo de compras (analista) gestiona opciones de vuelo/hotel, costos y reservas.
 **Está en producción y en uso diario real.** Cualquier cambio afecta a gente que
 está viajando.
 
@@ -39,7 +39,7 @@ archivos; Gmail para notificaciones.
    español.** Los commits van a nombre de David (el `git config` del repo es el correcto).
 6. **Sugerir y que una persona confirme.** Cuando algo cambiaría estados en producción
    (cerrar, aprobar, anular), David prefiere que el sistema lo muestre en una bandeja o aviso y
-   que el área de viajes lo confirme con el flujo de siempre (#A83: *"es más seguro"*). Si de
+   que el área de compras lo confirme con el flujo de siempre (#A83: *"es más seguro"*). Si de
    verdad conviene automatizar, preguntar antes de construirlo.
 
 ## Cómo se corre en local
@@ -115,10 +115,15 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
 
 ### Roles (`UserRole`)
 
-`REQUESTER` · `ANALYST` (equipo de viajes / admin) · `APPROVER` · `SUPERADMIN`
+`REQUESTER` · `ANALYST` (equipo de compras / admin) · `APPROVER` · `SUPERADMIN`
 (puede saltar etapas y revertir a selección).
 
 ## Decisiones de negocio vigentes (no se deducen del código)
+
+- **No existe un «área de viajes»** (#A107, David, 22-oct): Laura es del **área de compras**. En pantallas, correos, dashboard,
+  sidebar, panel móvil y guías se dice «área de compras» (o el nombre de la persona), nunca «área de viajes» ni «equipo de viajes».
+  «Gestión de Viajes» / «Sistema Viajes Equitel» es el nombre de la plataforma y se queda. Las entradas viejas de BUG_REPORT
+  conservan el nombre de su momento.
 
 - **Las opciones de vuelo/hotel son imágenes, no datos estructurados.** Es una
   decisión de seguridad deliberada: obliga al solicitante a describir su selección
@@ -254,7 +259,7 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   solo; si elige una sin bodega, se le avisa. Las reglas del manual y lo que la plataforma no cubre: [docs/manual-com-p-02.md](docs/manual-com-p-02.md).
 - **Facturas listas para cerrar y por revisar** (#A83, acordado con Laura el 2026-10-01, reglas
   de David del 2026-10-02). **Ninguna solicitud se cierra sola** (David: *"es más seguro"*): el
-  panel del analista las muestra y el área de viajes las cierra con el cierre manual de siempre.
+  panel del analista las muestra y el área de compras las cierra con el cierre manual de siempre.
   No volver a un disparador que cierre.
   - **Listas para cerrar:** `RESERVADO`, **solo con el viaje terminado** (PROCESADO ya no se
     puede modificar), lo facturado **igual o mayor** que lo cotizado y **al menos un PDF de
@@ -286,7 +291,7 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     el tiquete redondo, y manda el menor. Nunca volver a una sola búsqueda de ida y vuelta: Google
     da un precio junto (ida + el regreso más barato que combina) que no se encuentra igual en la
     página de la aerolínea. Tocar un viaje abre su detalle (`getPriceTrackingDetail`, mismas
-    personas): lo que registró el área de viajes y quién (`costConfirmedBy` en `EVENTOS_JSON`,
+    personas): lo que registró el área de compras y quién (`costConfirmedBy` en `EVENTOS_JSON`,
     desde #A86), las horas pedidas y todos los vuelos de cada tramo.
   - **Para comprar y para medir** (#A87, reunión del 7-oct con Juan Camilo): cada tramo trae el
     enlace a la misma búsqueda en Google Flights (`search_metadata.google_flights_url`, solo
@@ -361,11 +366,11 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   David, 14-oct). Quién aprueba = el responsable del presupuesto excedido (`budgetApproverEmail` / `budgetApproverName` del
   dashboard de costos; cambiarlo allí lo cambia para todo). Interruptor: `policyApprovalEnabled: false` en esa configuración.
   - **Anticipación** (8 días nacional, 30 internacional; vuelos **y** solo hospedaje): la solicitud nueva de un solicitante
-    queda en `PENDIENTE_APROBACION_POLITICA` con su justificación (obligatoria en el formulario). **El área de viajes no la ve**
+    queda en `PENDIENTE_APROBACION_POLITICA` con su justificación (obligatoria en el formulario). **El área de compras no la ve**
     (filtro en el servidor), no hay métricas, recordatorios ni dashboard hasta que se apruebe. El servidor recalcula la
     anticipación: nunca confiar en el `policyViolation` del navegador. Lo que crea un **administrador** (trazabilidad de un viaje
     ya comprado) no queda en espera, solo se marca. No aplica a solicitudes de cambio.
-  - El área de viajes las ve **solo** en el botón «En espera de preaprobación» de su panel (solo lectura, `getPolicyHeldRequests`),
+  - El área de compras las ve **solo** en el botón «En espera de preaprobación» de su panel (solo lectura, `getPolicyHeldRequests`),
     nunca en la lista principal. **Multidestino:** si cualquier tramo no cumple, espera todo el viaje (`GRUPO MULTIDESTINO`) y una
     decisión cubre todos los tramos.
   - El CFO recibe **un resumen cada 2 h solo en horario laboral** (`isWorkingHour`, como los demás resúmenes: nada los fines de
@@ -392,7 +397,7 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
 - **«Cambiar mi viaje»: cambios de viaje simplificados** (#A103; pedido de Yurani, reglas de David del 15-oct, prototipo aprobado
   por Yurani el 19-oct). Botón grande 😕 en el panel del viajero; formulario corto (fechas, horas, destino, equipaje) y motivo.
   - **Plazo:** hasta las **5:00 p. m. del día hábil anterior al vuelo** (sábado 12:00 m.; domingos y festivos no cuentan); la fecha
-    nueva también debe dar tiempo; con el viaje en curso, **solo el regreso**. El área de viajes registra a nombre del viajero **sin
+    nueva también debe dar tiempo; con el viaje en curso, **solo el regreso**. El área de compras registra a nombre del viajero **sin
     plazo**. Gemelo `utils/changeWindow.ts` ↔ `_changeDeadline_` / `_tripChangeWindow_`.
   - El navegador manda solo lo que cambia (`requestTripChange`); el servidor arma la hija con `requestModification`. La hija lleva
     `CAMBIO PEDIDO (JSON)`, que **solo escribe el servidor** (nunca confiar en un `tripChange` del cliente).
@@ -407,12 +412,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     WhatsApp». Si le escriben o llaman a Laura dentro del plazo, ella le pide que lo haga por la plataforma (la ventana se lo recuerda);
     lo registra a su nombre solo si ya pasó el plazo y es urgente. **Los teléfonos salen solo cuando ya no se puede pedir el cambio**, en
     orden: la tabla `CONTACTO CAMBIOS` de MISC (correo, nombre y cargo; **menú 16**) y el celular de la columna `Celular` de USUARIOS.
-    Hoy: Laura Molina (área de viajes) y, si no responde, Diego Caballero (director de compras). Si alguien cambia de rol, se cambia la
-    fila; sin tabla, el correo del área de viajes.
+    Hoy: Laura Molina (área de compras) y, si no responde, Diego Caballero (director de compras). Si alguien cambia de rol, se cambia la
+    fila; sin tabla, el correo del área de compras.
 - **Comparador de precios: la cifra que se presenta** (#A104, auditoría del 19-oct). Por defecto el dashboard compara **solo viajes ya
   comprados** (RESERVADO o PROCESADO, con la búsqueda al comprar) y **solo comparaciones exactas**, contra **lo pagado** (#A102) o, si
   no se registró, lo cotizado; al lado, lo mismo **con la misma aerolínea**. Lo no comprado va aparte, nunca en el total; lo denegado o
-  anulado no se compara; lo no comprado se compara con los costos **vigentes** del área de viajes. «Exacta» exige además vuelo a
+  anulado no se compara; lo no comprado se compara con los costos **vigentes** del área de compras. «Exacta» exige además vuelo a
   ±2 h de la hora pedida y directo; **Rionegro y Olaya Herrera son el mismo destino** (David, 20-oct). La diferencia siempre es neta
   (nunca sumar solo los viajes a favor). Con la base del 19-oct: 5 viajes comprados, $1.009.757 (28,7 %); con la misma aerolínea,
   $89.384 (3,2 %). Todos los rastreados contra lo cotizado, tarifa con tarifa: TIPO 1 $1,35 M (30,5 %); TIPO 2 con maleta frente a
@@ -642,7 +647,7 @@ autorización) y verificar antes de crear una versión nueva del web app.
   después se publicó el frontend. Incluye #A102 (valor pagado; su frontend ya estaba desde el 14-oct), el ajuste de #A101
   (tarifa por mes de compra), el aviso de #A100 sin fecha de fin, #A103 «Cambiar mi viaje», #A104 y #A105.
 - **Fechas de compra cambiadas por correcciones (#A102):** SOL-000100, 107, 202, 230, 249, 270, 435, 465, 494, 495, 516,
-  526, 527, 545, 552 y 635. Si se quieren corregir, que el área de viajes confirme cada fecha y la corrija a mano.
+  526, 527, 545, 552 y 635. Si se quieren corregir, que el área de compras confirme cada fecha y la corrija a mano.
 - **Fechas que vienen (sin código):**
   - **21-oct:** termina el estudio de precios (#A84). Decidir si sigue (SerpApi gratis, 250 búsquedas al mes)
     y revisar la proyección con Yurani antes de mostrársela a Alejandro: sin 15 comparaciones exactas no da
@@ -677,9 +682,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A99, #A100 y #A101 desplegados el 14-oct-2026** (cifras del dashboard que se pueden presentar, aprobación del CFO
   por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
   hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
-- **#A106 (primero la plataforma; teléfonos de Laura y Diego después del plazo): construido el 22-oct, pendiente de desplegar.**
-  Pasos de David: actualizar el celular de Diego en USUARIOS a 323 295 8507 (en la copia del 19-oct tiene 310 245 1569) → pegar `Code.gs`
-  → **menú 16** (crea la tabla en MISC y muestra el mensaje) → versión nueva del web app → push del frontend.
+- **#A106 (primero la plataforma; teléfonos de Laura y Diego después del plazo) y #A107 («área de compras» en vez de «área de viajes»):
+  construidos el 22-oct, pendientes de desplegar.** Pasos de David: actualizar el celular de Diego en USUARIOS a 323 295 8507 (en la copia
+  del 19-oct tiene 310 245 1569) → pegar `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y `AdminMobile.html` → **menú 16** (crea la
+  tabla en MISC y muestra el mensaje) → versión nueva del web app → push del frontend. `Rastreo.gs` solo cambió en comentarios.
 - **#A103 «Cambiar mi viaje», #A104 y #A105: desplegados el 21-oct.** Después del despliegue:
   - **Prueba en producción** con PRUEBA1. Su aprobador (PRUEBA2) tiene un correo que no es de David: cambiarlo antes por
     `dsanchez+qa@equitel.com.co`. Avisarle a Laura, porque le llegan los correos del cambio.

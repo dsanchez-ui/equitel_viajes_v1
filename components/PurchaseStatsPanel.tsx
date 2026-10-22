@@ -269,7 +269,7 @@ export const PurchaseStatsPanel: React.FC = () => {
               ) : (
                 <>En este periodo comprar con 7 días o menos no salió más caro que con 8 días o más.</>
               )}
-              {' '}El equipo de viajes compra en promedio {num(t.avgDaysRequestToPurchase, 1)} días después de la solicitud (mediana {num(t.medianDaysRequestToPurchase)}):
+              {' '}El equipo de compras compra en promedio {num(t.avgDaysRequestToPurchase, 1)} días después de la solicitud (mediana {num(t.medianDaysRequestToPurchase)}):
               la anticipación se pierde antes de solicitar el viaje.
             </div>
           </Section>

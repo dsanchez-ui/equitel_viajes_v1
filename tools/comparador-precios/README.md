@@ -260,7 +260,7 @@ del proyecto (no se sube al repositorio):
 | `--solo-ida` | Quita el regreso | — |
 | `--hora-ida HH:MM` | Hora que pidió el viajero (busca el más barato ±2 h) | — |
 | `--pasajeros N` | Número de pasajeros (por defecto 1) | — |
-| `--cotizado N` | Lo que cotizó el área de viajes, para ver la diferencia | — |
+| `--cotizado N` | Lo que cotizó el área de compras, para ver la diferencia | — |
 | `--vendedores` | Quién vende la opción más barata (la aerolínea, Aviatur u otras agencias) y a qué precio | +1 en solo ida, +2 en ida y regreso |
 | `--profunda` | Búsqueda completa de Google, más lenta y más fiel | igual |
 | `--lote archivo.csv` | Varios viajes desde un CSV con `id,origen,destino,ida,regreso,pasajeros,hora_ida,cotizado` | 1 por viaje |

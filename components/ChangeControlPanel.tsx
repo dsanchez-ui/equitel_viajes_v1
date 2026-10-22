@@ -68,7 +68,7 @@ export const ChangeControlPanel: React.FC = () => {
       'Costo del viaje original', 'Origen del costo original', 'Costo del cambio', 'Penalidad y cargos', 'El cambio suma (%)', 'Facturado del cambio', 'Maleta pedida después de comprar', 'Motivo'];
     const lines = [head].concat(rows.map(x => [
       x.id, x.parentId, STATUS_LABEL[x.status] || x.status, x.comprado ? 'SI' : 'NO', x.tipos.join(', '), x.month, x.unit, x.company,
-      x.requesterName || x.requesterEmail, x.registeredBy === 'administrador' ? 'Área de viajes' : 'Viajero',
+      x.requesterName || x.requesterEmail, x.registeredBy === 'administrador' ? 'Área de compras' : 'Viajero',
       String(x.original), x.originalSource, x.changeCost === null ? '' : String(x.changeCost), typeof x.penalty === 'number' ? String(x.penalty) : '',
       x.comprado && x.changeCost !== null && x.original > 0 ? String(Math.round((100 * x.changeCost) / x.original)) : '',
       x.invoiced === null ? '' : String(x.invoiced), x.bagLater ? 'SI' : 'NO', x.reason
@@ -124,7 +124,7 @@ export const ChangeControlPanel: React.FC = () => {
 
       <details className="text-xs text-gray-600">
         <summary className="cursor-pointer font-semibold">¿Cómo se calcula?</summary>
-        <p className="mt-1">«Costo del cambio» es lo que confirmó el área de viajes para el cambio de un tiquete ya comprado: penalidad y cargos, más la diferencia de tarifa, más el hotel. Solo cuentan los cambios con costo confirmado que no se denegaron ni se anularon. «Suma» es ese costo sobre lo que costó el viaje original (lo pagado si se registró; si no, lo cotizado). Los cambios de un tiquete sin comprar no tienen penalidad: se cotizan como un viaje nuevo.</p>
+        <p className="mt-1">«Costo del cambio» es lo que confirmó el área de compras para el cambio de un tiquete ya comprado: penalidad y cargos, más la diferencia de tarifa, más el hotel. Solo cuentan los cambios con costo confirmado que no se denegaron ni se anularon. «Suma» es ese costo sobre lo que costó el viaje original (lo pagado si se registró; si no, lo cotizado). Los cambios de un tiquete sin comprar no tienen penalidad: se cotizan como un viaje nuevo.</p>
       </details>
 
       {data.legacy > 0 && (
@@ -161,7 +161,7 @@ export const ChangeControlPanel: React.FC = () => {
                   <td className="py-1.5 pr-2 text-right tabular-nums whitespace-nowrap">{typeof x.penalty === 'number' ? money(x.penalty) : '—'}</td>
                   <td className="py-1.5 pr-2 text-right tabular-nums">{x.comprado && x.changeCost !== null && x.original > 0 ? Math.round((100 * x.changeCost) / x.original) + ' %' : '—'}</td>
                   <td className="py-1.5 pr-2">{x.unit || '—'}</td>
-                  <td className="py-1.5">{x.requesterName || x.requesterEmail}<span className="block text-gray-400">{x.registeredBy === 'administrador' ? 'Lo registró el área de viajes' : 'Lo pidió en la plataforma'}</span></td>
+                  <td className="py-1.5">{x.requesterName || x.requesterEmail}<span className="block text-gray-400">{x.registeredBy === 'administrador' ? 'Lo registró el área de compras' : 'Lo pidió en la plataforma'}</span></td>
                 </tr>
               ))}
             </tbody>

@@ -619,7 +619,7 @@ function homePage(ctx, ss, trips) {
     const dep = ctx._psDateKey_(r[H('FECHA IDA')]), ret = ctx._psDateKey_(r[H('FECHA VUELTA')]);
     const w = ctx._tripChangeWindow_(dep, ret, now, false);
     const win = w.open ? (w.mode === 'return' ? 'Solo el regreso, ' : 'Todo, ') + 'hasta el ' + ctx._changeDeadlineText_(w.deadlineKey, w.deadlineHour)
-      : w.reason === 'ended' ? 'El viaje terminó' : 'Venció el plazo (' + (w.deadlineKey ? ctx._changeDeadlineText_(w.deadlineKey, w.deadlineHour) : '—') + '): solo el área de viajes';
+      : w.reason === 'ended' ? 'El viaje terminó' : 'Venció el plazo (' + (w.deadlineKey ? ctx._changeDeadlineText_(w.deadlineKey, w.deadlineHour) : '—') + '): solo el área de compras';
     const replaced = H('REEMPLAZADA POR') >= 0 ? r[H('REEMPLAZADA POR')] : '';
     return '<tr><td><b>' + esc(id) + '</b></td><td>' + esc(what) + '</td><td>' + esc(r[H('STATUS')]) + (replaced ? '<br><span class="muted">Cambiada por ' + esc(replaced) + '</span>' : '') +
       '</td><td>' + esc(String(r[H('CIUDAD ORIGEN')] || '').split(',')[0]) + ' → ' + esc(String(r[H('CIUDAD DESTINO')] || '').split(',')[0]) + '<br><span class="muted">' + esc(dep) + (ret ? ' a ' + esc(ret) : '') +
@@ -635,13 +635,13 @@ function homePage(ctx, ss, trips) {
     '<table><tr><th>Quién</th><th>Correo</th><th>Cómo entra</th></tr>' +
     '<tr><td>Viajero de prueba (PRUEBA1)</td><td><code>' + TEST_TRAVELER + '</code></td><td>Correo y PIN (solicitante)</td></tr>' +
     '<tr><td>Su aprobador (PRUEBA2)</td><td><code>' + TEST_APPROVER + '</code></td><td>Aprueba desde el correo en la bandeja</td></tr>' +
-    '<tr><td>Área de viajes (Laura)</td><td><code>' + LAURA + '</code></td><td>Botón ADMINISTRADOR, PIN de administrador</td></tr>' +
+    '<tr><td>Área de compras (Laura)</td><td><code>' + LAURA + '</code></td><td>Botón ADMINISTRADOR, PIN de administrador</td></tr>' +
     '<tr><td>David</td><td><code>' + DAVID + '</code></td><td>Botón ADMINISTRADOR; en el dashboard de costos ve el comparador</td></tr></table>' +
     '<h2>Viajes de PRUEBA1 para probar «Cambiar mi viaje»</h2><table><tr><th>Solicitud</th><th>Para qué sirve</th><th>Estado</th><th>Viaje</th><th>¿Qué puede cambiar hoy el viajero?</th></tr>' + rows + '</table>' +
     '<p class="muted">Todas las demás solicitudes son las de producción (copia del ' + esc(BASE_LABEL) + '). También se pueden usar, sin miedo: nada se guarda en la hoja real.</p>' +
     '<h2>Recorrido sugerido</h2><ol>' +
     '<li>Entre a la app como <b>PRUEBA1</b>. Arriba verá el aviso del sistema nuevo de cambios. Abra el viaje comprado que sale en 10 días y toque <b>😕 Cambiar mi viaje</b>: cambie la hora, la fecha o agregue maleta, escriba el motivo y envíe.</li>' +
-    '<li>En la <a href="' + API + '/correos" target="_blank">bandeja</a> verá el aviso al área de viajes. Entre como <b>Laura</b> (ADMINISTRADOR): en la solicitud de cambio toque <b>ACEPTAR Y COTIZAR</b> (verá lo ya comprado y el mensaje para la agencia), cargue opciones o salte la selección, y en <b>Confirmar costos</b> escriba la penalidad y la diferencia de tarifa.</li>' +
+    '<li>En la <a href="' + API + '/correos" target="_blank">bandeja</a> verá el aviso al área de compras. Entre como <b>Laura</b> (ADMINISTRADOR): en la solicitud de cambio toque <b>ACEPTAR Y COTIZAR</b> (verá lo ya comprado y el mensaje para la agencia), cargue opciones o salte la selección, y en <b>Confirmar costos</b> escriba la penalidad y la diferencia de tarifa.</li>' +
     '<li>En la bandeja abra el correo <b>APROBACIÓN DE CAMBIO</b> para PRUEBA2: muestra lo que costó el viaje, el costo del cambio y el viaje con el cambio. Apruebe desde el botón del correo.</li>' +
     '<li>Como Laura, <b>registre la reserva</b> del cambio (cualquier PDF). La solicitud original queda «Cambiada» (no se anula) y el viajero ve el viaje vigente.</li>' +
     '<li>Revise el control: <b>Métricas → 🔄 Cambios</b> en la app, la sección <b>Cambios de viaje</b> del dashboard de costos y, como David, el <b>comparador de precios</b> con la cifra corregida.</li>' +

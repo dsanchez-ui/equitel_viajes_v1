@@ -407,7 +407,7 @@ function main() {
   eq('sin maleta no se manda el parámetro', t.log.search.filter((p) => !p.bags).length, 2);
   t.ctx.rastrearPrecios();
   eq('segunda pasada: nada nuevo', rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).length, 4);
-  // El área de viajes registra que SOL-51 se compra en TIPO 2: se busca otra vez, ahora con maleta, y solo una vez.
+  // El área de compras registra que SOL-51 se compra en TIPO 2: se busca otra vez, ahora con maleta, y solo una vez.
   t.base.data.find((r) => r[0] === 'SOL-51')[HF.indexOf('TIPO DE COMPRA DE TKT')] = 'TIPO 2';
   t.ctx.rastrearPrecios();
   t.ctx.rastrearPrecios();
@@ -547,7 +547,7 @@ function main() {
   const det = (email, id) => p.dispatch('getPriceTrackingDetail', { userEmail: email, sessionToken: 'x', requestId: id });
   eq('detalle: Laura no lo ve', det('compras.equitel@equitel.com.co', 'SOL-1').error, 'El comparador de precios está restringido a Yurani Prieto, Diego Caballero y David Sánchez.');
   const dd = det('dsanchez@equitel.com.co', 'SOL-1');
-  eq('detalle: lo que registró el área de viajes y lo que pidió el viajero', dd.success && [dd.data.request.quoted, dd.data.request.airline, dd.data.request.channel, dd.data.request.passengers,
+  eq('detalle: lo que registró el área de compras y lo que pidió el viajero', dd.success && [dd.data.request.quoted, dd.data.request.airline, dd.data.request.channel, dd.data.request.passengers,
     dd.data.request.departure, dd.data.request.departureTime, dd.data.request.returnDate, dd.data.request.returnTime, dd.data.request.costConfirmedBy],
     [400000, 'LATAM', 'Aviatur', 1, plus(14), '07:00', plus(16), '06:00', { email: 'compras.equitel@equitel.com.co', name: 'Laura de Prueba' }]);
   const dl = dd.data.searches.COMPRA.legs;

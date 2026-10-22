@@ -34,7 +34,7 @@ const BLOCKED: Record<string, string> = {
   ANULADO: 'Está anulada.',
   DENEGADO: 'Fue denegada.',
   PROCESADO: 'Ya está cerrada.',
-  PENDIENTE_ANALISIS_CAMBIO: 'Es una solicitud de cambio que el área de viajes aún no revisa.',
+  PENDIENTE_ANALISIS_CAMBIO: 'Es una solicitud de cambio que el área de compras aún no revisa.',
   PENDIENTE_APROBACION_POLITICA: 'Todavía espera la aprobación por la política de anticipación.'
 };
 
@@ -93,7 +93,7 @@ export const tripChangeEligibility = (r: TravelRequest, all: TravelRequest[], no
   if (BLOCKED[r.status]) return { ok: false, win: null, why: BLOCKED[r.status], hidden: false };
   if (r.replacedBy) return { ok: false, win: null, why: `Ya se cambió: el viaje vigente es ${r.replacedBy}.`, hidden: true };
   const live = all.find(x => x.relatedRequestId === r.requestId && x.requestId !== r.requestId && !TERMINAL.includes(x.status));
-  if (live) return { ok: false, win: null, why: `Ya tiene un cambio en curso (${live.requestId}). El área de viajes lo está gestionando.`, hidden: false };
+  if (live) return { ok: false, win: null, why: `Ya tiene un cambio en curso (${live.requestId}). El área de compras lo está gestionando.`, hidden: false };
   const win = tripChangeWindow(toDateKey(r.departureDate), toDateKey(r.returnDate), nowMs, isAdmin);
   if (!win.open) {
     if (win.reason === 'ended') return { ok: false, win, why: 'El viaje ya terminó.', hidden: true };
@@ -171,7 +171,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   }, [requests, isAdmin]);
 
   const elig = req ? tripChangeEligibility(req, requests, nowMs, isAdmin) : null;
-  // #A106: el plazo del viajero, para que el área de viajes sepa si todavía puede pedirlo él mismo.
+  // #A106: el plazo del viajero, para que el área de compras sepa si todavía puede pedirlo él mismo.
   const travelerWin = req && isAdmin ? tripChangeWindow(toDateKey(req.departureDate), toDateKey(req.returnDate), nowMs, false) : null;
   const mode = elig?.win?.mode || 'full';
   const hotelOnly = req?.requestMode === 'HOTEL_ONLY';
@@ -234,8 +234,8 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
     if (nb !== na) derived.push(<li key="n"><strong>Noches:</strong> {nb} → {na}</li>);
     if (!hotelOnly) {
       const fb = fareOptionForNights(nb), fa = fareOptionForNights(na);
-      if (fa !== fb) derived.push(<li key="f"><strong>Tarifa del manual:</strong> {fareLabel(fb, req.purchaseAirline) || `TIPO ${fb}`} → {fareLabel(fa, req.purchaseAirline) || `TIPO ${fa}`}. La elige el área de viajes.</li>);
-      if (form.t.equipaje && form.bag && !base.bag) derived.push(<li key="b"><strong>Con maleta de bodega</strong> el área de viajes elige una tarifa que la incluya.</li>);
+      if (fa !== fb) derived.push(<li key="f"><strong>Tarifa del manual:</strong> {fareLabel(fb, req.purchaseAirline) || `TIPO ${fb}`} → {fareLabel(fa, req.purchaseAirline) || `TIPO ${fa}`}. La elige el área de compras.</li>);
+      if (form.t.equipaje && form.bag && !base.bag) derived.push(<li key="b"><strong>Con maleta de bodega</strong> el área de compras elige una tarifa que la incluya.</li>);
     }
     if (req.requiresHotel && !hotelOnly && (nb !== na || (form.t.destino && form.dest !== base.dest))) {
       derived.push(<li key="h"><strong>Hotel:</strong> {form.t.destino && form.dest && form.dest !== base.dest ? `en ${form.dest}, ` : ''}{na} {na === 1 ? 'noche' : 'noches'}, ajustado a las fechas nuevas.</li>);
@@ -310,7 +310,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
             <>
               {!isAdmin && (
                 <p className="text-xs text-gray-600" data-change-platform-first>
-                  Todo cambio se pide aquí: así queda registrado y su jefe lo aprueba. Si escribe o llama, el área de viajes le pedirá que lo haga por aquí.
+                  Todo cambio se pide aquí: así queda registrado y su jefe lo aprueba. Si escribe o llama, el área de compras le pedirá que lo haga por aquí.
                   Llamar es solo para cuando ya pasó el plazo y es urgente.
                 </p>
               )}
@@ -385,7 +385,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                 </div>
               ) : (
                 <div className="bg-blue-50 border-l-4 border-blue-400 rounded-md p-3 text-blue-950">
-                  <strong>El tiquete aún no se ha comprado.</strong> El área de viajes cotiza de nuevo con los cambios. No hay penalidad.
+                  <strong>El tiquete aún no se ha comprado.</strong> El área de compras cotiza de nuevo con los cambios. No hay penalidad.
                 </div>
               )}
               {mode === 'return' && (
@@ -468,7 +468,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   <legend className="text-xs font-bold text-gray-700 px-1">Equipaje</legend>
                   <label className="flex items-start gap-2 cursor-pointer">
                     <input type="checkbox" data-change-field="bag" className="mt-1 accent-red-700" checked={form.bag} onChange={e => setF({ bag: e.target.checked })} />
-                    <span>Necesito maleta de bodega<br /><span className="text-xs text-gray-500">Su viaje va {base.bag ? 'con' : 'sin'} maleta de bodega. La tarifa la elige el área de viajes según el manual; si pide maleta, elige una que la incluya.</span></span>
+                    <span>Necesito maleta de bodega<br /><span className="text-xs text-gray-500">Su viaje va {base.bag ? 'con' : 'sin'} maleta de bodega. La tarifa la elige el área de compras según el manual; si pide maleta, elige una que la incluya.</span></span>
                   </label>
                 </fieldset>
               )}
@@ -535,7 +535,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
               <div>
                 <p className="font-bold text-gray-800">Qué sigue</p>
                 <ol className="list-decimal pl-5 space-y-0.5">
-                  <li>El área de viajes revisa su cambio{created.comprado ? ' y se lo pide a la agencia' : ''}.</li>
+                  <li>El área de compras revisa su cambio{created.comprado ? ' y se lo pide a la agencia' : ''}.</li>
                   <li>Le llegan por correo las opciones {created.comprado ? 'del cambio' : 'nuevas'} y usted describe cuál elige, como siempre.</li>
                   <li>Su aprobador aprueba {created.comprado ? 'el costo del cambio' : 'el viaje'}.</li>
                   <li>Recibe {created.comprado ? 'el tiquete nuevo' : 'los tiquetes'} por correo.</li>

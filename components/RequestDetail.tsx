@@ -646,7 +646,7 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                         <strong className="block mb-1">⏳ En espera de aprobación</strong>
                                         Esta solicitud se pidió con menos anticipación de la que pide la política de viajes
                                         ({request.isInternational ? 30 : 8} días para viajes {request.isInternational ? 'internacionales' : 'nacionales'}).
-                                        Antes de que el área de viajes la gestione, debe aprobarla <strong>{request.policyApproverName || 'el CFO'}</strong>.
+                                        Antes de que el área de compras la gestione, debe aprobarla <strong>{request.policyApproverName || 'el CFO'}</strong>.
                                         Si la aprueba, le llegará un correo y sigue el proceso normal; si no la aprueba, o nadie responde en 7 días o antes de la fecha del viaje, queda denegada.
                                         {request.policyJustification && (
                                             <div className="mt-2 text-xs italic text-amber-800">Su justificación: "{request.policyJustification}"</div>
@@ -675,7 +675,7 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                     <div className="bg-blue-50 border border-blue-200 text-blue-800 px-4 py-3 rounded-md text-sm">
                                         <strong>ℹ️ Solicitante prioritario:</strong>{' '}
                                         {request.status === 'PENDIENTE_SELECCION'
-                                            ? `Es posible que esta solicitud ya haya sido gestionada por el área de viajes fuera del sistema. Si ya recibió los ${request.requestMode === 'HOTEL_ONLY' ? 'datos del hotel' : 'tiquetes'}, puede desestimar la selección. De lo contrario, proceda normalmente.`
+                                            ? `Es posible que esta solicitud ya haya sido gestionada por el área de compras fuera del sistema. Si ya recibió los ${request.requestMode === 'HOTEL_ONLY' ? 'datos del hotel' : 'tiquetes'}, puede desestimar la selección. De lo contrario, proceda normalmente.`
                                             : 'Esta aprobación quedará registrada para trazabilidad. Si la compra ya se tramitó fuera del sistema, su aprobación confirma el proceso a posteriori.'}
                                     </div>
                                 )}

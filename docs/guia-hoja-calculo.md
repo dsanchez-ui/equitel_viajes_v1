@@ -1,6 +1,6 @@
 # Guía del Google Sheets — Portal de Viajes Equitel
 
-> **Para quién es esta guía:** cualquier persona del área de viajes que vaya a manejar el Google Sheets que está detrás del portal.
+> **Para quién es esta guía:** cualquier persona del área de compras que vaya a manejar el Google Sheets que está detrás del portal.
 >
 > **En qué se enfoca:** solo en la hoja de cálculo. Qué tiene, qué se puede tocar y qué no, y cómo usar el menú **Equitel Viajes** que aparece arriba del sheet.
 >
@@ -102,13 +102,13 @@ Dos columnas normales con los encabezados `DASHBOARD COSTOS · CORREO` y `DASHBO
 
 #### Contactos para cambios de viaje (#A106)
 
-Tres columnas con los encabezados `CONTACTO CAMBIOS · CORREO`, `CONTACTO CAMBIOS · NOMBRE` y `CONTACTO CAMBIOS · CARGO` en la **fila 1**. Las crea **Equitel Viajes → 16. Contactos para cambios de viaje**, al final de MISC y dejando una columna libre, con Laura Molina (área de viajes) y Diego Caballero (director de compras) debajo.
+Tres columnas con los encabezados `CONTACTO CAMBIOS · CORREO`, `CONTACTO CAMBIOS · NOMBRE` y `CONTACTO CAMBIOS · CARGO` en la **fila 1**. Las crea **Equitel Viajes → 16. Contactos para cambios de viaje**, al final de MISC y dejando una columna libre, con Laura Molina (área de compras) y Diego Caballero (director de compras) debajo.
 
 - **Una fila por persona, en el orden en que se llama:** la primera y, si no responde, la siguiente. Se muestran máximo 3.
 - **El nombre y el cargo** son los que ve el viajero. **El correo** es con el que la persona está en USUARIOS: de ahí se toma su celular (columna *Celular*). Si alguien no tiene celular válido, se muestra su correo.
 - **Solo se muestra cuando ya no se puede pedir el cambio en el portal** (pasó el plazo) y es urgente. Antes, el portal pide que todo se haga por la plataforma.
 - **Si alguien cambia de rol**, se cambia su fila. Si cambia el celular, se corrige en USUARIOS (sidebar o panel móvil). La app lo muestra en unos 10 minutos, o de inmediato al volver a correr el menú 16.
-- Sin la tabla, el portal muestra el correo del área de viajes, como antes.
+- Sin la tabla, el portal muestra el correo del área de compras, como antes.
 
 ### REGLAS_COAPROBADOR
 
@@ -368,19 +368,19 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 - `AEROLINEA` y `CANAL DE COMPRA` (#A82): con qué aerolínea y por qué canal (*Aviatur*, *Directo* u *Otra agencia*) se compró. Las llenan "Confirmar costos" y "Registrar reserva".
 - `AEROLINEA REGRESO` (#A85, 7-oct-2026): la aerolínea del regreso **solo si es distinta** de la de ida (por ejemplo, `AEROLINEA` = LATAM y `AEROLINEA REGRESO` = Avianca). Vacía = la misma aerolínea o viaje solo de ida.
 - `AVISO FACTURAS OMITIDO` (#A83): quién omitió el aviso de facturas incompletas y cuándo. Borrar la celda vuelve a mostrar el aviso en el panel.
-- `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94, 8-oct-2026): el hotel que reservó el área de viajes (en mayúsculas y sin tildes) y su canal (*Aviatur*, *Directo* u *Otra agencia*). *No se reservó* = al final no hubo hotel. `NOMBRE HOTEL` sigue siendo el que pidió el viajero. Las llena "Registrar reserva".
+- `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94, 8-oct-2026): el hotel que reservó el área de compras (en mayúsculas y sin tildes) y su canal (*Aviatur*, *Directo* u *Otra agencia*). *No se reservó* = al final no hubo hotel. `NOMBRE HOTEL` sigue siendo el que pidió el viajero. Las llena "Registrar reserva".
 
 - `TARIFA RECOMENDADA`, `TARIFA NOMBRE` y `TARIFA JUSTIFICACION` (#A95, 8-oct-2026): la tarifa que recomienda el manual COM-P-02 por las noches del viaje (`TIPO 1`, `TIPO 2` o `TIPO 3`, la calcula el sistema), su nombre en la aerolínea (por ejemplo, *Classic*) y, si se compró otra, el motivo. La tarifa comprada sigue en `TIPO DE COMPRA DE TKT`, que ahora llenan "Confirmar costos" y "Registrar reserva". Ver [manual-com-p-02.md](manual-com-p-02.md).
-- `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, 14-oct-2026): lo que se pagó al comprar, en pesos. Opcionales: los llena "Registrar reserva" (o "Corregir reserva") si el área de viajes los tiene. Vacías = no se registró. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado. No confundir con `VALOR PAGADO A AEROLINEA Y/O HOTEL`, que es el valor de la factura 1.
+- `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, 14-oct-2026): lo que se pagó al comprar, en pesos. Opcionales: los llena "Registrar reserva" (o "Corregir reserva") si el área de compras los tiene. Vacías = no se registró. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado. No confundir con `VALOR PAGADO A AEROLINEA Y/O HOTEL`, que es el valor de la factura 1.
 - `MALETA DE BODEGA` (#A95, 8-oct-2026): lo que marcó el viajero en el formulario (*¿Lleva maleta de bodega?*): `SI` o `NO`. Vacía = la solicitud es anterior y no se preguntó. Solo vuelos.
 - `JUSTIFICACION ANTICIPACION` (#A100, 14-oct-2026): por qué la solicitud se pidió con menos anticipación de la que pide la política (8 días nacional, 30 internacional). La escribe el solicitante; la lee el CFO antes de decidir.
 - `APROBACION CFO ANTICIPACION` (#A100): la decisión sobre esa solicitud: `Sí_correo_fecha` (aprobada), `No_correo_fecha` (rechazada) o `Vencida_sistema_fecha` (nadie la aprobó en 7 días o antes del viaje). Vacía = no la necesitó.
 - `REQUIERE APROB TARIFA` (#A100): `SI` cuando la tarifa confirmada es superior a la del manual; entonces la aprobación pide el voto del CFO (el mismo de `APROBADO PRESUPUESTO`). La marca el sistema al confirmar costos.
 - `GRUPO MULTIDESTINO` (#A100): llave que enlaza los tramos de un mismo viaje multidestino (`MD-…`). Si un tramo no cumple la anticipación, todos esperan la misma aprobación del CFO.
 - `CAMBIO PEDIDO (JSON)` (#A103): en una solicitud de cambio pedida con «Cambiar mi viaje», lo de antes y lo de ahora, si el tiquete ya estaba comprado, lo que costó el viaje original y la compra de la original. La escribe el sistema: **no editar**. Si está llena y dice `"comprado":true`, la solicitud lleva solo el costo del cambio.
-- `PENALIDAD CAMBIO` (#A103): de lo que costó un cambio, cuánto es penalidad y cargos (pesos). La escribe el área de viajes al confirmar el costo del cambio.
+- `PENALIDAD CAMBIO` (#A103): de lo que costó un cambio, cuánto es penalidad y cargos (pesos). La escribe el área de compras al confirmar el costo del cambio.
 - `REEMPLAZADA POR` (#A103): en la solicitud original, el ID del cambio que la reemplazó («Cambiada»). La original comprada no se anula: su tiquete se pagó y su costo sigue contando.
-- Estado `PENDIENTE_APROBACION_POLITICA` (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de viajes no la ve hasta que se apruebe.
+- Estado `PENDIENTE_APROBACION_POLITICA` (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de compras no la ve hasta que se apruebe.
 
 Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
 

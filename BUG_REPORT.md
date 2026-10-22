@@ -2843,23 +2843,23 @@ Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
 **Fecha:** 2026-10-22 · **Pedido por:** Yurani (22-oct, sobre las preguntas 6 y 8 de [docs/plan-cambios-de-viaje.md](docs/plan-cambios-de-viaje.md): *«la teoría es que cada usuario lo pida desde su perfil»*; *«colocar el teléfono de Lau y el de Diego por si no responde Lau»*) y David (*«que se incentive al usuario a utilizar la plataforma por sobre todas las cosas»*; que los roles y teléfonos se puedan cambiar sin tocar código). · **Estado:** Implementado; pendiente desplegar.
 
 **Problema:**
-- Después del plazo, la app solo mostraba el correo del área de viajes. Yurani pidió los celulares de Laura y, si no responde, de Diego.
+- Después del plazo, la app solo mostraba el correo del área de compras. Yurani pidió los celulares de Laura y, si no responde, de Diego.
 - El texto no insistía en que todo cambio se pide por la plataforma. El aviso de Laura decía «si un cambio le llega por correo, regístrelo», lo que invitaba a seguir pidiendo por fuera.
 
 **Solución:**
 - **Tabla en MISC** con `CONTACTO CAMBIOS · CORREO`, `· NOMBRE` y `· CARGO`, como la de accesos al dashboard (#A76): encabezados buscados por nombre en las filas 1 a 3, una fila por persona en el orden en que se llama, máximo 3.
   - **El celular sale de la columna `Celular` de USUARIOS** (#A74), para que se corrija en un solo lugar. Si alguien no tiene uno válido, se muestra su correo.
-  - **Menú 16. Contactos para cambios de viaje:** crea la tabla la primera vez con Laura Molina (área de viajes, `compras.equitel@…`) y Diego Caballero (director de compras, `directorcompras@…`), muestra el mensaje que ve el viajero y avisa qué falta (correo fuera de USUARIOS, sin celular, sin nombre o cargo, más de 3).
+  - **Menú 16. Contactos para cambios de viaje:** crea la tabla la primera vez con Laura Molina (área de compras, `compras.equitel@…`) y Diego Caballero (director de compras, `directorcompras@…`), muestra el mensaje que ve el viajero y avisa qué falta (correo fuera de USUARIOS, sin celular, sin nombre o cargo, más de 3).
   - **Caché** de 10 minutos en `CacheService` (no Script Properties), para no leer MISC y USUARIOS en cada inicio de sesión. El menú 16 la limpia.
-  - **Sin tabla, o si no se puede leer:** el correo del área de viajes, como antes.
+  - **Sin tabla, o si no se puede leer:** el correo del área de compras, como antes.
 - **Servidor:**
   - el bootstrap manda `tripChange.contacts` (nombre, cargo, celular, correo);
-  - el error de plazo vencido dice «Si es urgente, llame a Laura Molina (área de viajes), 313 325 1690; si no responde, a Diego Caballero (director de compras), …».
+  - el error de plazo vencido dice «Si es urgente, llame a Laura Molina (área de compras), 313 325 1690; si no responde, a Diego Caballero (director de compras), …».
 - **App, viajero:**
   - el aviso del panel y la explicación de la primera vez dicen que los cambios se piden ahí, «ya no por correo, teléfono ni WhatsApp», y que si escribe o llama le pedirán que lo haga por la plataforma;
   - arriba de la lista de viajes, una línea con lo mismo;
   - los teléfonos aparecen **solo cuando ya no se puede pedir el cambio** (un recuadro debajo de la lista y en el aviso «No se puede pedir este cambio»), en orden y se pueden tocar para llamar (`tel:`).
-- **App, área de viajes:**
+- **App, área de compras:**
   - el aviso del panel dice que, dentro del plazo, le pida al viajero que lo haga en la plataforma, y que registre el cambio solo si ya pasó el plazo y es urgente;
   - en «Solicitar Cambio», si el viajero todavía está en plazo, un recuadro amarillo lo dice y hasta cuándo. No bloquea: sugiere, y la persona decide.
 - **Los dos avisos del panel vuelven a salir una vez** con el texto nuevo (llaves `…_v2`).
@@ -2900,3 +2900,25 @@ Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
 En cualquier orden funciona; sin el paso 3, se sigue mostrando el correo.
 
 **Rollback:** frontend = revert; backend = versión anterior del web app. La tabla de MISC puede quedarse.
+
+---
+
+## **#A107 — No existe un «área de viajes»: es el área de compras**
+**Fecha:** 2026-10-22 · **Pedido por:** David (*«Laura no es del área de viajes… el área de viajes no existe… Laura es parte de compras y ella debe aparecer de esa manera»*). · **Estado:** Implementado; pendiente desplegar (va con #A106).
+
+**Problema:** la app, los correos, el dashboard de costos, el sidebar, el panel móvil y las guías decían «el área de viajes» (y a veces «equipo de viajes» o «Analista de viajes»): unas 340 veces. Ese equipo no existe; Laura es del área de compras.
+
+**Arreglo:**
+- **Texto que ve la gente:** se reemplazaron «área de viajes» → «área de compras», «equipo de viajes» → «equipo de compras» y «Analista de viajes» → «Analista de compras».
+  - **Dónde:** pantallas de la app; correos y mensajes de `Code.gs`; `CostsDashboard.html`, `AdminSidebar.html` y `AdminMobile.html`; guías de usuario, de administrador y de la hoja (con sus PDF); la presentación de impacto; las dos infografías (PDF reimpresos, mismas páginas) y el correo introductorio.
+  - **También en:** comentarios, pruebas, planes y CLAUDE.md, para que nadie lo vuelva a escribir.
+- **Se queda igual:** «Gestión de Viajes» y «Sistema Viajes Equitel» (el nombre de la plataforma y del remitente) y «grupo de viajes» (un conjunto de viajes). Las entradas anteriores de este diario conservan el nombre de su momento.
+- **Contactos para cambios (#A106):** el cargo de Laura en la tabla del menú 16 es «Área de compras».
+- `Rastreo.gs` (proyecto aparte) solo cambió en comentarios: **no hay que volver a pegarlo**.
+
+**Verificado:**
+- `npm run verify` en verde (las pruebas usan los textos nuevos).
+- 0 menciones en la app compilada, en `Code.gs` ni en las tres páginas del servidor; 0 en los PDF de las guías.
+- En la app real (entorno local, Chrome): los textos de «Cambiar mi viaje» dicen «Laura Molina · Área de compras», sin errores de JavaScript.
+
+**Despliegue:** con #A106: pegar `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y `AdminMobile.html` → menú 16 → versión nueva del web app → push del frontend.

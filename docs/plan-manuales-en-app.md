@@ -11,10 +11,10 @@
 | Material | Para quién | Dónde está | Notas |
 |---|---|---|---|
 | Guía del usuario | Solicitantes | `docs/guia-usuario.md` → HTML y PDF | Al día (14-oct, incluye #A100). Sin imágenes. |
-| Guía del administrador | Mezcla: área de viajes **y** mantenimiento técnico | `docs/guia-administrador.md` → HTML y PDF | §4–8 son operación (Laura); §2 y §9–14 son técnicos (Script Properties, activadores, funciones del editor, respaldo). |
-| Guía de la hoja de cálculo | Área de viajes | `docs/guia-hoja-calculo.md` → HTML y PDF | Menú *Equitel Viajes*, qué tocar y qué no. |
+| Guía del administrador | Mezcla: área de compras **y** mantenimiento técnico | `docs/guia-administrador.md` → HTML y PDF | §4–8 son operación (Laura); §2 y §9–14 son técnicos (Script Properties, activadores, funciones del editor, respaldo). |
+| Guía de la hoja de cálculo | Área de compras | `docs/guia-hoja-calculo.md` → HTML y PDF | Menú *Equitel Viajes*, qué tocar y qué no. |
 | Infografía de aprobadores | Aprobadores | `infografia-aprobadores.html` / `.pdf` | Formato de correo (tablas). |
-| Infografía de tarifas | Área de viajes y viajeros | `infografia-tarifas.html` / `.pdf` | Una hoja, TIPO 1 a 3 (#A95). |
+| Infografía de tarifas | Área de compras y viajeros | `infografia-tarifas.html` / `.pdf` | Una hoja, TIPO 1 a 3 (#A95). |
 | `docs/manual-com-p-02.md` | David y Yurani | Repo | Interno: cómo aplica la plataforma el manual, con referencias #Axx. **No se publica.** |
 
 Las guías se generan con `npm run build:guia` (markdown → HTML con estilos → PDF con
@@ -25,7 +25,7 @@ a una sección.
 
 - **Un solo archivo JavaScript (#A96).** No se pueden cargar las guías bajo demanda con
   `import()` ni `React.lazy`. Si se metieran en el JavaScript, todos descargarían unos
-  130 KB más en cada visita, y cualquiera podría leer la guía del área de viajes desde el
+  130 KB más en cada visita, y cualquiera podría leer la guía del área de compras desde el
   navegador. **Las guías van como archivos aparte, no dentro de la app.**
 - **Archivos con nombre fijo en `public/`.** Lo que se pone en `public/manuales/` se publica
   con el mismo nombre en cada push. Un enlace a `/manuales/guia-usuario.html` no se rompe
@@ -54,7 +54,7 @@ a una sección.
   |---|---|
   | Solicitante | Guía del usuario · Tarifa del tiquete (infografía) |
   | Aprobador | Lo anterior + Guía del aprobador (infografía) |
-  | Analista y superadmin | Lo anterior + Guía del área de viajes · Guía de la hoja de cálculo |
+  | Analista y superadmin | Lo anterior + Guía del área de compras · Guía de la hoja de cálculo |
 
   Cada manual tiene **«Abrir»** (HTML en otra pestaña: se lee bien en el celular, con su
   índice y se puede buscar) y **«PDF»**. Al lado, la fecha en que se actualizó.
@@ -85,7 +85,7 @@ a una sección.
 
 Hoy mezcla dos públicos. Propuesta:
 
-- **Guía del área de viajes (se publica):** §1 (vista general y roles), §4 (estados), §5
+- **Guía del área de compras (se publica):** §1 (vista general y roles), §4 (estados), §5
   (trabajo del día a día, incluida la aprobación del CFO), §6.1 y §6.3 (usuarios y
   validaciones), §7 (panel móvil, sin la URL), §8 (métricas) y la parte de §12 que le pasa
   a un usuario (no llega el PIN, no llega el correo, banner rojo).
@@ -114,8 +114,8 @@ su sección:
 | Formulario: aviso de anticipación y justificación | Guía del usuario §2.4 y §9.5 |
 | Formulario: maleta de bodega | Guía del usuario §2.4, «Maleta de bodega» |
 | Detalle: describir la selección | Guía del usuario §4 (la etapa más importante) |
-| *Confirmar costos* y *Registrar reserva*: tarifa del manual | Guía del área de viajes §5.2–5.3 e infografía de tarifas |
-| Panel del analista: facturas por revisar, en espera de preaprobación | Guía del área de viajes §5.5 y §5.15 |
+| *Confirmar costos* y *Registrar reserva*: tarifa del manual | Guía del área de compras §5.2–5.3 e infografía de tarifas |
+| Panel del analista: facturas por revisar, en espera de preaprobación | Guía del área de compras §5.5 y §5.15 |
 
 Si se cambia el título de una sección, el ancla cambia. La verificación de §3.2 falla
 antes de publicar un enlace roto.
@@ -124,7 +124,7 @@ antes de publicar un enlace roto.
 
 - Correo del PIN: enlace a la guía del usuario.
 - Correo de aprobación: enlace a la guía del aprobador (casi nunca entran al portal).
-- Dashboard de costos y panel móvil: enlace a su sección de la guía del área de viajes.
+- Dashboard de costos y panel móvil: enlace a su sección de la guía del área de compras.
 
 Los enlaces se arman con `PLATFORM_URL + '/manuales/…'` (Cloud Run). La regla de #A53, que
 pide poner el dominio en el enlace, es para las páginas del web app de Apps Script, no
@@ -143,11 +143,11 @@ que hace falta probar que la persona las leyó.
 | Fase | Qué | Toca | Despliegue | Tamaño |
 |---|---|---|---|---|
 | 1 | Botón y panel, `public/manuales/` (guía del usuario, hoja de cálculo, infografías) y `check-manuales` | `Layout.tsx`, `App.tsx` (pantalla de ingreso), `scripts/build-guia.cjs`, `tools/` | Push | Pequeño |
-| 2 | Guía del área de viajes separada de la técnica (+ pantallazos, si se quiere) | `docs/` | Push | Mediano (redacción y revisión de Laura) |
+| 2 | Guía del área de compras separada de la técnica (+ pantallazos, si se quiere) | `docs/` | Push | Mediano (redacción y revisión de Laura) |
 | 3 | Ayuda en contexto | Formulario, detalle, modales del analista | Push | Pequeño |
 | 4 | Enlaces en correos, dashboard y panel móvil | `Code.gs`, `CostsDashboard.html`, `AdminMobile.html` | Pegar y crear versión nueva | Pequeño |
 
-Mientras no exista la guía del área de viajes (fase 2), el panel de los administradores
+Mientras no exista la guía del área de compras (fase 2), el panel de los administradores
 puede enlazar la guía del administrador completa. No tiene secretos (nombres de
 propiedades, no sus valores), pero es mejor no dejarla publicada mucho tiempo.
 
@@ -168,7 +168,7 @@ escribir la entrada de `BUG_REPORT.md`.
 
 ## 7. Decisiones para David
 
-1. ¿Se separa la guía del administrador en *área de viajes* y *técnica*? (Recomendado.)
-2. ¿Quién lee la guía del área de viajes antes de publicarla: Laura, Yurani o las dos?
+1. ¿Se separa la guía del administrador en *área de compras* y *técnica*? (Recomendado.)
+2. ¿Quién lee la guía del área de compras antes de publicarla: Laura, Yurani o las dos?
 3. ¿La fase 4 (correos) va con la fase 1 o después?
 4. ¿Pantallazos en la guía del usuario?

@@ -4,7 +4,7 @@
 >
 > **¿Qué cubre?** Todo el ciclo de una solicitud, paso a paso, con ejemplos concretos y los errores típicos que la gente encuentra. Mantén este documento a la mano la primera vez que hagas una solicitud; después seguramente no lo vas a necesitar.
 
-> **Novedad de octubre de 2026 — lee esto primero.** Las solicitudes que se piden con menos anticipación de la que pide la política (8 días nacional, 30 internacional) **quedan en espera** hasta que las apruebe Alejandro Gómez de Greiff (o quien defina la organización). Mientras esperan, el área de viajes no cotiza ni compra. También necesita su aprobación una tarifa superior a la del manual. Detalle en [§2.4](#24-fechas-y-horario) y [§9.5](#95-solicitud-urgente-fuera-de-política). Al entrar al portal verás una ventana con estas reglas: léela y toca **«Entendido»** (queda registrado que la leíste). Te seguirá saliendo cada vez que entres hasta que lo hagas.
+> **Novedad de octubre de 2026 — lee esto primero.** Las solicitudes que se piden con menos anticipación de la que pide la política (8 días nacional, 30 internacional) **quedan en espera** hasta que las apruebe Alejandro Gómez de Greiff (o quien defina la organización). Mientras esperan, el área de compras no cotiza ni compra. También necesita su aprobación una tarifa superior a la del manual. Detalle en [§2.4](#24-fechas-y-horario) y [§9.5](#95-solicitud-urgente-fuera-de-política). Al entrar al portal verás una ventana con estas reglas: léela y toca **«Entendido»** (queda registrado que la leíste). Te seguirá saliendo cada vez que entres hasta que lo hagas.
 
 ---
 
@@ -27,7 +27,7 @@
 
 ### Primera vez que entras
 
-1. Abre el enlace del portal que te envió el área de viajes (pregunta si no lo tienes).
+1. Abre el enlace del portal que te envió el área de compras (pregunta si no lo tienes).
 2. Vas a ver una pantalla con dos botones: un botón **rojo** que dice `INGRESAR` y un botón **negro** que dice `ADMINISTRADOR`. Haz click en el **rojo**.
 3. Escribe tu **correo corporativo** (el que termina en `@equitel.com.co`) y presiona continuar.
 4. El sistema te enviará un **PIN de 8 dígitos** a ese mismo correo. Revisa tu bandeja de entrada — el remitente es el Sistema de Tiquetes Equitel. Si no llega en 1–2 minutos, revisa la carpeta de **spam / correo no deseado**.
@@ -44,7 +44,7 @@ En la pantalla donde te pide el PIN, hay un enlace que dice **"Reenviar PIN"**. 
 
 ### Mi correo no está registrado
 
-Si al escribir tu correo el portal dice que no estás registrado, significa que el área de viajes aún no te tiene en su directorio. Escribe a **compras.equitel@equitel.com.co** pidiendo que te agreguen — suele tomar 5 minutos.
+Si al escribir tu correo el portal dice que no estás registrado, significa que el área de compras aún no te tiene en su directorio. Escribe a **compras.equitel@equitel.com.co** pidiendo que te agreguen — suele tomar 5 minutos.
 
 ---
 
@@ -79,7 +79,7 @@ Pasos:
 2. Si la cédula está registrada, el campo **Nombre** se llena automáticamente. Excelente, sigue adelante.
 3. Si aparece un banner rojo que dice **"⚠️ Cédula no encontrada en el directorio"**, significa que esa persona no está registrada. Dos opciones:
    - Si **tú** eres quien viaja, pero tu cédula no aparece: escribe a compras.equitel@equitel.com.co para que te registren. No puedes continuar sin esto.
-   - Si es **otra persona** (por ejemplo, viaja tu gerente y tú solo estás registrando la solicitud a su nombre): escribe al área de viajes pidiendo que la registren.
+   - Si es **otra persona** (por ejemplo, viaja tu gerente y tú solo estás registrando la solicitud a su nombre): escribe al área de compras pidiendo que la registren.
 4. Si aparece un banner ámbar que dice **"⚠️ No se pudo cargar el directorio"**: no es tu cédula, es un problema temporal de carga. **Presiona `Ctrl+Shift+R`** (o cierra la pestaña y vuelve a abrir) y vuelve a intentar.
 
 #### Agregar más pasajeros
@@ -93,13 +93,13 @@ Si viajan varias personas en el mismo itinerario, haz click en **`+ Agregar Pasa
 - **Ciudad origen:** desde dónde sales. Empieza a escribir y el portal te sugiere opciones (Bogotá, Medellín, Cali, etc.). **Selecciona una de la lista** — no escribas a mano completo.
 - **Ciudad destino:** a dónde vas. Mismo comportamiento. Si escoges una ciudad fuera de Colombia, el portal marca automáticamente la solicitud como **internacional** (implica plazos y aprobaciones distintas, ver §9).
 
-Si el destino que necesitas no aparece en la lista, escribe al área de viajes — lo agregan en un minuto.
+Si el destino que necesitas no aparece en la lista, escribe al área de compras — lo agregan en un minuto.
 
 ### 2.4 Fechas y horario
 
 - **Fecha ida:** el día del viaje. No puede ser en el pasado.
 - **Fecha vuelta:** solo si escogiste "Ida y Vuelta". Debe ser igual o posterior a la fecha de ida.
-- **Hora Requerida de Vuelo (Ida)** y **(Vuelta):** aquí indicas **a qué hora aproximada te queda bien volar**. No es la hora exacta del tiquete — es una preferencia que el área de viajes usará para buscar opciones razonables. Ejemplos: "temprano en la mañana", "alrededor de las 8:00", "en la tarde después de las 14:00".
+- **Hora Requerida de Vuelo (Ida)** y **(Vuelta):** aquí indicas **a qué hora aproximada te queda bien volar**. No es la hora exacta del tiquete — es una preferencia que el área de compras usará para buscar opciones razonables. Ejemplos: "temprano en la mañana", "alrededor de las 8:00", "en la tarde después de las 14:00".
 
 #### Política de anticipación
 
@@ -111,7 +111,7 @@ Si el destino que necesitas no aparece en la lista, escribe al área de viajes �
 
 Al enviar:
 
-1. La solicitud **se crea, pero queda en espera** (etiqueta ámbar **EN ESPERA DE APROBACIÓN**). El área de viajes **no la ve ni la gestiona** todavía: no se cotiza ni se compra nada.
+1. La solicitud **se crea, pero queda en espera** (etiqueta ámbar **EN ESPERA DE APROBACIÓN**). El área de compras **no la ve ni la gestiona** todavía: no se cotiza ni se compra nada.
 2. Te llega un correo **[EN ESPERA DE APROBACIÓN]** que explica por qué.
 3. Quien aprueba (hoy **Alejandro Gómez de Greiff**) la revisa en un resumen que recibe cada 2 horas **en horario laboral** (lunes a viernes de 7:00 a 17:00 y sábados de 8:00 a 12:00) y la **aprueba o rechaza**. Una solicitud hecha un fin de semana la ve el siguiente día hábil.
 4. **Si la aprueba**, te llega un correo y la solicitud sigue el proceso normal desde la etapa de opciones.
@@ -120,7 +120,7 @@ Al enviar:
 
 **Viaje multidestino:** si **cualquier tramo** no cumple la anticipación, **todo el viaje queda en espera** (si un tramo no se puede hacer, los demás tampoco). Los tramos quedan enlazados y **una sola decisión aplica a todos**: si se aprueba, siguen todos; si se rechaza o vence, se deniegan todos. Te llega un solo correo por viaje.
 
-Si el viaje es urgente, comunícate directamente con quien aprueba. Los viajes que registra el área de viajes (por ejemplo, uno ya comprado por fuera) no quedan en espera, pero sí quedan marcados fuera de política y cuentan en el informe de cumplimiento.
+Si el viaje es urgente, comunícate directamente con quien aprueba. Los viajes que registra el área de compras (por ejemplo, uno ya comprado por fuera) no quedan en espera, pero sí quedan marcados fuera de política y cuentan en el informe de cumplimiento.
 
 #### Maleta de bodega
 
@@ -130,7 +130,7 @@ Marca **"¿Lleva maleta de bodega?"** si algún pasajero necesita despachar equi
 
 Si tu viaje requiere hotel, marca la casilla **"Requiere hospedaje"**.
 
-- **Nombre hotel sugerido:** opcional. Si tienes preferencia por un hotel en particular, escríbelo. Si no, déjalo vacío y el área de viajes cotizará opciones estándar.
+- **Nombre hotel sugerido:** opcional. Si tienes preferencia por un hotel en particular, escríbelo. Si no, déjalo vacío y el área de compras cotizará opciones estándar.
 - **Noches:** se calcula automáticamente a partir de las fechas de ida y vuelta. Si necesitas que sea distinto (por ejemplo, llegas un día antes por tu cuenta), activa el interruptor de **"ajustar manualmente"** y escribe el número correcto de noches.
 
 Para solicitudes **"Solo Hospedaje"**, el hospedaje es obligatorio (es lo único que estás pidiendo).
@@ -174,7 +174,7 @@ EN ESPERA DE APROBACIÓN POR POLÍTICA (la aprueba o la rechaza
                          quien aprueba las excepciones; el área de
                          viajes todavía no la gestiona — §2.4)
    ↓
-PENDIENTE DE OPCIONES (el área de viajes está cotizando)
+PENDIENTE DE OPCIONES (el área de compras está cotizando)
    ↓
 PENDIENTE DE SELECCIÓN (te llegan las opciones, tú eliges — §4)
    ↓
@@ -190,7 +190,7 @@ RESERVADO (tienes tiquetes / confirmación de hotel)
 PROCESADO (ya viajaste y cerraste el ciclo)
 ```
 
-**Clave que sorprende a muchos:** la aprobación **NO ocurre al comienzo**. El área de viajes primero cotiza, tú eliges, el área confirma el costo final, y **solo ahí** se dispara el correo de aprobación. El motivo es operativo: hasta que no hay un costo final confirmado, no se sabe qué aprobadores se requieren (ver más abajo).
+**Clave que sorprende a muchos:** la aprobación **NO ocurre al comienzo**. El área de compras primero cotiza, tú eliges, el área confirma el costo final, y **solo ahí** se dispara el correo de aprobación. El motivo es operativo: hasta que no hay un costo final confirmado, no se sabe qué aprobadores se requieren (ver más abajo).
 
 **Tú solo participas en 3 momentos:**
 
@@ -202,7 +202,7 @@ El resto del tiempo, **no tienes que hacer nada activamente**. Los correos te no
 
 ### Quién aprueba y cuándo
 
-El correo de aprobación se envía **una sola vez**, justo después de que el área de viajes confirma el costo final de tu solicitud. Los destinatarios del correo dependen del caso:
+El correo de aprobación se envía **una sola vez**, justo después de que el área de compras confirma el costo final de tu solicitud. Los destinatarios del correo dependen del caso:
 
 | Tipo de solicitud | Quién aprueba |
 |---|---|
@@ -222,7 +222,7 @@ Si alguna aprobación se demora más de 3 días hábiles, el sistema **escala au
 
 ## 4. Describir tu selección de opciones (la etapa más importante)
 
-Cuando el área de viajes termina de cotizar, recibes un correo con el asunto **"Opciones disponibles"** que contiene imágenes de las alternativas de vuelo y/o hotel.
+Cuando el área de compras termina de cotizar, recibes un correo con el asunto **"Opciones disponibles"** que contiene imágenes de las alternativas de vuelo y/o hotel.
 
 ### Qué ves
 
@@ -238,7 +238,7 @@ Cuando el área de viajes termina de cotizar, recibes un correo con el asunto **
 
 ### ⚠️ Regla de oro: indica siempre la categoría
 
-**No basta con decir "opción A".** El área de viajes necesita saber también la **categoría** (clase tarifaria del vuelo, tipo de habitación del hotel). Sin esto, no pueden reservar — te van a tener que volver a preguntar.
+**No basta con decir "opción A".** El área de compras necesita saber también la **categoría** (clase tarifaria del vuelo, tipo de habitación del hotel). Sin esto, no pueden reservar — te van a tener que volver a preguntar.
 
 **Categorías típicas de vuelo:** Económica, Economy Plus, Premium, Business.
 **Categorías típicas de hotel:** Estándar, Superior, Suite.
@@ -265,15 +265,15 @@ Cambio de preferencia:
 
 ### Enviar la descripción
 
-Una vez escrita, haz click en el botón **`Enviar Selección`** (o similar). El portal marca tu solicitud como **"PENDIENTE DE CONFIRMACIÓN DE COSTO"** y el área de viajes recibe la notificación.
+Una vez escrita, haz click en el botón **`Enviar Selección`** (o similar). El portal marca tu solicitud como **"PENDIENTE DE CONFIRMACIÓN DE COSTO"** y el área de compras recibe la notificación.
 
-A partir de acá el área de viajes confirma los costos, dispara las aprobaciones adicionales si aplican, y compra los tiquetes.
+A partir de acá el área de compras confirma los costos, dispara las aprobaciones adicionales si aplican, y compra los tiquetes.
 
 ---
 
 ## 5. Recibir los tiquetes o la confirmación del hotel
 
-Cuando el área de viajes registra la reserva, te llega un correo de confirmación con:
+Cuando el área de compras registra la reserva, te llega un correo de confirmación con:
 
 - **Número de reserva (PNR)** en el caso de vuelos, o **número de confirmación** en el caso de hoteles.
 - **Archivos adjuntos** con los detalles (PDF del tiquete, confirmación del hotel, etc.).
@@ -282,15 +282,15 @@ Guarda estos datos — los vas a necesitar en el aeropuerto o al llegar al hotel
 
 En el detalle de tu solicitud, en **Resumen de selección**, verás también la **tarifa** que se compró y el equipaje que incluye según el manual de viajes (por ejemplo, *Tarifa: TIPO 2 · Classic (equipaje de mano 10 kg y bodega 23 kg)*). Las condiciones exactas son las de la aerolínea, que vienen en el tiquete.
 
-**Importante:** el correo viene del **Sistema de Viajes Equitel** (`compras.equitel@equitel.com.co`). Si respondes a ese correo, tu mensaje llega al área de viajes.
+**Importante:** el correo viene del **Sistema de Viajes Equitel** (`compras.equitel@equitel.com.co`). Si respondes a ese correo, tu mensaje llega al área de compras.
 
 ### Correcciones posteriores
 
-Si el área de viajes detecta un error después de emitir la reserva (PNR equivocado, tarjeta mal registrada, archivo faltante), puede corregirla. Recibirás un correo de **"Corrección de reserva"** con los datos actualizados. El correo está en el mismo hilo de Gmail que el original, así que no pierdes el historial.
+Si el área de compras detecta un error después de emitir la reserva (PNR equivocado, tarjeta mal registrada, archivo faltante), puede corregirla. Recibirás un correo de **"Corrección de reserva"** con los datos actualizados. El correo está en el mismo hilo de Gmail que el original, así que no pierdes el historial.
 
 ### Después del viaje
 
-Al regresar, si necesitas entregar soportes (facturas de taxi, recibos, etc.), entra al portal, abre tu solicitud y busca el botón **`Subir soportes`**. Arrastra los archivos (PDF o imagen) y confirma. El área de viajes los verá y cerrará formalmente el ciclo.
+Al regresar, si necesitas entregar soportes (facturas de taxi, recibos, etc.), entra al portal, abre tu solicitud y busca el botón **`Subir soportes`**. Arrastra los archivos (PDF o imagen) y confirma. El área de compras los verá y cerrará formalmente el ciclo.
 
 ---
 
@@ -298,7 +298,7 @@ Al regresar, si necesitas entregar soportes (facturas de taxi, recibos, etc.), e
 
 Si necesitas cambiar algo de un viaje que ya pediste, **no crees una solicitud nueva**: usa el botón grande **😕 ¿Necesita cambiar su viaje?** de tu panel (o **Cambiar mi viaje** en el detalle de la solicitud). Toma un minuto.
 
-**Todo cambio se pide aquí, no por correo, teléfono ni WhatsApp.** Así queda registrado y tu jefe lo aprueba. Si escribes o llamas al área de viajes mientras todavía se puede pedir en el portal, te pedirán que lo hagas por aquí.
+**Todo cambio se pide aquí, no por correo, teléfono ni WhatsApp.** Así queda registrado y tu jefe lo aprueba. Si escribes o llamas al área de compras mientras todavía se puede pedir en el portal, te pedirán que lo hagas por aquí.
 
 ### Qué puedes cambiar
 
@@ -314,7 +314,7 @@ Puedes elegir varias cosas a la vez. Para algo distinto (por ejemplo, quitar el 
 - Hasta las **5:00 p. m. del día hábil anterior al vuelo**. Si ese día es sábado, hasta las **12:00 m.** Domingos y festivos no cuentan. Antes de ese límite lo puedes pedir a cualquier hora.
 - La **fecha nueva también tiene que dar tiempo**: no se puede mover el viaje a un día cuyo plazo ya pasó.
 - Si el viaje **ya empezó** (la ida ya voló), solo se cambia el **regreso**: fecha, hora o equipaje.
-- Después del plazo, el portal no deja pedir el cambio. **Solo si es urgente**, te muestra a quién llamar y en qué orden: primero el área de viajes y, si no responde, el director de compras, con sus celulares. El área de viajes lo registra a tu nombre.
+- Después del plazo, el portal no deja pedir el cambio. **Solo si es urgente**, te muestra a quién llamar y en qué orden: primero el área de compras y, si no responde, el director de compras, con sus celulares. El área de compras lo registra a tu nombre.
 
 La ventana te dice, viaje por viaje, hasta cuándo puedes pedir el cambio.
 
@@ -335,16 +335,16 @@ La primera vez que tocas el botón sale una explicación corta de cómo funciona
 
 ### Si todavía no se había comprado
 
-El área de viajes cotiza de nuevo con los cambios, **sin penalidad**. Cuando se aprueba el cambio, la solicitud original se anula.
+El área de compras cotiza de nuevo con los cambios, **sin penalidad**. Cuando se aprueba el cambio, la solicitud original se anula.
 
 ### Qué sigue después de enviarlo
 
-1. El área de viajes revisa tu cambio y lo pide a la agencia.
+1. El área de compras revisa tu cambio y lo pide a la agencia.
 2. Te llegan por correo las opciones del cambio y describes cuál eliges, como siempre (§4).
 3. Tu aprobador aprueba el costo del cambio.
 4. Recibes el tiquete nuevo por correo.
 
-Si el área de viajes no puede hacer el cambio, te avisa: puede seguir con la solicitud original o preguntarte qué hacer (ver §8). Solo puede haber **un cambio en curso** por solicitud.
+Si el área de compras no puede hacer el cambio, te avisa: puede seguir con la solicitud original o preguntarte qué hacer (ver §8). Solo puede haber **un cambio en curso** por solicitud.
 
 ---
 
@@ -354,7 +354,7 @@ Si ya no necesitas el viaje, puedes anular.
 
 ### Cuándo puedes anular
 
-Mientras la solicitud no esté en estado terminal (`ANULADO`, `DENEGADO`, `PROCESADO`). Si ya está `RESERVADO`, considera que puede haber penalidades — avisa al área de viajes antes para minimizar costos.
+Mientras la solicitud no esté en estado terminal (`ANULADO`, `DENEGADO`, `PROCESADO`). Si ya está `RESERVADO`, considera que puede haber penalidades — avisa al área de compras antes para minimizar costos.
 
 ### Cómo anulas
 
@@ -364,17 +364,17 @@ Mientras la solicitud no esté en estado terminal (`ANULADO`, `DENEGADO`, `PROCE
    - "El cliente canceló la reunión."
    - "Me asignaron a otro proyecto y ya no viajo."
    - "Se resolvió de forma virtual."
-4. Confirma. La solicitud pasa a **ANULADO** y el área de viajes recibe una notificación para cerrar cualquier gestión pendiente. Si estaba **en espera de aprobación por política**, el área de viajes no recibe nada (nunca la gestionó) y sale de la lista de pendientes de quien aprueba.
+4. Confirma. La solicitud pasa a **ANULADO** y el área de compras recibe una notificación para cerrar cualquier gestión pendiente. Si estaba **en espera de aprobación por política**, el área de compras no recibe nada (nunca la gestionó) y sale de la lista de pendientes de quien aprueba.
 
 ### Si anulas una solicitud que tiene un cambio pendiente
 
-No vas a poder anular el padre si hay una solicitud-hija de cambio activa (el sistema lo bloquea para no dejar cosas huérfanas). Si estás en esa situación: primero que el área de viajes resuelva el cambio (aceptar o denegar), y después anulas.
+No vas a poder anular el padre si hay una solicitud-hija de cambio activa (el sistema lo bloquea para no dejar cosas huérfanas). Si estás en esa situación: primero que el área de compras resuelva el cambio (aceptar o denegar), y después anulas.
 
 ---
 
-## 8. Responder a una consulta del área de viajes
+## 8. Responder a una consulta del área de compras
 
-En casos particulares, el área de viajes puede enviarte un correo preguntándote si quieres **continuar** o **anular** tu solicitud. Esto suele pasar cuando:
+En casos particulares, el área de compras puede enviarte un correo preguntándote si quieres **continuar** o **anular** tu solicitud. Esto suele pasar cuando:
 
 - El cambio que pediste no se pudo gestionar, y la solicitud original sigue activa — el área quiere saber si todavía la necesitas o no.
 
@@ -402,7 +402,7 @@ Si tu ciudad destino está fuera de Colombia, la solicitud se marca automáticam
 
 - **Plazo mínimo:** 30 días de anticipación (vs. 8 nacional).
 - **Aprobadores adicionales:** además de tu jefe directo, se suma la **Dirección de Cadena de Suministro** y la **Gerencia General**. El correo de aprobación lo reciben los tres en paralelo; basta con que **uno de los dos ejecutivos** apruebe (CEO o CDS) para que avance.
-- **Documentos:** pasaporte vigente, visa si aplica. El área de viajes NO gestiona pasaportes ni visas — eso depende de ti. Tenlos listos antes de solicitar.
+- **Documentos:** pasaporte vigente, visa si aplica. El área de compras NO gestiona pasaportes ni visas — eso depende de ti. Tenlos listos antes de solicitar.
 
 ### 9.2 Viaje de alto costo nacional (> $1.200.000)
 
@@ -415,7 +415,7 @@ Si tu jefe te pide que le registres un viaje a él, o si RRHH te pide registrar 
 1. Crea la solicitud normalmente **logueado con tu propio correo** (tu PIN, tu cuenta).
 2. Cuando llenes los pasajeros, pon en el **pasajero 1** los datos de quien realmente viaja (su cédula, su nombre). No pongas los tuyos.
 3. La solicitud queda a nombre del viajero. El aprobador será **el aprobador del viajero**, no el tuyo.
-4. En el dashboard del área de viajes, estas solicitudes se marcan con un ícono **👥** (proxy) para indicar que tú la registraste pero otra persona viaja.
+4. En el dashboard del área de compras, estas solicitudes se marcan con un ícono **👥** (proxy) para indicar que tú la registraste pero otra persona viaja.
 5. **Quien programa el viaje de otra persona responde por el plazo**, igual que si fuera propio: pídelo con la anticipación de la política.
 
 ### 9.4 Varios pasajeros
@@ -440,7 +440,7 @@ Recomendaciones:
 
 ### 9.6 El viaje ya lo pagó el área antes de que yo seleccionara
 
-Casos raros: ejecutivos con compra urgente donde el área de viajes ya emitió los tiquetes por fuera del portal antes de que tú seleccionaras. Para estos casos, el área puede **saltar la etapa de selección** y avanzar directamente a confirmación de costos, con una justificación obligatoria registrada. Tú puede que:
+Casos raros: ejecutivos con compra urgente donde el área de compras ya emitió los tiquetes por fuera del portal antes de que tú seleccionaras. Para estos casos, el área puede **saltar la etapa de selección** y avanzar directamente a confirmación de costos, con una justificación obligatoria registrada. Tú puede que:
 
 - No recibas el correo de "Opciones disponibles" (porque se omite intencionalmente).
 - Veas la solicitud avanzar en el portal de `PENDIENTE_OPCIONES` directamente a `PENDIENTE_CONFIRMACION_COSTO`.
@@ -458,7 +458,7 @@ Formato recomendado:
 54321 - Proyecto Gamma
 ```
 
-El área de viajes los contabilizará por separado al momento de facturar.
+El área de compras los contabilizará por separado al momento de facturar.
 
 ---
 
@@ -492,7 +492,7 @@ Si el aprobador mostrado está mal o la persona ya no trabaja en la empresa, esc
 Primero: el correo de aprobación se envía **solo cuando** la solicitud llega al estado `PENDIENTE_APROBACION`. Y ese estado solo se alcanza **después** de que:
 
 1. Tú creaste la solicitud.
-2. El área de viajes cargó las opciones.
+2. El área de compras cargó las opciones.
 3. Tú describiste tu selección.
 4. El área confirmó los costos.
 
@@ -502,7 +502,7 @@ Si tu solicitud **sí está en `PENDIENTE_APROBACION`** y el aprobador insiste e
 
 - Pídele que revise la carpeta de **spam / correo no deseado** una vez más (a veces Gmail filtra correos con enlaces de aprobación).
 - Si no aparece, escribe a `compras.equitel@equitel.com.co` pidiendo que reenvíen.
-- Verifica en el detalle de tu solicitud (en el portal) que el correo del aprobador listado es correcto. Si está mal (ej: persona que ya no está en la empresa), eso se ajusta desde el área de viajes.
+- Verifica en el detalle de tu solicitud (en el portal) que el correo del aprobador listado es correcto. Si está mal (ej: persona que ya no está en la empresa), eso se ajusta desde el área de compras.
 
 ### Cuánto tiempo tarda el proceso completo
 
@@ -512,7 +512,7 @@ Depende mucho del caso. Orden de magnitud:
 - **Nacional > $1.200.000:** 2–5 días hábiles (por la aprobación extra de CDS).
 - **Internacional:** 3–7 días hábiles o más (por las aprobaciones de CDS + CEO y la complejidad de reservar internacional).
 
-Si tu solicitud pasa más tiempo sin avanzar, escribe al área de viajes preguntando por el estado.
+Si tu solicitud pasa más tiempo sin avanzar, escribe al área de compras preguntando por el estado.
 
 ### ¿Cómo sé qué están esperando de mí?
 
@@ -520,7 +520,7 @@ En tu dashboard, cada solicitud tiene una **etiqueta de estado**. La más releva
 
 - **PENDIENTE_SELECCION** → te toca a ti: debes describir tu selección (§4).
 
-Todos los demás estados significan que el área de viajes o tu aprobador están trabajando. Tú no tienes nada que hacer.
+Todos los demás estados significan que el área de compras o tu aprobador están trabajando. Tú no tienes nada que hacer.
 
 ### ¿Puedo agregar la maleta de bodega después?
 
@@ -574,7 +574,7 @@ Listados en el **orden real** en que los verás pasar:
 
 | Estado | Qué está pasando | Qué tienes que hacer tú |
 |---|---|---|
-| `PENDIENTE_OPCIONES` | El área de viajes está cotizando opciones de vuelo y/o hotel. | Nada. Espera. |
+| `PENDIENTE_OPCIONES` | El área de compras está cotizando opciones de vuelo y/o hotel. | Nada. Espera. |
 | `PENDIENTE_SELECCION` | Te llegaron las opciones por correo, debes describir cuál eliges. | **Describir tu selección** (ver §4) indicando siempre la categoría. |
 | `PENDIENTE_CONFIRMACION_COSTO` | El área registra el costo final según tu selección. | Nada. Espera. |
 | `PENDIENTE_APROBACION` | Tu aprobador (y según el caso, CDS/CEO) deben aprobar por correo. | Nada. Espera. Avísale a tu aprobador si no revisa correo frecuentemente. |

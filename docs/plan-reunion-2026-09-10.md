@@ -230,7 +230,7 @@ Actualizado en el Anexo. Además de agregar la fecha de nacimiento:
 | # | Mejora | Por qué | Esfuerzo |
 |---|---|---|---|
 | C1 | ~~Autollenar `PERSONA QUE TRAMITA EL TIQUETE /HOTEL` al registrar la reserva.~~ | **Descartada por David (2026-09-10).** | — |
-| C2 | ✅ **Implementado (#A71).** Fecha de nacimiento de cada pasajero en el detalle de la solicitud, bajo nombre y cédula, con edad, "registrada en esta solicitud" para externos y aviso "Sin fecha de nacimiento". **Solo administradores** (en una solicitud se pueden escribir cédulas ajenas). | El área de viajes la registra en la aerolínea sin abrir la hoja. | Hecho |
+| C2 | ✅ **Implementado (#A71).** Fecha de nacimiento de cada pasajero en el detalle de la solicitud, bajo nombre y cédula, con edad, "registrada en esta solicitud" para externos y aviso "Sin fecha de nacimiento". **Solo administradores** (en una solicitud se pueden escribir cédulas ajenas). | El área de compras la registra en la aerolínea sin abrir la hoja. | Hecho |
 | C3 | ~~Nota "Ocultar, no borrar" en los encabezados de la hoja principal.~~ | **Descartada por David (2026-09-10).** | — |
 
 ---

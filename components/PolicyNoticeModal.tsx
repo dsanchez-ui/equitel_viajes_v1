@@ -64,9 +64,9 @@ export const PolicyNoticeModal: React.FC<PolicyNoticeModalProps> = ({ notice, on
                     <section className="bg-amber-50 border border-amber-200 rounded-md p-3">
                         <h3 className="font-bold text-amber-900">2. Si la pide con menos tiempo, queda en espera</h3>
                         <ul className="list-disc pl-5 mt-1 space-y-1 text-amber-950">
-                            <li>La solicitud se crea, pero <strong>debe aprobarla {approver}</strong> antes de que el área de viajes la gestione.</li>
+                            <li>La solicitud se crea, pero <strong>debe aprobarla {approver}</strong> antes de que el área de compras la gestione.</li>
                             <li>En el formulario tendrá que escribir <strong>por qué no se pudo pedir antes</strong>. Eso es lo que lee {approver} para decidir.</li>
-                            <li>Mientras espera, el área de viajes <strong>no cotiza ni compra</strong>. Las aprobaciones se revisan en <strong>horario laboral</strong>: lo que se pida un fin de semana se revisa el siguiente día hábil.</li>
+                            <li>Mientras espera, el área de compras <strong>no cotiza ni compra</strong>. Las aprobaciones se revisan en <strong>horario laboral</strong>: lo que se pida un fin de semana se revisa el siguiente día hábil.</li>
                             <li>En un viaje <strong>multidestino</strong>, si un tramo no cumple, <strong>todo el viaje espera</strong> y se aprueba o se rechaza de una vez.</li>
                             <li>Si no se aprueba en <strong>{notice.expiryDays} días</strong> o antes de la fecha del viaje, queda <strong>denegada</strong>.</li>
                             <li>Le llega un correo cuando se apruebe o se rechace. Si es urgente, comuníquese directamente con {approver}.</li>

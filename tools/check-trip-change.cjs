@@ -227,7 +227,7 @@ function main() {
   const w4 = TS.tripChangeWindow('2026-10-10', '2026-10-13', Date.parse(NOW));
   eq('ventana: viaje terminado', [w4.open, w4.reason], [false, 'ended']);
   const w5 = TS.tripChangeWindow('2026-10-15', '', Date.parse(NOW)), w5a = TS.tripChangeWindow('2026-10-15', '', Date.parse(NOW), true);
-  eq('ventana: vuelo hoy → el viajero no, el área de viajes sí', [w5.open, w5.reason, w5a.open, w5a.mode], [false, 'deadline', true, 'full']);
+  eq('ventana: vuelo hoy → el viajero no, el área de compras sí', [w5.open, w5.reason, w5a.open, w5a.mode], [false, 'deadline', true, 'full']);
   eq('fechas de la solicitud a AAAA-MM-DD', [TS.toDateKey('16-10-2026'), TS.toDateKey('2026-10-16T05:00:00.000Z'), TS.toDateKey('6/1/2027'), TS.toDateKey('x')], ['2026-10-16', '2026-10-16', '2027-01-06', '']);
 
   // ───────────── 2. Pedir un cambio (viaje sin comprar) ─────────────
@@ -265,7 +265,7 @@ function main() {
   eq('hija: JSON del cambio', i1 && [i1.v, i1.padre, i1.comprado, i1.modo, i1.tipos, i1.campos.departureDate, i1.campos.departureTimePreference, i1.rol, i1.compra],
     [1, P1, false, 'full', ['Fecha', 'Hora'], { antes: '2026-10-25', ahora: '2026-10-26' }, { antes: '', ahora: '06:00' }, 'viajero', undefined]);
   const m1 = log.mails.find((m) => /compras\.equitel/.test(m.to));
-  ok('correo al área de viajes: CAMBIO DE VIAJE con el antes y el ahora y el motivo', m1 && /CAMBIO DE VIAJE/.test(m1.html) && /domingo 25 de octubre/.test(m1.html) &&
+  ok('correo al área de compras: CAMBIO DE VIAJE con el antes y el ahora y el motivo', m1 && /CAMBIO DE VIAJE/.test(m1.html) && /domingo 25 de octubre/.test(m1.html) &&
     /lunes 26 de octubre/.test(m1.html) && /Se movió la reunión con el cliente/.test(m1.html) && /aún no se había comprado/.test(m1.html) && !/\{\{REQUEST_ID\}\}/.test(m1.html));
   r = change(P1, { departureDate: '2026-10-27', returnDate: '2026-10-29' });
   ok('un solo cambio vivo por solicitud (#A63)', !r.success && new RegExp('cambio en curso: ' + C1).test(r.error));
@@ -293,12 +293,12 @@ function main() {
   const m2 = log.mails.find((m) => /compras\.equitel/.test(m.to));
   ok('correo: tiquete comprado, reserva y aviso de la maleta pedida después', m2 && /El tiquete ya está comprado/.test(m2.html) && /ABC123/.test(m2.html) &&
     /maleta de bodega después de comprar/.test(m2.html));
-  // El área de viajes registra el cambio a nombre del viajero después del plazo
+  // El área de compras registra el cambio a nombre del viajero después del plazo
   const P3 = bought({ departureDate: '16-10-2026', returnDate: '18-10-2026' }, { 'VALOR COMPRA TIQUETES': '' });
   at('2026-10-15T23:30:00Z');
   r = change(P3, { departureTimePreference: '18:00' }, 'El viajero llamó: sale más tarde.', 'admin@p.co');
   const C3 = r.success && r.data.id;
-  ok('el área de viajes registra el cambio sin plazo', !!C3 && info(C3).rol === 'administrador' && info(C3).registradoPor === 'admin@p.co');
+  ok('el área de compras registra el cambio sin plazo', !!C3 && info(C3).rol === 'administrador' && info(C3).registradoPor === 'admin@p.co');
   eq('sin valor pagado, el original es lo cotizado', [info(C3).costoOriginal, info(C3).costoOriginalFuente], [800000, 'cotizado']);
   // Viaje en curso: solo el regreso
   const P4 = bought({ departureDate: '14-10-2026', returnDate: '19-10-2026' });
@@ -317,7 +317,7 @@ function main() {
   r = change(P6, { departureTimePreference: '20:00' });
   ok('vuelo de hoy: el viajero no puede', !r.success && /venció/.test(r.error));
   r = change(P6, { departureTimePreference: '20:00' }, 'El viajero perdió el vuelo de la mañana.', 'admin@p.co');
-  ok('vuelo de hoy: el área de viajes sí', r.success);
+  ok('vuelo de hoy: el área de compras sí', r.success);
   r = change(P6, { returnDate: '2026-10-20' }, 'Quiere agregar el regreso al viaje.', 'admin@p.co');
   ok('solo ida: no se agrega un regreso con un cambio', !r.success && /(solo de ida|cambio en curso)/.test(r.error));
   // Destino internacional
@@ -446,13 +446,13 @@ function main() {
     : e === 'admin@p.co' ? { canView: true, allUnits: true, units: [], unitLabels: [], email: e } : { canView: false, allUnits: false, units: [], unitLabels: [], email: e });
   const dash = (e) => { reset(); return ctx.dispatch('getTripChangesForDashboard', { userEmail: e, sessionToken: 't' }); };
   const dl1 = dash('lider@p.co'), dl2 = dash('otro@p.co'), dl3 = dash('admin@p.co'), dl4 = dash('nadie@p.co');
-  eq('dashboard por unidad: el líder ve los de su unidad, otro líder ninguno, el área de viajes todos y con los de antes',
+  eq('dashboard por unidad: el líder ve los de su unidad, otro líder ninguno, el área de compras todos y con los de antes',
     [dl1.success && dl1.data.items.length === ctrl.items.length, dl2.success && dl2.data.items.length, dl3.success && dl3.data.legacy, dl1.data && dl1.data.legacy, dl4.success],
     [true, 0, 1, null, false]);
   ok('dashboard por unidad: sin correos', dl1.success && !/@/.test(JSON.stringify(dl1.data.items.map((x) => [x.requesterName, x.unit, x.id]))) && dl1.data.items.every((x) => x.requesterEmail === undefined));
   // Explicación de «Cambiar mi viaje» la primera vez (20-oct): constancia en CONSTANCIA AVISOS, como #A100.
   reset();
-  eq('explicación: al viajero sí, al área de viajes no', [ctx._tripChangePublicInfo_('ana@p.co').showNotice, ctx._tripChangePublicInfo_('admin@p.co').showNotice,
+  eq('explicación: al viajero sí, al área de compras no', [ctx._tripChangePublicInfo_('ana@p.co').showNotice, ctx._tripChangePublicInfo_('admin@p.co').showNotice,
     ctx._tripChangePublicInfo_('ana@p.co').noticeId], [true, false, 'cambios-de-viaje-2026-10']);
   reset();
   let ack = ctx.dispatch('ackPolicyNotice', { userEmail: 'ana@p.co', sessionToken: 't', noticeId: 'cambios-de-viaje-2026-10' });
@@ -480,19 +480,19 @@ function main() {
   eq('contactos: el menú crea la tabla al lado (una columna libre) con Laura y Diego',
     [prep.created, prep.emailCol, misc[0].slice(3, 6), misc[1].slice(3, 6), misc[2].slice(3, 6), misc[2].slice(0, 2)],
     [true, 4, ['CONTACTO CAMBIOS · CORREO', 'CONTACTO CAMBIOS · NOMBRE', 'CONTACTO CAMBIOS · CARGO'],
-      ['compras.equitel@equitel.com.co', 'Laura Molina', 'Área de viajes'], ['directorcompras@equitel.com.co', 'Diego Caballero', 'Director de compras'], ['TC-1', 'EQUITEL']]);
+      ['compras.equitel@equitel.com.co', 'Laura Molina', 'Área de compras'], ['directorcompras@equitel.com.co', 'Diego Caballero', 'Director de compras'], ['TC-1', 'EQUITEL']]);
   prep = ctx.prepararTablaContactosCambios();
   ok('contactos: el menú no la vuelve a crear', !prep.created && misc[0].filter((h) => /CONTACTO/.test(h)).length === 3 && misc.length === 3);
   reset();
   eq('contactos: la app recibe a quién llamar, en orden, con el celular de USUARIOS', ctx._tripChangePublicInfo_('ana@p.co').contacts, [
-    { name: 'Laura Molina', role: 'Área de viajes', phone: '3133251690', email: 'compras.equitel@equitel.com.co' },
+    { name: 'Laura Molina', role: 'Área de compras', phone: '3133251690', email: 'compras.equitel@equitel.com.co' },
     { name: 'Diego Caballero', role: 'Director de compras', phone: '3232958507', email: 'directorcompras@equitel.com.co' }]);
   at(NOW);
   const PC = bought({ departureDate: '16-10-2026', returnDate: '20-10-2026' });
   at('2026-10-15T22:30:00Z'); // jueves 5:30 p. m.: venció el plazo del vuelo del viernes
   r = change(PC, { departureTimePreference: '15:00' });
   ok('contactos: después del plazo, el error dice a quién llamar y en qué orden', !r.success &&
-    /Si es urgente, llame a Laura Molina \(área de viajes\), 313 325 1690; si no responde, a Diego Caballero \(director de compras\), 323 295 8507\./.test(r.error));
+    /Si es urgente, llame a Laura Molina \(área de compras\), 313 325 1690; si no responde, a Diego Caballero \(director de compras\), 323 295 8507\./.test(r.error));
   at(NOW);
   env.users.find((u) => u[2] === 'directorcompras@equitel.com.co')[3] = '';
   reset();
@@ -513,7 +513,7 @@ function main() {
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('✓ Cambios de viaje (#A103, #A106): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de viajes sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe y a quién llamar después del plazo.');
+  console.log('✓ Cambios de viaje (#A103, #A106): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe y a quién llamar después del plazo.');
 }
 
 main();

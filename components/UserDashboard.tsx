@@ -75,7 +75,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
       setDialog({
         isOpen: true,
         title: 'Solicitud Anulada',
-        message: `Su solicitud ${cancelRequest.requestId} ha sido anulada. El área de viajes ha sido notificada.`,
+        message: `Su solicitud ${cancelRequest.requestId} ha sido anulada. El área de compras ha sido notificada.`,
         type: 'SUCCESS',
         onConfirm: () => { setDialog(prev => ({ ...prev, isOpen: false })); if (onRefresh) onRefresh(); }
       });
@@ -103,7 +103,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                Con el botón <strong>«¿Necesita cambiar su viaje?»</strong> cambia la fecha, la hora, el destino o el equipaje en un minuto.
                Se puede pedir <strong>hasta las 5:00 p. m. del día hábil anterior al vuelo</strong> (si ese día es sábado, hasta las 12:00 m.).
                Si el tiquete ya está comprado, el cambio tiene costo y lo aprueba su jefe.
-               Si escribe o llama, el área de viajes le pedirá que lo haga por aquí; llamar es solo para cuando ya pasó el plazo y es urgente.
+               Si escribe o llama, el área de compras le pedirá que lo haga por aquí; llamar es solo para cuando ya pasó el plazo y es urgente.
              </p>
            </div>
            <button type="button" onClick={closeChangeNews} className="text-blue-800 hover:text-blue-950 text-xs font-bold underline shrink-0">Entendido</button>
@@ -207,7 +207,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
 
                  {req.status === RequestStatus.PENDING_POLICY_APPROVAL && (
                    <p className="mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded p-2 leading-snug">
-                     Se pidió con menos anticipación de la que pide la política. El área de viajes la gestiona cuando la apruebe
+                     Se pidió con menos anticipación de la que pide la política. El área de compras la gestiona cuando la apruebe
                      {' '}<strong>{req.policyApproverName || 'el CFO'}</strong>. Le avisaremos por correo.
                    </p>
                  )}

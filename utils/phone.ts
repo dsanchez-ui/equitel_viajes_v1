@@ -9,7 +9,7 @@
  *
  * Reglas (David, 2026-09-10): el celular es OPCIONAL; si se escribe, debe ser un
  * celular colombiano de 10 dígitos que empiece por 3. Se guarda sin espacios
- * ('3001234567'). Lo usa el área de viajes para contactar al pasajero.
+ * ('3001234567'). Lo usa el área de compras para contactar al pasajero.
  */
 
 export interface PhoneCheck {

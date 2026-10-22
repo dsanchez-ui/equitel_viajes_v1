@@ -166,7 +166,7 @@ Si el rastreo ya está instalado:
 
 - **Dashboard de costos → Comparador de precios:** el estado del rastreo (última ejecución,
   búsquedas, cupo), los totales y la tabla por viaje, con exportación a CSV. Al tocar un viaje
-  se abre su detalle: lo que registró el área de viajes, las horas que pidió el viajero, el
+  se abre su detalle: lo que registró el área de compras, las horas que pidió el viajero, el
   viaje armado con la ida y el regreso por separado y todos los vuelos de cada tramo, con un
   enlace a la misma búsqueda en Google Flights para ir a comprar (#A87).
 - **Pestaña oculta `COMPARATIVO PRECIOS`** de la base de datos: una fila por búsqueda. Para

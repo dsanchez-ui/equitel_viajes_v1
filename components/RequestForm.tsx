@@ -211,7 +211,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   // Hotel-only always requires hotel; for flights it's a toggle
   const [requiresHotel, setRequiresHotel] = useState(initialData ? initialData.requiresHotel : false);
-  // Maleta de bodega (#A95): la pide el manual COM-P-02. Solo vuelos; el área de viajes la tiene en cuenta al elegir la tarifa.
+  // Maleta de bodega (#A95): la pide el manual COM-P-02. Solo vuelos; el área de compras la tiene en cuenta al elegir la tarifa.
   const [checkedBaggage, setCheckedBaggage] = useState<boolean>(initialData?.checkedBaggage === true);
   const [manualNights, setManualNights] = useState<boolean>(false);
   const [numberOfNights, setNumberOfNights] = useState<number>(initialData ? (initialData.nights || 0) : 0);
@@ -524,7 +524,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   }, [multiDestino, formData.origin, formData.destination, formData.departureDate, extraTramos, cities]);
 
   // #A100: ¿esta solicitud (o algún tramo) queda en espera de la aprobación del CFO?
-  // Solo si el servidor lo anuncia, no es un cambio y quien la crea no es del área de viajes.
+  // Solo si el servidor lo anuncia, no es un cambio y quien la crea no es del área de compras.
   const anyPolicyViolation = multiDestino ? legPolicyViolations.some(Boolean) : policyViolation;
   const policyHoldApplies = !!policyApproval?.appliesToUser && !isModification && anyPolicyViolation;
   const policyApproverLabel = policyApproval?.approverName || 'el CFO';
@@ -533,7 +533,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       ? `Su viaje multidestino quedó creado (solicitudes ${ids.join(', ')}), pero en espera: al menos un tramo se pidió con menos anticipación de la que pide la política de viajes. ` +
         `Todos los tramos esperan juntos la aprobación de ${policyApproverLabel}: una sola decisión aplica a todo el viaje. `
       : `Su solicitud ${ids[0] || ''} quedó creada, pero en espera: se pidió con menos anticipación de la que pide la política de viajes, así que primero debe aprobarla ${policyApproverLabel}. `) +
-    `El área de viajes empieza a gestionarla cuando se apruebe. Le llegará un correo con la decisión; ` +
+    `El área de compras empieza a gestionarla cuando se apruebe. Le llegará un correo con la decisión; ` +
     `si nadie la aprueba en ${policyApproval?.expiryDays || 7} días o antes de la fecha del viaje, queda denegada. Si es urgente, comuníquese con ${policyApproverLabel}.`;
 
   // PASSPORT VALIDATION (solo internacionales). Cuando es internacional y los
@@ -1082,7 +1082,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       alert(
         'El primer pasajero debe estar registrado en el directorio de usuarios.\n\n' +
         'Su cédula determina quién aprobará la solicitud. Si la persona que va a viajar ' +
-        'no aparece en el directorio, contacte al área de viajes o al administrador del ' +
+        'no aparece en el directorio, contacte al área de compras o al administrador del ' +
         'aplicativo para que la registre antes de continuar.'
       );
       return;
@@ -1384,9 +1384,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         // solicitud (caso SOL-000470/471).
         alert(
           'Solicitud de cambio creada' + (newChangeId ? ': ' + newChangeId : '') + '.\n\n' +
-          'El área de viajes la revisará y te avisará por correo. ' +
+          'El área de compras la revisará y te avisará por correo. ' +
           'Mientras tanto NO envíes otra solicitud de cambio para este viaje: ' +
-          'si necesitas corregir algo, contacta al área de viajes.'
+          'si necesitas corregir algo, contacta al área de compras.'
         );
       } else {
         createdId = await gasService.createRequest(payload, emailHtml);
@@ -1697,7 +1697,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                       <p className="text-[11px] text-red-600 mt-1">{phoneCheck.error}</p>
                     )}
                     <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-                      Para que el área de viajes pueda contactar al pasajero si surge algo con el tiquete.{' '}
+                      Para que el área de compras pueda contactar al pasajero si surge algo con el tiquete.{' '}
                       {birthRegistered
                         ? 'Se guarda una sola vez en su perfil.'
                         : 'Como este pasajero no está registrado en el sistema, se guarda solo en esta solicitud.'}
@@ -1712,7 +1712,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                     <p className="text-[11px] text-red-700 mt-1 leading-relaxed">
                       El primer pasajero debe estar registrado — de su ficha se toma el aprobador
                       que autorizará la solicitud. Verifique el número; si la persona no está
-                      registrada, contacte al área de viajes o al administrador del aplicativo
+                      registrada, contacte al área de compras o al administrador del aplicativo
                       para que la agreguen antes de continuar.
                     </p>
                   </div>
@@ -2043,7 +2043,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               checked={checkedBaggage} disabled={loading || isLocked} onChange={(e) => setCheckedBaggage(e.target.checked)} />
             <label htmlFor="checkedBaggage" className="text-sm text-gray-700">
               <span className="font-medium">¿Lleva maleta de bodega?</span>
-              <span className="block text-xs text-gray-500">Márquela si algún pasajero necesita despachar equipaje, además de la maleta de mano. El área de viajes la tiene en cuenta al elegir la tarifa.</span>
+              <span className="block text-xs text-gray-500">Márquela si algún pasajero necesita despachar equipaje, además de la maleta de mano. El área de compras la tiene en cuenta al elegir la tarifa.</span>
               {/* #A103: prevención (decisión de Yurani, 19-oct): pedirla después cuesta el cambio. */}
               <span className="block text-xs text-amber-800 mt-0.5" data-baggage-later-hint>Si cree que la va a necesitar, márquela ahora: agregarla después cuesta el cambio y la diferencia de tarifa.</span>
             </label>
@@ -2164,7 +2164,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                   : null}
                 La política de viajes pide al menos <strong>{policyApproval?.minDaysNational || 8} días</strong> de anticipación para viajes nacionales
                 y <strong>{policyApproval?.minDaysInternational || 30}</strong> para internacionales. La solicitud se va a crear, pero
-                el área de viajes <strong>no la gestiona hasta que {policyApproverLabel} la apruebe</strong>. Le llegará un correo con la decisión;
+                el área de compras <strong>no la gestiona hasta que {policyApproverLabel} la apruebe</strong>. Le llegará un correo con la decisión;
                 si nadie la aprueba en {policyApproval?.expiryDays || 7} días o antes de la fecha del viaje, queda denegada.
                 Las aprobaciones se revisan en horario laboral.
               </p>
@@ -2211,10 +2211,10 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                       <br />Esta solicitud requerirá aprobaciones adicionales.
                     </p>
                   )}
-                  {/* #A100: lo que crea el área de viajes (p. ej. registrar un viaje ya comprado) no queda en espera. */}
+                  {/* #A100: lo que crea el área de compras (p. ej. registrar un viaje ya comprado) no queda en espera. */}
                   {policyApproval && !policyApproval.appliesToUser && !isModification && (
                     <p className="text-xs text-yellow-700 mt-1">
-                      Como la crea el área de viajes, no queda en espera de {policyApproverLabel}: queda marcada fuera de política y cuenta en el informe de cumplimiento.
+                      Como la crea el área de compras, no queda en espera de {policyApproverLabel}: queda marcada fuera de política y cuenta en el informe de cumplimiento.
                     </p>
                   )}
                 </div>

@@ -26,7 +26,7 @@ export const tripChangeRows = (info: TripChangeInfo | null | undefined): [string
 
 /**
  * #A103: en un cambio de un tiquete comprado, la compra de la original sirve de punto de partida
- * (aerolínea, canal, PNR y tarjeta): el área de viajes solo corrige lo que cambió.
+ * (aerolínea, canal, PNR y tarjeta): el área de compras solo corrige lo que cambió.
  */
 export const withParentPurchase = (r: TravelRequest): TravelRequest => {
   const c = r.tripChange && r.tripChange.comprado ? r.tripChange.compra : undefined;
@@ -84,7 +84,7 @@ export const TripChangeBox: React.FC<{ request: TravelRequest; isAdmin?: boolean
         <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${info.comprado ? 'bg-amber-200 text-amber-900' : 'bg-blue-100 text-blue-800'}`}>
           {info.comprado ? 'Tiquete ya comprado' : 'Aún sin comprar'}
         </span>
-        {info.rol === 'administrador' && <span className="text-[10px] text-gray-600">Lo registró el área de viajes ({info.registradoPor})</span>}
+        {info.rol === 'administrador' && <span className="text-[10px] text-gray-600">Lo registró el área de compras ({info.registradoPor})</span>}
       </div>
       <p className="text-xs text-amber-900">
         {info.comprado

@@ -11,7 +11,7 @@ const city = (s: string) => String(s || '').split(',')[0].trim();
 const days = (n: number | null) => (n === null || n === undefined ? '—' : `${n} ${n === 1 ? 'día' : 'días'}`);
 
 /**
- * #A100: botón «En espera de preaprobación» del panel del área de viajes. Las
+ * #A100: botón «En espera de preaprobación» del panel del área de compras. Las
  * solicitudes que no cumplen la política de anticipación esperan la aprobación del
  * CFO: NO están en la lista principal y aquí solo se pueden ver (no se gestionan).
  * Cuando el CFO las aprueba, llegan a la lista principal como nuevas.

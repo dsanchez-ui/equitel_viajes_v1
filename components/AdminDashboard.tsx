@@ -15,7 +15,7 @@ import { PolicyHeldPanel } from './PolicyHeldPanel';
 
 const CHANGE_NEWS_ADMIN_KEY = 'equitel_aviso_cambios_admin_v2'; // v2 (#A106): dentro del plazo, que lo pida el viajero
 
-/** #A103: aviso para el área de viajes del sistema nuevo de cambios. Se cierra con «Entendido» (en este navegador). */
+/** #A103: aviso para el área de compras del sistema nuevo de cambios. Se cierra con «Entendido» (en este navegador). */
 const ChangeNewsBanner: React.FC<{ pending: number }> = ({ pending }) => {
   const [open, setOpen] = React.useState<boolean>(() => {
     try { return localStorage.getItem(CHANGE_NEWS_ADMIN_KEY) !== '1'; } catch { return true; }
@@ -579,7 +579,7 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
           los estados de la derecha (DENEGADO, ANULADO…) quedaban ocultos tras
           una barra que además competía visualmente con la de la tabla. */}
       <div className="flex flex-wrap gap-2 pb-4">
-        {/* #A100: las que esperan al CFO no le llegan al área de viajes (sin pill). */}
+        {/* #A100: las que esperan al CFO no le llegan al área de compras (sin pill). */}
         {['ALL', ...Object.values(RequestStatus).filter(st => st !== RequestStatus.PENDING_POLICY_APPROVAL)].map(s => (
           <button
             key={s}

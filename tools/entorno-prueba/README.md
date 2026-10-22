@@ -29,7 +29,7 @@ Opciones: `--pin 24682468` (el PIN de todos, 8 dígitos), `--puerto-api 8787`, `
 |---|---|---|
 | Viajero de prueba (PRUEBA1) | `dssanchezr2002@gmail.com` | Correo y PIN |
 | Su aprobador (PRUEBA2) | `petersimons988@gmail.com` | Aprueba desde el correo en la bandeja |
-| Área de viajes | `compras.equitel@equitel.com.co` | Botón ADMINISTRADOR |
+| Área de compras | `compras.equitel@equitel.com.co` | Botón ADMINISTRADOR |
 | David | `dsanchez@equitel.com.co` | Botón ADMINISTRADOR; ve el comparador en el dashboard de costos |
 
 El PIN de todos (usuarios y administrador) es `24682468`. Cualquier otro usuario de la copia también puede entrar con ese PIN.

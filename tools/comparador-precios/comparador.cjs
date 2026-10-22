@@ -4,7 +4,7 @@
  * Busca, para un viaje de la plataforma (ruta, fechas, pasajeros, hora preferida),
  * los precios que publican las aerolíneas en Google Flights, a través de SerpApi
  * (engine=google_flights), y los resume por aerolínea para compararlos con el
- * costo que cotizó el área de viajes. Sin IA: es una consulta a una API y un
+ * costo que cotizó el área de compras. Sin IA: es una consulta a una API y un
  * cálculo de mínimos.
  *
  * Núcleo PORTABLE: no usa nada de Node (ni require, ni fs, ni fetch). Así el mismo

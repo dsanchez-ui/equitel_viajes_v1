@@ -22,7 +22,7 @@ export const sanitizeCedula = (raw: string) => String(raw || '').replace(/\D+/g,
 
 // ============================================================
 // FECHA DE NACIMIENTO Y CELULAR por pasajero (C2 y #A74, 2026-09-10).
-// Solo se muestran a administradores: el área de viajes necesita la fecha para
+// Solo se muestran a administradores: el área de compras necesita la fecha para
 // emitir el tiquete y el celular para contactar al pasajero. El solicitante no
 // los ve: en una solicitud se pueden escribir cédulas de otras personas.
 // ============================================================

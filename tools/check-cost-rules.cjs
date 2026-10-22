@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verifica las reglas de los costos que confirma el área de viajes (#A79) y que
+ * Verifica las reglas de los costos que confirma el área de compras (#A79) y que
  * los DOS lados coincidan:
  *
  *   - `server/Code.gs`  → `_formatCop_`, `_parseCopAmount_`, `_validateCostAmount_`, `_normalizePaidValue_`, `COST_MIN_PESOS`

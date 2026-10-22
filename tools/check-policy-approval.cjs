@@ -5,11 +5,11 @@
  * y sin enviar correos: el envío queda registrado en memoria) y comprueba:
  *   - la anticipación la calcula el servidor (8 días nacional, 30 internacional);
  *   - una solicitud fuera de plazo de un solicitante queda en espera, con su
- *     justificación, sin correo al área de viajes y con el aviso al solicitante;
+ *     justificación, sin correo al área de compras y con el aviso al solicitante;
  *     la de un administrador (trazabilidad) sigue normal pero marcada;
- *   - el área de viajes no la ve ni la puede gestionar por el API;
+ *   - el área de compras no la ve ni la puede gestionar por el API;
  *   - el resumen del CFO: una fila por solicitud, enlaces firmados, urgentes primero;
- *   - aprobar → PENDIENTE_OPCIONES + correo al área de viajes; rechazar →
+ *   - aprobar → PENDIENTE_OPCIONES + correo al área de compras; rechazar →
  *     DENEGADO con el motivo, solo al solicitante; enlaces manipulados, repetidos
  *     o de un aprobador anterior no cambian nada;
  *   - vence a los 7 días o al pasar la fecha del viaje;
@@ -21,7 +21,7 @@
  *   - el resumen solo en horario laboral (isWorkingHour), como los demás;
  *   - multidestino: si un tramo no cumple, todo el viaje espera, una sola decisión
  *     (aprobar, rechazar o vencer) cubre todos los tramos y se avisa una vez;
- *   - la lista de solo lectura del área de viajes (getPolicyHeldRequests).
+ *   - la lista de solo lectura del área de compras (getPolicyHeldRequests).
  */
 
 const fs = require('fs');
@@ -177,7 +177,7 @@ function main() {
   eq('fuera de plazo: queda en espera del CFO', cell(HELD1, 'STATUS'), 'PENDIENTE_APROBACION_POLITICA');
   eq('fuera de plazo: marcada', cell(HELD1, 'VIOLACION POLITICA'), 'SI');
   eq('justificación en su columna, espacios colapsados', cell(HELD1, 'JUSTIFICACION ANTICIPACION'), 'El cliente confirmó la visita ayer.');
-  eq('fuera de plazo: nada al área de viajes', log.mails.filter((m) => /compras\.equitel/.test(m.to)).length, 0);
+  eq('fuera de plazo: nada al área de compras', log.mails.filter((m) => /compras\.equitel/.test(m.to)).length, 0);
   const notice = mailsTo('ana@p.co');
   ok('fuera de plazo: el solicitante recibe la explicación', notice.length === 1 && /EN ESPERA DE APROBACIÓN/.test(notice[0].subject) && /Alejandro Gómez de Greiff/.test(notice[0].html) && /8 días/.test(notice[0].html));
   const ev1 = JSON.parse(cell(HELD1, 'EVENTOS_JSON') || '{}');
@@ -204,7 +204,7 @@ function main() {
   r = create(base({ requesterEmail: 'admin@p.co', policyJustification: 'Viaje ya comprado por fuera.' }), 'admin@p.co');
   const ADMIN1 = r.data;
   eq('creada por administrador: flujo normal y marcada', [cell(ADMIN1, 'STATUS'), cell(ADMIN1, 'VIOLACION POLITICA')], ['PENDIENTE_OPCIONES', 'SI']);
-  ok('creada por administrador: le llega al área de viajes', log.mails.some((m) => /compras\.equitel/.test(m.to)));
+  ok('creada por administrador: le llega al área de compras', log.mails.some((m) => /compras\.equitel/.test(m.to)));
 
   // dentro de plazo → normal, sin marca aunque el navegador diga lo contrario
   r = create(base({ departureDate: day(10), returnDate: day(12), policyViolation: true }));
@@ -216,10 +216,10 @@ function main() {
   const HELD4 = r.data;
   eq('internacional a 20 días: en espera', cell(HELD4, 'STATUS'), 'PENDIENTE_APROBACION_POLITICA');
 
-  // 3. El área de viajes no la ve ni la gestiona
+  // 3. El área de compras no la ve ni la gestiona
   reset();
   const lite = ctx.getAllRequestsLite().map((x) => x.requestId);
-  ok('lista del área de viajes: sin las que esperan al CFO', !lite.includes(HELD1) && lite.includes(ADMIN1) && lite.includes(OK1));
+  ok('lista del área de compras: sin las que esperan al CFO', !lite.includes(HELD1) && lite.includes(ADMIN1) && lite.includes(OK1));
   reset();
   ok('lista completa (getAllRequests): sin las que esperan', !ctx.getAllRequests().some((x) => x.requestId === HELD1));
   reset();
@@ -266,9 +266,9 @@ function main() {
   ok('aprobar: eventos policyApproved y policyDecision', !!evA.policyApproved && evA.policyDecision && evA.policyDecision.decision === 'approved');
   ok('aprobar: comentario del CFO guardado', /Solo el tiquete, sin hotel\./.test(cell(HELD1, 'COMENTARIOS APROBADORES (JSON)')) && /POLICY_EXCEPTION/.test(cell(HELD1, 'COMENTARIOS APROBADORES (JSON)')));
   const toAdmin = log.mails.filter((m) => /compras\.equitel/.test(m.to));
-  ok('aprobar: le llega al área de viajes como nueva, con copia al solicitante', toAdmin.length === 1 && /APROBADA POR EXCEPCIÓN/.test(toAdmin[0].subject) && /ana@p\.co/.test(toAdmin[0].cc));
+  ok('aprobar: le llega al área de compras como nueva, con copia al solicitante', toAdmin.length === 1 && /APROBADA POR EXCEPCIÓN/.test(toAdmin[0].subject) && /ana@p\.co/.test(toAdmin[0].cc));
   reset();
-  ok('aprobada: ahora sí la ve el área de viajes', ctx.getAllRequestsLite().some((x) => x.requestId === HELD1));
+  ok('aprobada: ahora sí la ve el área de compras', ctx.getAllRequestsLite().some((x) => x.requestId === HELD1));
   reset();
   page = ctx.processPolicyDecision({ parameter: Object.assign(linkFor(HELD1, 'denied'), { confirm: 'true' }) });
   ok('segundo clic (rechazar una ya aprobada): sin cambios', /Sin cambios/.test(page.html) && cell(HELD1, 'STATUS') === 'PENDIENTE_OPCIONES');
@@ -330,11 +330,11 @@ function main() {
   page = ctx.processPolicyDecision({ parameter: Object.assign(lateApprove, { confirm: 'true' }) });
   ok('aprobar con el viaje ya pasado: no entra al flujo, queda vencida', /Fecha del viaje vencida/.test(page.html) && cell(LATE, 'STATUS') === 'DENEGADO' && /^Vencida_sistema_/.test(cell(LATE, 'APROBACION CFO ANTICIPACION')));
 
-  // Anular una en espera: sin aviso al área de viajes
+  // Anular una en espera: sin aviso al área de compras
   log.mails.length = 0;
   reset();
   const canc = ctx.dispatch('cancelOwnRequest', { userEmail: 'ana@p.co', sessionToken: 't', requestId: HELD4, reason: 'Ya no viajo' });
-  ok('anular en espera: queda anulada sin correo al área de viajes', canc.success && cell(HELD4, 'STATUS') === 'ANULADO' && !log.mails.some((m) => /compras\.equitel/.test(m.to)));
+  ok('anular en espera: queda anulada sin correo al área de compras', canc.success && cell(HELD4, 'STATUS') === 'ANULADO' && !log.mails.some((m) => /compras\.equitel/.test(m.to)));
 
   // Horario laboral: fuera de él no sale el resumen (sí se deniegan las vencidas)
   log.mails.length = 0;
@@ -364,11 +364,11 @@ function main() {
   reset();
   const panel = ctx.getPolicyHeldRequests();
   const g1Item = panel.items.find((it) => it.ids.includes(G1[0]));
-  ok('lista del área de viajes: el viaje multidestino es una sola entrada con sus 3 tramos', g1Item && g1Item.ids.join() === G1.join() && g1Item.legs.length === 3 && g1Item.id === G1[0]);
-  ok('lista del área de viajes: trae quién aprueba y la justificación', panel.approverName === 'Alejandro Gómez de Greiff' && g1Item.justification === 'Reunión con cliente confirmada ayer.');
+  ok('lista del área de compras: el viaje multidestino es una sola entrada con sus 3 tramos', g1Item && g1Item.ids.join() === G1.join() && g1Item.legs.length === 3 && g1Item.id === G1[0]);
+  ok('lista del área de compras: trae quién aprueba y la justificación', panel.approverName === 'Alejandro Gómez de Greiff' && g1Item.justification === 'Reunión con cliente confirmada ayer.');
   reset();
   const resA = ctx.dispatch('getPolicyHeldRequests', { userEmail: 'ana@p.co', sessionToken: 't' });
-  ok('lista del área de viajes: solo administradores', !resA.success);
+  ok('lista del área de compras: solo administradores', !resA.success);
   log.mails.length = 0;
   reset();
   ctx._policySendDigest_(true);
@@ -379,7 +379,7 @@ function main() {
   reset();
   page = ctx.processPolicyDecision({ parameter: Object.assign(gLinks.find((q) => q.id === G1[0] && q.decision === 'approved'), { confirm: 'true' }) });
   eq('multidestino: aprobar el viaje libera los 3 tramos', G1.map((id) => cell(id, 'STATUS')), Array(3).fill('PENDIENTE_OPCIONES'));
-  eq('multidestino: al área de viajes le llega cada tramo como nuevo', log.mails.filter((m) => /compras\.equitel/.test(m.to)).length, 3);
+  eq('multidestino: al área de compras le llega cada tramo como nuevo', log.mails.filter((m) => /compras\.equitel/.test(m.to)).length, 3);
   log.mails.length = 0;
   reset();
   page = ctx.processPolicyDecision({ parameter: Object.assign(gLinks.find((q) => q.id === G2[0] && q.decision === 'denied'), { confirm: 'true' }) });
@@ -418,7 +418,7 @@ function main() {
   ctx.menuVerAprobacionesPolitica();
   ok('disparador con permiso: el menú 14 dice que está activo', /Resumen cada 2 h: activo/.test(log.alerts[0] || ''));
 
-  // 8. Métricas: el área de viajes cuenta desde la aprobación
+  // 8. Métricas: el área de compras cuenta desde la aprobación
   const t0 = '2026-10-13T14:00:00.000Z', t1 = '2026-10-14T14:00:00.000Z', t2 = '2026-10-14T16:00:00.000Z';
   const fake = ['SOL-X', 'a@p.co', 'CALI', 'Equitel', 'PENDIENTE_SELECCION'];
   const m1 = ctx._buildRequestMetrics_('SOL-X', fake, 1, 2, 3, 4, { created: t0, policyApproved: t1, optionsUploaded: t2 });
@@ -527,7 +527,7 @@ function main() {
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('Aprobación del CFO por la política (#A100): anticipación en el servidor, espera oculta al área de viajes, resumen con enlaces firmados, aprobar/rechazar/vencer, métricas desde la aprobación, resumen solo en horario laboral, multidestino con una sola decisión, lista de solo lectura del área de viajes, tarifa superior con voto del CFO, interruptor y aviso con constancia. OK');
+  console.log('Aprobación del CFO por la política (#A100): anticipación en el servidor, espera oculta al área de compras, resumen con enlaces firmados, aprobar/rechazar/vencer, métricas desde la aprobación, resumen solo en horario laboral, multidestino con una sola decisión, lista de solo lectura del área de compras, tarifa superior con voto del CFO, interruptor y aviso con constancia. OK');
 }
 
 main();

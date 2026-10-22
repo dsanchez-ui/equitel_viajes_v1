@@ -9,7 +9,7 @@
  * `tools/check-purchase-info-rules.cjs` compara ambos lados dentro de
  * `npm run verify` y falla si se separan.
  *
- * El área de viajes registra con qué aerolínea y por qué canal se compra:
+ * El área de compras registra con qué aerolínea y por qué canal se compra:
  * Aviatur, directo (con la aerolínea o el hotel) u otra agencia. Solo hospedaje
  * no lleva aerolínea. Si el regreso se compra con otra aerolínea (p. ej. LATAM
  * de ida y Avianca de regreso), `airline` es la de ida y `returnAirline` la del

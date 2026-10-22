@@ -34,7 +34,7 @@ Alejandro, y al final lo más grande.
 | V3 | Registrar con qué aerolínea y canal se compró (Aviatur o directo) | Se desprende de V2 y del 1-oct | Fase 1 del plan del comparador | **Implementado (#A82)**, pendiente de despliegue |
 | V4 | **Cierre automático** de solicitudes cuando las facturas suman lo cotizado, con alerta si falta algo | Laura (1-oct); "va de la mano" con lo hablado con Diego | Decisión **acordada**; David: "sí se puede" | **Implementado (#A83)** como bandeja "Listas para cerrar" (sin cierre automático, decisión del 2-oct); pendiente de despliegue |
 | V5 | **Leer las facturas PDF** del Drive y llenar costos y facturas en la hoja | Diego (30-sep) | David: "sobre el final del mes … del otro mes" (dicho el 30-sep: finales de octubre) | **Solo plan** (decisión del 2-oct): [plan-lectura-facturas.md](plan-lectura-facturas.md) |
-| V6 | Menos correos de recordatorio para el área de viajes | Laura (1-oct) | Resuelto con un filtro de Gmail en la reunión | Paliativo hecho; mejora por decidir |
+| V6 | Menos correos de recordatorio para el área de compras | Laura (1-oct) | Resuelto con un filtro de Gmail en la reunión | Paliativo hecho; mejora por decidir |
 | V7 | "Tipo de compra" (TIPO 1/2/3): nadie lo encuentra en el manual | Diego y Laura (30-sep) | Diego pregunta a Yurani | Esperando respuesta |
 | V8 | Evitar sobrecostos por tarifas básicas (cambios y maletas) | Laura (1-oct) | David: es tema de cultura; Yurani ya decidió un caso | Idea opcional |
 

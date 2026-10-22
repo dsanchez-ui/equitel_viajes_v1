@@ -10,7 +10,7 @@
 
 ### ¿Qué es el sistema?
 
-Una plataforma web donde los empleados piden viajes y hospedajes corporativos, sus jefes aprueban, y el área de viajes gestiona la compra. Todo el estado vive en un Google Sheets, la lógica en un proyecto Apps Script, y el frontend en React desplegado en Cloud Run.
+Una plataforma web donde los empleados piden viajes y hospedajes corporativos, sus jefes aprueban, y el área de compras gestiona la compra. Todo el estado vive en un Google Sheets, la lógica en un proyecto Apps Script, y el frontend en React desplegado en Cloud Run.
 
 ### Los cuatro roles de usuario
 
@@ -300,7 +300,7 @@ Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), **toda de
 
 **1. Anticipación.** Una solicitud nueva que no cumple 8 días (nacional) o 30 (internacional) queda en `PENDIENTE_APROBACION_POLITICA`:
 
-- **El área de viajes no la gestiona**: no aparece en la lista principal del panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. Para verlas hay un botón aparte, **«⏳ En espera de preaprobación (N)»**, arriba de la lista: muestra, solo para leer, quién la pidió, quién viaja, el viaje, la anticipación, la justificación y cuándo vence, con el aviso de que **no cumplen la política de anticipación y no se gestionan**.
+- **El área de compras no la gestiona**: no aparece en la lista principal del panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. Para verlas hay un botón aparte, **«⏳ En espera de preaprobación (N)»**, arriba de la lista: muestra, solo para leer, quién la pidió, quién viaja, el viaje, la anticipación, la justificación y cuándo vence, con el aviso de que **no cumplen la política de anticipación y no se gestionan**.
 - El solicitante escribe por qué (obligatorio) y recibe un correo **[EN ESPERA DE APROBACIÓN]**.
 - El CFO recibe **un resumen cada 2 horas en horario laboral** (lunes a viernes de 7:00 a 17:00, sábados de 8:00 a 12:00, como los demás resúmenes) con una fila por solicitud y los botones **APROBAR** / **RECHAZAR**.
 - **Aprobada** → pasa a `PENDIENTE_OPCIONES` y te llega un correo **[APROBADA POR EXCEPCIÓN]** como cualquier solicitud nueva. Los tiempos de las métricas cuentan desde ese momento.
@@ -338,7 +338,7 @@ Los **superadmins** (configurados en `SUPER_ADMIN_EMAILS`) tienen capacidades ad
 | **Botón VER USUARIO / VER ADMIN** | Header del panel de analista — alternar vistas. |
 | **Recibir escalamientos** | Correos automáticos cuando una solicitud lleva 30h laborales sin aprobación (≈3 días hábiles). |
 | **Ejecutar helpers de Script Properties** | `setScriptProperty`, `deleteScriptProperty`, `listScriptProperties` desde el editor GAS. |
-| **Modificar cualquier solicitud** | El endpoint `requestModification` valida que el solicitante sea el dueño de la solicitud, pero el bypass permite que cualquier analista o superadmin gestione modificaciones a nombre del usuario (caso típico: el área de viajes ajusta la solicitud por pedido verbal). Cualquier otro usuario autenticado solo puede modificar las suyas. |
+| **Modificar cualquier solicitud** | El endpoint `requestModification` valida que el solicitante sea el dueño de la solicitud, pero el bypass permite que cualquier analista o superadmin gestione modificaciones a nombre del usuario (caso típico: el área de compras ajusta la solicitud por pedido verbal). Cualquier otro usuario autenticado solo puede modificar las suyas. |
 
 **Configurar o quitar un superadmin:**
 ```javascript

@@ -22,7 +22,7 @@ const facturas = (n: number) => `${n} factura${n === 1 ? '' : 's'}`;
 /**
  * Facturas de las solicitudes RESERVADO con el viaje terminado (#A83):
  * - "Listas para cerrar": las facturas suman lo cotizado (o más) y cada una tiene
- *   su PDF. No se cierran solas: el área de viajes las revisa y las cierra con el
+ *   su PDF. No se cierran solas: el área de compras las revisa y las cierra con el
  *   cierre manual de siempre.
  * - "Facturas por revisar": terminaron hace `graceDays` días o más y les faltan
  *   facturas o PDF. Se pueden completar, cerrar igual u omitir el aviso.

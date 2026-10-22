@@ -1,5 +1,5 @@
 /**
- * Costos en pesos colombianos que confirma el área de viajes (#A79).
+ * Costos en pesos colombianos que confirma el área de compras (#A79).
  *
  * ⚠️ ESTE ARCHIVO TIENE UN GEMELO EN EL BACKEND.
  * La misma lógica vive en `server/Code.gs` (`_formatCop_`, `_parseCopAmount_`,

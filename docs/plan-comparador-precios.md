@@ -198,7 +198,7 @@ Solo el dashboard de costos y el rastreo. La app de Laura no cambia: falta la au
 | Clic | solo aparece al pedir maleta | su precio con maleta |
 
 **Qué se construye:**
-- **Tarifa por noches cuando no está registrada.** El comparador usa la tarifa que registró el área de viajes y, si falta, la que corresponde por las noches del viaje. Los viajes TIPO 1 se comparan con lo más barato de Google. El rastreo busca con ese mismo equipaje.
+- **Tarifa por noches cuando no está registrada.** El comparador usa la tarifa que registró el área de compras y, si falta, la que corresponde por las noches del viaje. Los viajes TIPO 1 se comparan con lo más barato de Google. El rastreo busca con ese mismo equipaje.
 - **Qué tan comparable es cada viaje:**
   - **Exacta:** TIPO 1 sin maleta; TIPO 2 con maleta de mano cuando el vuelo de referencia es de Avianca, JetSMART o Wingo; TIPO 3 solo con Avianca, porque su Classic incluye bodega. (Clic se pasó a aproximada en #A98: Google trae su VeLigera y el manual pide VeEcono o VePreferencial.)
   - **Aproximada:** LATAM en TIPO 2 o 3, porque Google no la distingue, y cualquier TIPO 3 que no sea Avianca, porque no se puede pedir bodega. El precio de Google puede quedar por debajo.
@@ -295,7 +295,7 @@ Métricas o en un Excel como el del 29-sep.
    - ¿Qué canales se registran en confirmación de costos?
    - ¿Una o dos búsquedas por solicitud?
    - ¿Desde qué fecha corre el estudio?
-3. **Área de viajes:** pedir a Aviatur el desglose de sus cargos (tarifa de servicio
+3. **Área de compras:** pedir a Aviatur el desglose de sus cargos (tarifa de servicio
    separada de IVA y tasas).
 
 ## Fuentes

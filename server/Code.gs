@@ -212,7 +212,7 @@ function _verifyApprovalLinkSig_(action, id, decision, role, actor, t, sig) {
         return { valid: true, reason: 'legacy-accepted-pre-cutover-request' };
       }
     }
-    return { valid: false, reason: 'Este enlace es inválido (formato antiguo). Solicita uno nuevo al área de viajes.' };
+    return { valid: false, reason: 'Este enlace es inválido (formato antiguo). Solicita uno nuevo al área de compras.' };
   }
   var canonical = _approvalLinkCanonical_(action, id, decision, role, actor, t);
   var expected = _signApprovalLink_(canonical);
@@ -266,7 +266,7 @@ const HEADERS_REQUESTS = [
   "CANAL DE COMPRA", // 'Aviatur' | 'Directo' | 'Otra agencia' (#A82)
   "AVISO FACTURAS OMITIDO", // Quién omitió el aviso de facturas incompletas y cuándo (#A83)
   "AEROLINEA REGRESO", // Aerolínea del regreso solo si es distinta de la de ida (#A85)
-  "HOTEL RESERVADO", // Hotel que reservó el área de viajes (#A94); NOMBRE HOTEL sigue siendo el que pidió el viajero
+  "HOTEL RESERVADO", // Hotel que reservó el área de compras (#A94); NOMBRE HOTEL sigue siendo el que pidió el viajero
   "CANAL DE COMPRA HOTEL", // 'Aviatur' | 'Directo' | 'Otra agencia' | 'No se reservó' (#A94)
   "TARIFA RECOMENDADA", // 'TIPO 1|2|3' según las noches del viaje (manual COM-P-02, #A95); la comprada va en TIPO DE COMPRA DE TKT
   "TARIFA NOMBRE", // Nombre de la tarifa en la aerolínea: 'Classic', 'Light (ida) y Classic (regreso)' (#A95)
@@ -581,7 +581,7 @@ function doPost(e) {
     if (e.postData.contents.length > 30 * 1024 * 1024) {
       return ContentService.createTextOutput(JSON.stringify({
         success: false,
-        error: 'Payload demasiado grande. Reduce archivos o solicita al área de viajes.'
+        error: 'Payload demasiado grande. Reduce archivos o solicita al área de compras.'
       })).setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -676,7 +676,7 @@ function dispatch(action, payload) {
     }
 
     // #A100: una solicitud en espera de la aprobación del CFO no se gestiona
-    // (no la ve el área de viajes; esto corta también llamadas directas al API).
+    // (no la ve el área de compras; esto corta también llamadas directas al API).
     const policyGuardedActions = ['updateRequest', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'setPurchaseInfo', 'uploadSupportFile', 'closeRequest', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'requestModification', 'requestTripChange'];
     if (policyGuardedActions.includes(action) && payload) {
       _assertNotPolicyHold_(payload.requestId || payload.id);
@@ -1674,7 +1674,7 @@ function requestUserPin(email, forceRegenerate) {
 
   // 1. Verify the user exists in INTEGRANTES / USUARIOS (analysts bypass this check).
   if (!validateUserEmail_(normalized)) {
-    throw new Error('Tu correo no está registrado en el sistema. Contacta al área de viajes.');
+    throw new Error('Tu correo no está registrado en el sistema. Contacta al área de compras.');
   }
 
   // 1b. CASO ESPECIAL: correo de administrador que NO tiene fila en la hoja
@@ -1822,7 +1822,7 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
 
    // #A38: OWNERSHIP CHECK — el solicitante solo puede modificar sus propias
    // solicitudes. Analysts/superadmins pueden modificar cualquier (para casos
-   // operativos donde el área de viajes ajuste una solicitud a nombre del
+   // operativos donde el área de compras ajuste una solicitud a nombre del
    // usuario). Sin este check, cualquier usuario autenticado podía crear
    // una hija apuntando a la solicitud de otro usuario (escalamiento).
    const _parentRequester = String(sheet.getRange(rowNumber, requesterEmailIdx + 1).getValue() || '').toLowerCase().trim();
@@ -1862,7 +1862,7 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
    if (_activeChild) {
       throw new Error('Esta solicitud ya tiene una solicitud de cambio en curso: ' + _activeChild.id +
          ' (estado ' + _activeChild.status + '). No se puede crear otra.\n\n' +
-         'Si necesitas ajustar algo más, pide al área de viajes que anule ' + _activeChild.id +
+         'Si necesitas ajustar algo más, pide al área de compras que anule ' + _activeChild.id +
          ' y vuelve a solicitar el cambio, o espera a que la gestionen.');
    }
 
@@ -2124,7 +2124,7 @@ function sendUserConsultEmail_(parentReq, childRequestId, denialReason) {
   const content = `
     <div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:14px 16px; border-radius:6px; font-size:13px; margin-bottom:18px; line-height:1.55;">
       <strong style="display:block; font-size:14px; margin-bottom:4px;">Su solicitud de cambio ${escapeHtml_(childRequestId)} no fue aprobada</strong>
-      El área de viajes no pudo proceder con el cambio solicitado.
+      El área de compras no pudo proceder con el cambio solicitado.
     </div>
     <p style="color:#111827; font-size:14px; margin-bottom:10px;">
       <strong>Motivo indicado:</strong>
@@ -2143,7 +2143,7 @@ function sendUserConsultEmail_(parentReq, childRequestId, denialReason) {
       <a href="${continueLink}" style="background-color:#059669; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px; display:inline-block; margin-right:10px;">CONTINUAR CON LA SOLICITUD</a>
       <a href="${cancelLink}" style="background-color:#dc2626; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px; display:inline-block; margin-top:10px;">ANULAR SOLICITUD</a>
     </div>
-    <p style="font-size:11px; color:#9ca3af; text-align:center; margin-top:16px;">Si no responde, el área de viajes le enviará un recordatorio más adelante.</p>
+    <p style="font-size:11px; color:#9ca3af; text-align:center; margin-top:16px;">Si no responde, el área de compras le enviará un recordatorio más adelante.</p>
     <hr style="border:0; border-top:1px solid #e5e7eb; margin:28px 0;">
     ${HtmlTemplates._getFullSummary(parentReq)}
   `;
@@ -2242,7 +2242,7 @@ function processUserConsultResponse(e) {
     if (decision === 'continue') {
       // Limpiar marcador y agregar nota de continuación
       const cleaned = currentObs.replace(USER_CONSULT_MARKER, '').replace(/\s+$/g, '');
-      const note = `[CONTINUAR]: El solicitante confirmó que desea continuar con esta solicitud tras la consulta del área de viajes.`;
+      const note = `[CONTINUAR]: El solicitante confirmó que desea continuar con esta solicitud tras la consulta del área de compras.`;
       sheet.getRange(rowNumber, obsIdx + 1).setValue(cleaned + "\n" + note);
       SpreadsheetApp.flush();
 
@@ -2253,7 +2253,7 @@ function processUserConsultResponse(e) {
         const adminSubject = getStandardSubject(req) + " [CONTINÚA TRAS CONSULTA]";
         const adminBody = HtmlTemplates.layout(
           req.requestId,
-          `<p style="font-size:14px;">El solicitante <strong>${escapeHtml_(req.requesterEmail)}</strong> confirmó que <strong>desea continuar</strong> con la solicitud tras la consulta enviada desde el área de viajes. El proceso se reanuda con normalidad.</p>${HtmlTemplates._getFullSummary(req)}`,
+          `<p style="font-size:14px;">El solicitante <strong>${escapeHtml_(req.requesterEmail)}</strong> confirmó que <strong>desea continuar</strong> con la solicitud tras la consulta enviada desde el área de compras. El proceso se reanuda con normalidad.</p>${HtmlTemplates._getFullSummary(req)}`,
           '#059669',
           'EL USUARIO DESEA CONTINUAR'
         );
@@ -2271,7 +2271,7 @@ function processUserConsultResponse(e) {
 
     if (decision === 'anulate') {
       // Usa anularSolicitud que ya envía el correo al usuario
-      anularSolicitud(id, "Anulada por decisión del solicitante tras consulta del área de viajes.");
+      anularSolicitud(id, "Anulada por decisión del solicitante tras consulta del área de compras.");
       return renderMessagePage(
         "Solicitud Anulada",
         "Su solicitud ha sido anulada. Gracias por confirmar.",
@@ -2620,7 +2620,7 @@ function processApprovalFromEmail(e) {
               // COMENTARIO TARDÍO: la solicitud ya avanzó (p. ej. ya se reservó)
               // y este aprobador dejó una instrucción que ya no saldría en el
               // correo de aprobación (enviado antes). Sin este aviso, quedaría
-              // guardada en silencio — avisar al área de viajes para que
+              // guardada en silencio — avisar al área de compras para que
               // verifique si afecta la gestión ya realizada.
               if (commentSaved) {
                   try {
@@ -2641,7 +2641,7 @@ function processApprovalFromEmail(e) {
               }
               return renderMessagePage(
                   'Decisión Registrada',
-                  `Su decisión ha sido registrada en el sistema.${commentSaved ? '<br/>Su comentario también quedó registrado y se avisó al área de viajes.' : ''}<br/><br/><strong>Nota:</strong> Esta solicitud ya había avanzado previamente y se encuentra en estado: <span style="color:blue">${escapeHtml_(currentStatus)}</span>. El flujo no se ha modificado.`,
+                  `Su decisión ha sido registrada en el sistema.${commentSaved ? '<br/>Su comentario también quedó registrado y se avisó al área de compras.' : ''}<br/><br/><strong>Nota:</strong> Esta solicitud ya había avanzado previamente y se encuentra en estado: <span style="color:blue">${escapeHtml_(currentStatus)}</span>. El flujo no se ha modificado.`,
                   '#374151'
               );
           }
@@ -3318,7 +3318,7 @@ function _ensureRequestColumn_(header, note) {
 // =====================================================================
 // AEROLÍNEA Y CANAL DE COMPRA (#A82)
 // =====================================================================
-// El área de viajes registra con qué aerolínea y por qué canal se compra el
+// El área de compras registra con qué aerolínea y por qué canal se compra el
 // tiquete: Aviatur, directo (aerolínea u hotel) u otra agencia. Se pide al
 // confirmar costos (canal previsto) y al registrar la reserva (canal real, puede
 // cambiar si Aviatur no ajusta el precio). Pedido de David, 2-oct-2026, para
@@ -3426,7 +3426,7 @@ function _normalizePurchasePayload_(requestId, inner) {
 /** Escribe aerolínea y canal; la aerolínea del regreso solo si info.returnAirline viene (#A85). */
 function _writePurchaseInfo_(sheet, rowNumber, info) {
   var colAirline = _ensureRequestColumn_(PURCHASE_AIRLINE_HEADER,
-    'Aerolínea del tiquete (#A82). La registra el área de viajes al confirmar costos y al registrar la reserva.');
+    'Aerolínea del tiquete (#A82). La registra el área de compras al confirmar costos y al registrar la reserva.');
   var colChannel = _ensureRequestColumn_(PURCHASE_CHANNEL_HEADER,
     'Canal de compra (#A82): Aviatur, Directo (aerolínea u hotel) u Otra agencia. Se registra al confirmar costos y al registrar la reserva.');
   sheet.getRange(rowNumber, colAirline).setValue(safeSheetValue_(info.airline || ''));
@@ -3442,7 +3442,7 @@ var PURCHASE_RETURN_AIRLINE_NOTE = 'Aerolínea del regreso (#A85), solo si es di
 // ---------------------------------------------------------------------
 // HOTEL RESERVADO Y SU CANAL DE COMPRA (#A94, pedido de Laura, 2026-10-08)
 // ---------------------------------------------------------------------
-// Al registrar la reserva, el área de viajes anota qué hotel reservó y por qué
+// Al registrar la reserva, el área de compras anota qué hotel reservó y por qué
 // canal (Aviatur, directo con el hotel u otra agencia), para tener la
 // trazabilidad de los hospedajes. NOMBRE HOTEL no se toca: es el que pidió el
 // viajero. HOTEL_NOT_BOOKED = al final no se reservó hotel (p. ej. lo quitó el
@@ -3452,7 +3452,7 @@ var PURCHASE_HOTEL_HEADER = 'HOTEL RESERVADO';
 var PURCHASE_HOTEL_CHANNEL_HEADER = 'CANAL DE COMPRA HOTEL';
 var HOTEL_NOT_BOOKED = 'No se reservó';
 var HOTEL_NAME_MAX = 120;
-var PURCHASE_HOTEL_NOTE = 'Hotel que reservó el área de viajes (#A94), en mayúsculas y sin tildes. NOMBRE HOTEL es el que pidió el viajero.';
+var PURCHASE_HOTEL_NOTE = 'Hotel que reservó el área de compras (#A94), en mayúsculas y sin tildes. NOMBRE HOTEL es el que pidió el viajero.';
 var PURCHASE_HOTEL_CHANNEL_NOTE = 'Canal de compra del hotel (#A94): Aviatur, Directo (con el hotel) u Otra agencia. «No se reservó» = al final no hubo hotel.';
 
 // Valor pagado al comprar (#A102, David, 14-oct): opcional en «Registrar reserva», en pesos (reglas de #A79).
@@ -3460,8 +3460,8 @@ var PURCHASE_HOTEL_CHANNEL_NOTE = 'Canal de compra del hotel (#A94): Aviatur, Di
 // No confundir con VALOR PAGADO A AEROLINEA Y/O HOTEL, que es el valor de la factura 1.
 var PAID_TICKETS_HEADER = 'VALOR COMPRA TIQUETES';
 var PAID_HOTEL_HEADER = 'VALOR COMPRA HOTEL';
-var PAID_TICKETS_NOTE = 'Lo que se pagó por los tiquetes al comprarlos (#A102), en pesos. Opcional: lo escribe el área de viajes en «Registrar reserva». Vacío = no se registró.';
-var PAID_HOTEL_NOTE = 'Lo que se pagó por el hotel al reservarlo (#A102), en pesos. Opcional: lo escribe el área de viajes en «Registrar reserva». Vacío = no se registró.';
+var PAID_TICKETS_NOTE = 'Lo que se pagó por los tiquetes al comprarlos (#A102), en pesos. Opcional: lo escribe el área de compras en «Registrar reserva». Vacío = no se registró.';
+var PAID_HOTEL_NOTE = 'Lo que se pagó por el hotel al reservarlo (#A102), en pesos. Opcional: lo escribe el área de compras en «Registrar reserva». Vacío = no se registró.';
 
 /**
  * Valida y normaliza el hotel reservado y su canal.
@@ -3499,7 +3499,7 @@ function _normalizeHotelPurchase_(hotelName, hotelChannel, isHotelOnly) {
 // como TIPO 3). Noches = regreso − ida; sin regreso, las noches de hotel. Cada
 // aerolínea le da su nombre (FARE_TABLE); en Avianca las opciones 2 y 3 son la
 // misma (Classic). La comprada se guarda en TIPO DE COMPRA DE TKT ('TIPO 2'), la
-// columna que el área de viajes llenaba a mano; si no es la recomendada, se pide
+// columna que el área de compras llenaba a mano; si no es la recomendada, se pide
 // una justificación. Yurani: comparar «peras con peras» en el comparador de precios.
 // ⚠️ GEMELO: utils/fare.ts. tools/check-fare-rules.cjs compara los dos lados.
 var FARE_TYPE_HEADER = 'TIPO DE COMPRA DE TKT';
@@ -3906,7 +3906,7 @@ function cierreAutomaticoPorFacturas() {
 function _ensureA82A83Columns_() {
   return [
     { header: PURCHASE_AIRLINE_HEADER, col: _ensureRequestColumn_(PURCHASE_AIRLINE_HEADER,
-      'Aerolínea del tiquete (#A82). La registra el área de viajes al confirmar costos y al registrar la reserva.') },
+      'Aerolínea del tiquete (#A82). La registra el área de compras al confirmar costos y al registrar la reserva.') },
     { header: PURCHASE_CHANNEL_HEADER, col: _ensureRequestColumn_(PURCHASE_CHANNEL_HEADER,
       'Canal de compra (#A82): Aviatur, Directo (aerolínea u hotel) u Otra agencia. Se registra al confirmar costos y al registrar la reserva.') },
     { header: PURCHASE_RETURN_AIRLINE_HEADER, col: _ensureRequestColumn_(PURCHASE_RETURN_AIRLINE_HEADER, PURCHASE_RETURN_AIRLINE_NOTE) },
@@ -3929,7 +3929,7 @@ function _ensureA82A83Columns_() {
     { header: CHANGE_PENALTY_HEADER, col: _ensureRequestColumn_(CHANGE_PENALTY_HEADER, CHANGE_PENALTY_NOTE) },
     { header: REPLACED_BY_HEADER, col: _ensureRequestColumn_(REPLACED_BY_HEADER, REPLACED_BY_NOTE) },
     { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
-      'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
+      'Aviso de facturas incompletas omitido por el área de compras (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
   ];
 }
 
@@ -3948,7 +3948,7 @@ function menuColumnasCompraFacturas() {
       '• Facturas por revisar: ' + scan.alerts.length + '\n' +
       '• Avisos omitidos: ' + scan.dismissed.length + '\n' +
       '• Viaje sin terminar o con menos de ' + INVOICE_ALERT_GRACE_DAYS + ' días: ' + scan.waiting + '\n\n' +
-      'Ninguna se cierra sola: el área de viajes las cierra desde el panel de la app.', ui.ButtonSet.OK);
+      'Ninguna se cierra sola: el área de compras las cierra desde el panel de la app.', ui.ButtonSet.OK);
   } catch (e) {
     ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
   }
@@ -3980,7 +3980,7 @@ function dismissInvoiceAlert(requestId, actorEmail) {
   var rowNumber = _getRowByRequestId_(requestId);
   if (!sheet || rowNumber === -1) throw new Error('Solicitud no encontrada.');
   var col = _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
-    'Aviso de facturas incompletas omitido por el área de viajes (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.');
+    'Aviso de facturas incompletas omitido por el área de compras (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.');
   var lastCol = sheet.getLastColumn();
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var headerMap = {};
@@ -4182,7 +4182,7 @@ function amendReservation(payload) {
                 + itemsHtml + '</div>';
         }
 
-        var content = '<p style="color:#111827; font-size:14px; margin-bottom:12px;">El área de viajes ha <strong>corregido la reserva</strong> para su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
+        var content = '<p style="color:#111827; font-size:14px; margin-bottom:12px;">El área de compras ha <strong>corregido la reserva</strong> para su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
 
         content += '<div style="background-color:#eff6ff; border:1px solid #dbeafe; padding:20px; border-radius:8px; text-align:center; margin-bottom:20px;">'
             + '<div style="font-size:12px; color:#60a5fa; margin-bottom:5px; text-transform:uppercase; font-weight:bold;">' + (isHotelOnly ? 'NÚMERO DE CONFIRMACIÓN' : 'NÚMERO DE RESERVA (PNR)') + '</div>'
@@ -4642,7 +4642,7 @@ const HtmlTemplates = {
 
                 '<div style="border-top: 1px solid #e5e7eb; margin-top: 25px; padding-top: 15px;">' +
                     '<p style="color: #6b7280; font-size: 11px; line-height: 1.5; margin: 0;">' +
-                        'Si <strong>no solicitaste este correo</strong>, ignóralo o repórtalo al área de viajes (compras.equitel@equitel.com.co). ' +
+                        'Si <strong>no solicitaste este correo</strong>, ignóralo o repórtalo al área de compras (compras.equitel@equitel.com.co). ' +
                         'Por seguridad, nunca compartas tu PIN con nadie.' +
                     '</p>' +
                 '</div>' +
@@ -4903,7 +4903,7 @@ const HtmlTemplates = {
         if (isPriorityOpt) {
             content += `
             <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; padding: 14px 16px; margin-bottom: 22px; border-radius: 6px; font-size: 13px; line-height: 1.55;">
-                <strong>ℹ️ Solicitante prioritario:</strong> Es posible que su solicitud ya haya sido gestionada por el área de viajes fuera del sistema. Si ya recibió los ${isHotelOnlyOpt ? 'datos del hotel' : 'tiquetes'}, puede desestimar este correo. De lo contrario, proceda a seleccionar.
+                <strong>ℹ️ Solicitante prioritario:</strong> Es posible que su solicitud ya haya sido gestionada por el área de compras fuera del sistema. Si ya recibió los ${isHotelOnlyOpt ? 'datos del hotel' : 'tiquetes'}, puede desestimar este correo. De lo contrario, proceda a seleccionar.
             </div>
             `;
         }
@@ -4912,7 +4912,7 @@ const HtmlTemplates = {
         content += `
             <div style="background-color: #fef3c7; border: 1px solid #fde68a; color: #92400e; padding: 14px 16px; margin-bottom: 22px; border-radius: 6px; font-size: 13px; line-height: 1.55;">
                 <strong>⚠️ Importante al describir su selección:</strong><br/>
-                Indique <strong>siempre la categoría</strong> que desea elegir (no solo la letra de la opción). Sin esto, el área de viajes no podrá tramitar su reserva.
+                Indique <strong>siempre la categoría</strong> que desea elegir (no solo la letra de la opción). Sin esto, el área de compras no podrá tramitar su reserva.
                 <ul style="margin: 8px 0 0 18px; padding: 0;">
                     ${!isHotelOnlyOpt ? '<li><strong>Vuelo:</strong> categoría tarifaria — ej. Económica, Economy Plus, Premium, Business.</li>' : ''}
                     <li><strong>Hotel:</strong> tipo de habitación — ej. Estándar, Superior, Suite.</li>
@@ -5023,7 +5023,7 @@ const HtmlTemplates = {
         // #A100: TARIFA SUPERIOR A LA DEL MANUAL
         if (request.requiresFareApproval) {
             const fareCfoName = escapeHtml_(request.budgetApproverName || 'el CFO');
-            alertHtml += `<div style="background-color: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🎫 TARIFA SUPERIOR A LA DEL MANUAL:</strong> Se confirmó la tarifa <strong>TIPO ${escapeHtml_(request.fareType || '')}${request.fareName ? ' (' + escapeHtml_(request.fareName) + ')' : ''}</strong> y el manual pide <strong>TIPO ${escapeHtml_(request.fareRecommended || '')}</strong> para este viaje. Requiere la aprobación de <strong>${fareCfoName}</strong> antes de comprar.${request.fareJustification ? '<br/><span style="font-style: italic;">Motivo del área de viajes: "' + escapeHtml_(request.fareJustification) + '"</span>' : ''}</div>`;
+            alertHtml += `<div style="background-color: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🎫 TARIFA SUPERIOR A LA DEL MANUAL:</strong> Se confirmó la tarifa <strong>TIPO ${escapeHtml_(request.fareType || '')}${request.fareName ? ' (' + escapeHtml_(request.fareName) + ')' : ''}</strong> y el manual pide <strong>TIPO ${escapeHtml_(request.fareRecommended || '')}</strong> para este viaje. Requiere la aprobación de <strong>${fareCfoName}</strong> antes de comprar.${request.fareJustification ? '<br/><span style="font-style: italic;">Motivo del área de compras: "' + escapeHtml_(request.fareJustification) + '"</span>' : ''}</div>`;
         }
 
         // POLICY VIOLATION BANNER
@@ -5141,7 +5141,7 @@ const HtmlTemplates = {
         // COMENTARIOS DE LOS APROBADORES (2026-07-27): bloque prominente en el
         // correo de aprobación. La instrucción del aprobador prima sobre la
         // selección del usuario (ej: "solo comprar tiquete, sin hotel"), por lo
-        // que tanto el solicitante como el área de viajes (CC) deben verla.
+        // que tanto el solicitante como el área de compras (CC) deben verla.
         let approverCommentsBlock = '';
         const _apprComments = (isApproved && Array.isArray(request.approverComments))
             ? request.approverComments.filter(function(c) { return c && c.comment; })
@@ -5300,9 +5300,9 @@ const HtmlTemplates = {
                     ${parentId ? '(que reemplaza a <strong>' + escapeHtml_(parentId) + '</strong>) ' : ''}ha sido <strong>aceptada para gestión</strong>.
                 </p>
                 <p style="font-size:13px; color:#4b5563; margin-bottom:16px;">
-                    A partir de ahora, esta nueva solicitud seguirá el flujo normal: el equipo de viajes cargará opciones, usted seleccionará la que prefiera y se solicitará la aprobación correspondiente. Recibirá los correos del proceso como en cualquier solicitud.
+                    A partir de ahora, esta nueva solicitud seguirá el flujo normal: el equipo de compras cargará opciones, usted seleccionará la que prefiera y se solicitará la aprobación correspondiente. Recibirá los correos del proceso como en cualquier solicitud.
                 </p>
-                ${parentId ? '<div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 12px; border-radius:6px; font-size:12px; margin-bottom:10px;">La solicitud original <strong>' + escapeHtml_(parentId) + '</strong> quedará activa hasta que el área de viajes decida qué hacer con ella (normalmente queda reemplazada por este cambio).</div>' : ''}
+                ${parentId ? '<div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:10px 12px; border-radius:6px; font-size:12px; margin-bottom:10px;">La solicitud original <strong>' + escapeHtml_(parentId) + '</strong> quedará activa hasta que el área de compras decida qué hacer con ella (normalmente queda reemplazada por este cambio).</div>' : ''}
                 <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 24px 0;">
                 ${this._getFullSummary(request)}
             `;
@@ -5315,7 +5315,7 @@ const HtmlTemplates = {
                 </p>
                 ${reason ? '<div style="background-color:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:12px 14px; border-radius:6px; font-size:13px; margin-bottom:14px;"><strong>Motivo:</strong> ' + escapeHtml_(reason) + '</div>' : ''}
                 <p style="font-size:13px; color:#4b5563; margin-bottom:8px;">
-                    Si su solicitud original <strong>${escapeHtml_(parentId || 'anterior')}</strong> sigue activa, el proceso continuará sobre ella con normalidad. Si tiene dudas, responda a este correo o contacte al área de viajes.
+                    Si su solicitud original <strong>${escapeHtml_(parentId || 'anterior')}</strong> sigue activa, el proceso continuará sobre ella con normalidad. Si tiene dudas, responda a este correo o contacte al área de compras.
                 </p>
             `;
         }
@@ -5387,7 +5387,7 @@ function renderDenialReasonPage(id, role, actor, color, sigT, sigVal) {
  * Página de confirmación de APROBACIÓN con comentario OPCIONAL (espejo de
  * renderDenialReasonPage). El aprobador puede escribir una salvedad (ej:
  * "solo comprar tiquete, no se requiere hotel") que quedará registrada y
- * visible para el área de viajes y el solicitante. El textarea es opcional:
+ * visible para el área de compras y el solicitante. El textarea es opcional:
  * un click en "SÍ, APROBAR" con el campo vacío aprueba exactamente igual
  * que antes. El comentario viaja como &comment= SIN firmar (mismo modelo de
  * confianza que el &reason= de denegación: el link firmado es la credencial).
@@ -5425,9 +5425,9 @@ function renderApprovalCommentPage(id, role, actor, color, sigT, sigVal) {
       <h1>Aprobar Solicitud</h1>
       <div class="id-badge">${safeId}</div>
       <p>¿Está seguro de <strong>APROBAR</strong> esta solicitud?</p>
-      <label for="comment">Comentario para el área de viajes (opcional)</label>
+      <label for="comment">Comentario para el área de compras (opcional)</label>
       <textarea id="comment" maxlength="500" placeholder="Ej: Solo comprar el tiquete, no se requiere hotel. / Comprar en tarifa económica..."></textarea>
-      <div class="hint">Opcional — si escribe algo, será visible para el área de viajes y el solicitante, y se tendrá en cuenta al hacer la reserva.</div>
+      <div class="hint">Opcional — si escribe algo, será visible para el área de compras y el solicitante, y se tendrá en cuenta al hacer la reserva.</div>
       <button onclick="submitApproval()" class="btn">SÍ, APROBAR</button>
     </div>
     <div id="loading-card" class="card loading"><h1>Procesando...</h1><p>Por favor espere.</p></div>
@@ -5512,7 +5512,7 @@ function getAllRequests() {
       const id = String(row[idIdx]).trim();
       // Skip empty rows (no ID)
       if (!id) return;
-      // #A100: en espera del CFO = el área de viajes todavía no la gestiona.
+      // #A100: en espera del CFO = el área de compras todavía no la gestiona.
       if (String(row[statusIdxAll] || '').trim() === POLICY_HOLD_STATUS) return;
 
       // Deduplicate: Keep the first occurrence found
@@ -5556,7 +5556,7 @@ function getAllRequestsLite() {
   data.forEach(row => {
     const id = String(row[idIdx]).trim();
     if (!id) return;
-    // #A100: en espera del CFO = el área de viajes todavía no la ve. Se filtra
+    // #A100: en espera del CFO = el área de compras todavía no la ve. Se filtra
     // aquí (no en la app) para que una pestaña con la app anterior tampoco la vea.
     if (String(row[statusIdxLite] || '').trim() === POLICY_HOLD_STATUS) return;
     if (!uniqueRequests.has(id)) uniqueRequests.set(id, row);
@@ -6094,7 +6094,7 @@ function createNewRequest(data, emailHtml, policy) {
   // la solicitud ya va a ser rechazada.)
   const _requesterKey = String(data.requesterEmail || '').toLowerCase().trim();
   if (_isCreateRequestRateLimited_(_requesterKey)) {
-    throw new Error('Has creado demasiadas solicitudes hoy. Contacta al área de viajes si necesitas crear más.');
+    throw new Error('Has creado demasiadas solicitudes hoy. Contacta al área de compras si necesitas crear más.');
   }
 
   // Guard internacional: si la solicitud es internacional, TODOS los pasajeros
@@ -6383,7 +6383,7 @@ function createNewRequest(data, emailHtml, policy) {
   data.approverName = approverName;
 
   if (policy && policy.hold) {
-      // #A100: el área de viajes no recibe nada (le llega cuando el CFO apruebe);
+      // #A100: el área de compras no recibe nada (le llega cuando el CFO apruebe);
       // el solicitante y los pasajeros reciben la explicación de la espera.
       _sendPolicyHoldNotice_(data, id, policy);
   } else if (emailHtml) {
@@ -7123,7 +7123,7 @@ function uploadPassport(payload, currentUserEmail) {
   // llenar Drive). 50/día/usuario es generoso para uso real.
   var _actorKey = String(currentUserEmail || '').toLowerCase().trim();
   if (_isPassportUploadRateLimited_(_actorKey)) {
-    throw new Error('Has subido demasiados pasaportes hoy. Intenta de nuevo más tarde o contacta al área de viajes.');
+    throw new Error('Has subido demasiados pasaportes hoy. Intenta de nuevo más tarde o contacta al área de compras.');
   }
 
   var ced = _sanitizeCedula_(payload.cedula);
@@ -7649,7 +7649,7 @@ function uploadSupportFile(requestId, fileData, fileName, mimeType, correctionNo
         file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
       }, 'setSharing-support');
 
-      var content = '<p style="color:#111827; font-size:14px; margin-bottom:12px;">El área de viajes ha cargado un <strong>documento corregido</strong> para su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
+      var content = '<p style="color:#111827; font-size:14px; margin-bottom:12px;">El área de compras ha cargado un <strong>documento corregido</strong> para su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
       if (correctionNote) {
         content += '<div style="background-color:#fffbeb; border:1px solid #fde68a; color:#92400e; padding:12px 14px; border-radius:6px; font-size:13px; margin-bottom:16px;"><strong>Nota:</strong> ' + escapeHtml_(correctionNote) + '</div>';
       }
@@ -7705,7 +7705,7 @@ function sendRequestEmailWithHtml(data, requestId, htmlTemplate) {
             <div style="background-color: #eff6ff; border: 1px solid #bfdbfe; padding: 15px; border-radius: 6px; text-align: left; color: #1e3a8a;">
                 <p style="margin: 0 0 6px 0; font-weight: bold; font-size: 14px;">Solicitud de cambio enviada</p>
                 <p style="margin: 0; font-size: 13px; line-height: 1.55;">
-                    El área de viajes evaluará el cambio solicitado. Mientras tanto, <strong>los recordatorios de su solicitud original ${escapeHtml_(data.relatedRequestId || '')} quedan pausados</strong> para evitarle confusión. Recibirá un correo cuando el cambio sea aceptado o rechazado, y a partir de ahí el proceso continuará normalmente sobre esta nueva solicitud.
+                    El área de compras evaluará el cambio solicitado. Mientras tanto, <strong>los recordatorios de su solicitud original ${escapeHtml_(data.relatedRequestId || '')} quedan pausados</strong> para evitarle confusión. Recibirá un correo cuando el cambio sea aceptado o rechazado, y a partir de ahí el proceso continuará normalmente sobre esta nueva solicitud.
                 </p>
             </div>
         `;
@@ -9255,7 +9255,7 @@ function sendUserSelectionReminderEmail_(req) {
       <strong>${escapeHtml_(req.destination)}</strong>.
     </p>
     <p style="margin-bottom: 14px; color: #4b5563; font-size: 13px; line-height: 1.55;">
-      El área de viajes ya cargó las opciones. Por favor ingresa al portal y
+      El área de compras ya cargó las opciones. Por favor ingresa al portal y
       describe cuál opción de ${isHotelOnlyRem ? 'hotel' : ('vuelo' + (req.requiresHotel ? ' y hotel' : ''))} deseas
       tomar (recuerda <strong>indicar siempre la categoría</strong>: ${isHotelOnlyRem ? 'tipo de habitación — Estándar, Superior, Suite' : 'Económica, Premium, Business' + (req.requiresHotel ? ', tipo de habitación' : '')}, etc.).
     </p>
@@ -9339,7 +9339,7 @@ function sendPendingConsultReminders() {
     var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
 
     var content = '<div style="background-color:#fff7ed; border:1px solid #fed7aa; color:#c2410c; padding:12px 14px; text-align:center; font-weight:bold; font-size:14px; margin-bottom:15px; border-radius:4px;">⏰ RECORDATORIO: Necesitamos su respuesta</div>';
-    content += '<p style="color:#111827; font-size:14px; margin-bottom:12px;">Le recordamos que el área de viajes le consultó si desea <strong>continuar</strong> o <strong>anular</strong> su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
+    content += '<p style="color:#111827; font-size:14px; margin-bottom:12px;">Le recordamos que el área de compras le consultó si desea <strong>continuar</strong> o <strong>anular</strong> su solicitud <strong>' + escapeHtml_(requestId) + '</strong>.</p>';
     content += '<div style="text-align:center; margin:20px 0;">';
     content += '<a href="' + continueLink + '" style="background-color:#059669; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px; display:inline-block; margin-right:10px;">CONTINUAR</a>';
     content += '<a href="' + cancelLink + '" style="background-color:#dc2626; color:white; padding:12px 24px; text-decoration:none; border-radius:6px; font-weight:bold; font-size:14px; display:inline-block; margin-top:10px;">ANULAR</a>';
@@ -9866,7 +9866,7 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
 
   // #A43: no anular si hay hija de cambio activa — dejaría huérfana.
   if (_parentHasActiveChild_(sheet, requestId)) {
-    throw new Error('Esta solicitud tiene una solicitud de cambio activa. El área de viajes debe resolver el cambio antes de anular.');
+    throw new Error('Esta solicitud tiene una solicitud de cambio activa. El área de compras debe resolver el cambio antes de anular.');
   }
 
   // Apply cancellation
@@ -9875,7 +9875,7 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
   var note = '[ANULACIÓN POR USUARIO]: ' + reason.trim();
   sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + note);
 
-  // #A100: si estaba en espera del CFO, el área de viajes nunca la vio: no se le
+  // #A100: si estaba en espera del CFO, el área de compras nunca la vio: no se le
   // avisa (y sale sola del resumen del CFO).
   var wasPolicyHold = currentStatus === POLICY_HOLD_STATUS;
 
@@ -10098,7 +10098,7 @@ function anularSolicitud(requestId, reason) {
 // SUPERADMIN: saltar etapa PENDIENTE_SELECCION (R4)
 // =====================================================================
 /**
- * Salta la etapa de selección de un usuario cuando el área de viajes ya
+ * Salta la etapa de selección de un usuario cuando el área de compras ya
  * gestionó la compra por fuera del sistema (caso típico: ejecutivos
  * prioritarios con compra urgente).
  *
@@ -11208,7 +11208,7 @@ function menuCargarFechasNacimiento() {
 // =====================================================================
 // CELULAR DE CONTACTO DEL PASAJERO (#A74, 2026-09-10)
 // =====================================================================
-// El área de viajes lo necesita para contactar al pasajero (llamada o
+// El área de compras lo necesita para contactar al pasajero (llamada o
 // WhatsApp) si surge algo con la solicitud o el tiquete. Vive en la columna
 // 'Celular' de USUARIOS, AL FINAL de la hoja y leída SIEMPRE por nombre (misma
 // razón que 'Fecha Nacimiento': USUARIOS se lee y escribe por posición).
@@ -11432,7 +11432,7 @@ function agregarColumnaCelular() {
     .setFontWeight('bold').setBackground('#1f2937').setFontColor('white');
   sheet.setColumnWidth(col, 110);
   sheet.getRange(1, col).setNote(
-    'Celular de contacto (10 dígitos, sin espacios). Lo ve el área de viajes en el detalle de la solicitud ' +
+    'Celular de contacto (10 dígitos, sin espacios). Lo ve el área de compras en el detalle de la solicitud ' +
     'para contactar al pasajero. Se llena con Equitel Viajes → 8. Cargar celulares (lista RR. HH.), el sidebar, el panel móvil o el formulario de solicitudes.'
   );
   // Formato texto: evita que Sheets lo muestre como número (3,00E+09) o le quite dígitos.
@@ -15214,7 +15214,7 @@ function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, com
     company: String(row[companyIdx] || ''),
     status: String(row[statusIdx] || ''),
     created: events.created || null,
-    // #A100: si esperó la aprobación del CFO, el área de viajes empieza a contar
+    // #A100: si esperó la aprobación del CFO, el área de compras empieza a contar
     // desde que la aprobó (policyApproved), no desde que se creó.
     timeToOptionsMinutes: minutesBetween(events.policyApproved || events.created, events.optionsUploaded),
     timeToSelectionMinutes: minutesBetween(events.optionsUploaded, events.selectionMade),
@@ -17330,7 +17330,7 @@ var COSTS_ACCESS_HEADER_SEARCH_ROWS = 3;  // se buscan en las filas 1 a 3
 var COSTS_ACCESS_EMAIL_HEADER = 'DASHBOARD COSTOS · CORREO';
 var COSTS_ACCESS_UNIT_HEADER = 'DASHBOARD COSTOS · UNIDAD DE NEGOCIO';
 var COSTS_ACCESS_ALL_UNITS = 'TODAS';
-var COSTS_ACCESS_DENIED_MSG = 'Acceso no autorizado al dashboard de costos. Si lo necesitas, pídele al área de viajes que te asigne tu unidad de negocio.';
+var COSTS_ACCESS_DENIED_MSG = 'Acceso no autorizado al dashboard de costos. Si lo necesitas, pídele al área de compras que te asigne tu unidad de negocio.';
 
 /** Columnas (0-based) de la tabla de accesos en la fila de encabezados; -1 si no están. */
 function _csFindAccessColumns_(headerRow) {
@@ -18156,7 +18156,7 @@ function _ptSnapshot_(r, withOptions) {
 /**
  * Tarifa de una solicitud del comparador (#A95, «peras con peras»). TIPO 1 se compara
  * con una búsqueda sin maleta y TIPO 2 o 3 con una con maleta de mano. La tarifa es la
- * registrada por el área de viajes y, si falta, la que corresponde por las noches del
+ * registrada por el área de compras y, si falta, la que corresponde por las noches del
  * viaje según el manual (#A97, basis 'recomendada'). match: true si la búsqueda usada
  * tiene el equipaje de la tarifa, false si no, null si no hay búsqueda con precio.
  * quality: qué tan comparable es el precio de Google con esa tarifa (_ptQuality_).
@@ -18430,7 +18430,7 @@ function _ptBuildTracking_() {
       var same = ref ? ref.sameAirline : null;
       var inv = _ptInvoiced_(row, hm, config);
       // #A104: con qué se compara el precio de Google. Búsqueda al comprar: lo pagado (#A102) o, si no
-      // se registró, lo cotizado. Si aún no se compra: los costos que dejó el área de viajes (los vigentes;
+      // se registró, lo cotizado. Si aún no se compra: los costos que dejó el área de compras (los vigentes;
       // David, 20-oct: la primera cotización de Miami, después corregida, sumaba $3 M que no eran reales).
       var base = null, baseKind = '';
       if (ref && ref.moment === 'COMPRA') { base = paid || quoted; baseKind = paid ? 'pagado' : 'cotizado'; }
@@ -18585,7 +18585,7 @@ function _ptUserName_(email) {
 }
 
 /**
- * Detalle de un viaje del comparador (#A86): lo que registró el área de viajes, lo
+ * Detalle de un viaje del comparador (#A86): lo que registró el área de compras, lo
  * que pidió el viajero y la última búsqueda de cada momento con todos los vuelos de
  * cada tramo. Solo lectura; mismas personas que getPriceTracking. Sin datos de los
  * pasajeros ni del solicitante.
@@ -18781,7 +18781,7 @@ function costsDashboard_getPriceTrackingDetail(payload) {
 //
 // 1. ANTICIPACIÓN (8 días nacional, 30 internacional). Una solicitud nueva que
 //    no cumple se crea en PENDIENTE_APROBACION_POLITICA: queda registrada, pero
-//    el área de viajes no la ve ni la gestiona, no corren tiempos ni métricas y
+//    el área de compras no la ve ni la gestiona, no corren tiempos ni métricas y
 //    no hay recordatorios. El solicitante escribe por qué (obligatorio en el
 //    formulario) y recibe un correo que le explica la espera.
 //    - Quien aprueba es el mismo responsable del presupuesto excedido
@@ -18793,9 +18793,9 @@ function costsDashboard_getPriceTrackingDetail(payload) {
 //      solicitud y los botones Aprobar / Rechazar al lado (enlaces firmados).
 //    - Multidestino: si un tramo no cumple, esperan todos los tramos del viaje
 //      (enlazados por GRUPO MULTIDESTINO) y una sola decisión los cubre.
-//    - El área de viajes no las ve en su lista; solo en el botón «En espera de
+//    - El área de compras no las ve en su lista; solo en el botón «En espera de
 //      preaprobación» de su panel (solo lectura, getPolicyHeldRequests).
-//    - Aprobada → PENDIENTE_OPCIONES y le llega al área de viajes como nueva
+//    - Aprobada → PENDIENTE_OPCIONES y le llega al área de compras como nueva
 //      (desde aquí corren los tiempos). Rechazada → DENEGADO con el motivo.
 //    - Si nadie la aprueba en 7 días, o pasa la fecha del viaje, queda DENEGADO
 //      sola («no se aprobó la excepción…»). Nunca se borra nada.
@@ -18974,7 +18974,7 @@ function _requestStatusById_(requestId) {
   return idx < 0 ? '' : String(sheet.getRange(rowNumber, idx + 1).getValue() || '').trim();
 }
 
-/** Corta cualquier gestión del área de viajes sobre una solicitud en espera del CFO. */
+/** Corta cualquier gestión del área de compras sobre una solicitud en espera del CFO. */
 function _assertNotPolicyHold_(requestId) {
   if (_requestStatusById_(requestId) === POLICY_HOLD_STATUS) {
     var cfg = _policyApprovalConfig_();
@@ -19164,7 +19164,7 @@ function _policyDigestHtml_(items, cfg) {
       '<p style="color:#ffffff; margin:6px 0 0 0; font-size:14px; opacity:0.9;">' + n + (n === 1 ? ' solicitud espera' : ' solicitudes esperan') + ' su decisión</p></td></tr>' +
     '<tr><td style="padding:20px 20px 6px 20px; color:#374151; font-size:14px; line-height:1.5;">' +
       'Estas solicitudes se pidieron con menos anticipación de la que pide la política de viajes (<strong>' + POLICY_MIN_DAYS_NATIONAL + ' días</strong> para viajes nacionales y <strong>' + POLICY_MIN_DAYS_INTERNATIONAL + '</strong> para internacionales). ' +
-      'El área de viajes <strong>no las gestiona hasta que usted las apruebe</strong>. Si la aprueba, sigue el proceso normal; si la rechaza, el solicitante recibe un correo con el motivo.</td></tr>' +
+      'El área de compras <strong>no las gestiona hasta que usted las apruebe</strong>. Si la aprueba, sigue el proceso normal; si la rechaza, el solicitante recibe un correo con el motivo.</td></tr>' +
     '<tr><td style="padding:6px 12px 12px 12px;"><table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse; border:1px solid #e5e7eb;">' + rows + '</table></td></tr>' +
     '<tr><td style="padding:0 20px 20px 20px; color:#6b7280; font-size:12px; line-height:1.5;">Cada botón abre una página para confirmar y, si quiere, dejar un comentario. En un viaje multidestino, la decisión aplica a todos sus tramos. Este resumen llega cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas ' + POLICY_DIGEST_HOURS_TEXT + ' mientras haya solicitudes pendientes. Las que nadie aprueba en ' + POLICY_HOLD_EXPIRY_DAYS + ' días, o antes de la fecha del viaje, quedan denegadas.</td></tr>' +
     '<tr><td style="text-align:center; font-size:11px; color:#9ca3af; padding-bottom:18px;">&copy; ' + new Date().getFullYear() + ' Organización Equitel. Gestión de Viajes Corporativos.</td></tr>' +
@@ -19204,7 +19204,7 @@ function _policyAppendObs_(sheet, rowNumber, note) {
 
 /**
  * Aprueba la excepción: la solicitud entra al flujo normal (PENDIENTE_OPCIONES),
- * le llega al área de viajes como nueva y desde aquí corren los tiempos.
+ * le llega al área de compras como nueva y desde aquí corren los tiempos.
  */
 function _policyApprove_(sheet, rowNumber, id, approverEmail, comment) {
   var stamp = Utilities.formatDate(new Date(), 'America/Bogota', 'd/M/yyyy H:mm');
@@ -19223,7 +19223,7 @@ function _policyApprove_(sheet, rowNumber, id, approverEmail, comment) {
     var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
     var content = '<div style="background-color:#ecfdf5; border:1px solid #a7f3d0; border-left:4px solid #059669; border-radius:6px; padding:14px 16px; margin-bottom:18px; font-size:13px; color:#065f46; line-height:1.55;">' +
       '<strong>✅ Aprobada por excepción.</strong> ' + escapeHtml_(cfg.name || approverEmail) + ' aprobó esta solicitud, que se pidió con menos anticipación de la que pide la política. ' +
-      'Desde ahora sigue el proceso normal: el área de viajes cargará las opciones.' +
+      'Desde ahora sigue el proceso normal: el área de compras cargará las opciones.' +
       (comment ? '<div style="margin-top:8px; font-style:italic; color:#374151;">Comentario: "' + escapeHtml_(comment) + '"</div>' : '') + '</div>' +
       '<div style="text-align:center; margin-bottom:24px;"><a href="' + PLATFORM_URL + '" style="background-color:#111827; color:white; padding:10px 20px; text-decoration:none; border-radius:4px; font-weight:bold; display:inline-block;">INGRESAR A LA PLATAFORMA</a></div>' +
       '<hr style="border:0; border-top:1px solid #e5e7eb; margin:24px 0;">' + HtmlTemplates._getFullSummary(req);
@@ -19237,7 +19237,7 @@ function _policyApprove_(sheet, rowNumber, id, approverEmail, comment) {
 
 /**
  * Deniega la solicitud en espera (rechazo del CFO o vencimiento). Solo le escribe
- * al solicitante y a los pasajeros: el área de viajes nunca la vio.
+ * al solicitante y a los pasajeros: el área de compras nunca la vio.
  */
 /**
  * Lo que espera junto con una fila: ella y, si es un tramo de un viaje
@@ -19259,7 +19259,7 @@ function _policyHeldMates_(sheet, rowNumber) {
 
 /**
  * Deniega la solicitud en espera (rechazo del CFO o vencimiento). Solo le escribe
- * al solicitante y a los pasajeros: el área de viajes nunca la vio. En un viaje
+ * al solicitante y a los pasajeros: el área de compras nunca la vio. En un viaje
  * multidestino se avisa una vez (notify solo en el primer tramo, con los demás en
  * otherIds).
  */
@@ -19432,10 +19432,10 @@ function _renderPolicyDecisionPage_(it, decision, actor, sigT, sigVal) {
     '<div class="sub">Solicitud fuera de la política de anticipación</div>' +
     '<div class="box">' + _policyItemHtml_(it) + '</div>' +
     '<p style="font-size:13px;color:#374151;line-height:1.5;">' + (approve
-      ? 'Si la aprueba, la solicitud sigue el proceso normal y el área de viajes empieza a gestionarla.'
+      ? 'Si la aprueba, la solicitud sigue el proceso normal y el área de compras empieza a gestionarla.'
       : 'Si la rechaza, queda denegada y el solicitante recibe un correo con el motivo: <em>«' + escapeHtml_(POLICY_DENIAL_REASON) + '»</em>') + '</p>' +
     '<label for="comment">Comentario (opcional)</label><textarea id="comment" maxlength="500" placeholder="' + (approve ? 'Ej.: Aprobado solo el tiquete, sin hotel.' : 'Ej.: Debe planearse con más tiempo.') + '"></textarea>' +
-    '<div class="hint">Si escribe algo, ' + (approve ? 'lo verán el área de viajes y el solicitante.' : 'se agrega al motivo que recibe el solicitante.') + '</div>' +
+    '<div class="hint">Si escribe algo, ' + (approve ? 'lo verán el área de compras y el solicitante.' : 'se agrega al motivo que recibe el solicitante.') + '</div>' +
     '<button class="btn" onclick="go()">' + (approve ? 'SÍ, APROBAR' : 'SÍ, RECHAZAR') + '</button></div>' +
     '<div id="loading-card" class="card loading"><h1>Procesando…</h1><p>Por favor espere.</p></div></body></html>';
   return HtmlService.createHtmlOutput(html).setTitle(approve ? 'Aprobar excepción' : 'Rechazar solicitud').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);
@@ -19498,7 +19498,7 @@ function processPolicyDecision(e) {
       }
       mates.forEach(function(m) { _policyApprove_(sheet, m.rowNumber, m.id, cfg.email, comment); });
       return renderMessagePage('Excepción aprobada', (mates.length > 1 ? 'Las solicitudes <strong>' + idsTxt + '</strong> (todo el viaje multidestino) siguen' : 'La solicitud <strong>' + idsTxt + '</strong> sigue') +
-        ' su proceso normal. Se avisó al área de viajes y al solicitante.', '#059669');
+        ' su proceso normal. Se avisó al área de compras y al solicitante.', '#059669');
     }
     mates.forEach(function(m, k) { _policyDeny_(sheet, m.rowNumber, m.id, cfg.email, POLICY_DENIAL_REASON, comment, false, k === 0, others(m)); });
     return renderMessagePage('Solicitud rechazada', (mates.length > 1 ? 'Las solicitudes <strong>' + idsTxt + '</strong> (todo el viaje multidestino) quedaron denegadas.' : 'La solicitud <strong>' + idsTxt + '</strong> quedó denegada.') +
@@ -19531,10 +19531,10 @@ function _sendPolicyHoldNotice_(data, id, plan) {
         ? '<p style="font-size:15px; color:#111827;">Su viaje multidestino de <strong>' + plan.groupTotal + ' tramos</strong> quedó registrado (esta es la solicitud del tramo 1, <strong>' + escapeHtml_(id) + '</strong>), pero <strong>todavía no se puede gestionar</strong>. Todos los tramos esperan juntos: <strong>una sola decisión aplica a todo el viaje</strong>.</p>'
         : '<p style="font-size:15px; color:#111827;">Su solicitud <strong>' + escapeHtml_(id) + '</strong> quedó registrada, pero <strong>todavía no se puede gestionar</strong>.</p>') +
       '<div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:6px; padding:14px 16px; margin:16px 0; font-size:13px; color:#78350f; line-height:1.6;">' +
-        why + 'Por eso, antes de que el área de viajes ' + (isGroup ? 'lo' : 'la') + ' gestione, debe aprobar' + (isGroup ? 'lo' : 'la') + ' <strong>' + who + '</strong>.</div>' +
+        why + 'Por eso, antes de que el área de compras ' + (isGroup ? 'lo' : 'la') + ' gestione, debe aprobar' + (isGroup ? 'lo' : 'la') + ' <strong>' + who + '</strong>.</div>' +
       '<ul style="font-size:13px; color:#374151; line-height:1.7; padding-left:18px;">' +
         '<li>' + (isGroup ? 'Su viaje' : 'Su solicitud') + ' ya está en la lista de aprobaciones de ' + who + (plan.justification ? ', con la justificación que usted escribió' : '') + '. Las aprobaciones se revisan ' + POLICY_DIGEST_HOURS_TEXT + '.</li>' +
-        '<li>Si la aprueba, le llegará un correo y el área de viajes empezará a gestionarla.</li>' +
+        '<li>Si la aprueba, le llegará un correo y el área de compras empezará a gestionarla.</li>' +
         '<li>Si no la aprueba, o si no hay respuesta en ' + POLICY_HOLD_EXPIRY_DAYS + ' días o antes de la fecha del viaje, quedará denegada y también le avisaremos.</li>' +
         '<li>Si el viaje es urgente, puede comunicarse directamente con ' + who + '.</li></ul>' +
       '<p style="font-size:12px; color:#6b7280;">Para la próxima vez: pida sus viajes con ' + POLICY_MIN_DAYS_NATIONAL + ' días de anticipación (nacionales) o ' + POLICY_MIN_DAYS_INTERNATIONAL + ' (internacionales) y el proceso sigue sin esperas.</p>' +
@@ -19713,7 +19713,7 @@ function ackPolicyNotice(noticeId, currentUserEmail) {
 
 /**
  * #A100: lo que espera la aprobación del CFO, para el botón «En espera de
- * preaprobación» del panel del área de viajes. SOLO LECTURA (administradores):
+ * preaprobación» del panel del área de compras. SOLO LECTURA (administradores):
  * esas solicitudes no cumplen la política de anticipación y no se gestionan.
  */
 function getPolicyHeldRequests() {
@@ -20077,7 +20077,7 @@ function _mrHtml_(r) {
 
   var p = r.policy;
   var policy = (p.held || p.fare) ? _mrSection_('Aprobaciones de ' + e(r.approverName || 'quien aprueba') + ' por la política',
-    'Solicitudes pedidas en el mes que necesitaron su aprobación antes de que el área de viajes las gestionara (regla vigente desde octubre de 2026). Cuenta cada tramo de un viaje multidestino.',
+    'Solicitudes pedidas en el mes que necesitaron su aprobación antes de que el área de compras las gestionara (regla vigente desde octubre de 2026). Cuenta cada tramo de un viaje multidestino.',
     _mrTable_([{ t: 'Motivo' }, { t: 'Total', right: true }, { t: 'Aprobadas', right: true }, { t: 'Rechazadas', right: true }, { t: 'Vencidas', right: true }, { t: 'En espera', right: true }], [
       ['Pedida con menos anticipación', p.held, p.approved, p.denied, p.expired, p.waiting],
       ['Tarifa superior a la del manual', p.fare, p.fareApproved, p.fareDenied, '—', p.fare - p.fareApproved - p.fareDenied]
@@ -20116,7 +20116,7 @@ function _mrHtml_(r) {
       r.traz.map(function(t) { return [e(t.id), e(t.travelers.map(_mrName_).join(', ')), e(t.unit), e(t.origin + ' → ' + t.destination), e(_policyFmtDay_(t.ida))]; }))) : '';
 
   var fareRows = r.fares.buckets.map(function(b) { return [e(b.label), e(b.name), e(String(b.n)), _mrPct_(b.n - b.superior, b.n), '<strong>' + _mrPct_(b.superior, b.n) + '</strong>']; });
-  var fares = _mrSection_('Tarifa', 'Compras hechas en ' + e(r.label) + ' con la tarifa registrada por el área de viajes, frente a la que fija el manual según las noches del viaje. ' +
+  var fares = _mrSection_('Tarifa', 'Compras hechas en ' + e(r.label) + ' con la tarifa registrada por el área de compras, frente a la que fija el manual según las noches del viaje. ' +
     'Cuenta la fecha de compra, no la de la solicitud: cada compra sale una sola vez, aunque se haya pedido el mes anterior.' +
     (r.fares.withoutFare ? ' ' + r.fares.withoutFare + (r.fares.withoutFare === 1 ? ' compra no tiene' : ' compras no tienen') + ' tarifa registrada y no entran' +
       (r.ym <= MR_FARE_SINCE.slice(0, 7) ? ' (la plataforma la registra desde el ' + e(_policyFmtDay_(MR_FARE_SINCE)) + ')' : '') + '.' : ''),
@@ -20297,7 +20297,7 @@ function menuInformeMensualPrueba() {
 var TRIP_CHANGE_HEADER = 'CAMBIO PEDIDO (JSON)';
 var TRIP_CHANGE_NOTE = 'Lo que pidió cambiar el viajero con «Cambiar mi viaje» (#A103): el antes y el ahora, si el tiquete ya estaba comprado y lo que costó el viaje original. Lo escribe el sistema: no editar.';
 var CHANGE_PENALTY_HEADER = 'PENALIDAD CAMBIO';
-var CHANGE_PENALTY_NOTE = 'De lo que costó el cambio, cuánto es penalidad y cargos de la aerolínea o la agencia (#A103), en pesos. La escribe el área de viajes al confirmar el costo del cambio.';
+var CHANGE_PENALTY_NOTE = 'De lo que costó el cambio, cuánto es penalidad y cargos de la aerolínea o la agencia (#A103), en pesos. La escribe el área de compras al confirmar el costo del cambio.';
 var REPLACED_BY_HEADER = 'REEMPLAZADA POR';
 var REPLACED_BY_NOTE = 'Solicitud de cambio que reemplazó a esta (#A103). La original con tiquete comprado no se anula: queda «Cambiada» y su costo sigue contando.';
 var TRIP_CHANGE_REASON_MIN = 10;
@@ -20496,18 +20496,18 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
   var row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
   var p = mapRowToRequest(row);
   if (!isAdmin && String(p.requesterEmail || '').toLowerCase().trim() !== actor) {
-    throw new Error('Solo quien pidió el viaje puede pedir el cambio. Si es un pasajero, pídale al solicitante o al área de viajes.');
+    throw new Error('Solo quien pidió el viaje puede pedir el cambio. Si es un pasajero, pídale al solicitante o al área de compras.');
   }
   var st = String(p.status || '').trim();
   var blocked = {
     ANULADO: 'La solicitud está anulada.', DENEGADO: 'La solicitud fue denegada.', PROCESADO: 'La solicitud ya está cerrada.',
-    PENDIENTE_ANALISIS_CAMBIO: 'Esta es una solicitud de cambio que el área de viajes aún no revisa.'
+    PENDIENTE_ANALISIS_CAMBIO: 'Esta es una solicitud de cambio que el área de compras aún no revisa.'
   };
   blocked[POLICY_HOLD_STATUS] = 'La solicitud todavía espera la aprobación por la política de anticipación. Puede anularla y pedir una nueva.';
   if (blocked[st]) throw new Error('No se puede cambiar: ' + blocked[st]);
   if (String(p.replacedBy || '').trim()) throw new Error('Este viaje ya se cambió: el vigente es ' + p.replacedBy + '. Pida el cambio sobre esa solicitud.');
   var live = _findActiveChildOfParent_(sheet, p.requestId);
-  if (live) throw new Error('Esta solicitud ya tiene un cambio en curso: ' + live.id + '. Espere a que el área de viajes lo resuelva.');
+  if (live) throw new Error('Esta solicitud ya tiene un cambio en curso: ' + live.id + '. Espere a que el área de compras lo resuelva.');
 
   var isHotelOnly = p.requestMode === 'HOTEL_ONLY';
   var parentVals = {
@@ -20647,7 +20647,7 @@ function _tripChangeEmailHtml_(parent, data, info, reason) {
     : '<div style="background-color:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#1e3a8a;">El tiquete aún no se había comprado: se cotiza de nuevo con los cambios, sin penalidad.</div>';
   var bagLater = _tripChangeBagLater_(info)
     ? '<div style="background-color:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:10px 12px; margin:10px 0; font-size:12px; color:#9a3412;">Se pidió la maleta de bodega después de comprar el tiquete: pedida desde el principio no habría penalidad.</div>' : '';
-  var who = info.rol === 'administrador' ? ' (lo registró el área de viajes: ' + escapeHtml_(info.registradoPor) + ')' : '';
+  var who = info.rol === 'administrador' ? ' (lo registró el área de compras: ' + escapeHtml_(info.registradoPor) + ')' : '';
   var content =
     '<p style="color:#111827; font-size:14px; margin:0 0 6px;"><strong>' + escapeHtml_(parent.requesterEmail) + '</strong> pide cambiar el viaje <strong>' + escapeHtml_(parent.requestId) +
     '</strong> (' + escapeHtml_(route) + ')' + who + '.</p>' +
@@ -20789,7 +20789,7 @@ function _tripChangePublicInfo_(email) {
 var TRIP_CONTACTS_SHEET = 'MISC';
 var TRIP_CONTACTS_HEADERS = ['CONTACTO CAMBIOS · CORREO', 'CONTACTO CAMBIOS · NOMBRE', 'CONTACTO CAMBIOS · CARGO'];
 var TRIP_CONTACTS_DEFAULT = [
-  ['compras.equitel@equitel.com.co', 'Laura Molina', 'Área de viajes'],
+  ['compras.equitel@equitel.com.co', 'Laura Molina', 'Área de compras'],
   ['directorcompras@equitel.com.co', 'Diego Caballero', 'Director de compras']
 ];
 var TRIP_CONTACTS_MAX = 3;
@@ -20856,7 +20856,7 @@ function _tripContactsRead_() {
 /**
  * A quién llamar si ya pasó el plazo, en orden: [{email, name, role, phone}] (phone: 10 dígitos o '').
  * Se guarda 10 minutos en CacheService. Sin tabla, o si no se puede leer: [] y la app muestra el correo
- * del área de viajes, como antes.
+ * del área de compras, como antes.
  */
 function _tripContacts_() {
   if (_TRIP_CONTACTS_CACHE) return _TRIP_CONTACTS_CACHE;
@@ -20894,12 +20894,12 @@ function _formatPhoneText_(p) {
 }
 
 /**
- * «llame a Laura Molina (área de viajes), 313 325 1690; si no responde, a Diego Caballero (director de
- * compras), 323 295 8507». Sin contactos: «escríbale al área de viajes: compras.equitel@…».
+ * «llame a Laura Molina (área de compras), 313 325 1690; si no responde, a Diego Caballero (director de
+ * compras), 323 295 8507». Sin contactos: «escríbale al área de compras: compras.equitel@…».
  */
 function _tripContactsText_(contacts) {
   var list = (contacts || []).filter(function (c) { return c && c.name; });
-  if (!list.length) return 'escríbale al área de viajes: ' + ADMIN_EMAIL;
+  if (!list.length) return 'escríbale al área de compras: ' + ADMIN_EMAIL;
   var one = function (c) {
     var role = c.role ? ' (' + c.role.charAt(0).toLowerCase() + c.role.slice(1) + ')' : '';
     return c.name + role + (c.phone ? ', ' + _formatPhoneText_(c.phone) : (c.email ? ', ' + c.email : ''));
@@ -20947,7 +20947,7 @@ function revisarContactosCambios() {
     if (!Object.prototype.hasOwnProperty.call(phones, r.email)) { res.warnings.push(where + r.email + ' no está en USUARIOS: no hay de dónde tomar su celular.'); return; }
     if (!phones[r.email]) res.warnings.push(where + r.name + ' no tiene un celular válido en USUARIOS (columna Celular): se muestra su correo en vez del teléfono.');
   });
-  if (!named) res.warnings.push('La tabla no tiene a nadie: la app muestra el correo del área de viajes (' + ADMIN_EMAIL + ').');
+  if (!named) res.warnings.push('La tabla no tiene a nadie: la app muestra el correo del área de compras (' + ADMIN_EMAIL + ').');
   return res;
 }
 

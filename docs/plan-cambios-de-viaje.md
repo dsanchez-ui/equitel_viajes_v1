@@ -43,7 +43,7 @@ administradores **vean y controlen el sobrecosto** de cada cambio.
 2. **Plazo: hasta las 5:00 p. m. del día hábil anterior al vuelo**; si ese día es sábado, hasta
    las 12:00 m. Domingos y festivos de Colombia no cuentan. Antes del límite se puede pedir a
    cualquier hora. Después del plazo, la plataforma no deja pedirlo y muestra el contacto del
-   área de viajes.
+   área de compras.
 3. **Viaje en curso:** si la ida ya voló y falta el regreso, se puede cambiar **solo el regreso**
    (fecha, hora, equipaje), con el plazo contado hasta el vuelo de regreso.
 4. **Tiquete comprado: opciones y selección igual que hoy.** Laura carga las opciones del cambio,

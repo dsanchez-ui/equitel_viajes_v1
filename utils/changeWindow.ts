@@ -6,7 +6,7 @@
 // las 5:00 p. m. del día hábil anterior al vuelo; si ese día es sábado, hasta las
 // 12:00 m. Domingos y festivos de Colombia no cuentan. Antes del límite se puede
 // pedir a cualquier hora. Con el viaje en curso (la ida ya voló) solo se cambia el
-// regreso. El área de viajes registra cambios a nombre del viajero sin plazo.
+// regreso. El área de compras registra cambios a nombre del viajero sin plazo.
 // Todas las cuentas van en hora de Bogotá (UTC−5, sin horario de verano).
 
 const DAY_MS = 86400000;

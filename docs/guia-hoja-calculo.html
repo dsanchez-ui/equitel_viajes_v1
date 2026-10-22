@@ -77,7 +77,7 @@
   <div class="wrapper">
     <h1>Guía del Google Sheets — Portal de Viajes Equitel</h1>
 <blockquote>
-<p><strong>Para quién es esta guía:</strong> cualquier persona del área de viajes que vaya a manejar el Google Sheets que está detrás del portal.</p>
+<p><strong>Para quién es esta guía:</strong> cualquier persona del área de compras que vaya a manejar el Google Sheets que está detrás del portal.</p>
 <p><strong>En qué se enfoca:</strong> solo en la hoja de cálculo. Qué tiene, qué se puede tocar y qué no, y cómo usar el menú <strong>Equitel Viajes</strong> que aparece arriba del sheet.</p>
 <p><strong>Guía complementaria:</strong> para la operación del portal completo (roles, workflows del analista, Script Properties, triggers, métricas, seguridad), ver la <a href="./guia-administrador.md">Guía del Administrador</a>.</p>
 </blockquote>
@@ -156,13 +156,13 @@
 </ul>
 <p><strong>Lo que NO debes hacer:</strong> cambiar los encabezados de esas dos columnas ni escribir las unidades a mano sin revisarlas con el menú 9 (una unidad mal escrita no muestra datos).</p>
 <h4>Contactos para cambios de viaje (#A106)</h4>
-<p>Tres columnas con los encabezados <code>CONTACTO CAMBIOS · CORREO</code>, <code>CONTACTO CAMBIOS · NOMBRE</code> y <code>CONTACTO CAMBIOS · CARGO</code> en la <strong>fila 1</strong>. Las crea <strong>Equitel Viajes → 16. Contactos para cambios de viaje</strong>, al final de MISC y dejando una columna libre, con Laura Molina (área de viajes) y Diego Caballero (director de compras) debajo.</p>
+<p>Tres columnas con los encabezados <code>CONTACTO CAMBIOS · CORREO</code>, <code>CONTACTO CAMBIOS · NOMBRE</code> y <code>CONTACTO CAMBIOS · CARGO</code> en la <strong>fila 1</strong>. Las crea <strong>Equitel Viajes → 16. Contactos para cambios de viaje</strong>, al final de MISC y dejando una columna libre, con Laura Molina (área de compras) y Diego Caballero (director de compras) debajo.</p>
 <ul>
 <li><strong>Una fila por persona, en el orden en que se llama:</strong> la primera y, si no responde, la siguiente. Se muestran máximo 3.</li>
 <li><strong>El nombre y el cargo</strong> son los que ve el viajero. <strong>El correo</strong> es con el que la persona está en USUARIOS: de ahí se toma su celular (columna <em>Celular</em>). Si alguien no tiene celular válido, se muestra su correo.</li>
 <li><strong>Solo se muestra cuando ya no se puede pedir el cambio en el portal</strong> (pasó el plazo) y es urgente. Antes, el portal pide que todo se haga por la plataforma.</li>
 <li><strong>Si alguien cambia de rol</strong>, se cambia su fila. Si cambia el celular, se corrige en USUARIOS (sidebar o panel móvil). La app lo muestra en unos 10 minutos, o de inmediato al volver a correr el menú 16.</li>
-<li>Sin la tabla, el portal muestra el correo del área de viajes, como antes.</li>
+<li>Sin la tabla, el portal muestra el correo del área de compras, como antes.</li>
 </ul>
 <h3>REGLAS_COAPROBADOR</h3>
 <p>Define reglas especiales de co-aprobación. Por ejemplo: “si alguien internacional tiene a Juan Pérez como aprobador, también debe aprobarlo María García”. Útil para viajes internacionales que requieren doble aprobación.</p>
@@ -382,13 +382,13 @@ corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53,
 <p><code>AVISO FACTURAS OMITIDO</code> (#A83): quién omitió el aviso de facturas incompletas y cuándo. Borrar la celda vuelve a mostrar el aviso en el panel.</p>
 </li>
 <li>
-<p><code>HOTEL RESERVADO</code> y <code>CANAL DE COMPRA HOTEL</code> (#A94, 8-oct-2026): el hotel que reservó el área de viajes (en mayúsculas y sin tildes) y su canal (<em>Aviatur</em>, <em>Directo</em> u <em>Otra agencia</em>). <em>No se reservó</em> = al final no hubo hotel. <code>NOMBRE HOTEL</code> sigue siendo el que pidió el viajero. Las llena “Registrar reserva”.</p>
+<p><code>HOTEL RESERVADO</code> y <code>CANAL DE COMPRA HOTEL</code> (#A94, 8-oct-2026): el hotel que reservó el área de compras (en mayúsculas y sin tildes) y su canal (<em>Aviatur</em>, <em>Directo</em> u <em>Otra agencia</em>). <em>No se reservó</em> = al final no hubo hotel. <code>NOMBRE HOTEL</code> sigue siendo el que pidió el viajero. Las llena “Registrar reserva”.</p>
 </li>
 <li>
 <p><code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code> y <code>TARIFA JUSTIFICACION</code> (#A95, 8-oct-2026): la tarifa que recomienda el manual COM-P-02 por las noches del viaje (<code>TIPO 1</code>, <code>TIPO 2</code> o <code>TIPO 3</code>, la calcula el sistema), su nombre en la aerolínea (por ejemplo, <em>Classic</em>) y, si se compró otra, el motivo. La tarifa comprada sigue en <code>TIPO DE COMPRA DE TKT</code>, que ahora llenan “Confirmar costos” y “Registrar reserva”. Ver <a href="manual-com-p-02.md">manual-com-p-02.md</a>.</p>
 </li>
 <li>
-<p><code>VALOR COMPRA TIQUETES</code> y <code>VALOR COMPRA HOTEL</code> (#A102, 14-oct-2026): lo que se pagó al comprar, en pesos. Opcionales: los llena “Registrar reserva” (o “Corregir reserva”) si el área de viajes los tiene. Vacías = no se registró. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado. No confundir con <code>VALOR PAGADO A AEROLINEA Y/O HOTEL</code>, que es el valor de la factura 1.</p>
+<p><code>VALOR COMPRA TIQUETES</code> y <code>VALOR COMPRA HOTEL</code> (#A102, 14-oct-2026): lo que se pagó al comprar, en pesos. Opcionales: los llena “Registrar reserva” (o “Corregir reserva”) si el área de compras los tiene. Vacías = no se registró. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado. No confundir con <code>VALOR PAGADO A AEROLINEA Y/O HOTEL</code>, que es el valor de la factura 1.</p>
 </li>
 <li>
 <p><code>MALETA DE BODEGA</code> (#A95, 8-oct-2026): lo que marcó el viajero en el formulario (<em>¿Lleva maleta de bodega?</em>): <code>SI</code> o <code>NO</code>. Vacía = la solicitud es anterior y no se preguntó. Solo vuelos.</p>
@@ -409,13 +409,13 @@ corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53,
 <p><code>CAMBIO PEDIDO (JSON)</code> (#A103): en una solicitud de cambio pedida con «Cambiar mi viaje», lo de antes y lo de ahora, si el tiquete ya estaba comprado, lo que costó el viaje original y la compra de la original. La escribe el sistema: <strong>no editar</strong>. Si está llena y dice <code>&quot;comprado&quot;:true</code>, la solicitud lleva solo el costo del cambio.</p>
 </li>
 <li>
-<p><code>PENALIDAD CAMBIO</code> (#A103): de lo que costó un cambio, cuánto es penalidad y cargos (pesos). La escribe el área de viajes al confirmar el costo del cambio.</p>
+<p><code>PENALIDAD CAMBIO</code> (#A103): de lo que costó un cambio, cuánto es penalidad y cargos (pesos). La escribe el área de compras al confirmar el costo del cambio.</p>
 </li>
 <li>
 <p><code>REEMPLAZADA POR</code> (#A103): en la solicitud original, el ID del cambio que la reemplazó («Cambiada»). La original comprada no se anula: su tiquete se pagó y su costo sigue contando.</p>
 </li>
 <li>
-<p>Estado <code>PENDIENTE_APROBACION_POLITICA</code> (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de viajes no la ve hasta que se apruebe.</p>
+<p>Estado <code>PENDIENTE_APROBACION_POLITICA</code> (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de compras no la ve hasta que se apruebe.</p>
 </li>
 </ul>
 <p>Todas las crea el menú <em>12. Columnas de compra y resumen de facturas</em> (o el sistema, la primera vez que las necesita).</p>
