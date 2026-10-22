@@ -2922,3 +2922,46 @@ En cualquier orden funciona; sin el paso 3, se sigue mostrando el correo.
 - En la app real (entorno local, Chrome): los textos de «Cambiar mi viaje» dicen «Laura Molina · Área de compras», sin errores de JavaScript.
 
 **Despliegue:** con #A106: pegar `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y `AdminMobile.html` → menú 16 → versión nueva del web app → push del frontend.
+
+---
+
+## **#A108 — Revisión de seguridad del 22-oct: Node 24, `serve` con dependencias corregidas y Chart.js verificado**
+**Fecha:** 2026-10-22 · **Pedido por:** David (revisión urgente de las vulnerabilidades publicadas en octubre). · **Estado:** Implementado y probado; pendiente desplegar (va con #A106 y #A107). Informe completo: [docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md).
+
+**Hallazgos que afectaban:**
+- **La imagen de Cloud Run usaba `node:20-alpine` sin versión fija.** Node 20 no tiene soporte desde abril de 2026 y no recibe la corrección del 20/21-oct (10 CVE, entre ellos CVE-2026-111497, Brotli).
+- **`serve` 14.2.6 (la última) fija `compression` 1.8.1**, con una denegación de servicio (GHSA-vc2v-76pw-4v95). Además se instalaba global, sin lockfile, así que ningún arreglo del lockfile llegaba a producción.
+- **`npm audit`:** 6 avisos (5 altos). Además de compression: brace-expansion y fast-uri, en producción dentro de `serve`; vite 6.4.3 y source-map-js, de desarrollo.
+
+**Arreglo:**
+- **Dockerfile:**
+  - `node:24.22.1-alpine` en las dos etapas;
+  - en la imagen final, `serve` se instala con `npm ci --omit=dev --ignore-scripts` desde el lockfile y arranca con `./node_modules/.bin/serve`.
+- **`package.json`:**
+  - `overrides` con versiones exactas: compression 1.8.2, brace-expansion 1.1.21, fast-uri 3.1.8, source-map-js 1.2.2. No se usaron versiones de hace pocos días;
+  - `vite` 6.4.4;
+  - `allowScripts` solo para esbuild (npm 11 bloquea los demás).
+- **`CostsDashboard.html`:** Chart.js 4.4.1 con SRI, usando `dist/chart.umd.js` del paquete oficial (jsDelivr lo sirve igual).
+- **`MIGRACION.md`:** Node 24 y npm 11.
+
+**No aplica:** Next.js, React Server Components, la librería de envío de correo, sharp, PHP y PostgreSQL. Ningún paquete comprometido está en el lockfile, y los 236 vienen del registro oficial con integridad.
+
+**Verificado:**
+- `npm audit` en 0 (todo y solo producción).
+- Node 24.22.1 de nodejs.org con SHA256 y firma válidos.
+- `npm run verify` en verde con Node 24. Con Node 20 también instala y compila.
+- Las dos etapas del Dockerfile, reproducidas con Node 24: compila, sirve, gzip con compression 1.8.2.
+- La app en el entorno local con Node 24: pantallas del viajero y de Laura, dashboard de costos con Chart.js verificado y panel móvil, sin errores de JavaScript ni correos.
+
+**Pendiente (David):**
+1. Autorizar el push.
+2. ~~Confirmar que Cloud Build usa el Dockerfile~~: confirmado con `gcloud` el 22-oct. El activador corre `docker build .`, y la construcción del 21-oct (la que sirve hoy) usó `node:20-alpine` y `serve` global.
+3. Node 24.22.1 en el PC y el Mac.
+4. Python 3.14.9 en el PC.
+5. Revisar los permisos del manifiesto de Apps Script.
+
+Claude, desde el 30-oct: fijar markdown-it 14.3.3.
+
+**Despliegue:** pegar `CostsDashboard.html` (ya hace falta por #A107) → push del frontend (lo construye Cloud Build con Node 24). Si la construcción falla, Cloud Run sigue con la versión anterior.
+
+**Rollback:** revert del commit; el `CostsDashboard.html` anterior.

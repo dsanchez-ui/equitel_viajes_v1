@@ -6,9 +6,11 @@
   <meta name="theme-color" content="#D71920" />
   <base target="_top" />
   <title>Dashboard de Costos — Equitel Viajes</title>
-  <!-- Chart.js via CDN. Versión pinneada para reproducibilidad. -->
-  <!-- TODO opcional: agregar `integrity="sha384-..."` con hash real de jsdelivr para SRI. -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <!-- Chart.js 4.4.1 desde jsDelivr, con verificación de integridad (SRI, revisión de seguridad del 22-oct-2026):
+       si el archivo del CDN cambiara, el navegador no lo ejecuta. Es dist/chart.umd.js del paquete de npm (ya viene
+       minificado e idéntico en el CDN); no se usa chart.umd.min.js porque lo genera jsDelivr y su hash podría cambiar.
+       Al subir la versión, recalcular: openssl dgst -sha384 -binary chart.umd.js | base64 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     :root {

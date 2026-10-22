@@ -74,7 +74,9 @@ seguro de contra qué estás corriendo, revísalo antes de probar cualquier escr
 | **Sidebars (`server/*.html`)** | Igual que Code.gs, pegar en el editor | No, manual |
 | **Migraciones de hoja** | Ejecutar la función de migración a mano desde el editor o el menú | No, manual |
 
-El trigger de Cloud Build está configurado del lado de GCP (no hay GitHub Actions
+El activador de Cloud Build (`rmgpgab-sistematiquetesequitel-us-west1-dsanchez-ui-equitel-rxk`, proyecto `gen-lang-client-0192295875`)
+construye con el **`Dockerfile`** (`docker build .` → push → `gcloud run services update sistematiquetesequitel`, us-west1); verificado
+con `gcloud` el 22-oct (solo lectura, pasar `--project`: no hay proyecto por defecto). El trigger de Cloud Build está configurado del lado de GCP (no hay GitHub Actions
 en el repo). **Crear la versión nueva del web app conserva el `WEB_APP_URL`** — no
 cambia la URL, así que el frontend no necesita reconfigurarse.
 
@@ -443,6 +445,14 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
   imported module», 8-oct-2026). La app es **un solo archivo JavaScript**: `tools/check-single-bundle.cjs`
   lo verifica en `npm run verify`. `public/assets/` guarda copias de archivos de versiones anteriores para
   las pestañas abiertas; se pueden borrar unos días después.
+- **#A108 — Dependencias y Node (revisión de seguridad del 22-oct, [docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md)).**
+  - La imagen usa **`node:24.22.1-alpine` fija en las dos etapas**; al subirla, cambiar las dos.
+  - En la imagen final **`serve` se instala desde el lockfile** (`npm ci --omit=dev`), nunca con `npm install -g`: la instalación global
+    no usa los `overrides` de package.json, que corrigen lo que `serve` 14.2.6 trae fijo (compression 1.8.1).
+  - No quitar los `overrides` sin correr `npm audit --omit=dev`.
+  - `allowScripts` (npm 11) aprueba **solo esbuild**.
+  - El dashboard carga Chart.js con **SRI** desde `dist/chart.umd.js`, nunca `.min.js`, que lo genera jsDelivr y su hash cambia.
+  - No instalar versiones publicadas hace menos de dos semanas sin necesidad.
 - **#A49 — Silencio en los fetches de bootstrap.** Los errores se tragaban y la app
   mostraba arrays vacíos como si fueran datos válidos. **Nunca silenciar un error de
   fetch**: hay que reintentar y avisar al usuario.
@@ -682,8 +692,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A99, #A100 y #A101 desplegados el 14-oct-2026** (cifras del dashboard que se pueden presentar, aprobación del CFO
   por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
   hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
-- **#A106 (primero la plataforma; teléfonos de Laura y Diego después del plazo) y #A107 («área de compras» en vez de «área de viajes»):
-  construidos el 22-oct, pendientes de desplegar.** Pasos de David: actualizar el celular de Diego en USUARIOS a 323 295 8507 (en la copia
+- **#A106 (primero la plataforma; teléfonos de Laura y Diego después del plazo), #A107 («área de compras» en vez de «área de viajes») y
+  #A108 (revisión de seguridad: Node 24 en la imagen, `serve` corregido, SRI de Chart.js): construidos el 22-oct, pendientes de
+  desplegar.** Además, de #A108: Node 24.22.1 en el PC y el Mac; Python 3.14.9 en el PC;
+  revisar el manifiesto de Apps Script; el 30-oct fijar markdown-it 14.3.3. Pasos de David: actualizar el celular de Diego en USUARIOS a 323 295 8507 (en la copia
   del 19-oct tiene 310 245 1569) → pegar `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y `AdminMobile.html` → **menú 16** (crea la
   tabla en MISC y muestra el mensaje) → versión nueva del web app → push del frontend. `Rastreo.gs` solo cambió en comentarios.
 - **#A103 «Cambiar mi viaje», #A104 y #A105: desplegados el 21-oct.** Después del despliegue:

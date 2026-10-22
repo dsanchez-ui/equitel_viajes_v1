@@ -15,8 +15,8 @@ dependencias, no.
 
 | Herramienta | Versión | Para qué |
 |---|---|---|
-| Node.js | 20 LTS o superior | Build y dev server |
-| npm | 10 o superior | Dependencias |
+| Node.js | **24 LTS** (24.22.1 o más nueva en la línea 24); la misma que el Dockerfile. Node 20 ya no tiene soporte ni correcciones de seguridad (revisión del 22-oct-2026, [docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md)) | Build y dev server |
+| npm | 11 (viene con Node 24). Si `npm install` avisa de scripts de instalación sin aprobar, solo `esbuild` debe estarlo (`"allowScripts"` en package.json) | Dependencias |
 | git | cualquiera reciente | — |
 | Google Chrome | opcional | Solo para `npm run build:guia` (PDF de las guías) |
 
