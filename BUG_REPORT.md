@@ -2840,7 +2840,7 @@ Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
 ---
 
 ## **#A106 — «Cambiar mi viaje»: primero la plataforma; después del plazo, a quién llamar**
-**Fecha:** 2026-10-22 · **Pedido por:** Yurani (22-oct, sobre las preguntas 6 y 8 de [docs/plan-cambios-de-viaje.md](docs/plan-cambios-de-viaje.md): *«la teoría es que cada usuario lo pida desde su perfil»*; *«colocar el teléfono de Lau y el de Diego por si no responde Lau»*) y David (*«que se incentive al usuario a utilizar la plataforma por sobre todas las cosas»*; que los roles y teléfonos se puedan cambiar sin tocar código). · **Estado:** Implementado; pendiente desplegar.
+**Fecha:** 2026-10-22 · **Pedido por:** Yurani (22-oct, sobre las preguntas 6 y 8 de [docs/plan-cambios-de-viaje.md](docs/plan-cambios-de-viaje.md): *«la teoría es que cada usuario lo pida desde su perfil»*; *«colocar el teléfono de Lau y el de Diego por si no responde Lau»*) y David (*«que se incentive al usuario a utilizar la plataforma por sobre todas las cosas»*; que los roles y teléfonos se puedan cambiar sin tocar código). · **Estado:** Desplegado el 2026-10-22 (Apps Script por David; frontend `51ae8de`, revisión `00218` de Cloud Run).
 
 **Problema:**
 - Después del plazo, la app solo mostraba el correo del área de compras. Yurani pidió los celulares de Laura y, si no responde, de Diego.
@@ -2904,7 +2904,7 @@ En cualquier orden funciona; sin el paso 3, se sigue mostrando el correo.
 ---
 
 ## **#A107 — No existe un «área de viajes»: es el área de compras**
-**Fecha:** 2026-10-22 · **Pedido por:** David (*«Laura no es del área de viajes… el área de viajes no existe… Laura es parte de compras y ella debe aparecer de esa manera»*). · **Estado:** Implementado; pendiente desplegar (va con #A106).
+**Fecha:** 2026-10-22 · **Pedido por:** David (*«Laura no es del área de viajes… el área de viajes no existe… Laura es parte de compras y ella debe aparecer de esa manera»*). · **Estado:** Desplegado el 2026-10-22 (Apps Script por David; frontend `51ae8de`, revisión `00218` de Cloud Run).
 
 **Problema:** la app, los correos, el dashboard de costos, el sidebar, el panel móvil y las guías decían «el área de viajes» (y a veces «equipo de viajes» o «Analista de viajes»): unas 340 veces. Ese equipo no existe; Laura es del área de compras.
 
@@ -2926,7 +2926,7 @@ En cualquier orden funciona; sin el paso 3, se sigue mostrando el correo.
 ---
 
 ## **#A108 — Revisión de seguridad del 22-oct: Node 24, `serve` con dependencias corregidas y Chart.js verificado**
-**Fecha:** 2026-10-22 · **Pedido por:** David (revisión urgente de las vulnerabilidades publicadas en octubre). · **Estado:** Implementado y probado; pendiente desplegar (va con #A106 y #A107). Informe completo: [docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md).
+**Fecha:** 2026-10-22 · **Pedido por:** David (revisión urgente de las vulnerabilidades publicadas en octubre). · **Estado:** Desplegado el 2026-10-22 (Apps Script por David; frontend `51ae8de`, revisión `00218` de Cloud Run). Informe completo: [docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md).
 
 **Hallazgos que afectaban:**
 - **La imagen de Cloud Run usaba `node:20-alpine` sin versión fija.** Node 20 no tiene soporte desde abril de 2026 y no recibe la corrección del 20/21-oct (10 CVE, entre ellos CVE-2026-111497, Brotli).

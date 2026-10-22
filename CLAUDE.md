@@ -693,8 +693,14 @@ autorización) y verificar antes de crear una versión nueva del web app.
   por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
   hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
 - **#A106 (primero la plataforma; teléfonos de Laura y Diego después del plazo), #A107 («área de compras» en vez de «área de viajes») y
-  #A108 (revisión de seguridad: Node 24 en la imagen, `serve` corregido, SRI de Chart.js): construidos el 22-oct, pendientes de
-  desplegar.** Además, de #A108: Node 24.22.1 en el PC y el Mac; Python 3.14.9 en el PC;
+  #A108 (revisión de seguridad: Node 24 en la imagen, `serve` corregido, SRI de Chart.js): DESPLEGADOS el 22-oct.** David cambió el
+  celular de Diego, pegó los cuatro archivos, corrió el menú 16 y publicó la versión nueva; el frontend `51ae8de` se construyó con
+  `node:24.22.1-alpine` (0 vulnerabilidades) y es la revisión `00218` de Cloud Run. El PC Linux ya tiene Node 24.22.1 (`~/.local`).
+  Queda: Node 24 en el Mac; el 30-oct fijar markdown-it 14.3.3. **SOL-000659** (reserva parcial + cambio de Alexandra): se le pasó a
+  Laura el arreglo (denegar manteniendo la original, completar la reserva con «No se reservó hotel», registrar el cambio a nombre de la
+  viajera). Propuestas sin construir (preguntar): que «No se reservó hotel» cuente $0 de hotel en el dashboard y que «Revisar Cambio»
+  avise si la original tiene una reserva parcial (hoy «Cambiar mi viaje» solo da por comprado lo que está en RESERVADO).
+  Antes, al construirlo: Además, de #A108: Node 24.22.1 en el PC y el Mac; Python 3.14.9 en el PC;
   revisar el manifiesto de Apps Script; el 30-oct fijar markdown-it 14.3.3. Pasos de David: actualizar el celular de Diego en USUARIOS a 323 295 8507 (en la copia
   del 19-oct tiene 310 245 1569) → pegar `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y `AdminMobile.html` → **menú 16** (crea la
   tabla en MISC y muestra el mensaje) → versión nueva del web app → push del frontend. `Rastreo.gs` solo cambió en comentarios.

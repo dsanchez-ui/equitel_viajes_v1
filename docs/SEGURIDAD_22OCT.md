@@ -7,7 +7,7 @@
 
 Las dos cosas quedaron corregidas en el repositorio y probadas, y `npm audit` pasó de 6 avisos a 0. Además, el dashboard de costos verifica Chart.js con una huella de integridad (SRI).
 
-**Todavía no hay nada desplegado:** el push espera la autorización de David. Lo demás no aplica a este proyecto (Next.js, PHP, PostgreSQL, librerías de correo) o depende de David: el Node y el Python de los equipos. Se confirmó con `gcloud` que Cloud Build construye producción con este Dockerfile.
+**Desplegado el 22-oct:** la construcción de Cloud Build usó `node:24.22.1-alpine`, terminó con 0 vulnerabilidades y quedó como la revisión `00218` (commit `51ae8de`). Producción responde comprimido y la app carga. Node 24.22.1 también quedó instalado en el PC Linux. Lo demás no aplica a este proyecto (Next.js, PHP, PostgreSQL, librerías de correo) o depende de David: el Node y el Python de los equipos. Se confirmó con `gcloud` que Cloud Build construye producción con este Dockerfile.
 
 ## 1. Inventario
 
