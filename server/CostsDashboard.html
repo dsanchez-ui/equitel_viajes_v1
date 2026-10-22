@@ -494,6 +494,13 @@
     .pt-headline .pt-over { color: var(--red); }
     .pt-headline .pt-under { color: var(--green); }
     .pt-headline .pt-note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+    .pt-headline .pt-answer { font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+    .pt-excl { background: #fff; border: 1px dashed var(--border); border-radius: 8px; padding: 10px 12px; margin: 12px 0; font-size: 12.5px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .pt-excl.on { border-style: solid; border-color: #f59e0b; background: #fffbeb; }
+    .pt-excl button { border: 1px solid var(--border); background: #fff; border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+    .pt-excl button:disabled { opacity: .5; cursor: wait; }
+    .pt-excl input { min-width: 260px; flex: 1; border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 12.5px; }
+    .pt-excl .pt-err { color: var(--red); width: 100%; }
     .pt-legend { font-size: 12.5px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 0 14px; margin-bottom: 14px; }
     .pt-legend summary { cursor: pointer; font-weight: 700; padding: 10px 0; color: var(--text); }
     .how-legend { margin-top: 14px; }
@@ -1328,6 +1335,9 @@
             esa parte de la diferencia no es un sobrecosto de la compra.</dd>
           <dt>Facturado</dt>
           <dd>Lo que se pagó según las facturas. Si el viaje lleva hotel no se compara: la factura no separa tiquetes y hotel.</dd>
+          <dt>Excluido del ahorro</dt>
+          <dd>Un viaje atípico que alguien sacó a mano, con su motivo (en su detalle, «Excluir del ahorro»). Se sigue viendo en la lista, pero
+            no suma en ninguna cifra de esta sección ni en la proyección. Arriba se dice cuál es y cuánto daría con él.</dd>
           <dt>Cuándo se busca</dt>
           <dd>Al confirmar los costos y al aprobarse (justo antes de comprar). Lo ya comprado usa la búsqueda al comprar con el equipaje de su
             tarifa; lo demás, la de la cotización, frente a lo cotizado en ese momento. El precio de Google cambia hasta 30 % en unas horas: una
@@ -3414,6 +3424,7 @@ function loadPriceTracking(fresh) {
       priceData = response.data;
       noteLoad('price', t0, priceData);
       ptDetails = {};
+      ptOpen = {}; // el detalle se vuelve a pedir al abrirlo (antes quedaba en «Cargando…»)
       document.getElementById('priceSection').style.display = 'block';
       renderPriceTracking();
       if (priceData.analysis) {
@@ -3497,8 +3508,9 @@ function ptSummaryFor(mode, bought) {
   return mode === 'all' ? all : (all[PT_FARE_MODES[mode].key] || null);
 }
 /** ¿El viaje cuenta en esa manera de comparar? */
-function ptCounts(it, mode, bought) {
+function ptCounts(it, mode, bought, includeExcluded) {
   if (bought === undefined) bought = ptBoughtOnly();
+  if (it.excluded && !includeExcluded) return false; // #A110: excluido a mano del ahorro
   if (bought && !ptIsPurchased(it)) return false;
   if (mode === 'all') return true;
   var f = it.fare;
@@ -3561,6 +3573,12 @@ function _ptRenderHeadline(s, items, mode) {
     return;
   }
   var counted = items.filter(function(it) { return ptCounts(it, mode); });
+  // #A110: lo excluido a mano del ahorro se dice aparte, con cuánto daría si contara.
+  var excl = items.filter(function(it) { return it.excluded && ptCounts(it, mode, bought, true) && it.difference !== null; });
+  var exclDiff = excl.reduce(function(t, it) { return t + it.difference; }, 0);
+  var exclHtml = excl.length ? '<div class="pt-note"><b>No ' + (excl.length === 1 ? 'cuenta' : 'cuentan') + ', ' + (excl.length === 1 ? 'excluido' : 'excluidos') + ' a mano del ahorro:</b> ' +
+    excl.map(function(it) { return escHtml(it.requestId + ' ' + (it.origin || '') + ' → ' + (it.destination || '')) + ' (' + fmtMoney(it.difference) + '; ' + escHtml(it.excluded) + ')'; }).join('; ') +
+    '. Con ' + (excl.length === 1 ? 'él' : 'ellos') + ', la diferencia sería ' + fmtMoney(o.difference + exclDiff) + '. Para que vuelva a contar, ábralo en la lista.</div>' : '';
   var cheaper = o.cheaperInGoogle !== undefined ? o.cheaperInGoogle : counted.filter(function(it) { return it.difference !== null && it.difference >= PT_SAME; }).length;
   var what = bought ? 'lo pagado' : 'lo cotizado';
   var v = ptVerdict(o.difference, o.quoted, what);
@@ -3588,6 +3606,14 @@ function _ptRenderHeadline(s, items, mode) {
         : sv.cls === 'under' ? 'Google era <strong>' + fmtMoney(-sa.difference) + ' más caro</strong>' : '<strong>sale igual</strong>') +
       (o.difference - sa.difference >= PT_SAME ? '; el resto de la diferencia exige cambiarse de aerolínea.' : '.');
   }
+  // La respuesta en una frase, arriba: ¿la diferencia es de comprar caro o de volar otra aerolínea? (#A110)
+  if (sa && sa.n && o.difference >= PT_SAME) {
+    var samePct = sa.quoted ? sa.difference / sa.quoted : 0;
+    html = '<div class="pt-answer">' + (samePct <= 0.05
+      ? 'Con la misma aerolínea, ' + what + ' está a la par de Google' + (sa.difference <= -PT_SAME ? ' o por debajo' : '') + ': la diferencia sale de volar otra aerolínea u otro vuelo.'
+      : 'Aun con la misma aerolínea, en Google había ' + ptPctText(samePct * 100) + ' menos.') +
+      (sa.n < o.n ? ' <span style="font-weight: 400; font-size: 13px;">(en ' + sa.n + ' de ' + o.n + ' viajes con dato de la misma aerolínea)</span>' : '') + '</div>' + html;
+  }
   var notes = [];
   if (bought) {
     var paidN = counted.filter(function(it) { return it.baseKind === 'pagado'; }).length;
@@ -3603,7 +3629,7 @@ function _ptRenderHeadline(s, items, mode) {
     html += '<div class="pt-note"><b>Muestra pequeña:</b> ' + ptPlural(o.n, 'viaje', 'viajes') + ' (se necesitan al menos ' + SA_MIN_EXACT +
       ' para presentar una cifra). Es un indicio, no una cifra para proyectar.</div>';
   }
-  html += pendHtml;
+  html += exclHtml + pendHtml;
   box.className = 'pt-headline ' + v.cls;
   box.innerHTML = html;
 }
@@ -3781,6 +3807,7 @@ function renderPriceTable() {
     // #A95: con «misma tarifa», un viaje sin su búsqueda equivalente se muestra pero no cuenta (#A104: ni lo que no se ha comprado).
     var gap = (mode !== 'all' || ptBoughtOnly()) && it.quoted && it.difference !== null ? ptFareGap(it, mode) : '';
     if (gap) v = { cls: 'equal', main: v.main, sub: 'no cuenta: ' + gap };
+    if (it.excluded) v = { cls: 'equal', main: v.main, sub: 'no cuenta: excluido a mano del ahorro' }; // #A110
     var trip = (it.returnDate ? 'ida ' + ptDay(it.departure) + ' · regreso ' + ptDay(it.returnDate) : 'solo ida ' + ptDay(it.departure)) +
       ' · ' + ptPlural(it.passengers, 'pasajero', 'pasajeros');
     var bought = [ptAirlines(it), it.channel ? ptChannel(it.channel) : ''].filter(Boolean).join(' · ');
@@ -3827,6 +3854,52 @@ function _ptToggle(id) {
   renderPriceTable();
 }
 
+// ---------------------------------------------------------------------
+// EXCLUIR DEL AHORRO (#A110): un viaje atípico se saca a mano, con motivo.
+// ---------------------------------------------------------------------
+var ptExcl = {}; // requestId → { open, saving, error }
+
+function _ptExclusionHtml(it) {
+  var st = ptExcl[it.requestId] || {};
+  var id = escHtml(it.requestId);
+  var err = st.error ? '<span class="pt-err">' + escHtml(st.error) + '</span>' : '';
+  if (it.excluded) {
+    return '<div class="pt-excl on"><span><b>No cuenta en el ahorro.</b> ' + escHtml(it.excluded) + '</span>' +
+      '<button type="button" data-pt-include="' + id + '"' + (st.saving ? ' disabled' : '') + '>' + (st.saving ? 'Guardando…' : 'Volver a contar') + '</button>' + err + '</div>';
+  }
+  if (st.open || st.saving) {
+    return '<div class="pt-excl"><input type="text" maxlength="300" data-pt-excl-reason="' + id + '" placeholder="¿Por qué no debe contar? (p. ej. viaje atípico que no se repite)"' +
+      (st.saving ? ' disabled' : '') + ' value="' + escHtml(st.reason || '') + '">' +
+      '<button type="button" data-pt-exclude-save="' + id + '"' + (st.saving ? ' disabled' : '') + '>' + (st.saving ? 'Guardando…' : 'Excluir del ahorro') + '</button>' +
+      '<button type="button" data-pt-exclude-cancel="' + id + '"' + (st.saving ? ' disabled' : '') + '>Cancelar</button>' + err + '</div>';
+  }
+  return '<div class="pt-excl"><button type="button" data-pt-exclude-open="' + id + '">Excluir del ahorro</button>' +
+    '<span class="pt-muted">Para un viaje atípico: deja de sumar en el ahorro y en la proyección, y queda el motivo y quién lo hizo.</span></div>';
+}
+
+function _ptSetExclusion(id, exclude) {
+  var st = ptExcl[id] || (ptExcl[id] = {});
+  if (exclude) {
+    var input = document.querySelector('[data-pt-excl-reason="' + id + '"]');
+    st.reason = input ? input.value : (st.reason || '');
+    if (st.reason.replace(/\s+/g, ' ').trim().length < 10) { st.error = 'Escriba por qué este viaje no debe contar (mínimo 10 caracteres).'; renderPriceTable(); return; }
+  }
+  st.saving = true; st.error = '';
+  renderPriceTable();
+  google.script.run
+    .withSuccessHandler(function(response) {
+      st.saving = false;
+      if (!response || !response.success) { st.error = (response && response.error) || 'No se pudo guardar.'; renderPriceTable(); return; }
+      delete ptExcl[id];
+      loadPriceTracking(true); // los totales y la proyección se recalculan sin ese viaje (o con él)
+    })
+    .withFailureHandler(function(err) {
+      st.saving = false; st.error = (err && err.message) || 'Error de conexión.';
+      renderPriceTable();
+    })
+    .costsDashboard_setSavingsExclusion({ requestId: id, exclude: exclude, reason: exclude ? st.reason : '', userEmail: session.email, sessionToken: session.token });
+}
+
 function _ptDetailHtml(it) {
   var st = ptDetails[it.requestId];
   if (!st || st.loading) return '<div class="pt-detail">Cargando el detalle…</div>';
@@ -3867,6 +3940,8 @@ function _ptDetailHtml(it) {
       '<div>' + ptPlural(pax, 'pasajero', 'pasajeros') + (r.international ? ' · internacional' : '') + ' · ' + escHtml(PT_STATUS[r.status || it.status] || r.status || it.status) + '</div>' +
       '<div class="pt-muted">«A la hora pedida» = sale hasta 2 horas antes o después de la hora preferida.</div>' +
     '</div></div>';
+
+  html += _ptExclusionHtml(it); // #A110
 
   // 2. Qué búsqueda se muestra
   var moments = ['COMPRA', 'COTIZACION'].filter(function(m) { return d.searches[m]; });
@@ -4204,7 +4279,7 @@ function exportPriceCsv() {
     'Facturado', 'Facturas', 'Facturado incluye hotel', 'Facturado - Google',
     'Tarifa (TIPO)', 'Tarifa (nombre)', 'Tarifa recomendada', 'Motivo de otra tarifa', 'Google buscado', 'Misma tarifa',
     'Tarifa con que se compara', 'De dónde sale', 'Qué tan comparable', 'Por qué',
-    'Ya comprado', 'Pagado tiquetes', 'Se compara con', 'Horas de la búsqueda antes de registrar la compra'];
+    'Ya comprado', 'Pagado tiquetes', 'Se compara con', 'Horas de la búsqueda antes de registrar la compra', 'Excluido del ahorro (motivo · quién · fecha)'];
   var legCols = function(it) {
     var s = ptMainSnap(it);
     if (s && s.result !== 'OK') s = null;
@@ -4237,7 +4312,8 @@ function exportPriceCsv() {
     return [it.requestId, it.origin, it.destination, it.departure, it.returnDate, it.passengers, it.company, it.unit, it.status, it.airline, it.returnAirline || '', it.channel, it.quoted || '']
       .concat(snapCols(it.atQuote), snapCols(it.atPurchase),
         [it.difference === null ? '' : it.difference, it.difference === null || !(it.base || it.quoted) ? '' : (it.difference / (it.base || it.quoted) * 100).toFixed(1).replace('.', ',')], legCols(it),
-        [it.bought === undefined ? '' : it.bought ? 'sí' : 'no', it.paid || '', it.baseKind || '', it.searchLeadHours === null || it.searchLeadHours === undefined ? '' : String(it.searchLeadHours).replace('.', ',')])
+        [it.bought === undefined ? '' : it.bought ? 'sí' : 'no', it.paid || '', it.baseKind || '', it.searchLeadHours === null || it.searchLeadHours === undefined ? '' : String(it.searchLeadHours).replace('.', ','),
+          it.excluded || ''])
       .map(q).join(';');
   }));
   var blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -4384,6 +4460,7 @@ function saVolume(trips, months) {
 function saSample(includeIntl, fare, scope) {
   return ((priceData && priceData.items) || []).filter(function(it) {
     if (!ptIsPurchased(it)) return false; // #A104: solo lo ya comprado, con la búsqueda al comprar
+    if (it.excluded) return false; // #A110: excluido a mano del ahorro
     if (fare === 'same' && it.fare && it.fare.match !== true) return false;
     if (fare === 'exact' && it.fare && it.fare.quality !== 'exacta') return false;
     if (scope === 'tipo1' && it.fare && String(it.fare.effective || it.fare.type) !== '1') return false;
@@ -5294,6 +5371,15 @@ document.addEventListener('DOMContentLoaded', function() {
     if (btn) {
       var st = ptDetails[btn.getAttribute('data-req')];
       if (st && st.data) { st.moment = btn.getAttribute('data-pt-moment'); renderPriceTable(); }
+      return;
+    }
+    // #A110: excluir del ahorro o volver a contar, desde el detalle del viaje.
+    var ex = e.target.closest ? e.target.closest('button[data-pt-exclude-open],button[data-pt-exclude-cancel],button[data-pt-exclude-save],button[data-pt-include]') : null;
+    if (ex) {
+      var exId = ex.getAttribute('data-pt-exclude-open') || ex.getAttribute('data-pt-exclude-cancel') || ex.getAttribute('data-pt-exclude-save') || ex.getAttribute('data-pt-include');
+      if (ex.hasAttribute('data-pt-exclude-open')) { ptExcl[exId] = { open: true }; renderPriceTable(); var inp = document.querySelector('[data-pt-excl-reason="' + exId + '"]'); if (inp) inp.focus(); }
+      else if (ex.hasAttribute('data-pt-exclude-cancel')) { delete ptExcl[exId]; renderPriceTable(); }
+      else _ptSetExclusion(exId, ex.hasAttribute('data-pt-exclude-save'));
       return;
     }
     if (e.target.closest && e.target.closest('.pt-detail')) return;

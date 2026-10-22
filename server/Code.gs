@@ -603,7 +603,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['ackPolicyNotice', 'createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport', 'setPurchaseInfo', 'dismissInvoiceAlert', 'requestTripChange'].includes(action);
+  const isWriteAction = ['ackPolicyNotice', 'createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport', 'setPurchaseInfo', 'dismissInvoiceAlert', 'requestTripChange', 'setSavingsExclusion'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -634,7 +634,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'getPolicyHeldRequests', 'dismissInvoiceAlert', 'getPriceTracking', 'getPriceTrackingDetail', 'getChangeControl'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'getPolicyHeldRequests', 'dismissInvoiceAlert', 'getPriceTracking', 'getPriceTrackingDetail', 'getChangeControl', 'setSavingsExclusion'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -823,6 +823,7 @@ function dispatch(action, payload) {
       case 'getPriceTracking': result = getPriceTracking(currentUserEmail, payload.fresh === true); break;
       case 'getTripChangesForDashboard': result = getTripChangesForDashboard(currentUserEmail, payload.fresh === true); break; // #A103
       case 'getPriceTrackingDetail': result = getPriceTrackingDetail(currentUserEmail, payload.requestId, payload.fresh === true); break;
+      case 'setSavingsExclusion': result = setSavingsExclusion(currentUserEmail, payload.requestId, payload.exclude === true, payload.reason); break;
       case 'getMonthlyBudgetUsage': result = getMonthlyBudgetUsage(payload.empresa, payload.unidad); break;
 
       // PASSPORT VALIDATION (internacional). Cualquier sesión válida puede
@@ -18487,7 +18488,9 @@ function _ptBuildTracking_() {
         // Lo ya comprado (#A87): lo facturado, igual que la variación cotizado vs facturado.
         invoiced: inv.invoiced, invoiceCount: inv.count, invoicedIncludesHotel: inv.includesHotel,
         invoicedVsGoogle: inv.invoiced && !inv.includesHotel && market ? inv.invoiced - market : null,
-        fare: fare.info
+        fare: fare.info,
+        // #A110: excluido a mano del ahorro (motivo · quién · fecha); '' = cuenta.
+        excluded: String(cell(row, SAVINGS_EXCLUDED_HEADER) || '').trim()
       });
     }
   }
@@ -18497,18 +18500,21 @@ function _ptBuildTracking_() {
     return ra !== rb ? ra - rb : (a.departure < b.departure ? -1 : a.departure > b.departure ? 1 : (a.requestId < b.requestId ? -1 : 1));
   });
 
+  // #A110: lo excluido a mano (p. ej. un viaje atípico) se sigue mostrando, pero no suma en ningún total.
+  var counted = items.filter(function(it) { return !it.excluded; });
   // Todas las búsquedas (como antes) y, aparte, solo las de la misma tarifa (#A95, «peras con peras»).
-  var summary = _ptSummary_(items, false);
-  summary.sameFare = _ptSummary_(items.filter(function(it) { return it.fare.match === true; }), true);
+  var summary = _ptSummary_(counted, false);
+  summary.sameFare = _ptSummary_(counted.filter(function(it) { return it.fare.match === true; }), true);
   // Solo las comparaciones exactas (#A97): TIPO 1, o con maleta en aerolíneas donde Google trae esa tarifa.
-  summary.exact = _ptSummary_(items.filter(function(it) { return it.fare.quality === 'exacta'; }), true);
+  summary.exact = _ptSummary_(counted.filter(function(it) { return it.fare.quality === 'exacta'; }), true);
   // #A104: lo que ya se compró, con la búsqueda al comprar. Es la cifra que se puede presentar: lo que
   // espera aprobación o compra todavía no es un gasto.
   var purchased = function(it) { return it.bought && it.marketMoment === 'COMPRA'; };
-  summary.purchased = _ptSummary_(items.filter(purchased), false);
-  summary.purchasedSameFare = _ptSummary_(items.filter(function(it) { return purchased(it) && it.fare.match === true; }), true);
-  summary.purchasedExact = _ptSummary_(items.filter(function(it) { return purchased(it) && it.fare.quality === 'exacta'; }), true);
-  var count = function(f) { return items.filter(f).length; };
+  summary.purchased = _ptSummary_(counted.filter(purchased), false);
+  summary.purchasedSameFare = _ptSummary_(counted.filter(function(it) { return purchased(it) && it.fare.match === true; }), true);
+  summary.purchasedExact = _ptSummary_(counted.filter(function(it) { return purchased(it) && it.fare.quality === 'exacta'; }), true);
+  summary.excludedCount = items.length - counted.length;
+  var count = function(f) { return counted.filter(f).length; };
   summary.fareCounts = {
     match: count(function(it) { return it.fare.match === true; }),
     mismatch: count(function(it) { return it.fare.match === false; }),
@@ -18584,6 +18590,49 @@ function _saTrips_(vals, hm, config) {
     ]);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------
+// EXCLUIR UN VIAJE DEL AHORRO (#A110, David, 22-oct)
+// ---------------------------------------------------------------------
+// Un viaje atípico (el de Miami de la reunión del 22-oct) distorsiona el ahorro del
+// comparador. Quien ve el comparador lo puede excluir a mano, con un motivo: sigue en la
+// lista, marcado, pero no suma en los totales ni en la proyección. Queda quién, cuándo
+// y por qué, en la columna y en OBSERVACIONES. Se puede volver a contar.
+var SAVINGS_EXCLUDED_HEADER = 'EXCLUIDA DEL AHORRO';
+var SAVINGS_EXCLUDED_NOTE = 'Viaje que no cuenta en el ahorro del comparador de precios ni en la proyección (#A110): motivo · quién · fecha. Vacía = cuenta. Se cambia desde el dashboard de costos.';
+var SAVINGS_EXCLUDED_REASON_MIN = 10;
+var SAVINGS_EXCLUDED_REASON_MAX = 300;
+
+/**
+ * Excluye un viaje del ahorro del comparador, o lo vuelve a contar. Solo quienes ven el
+ * comparador (COSTS_VARIANCE_ALLOWED). exclude=true exige un motivo.
+ * @return {{requestId: string, excluded: string}}
+ */
+function setSavingsExclusion(currentUserEmail, requestId, exclude, reason) {
+  if (!_canViewCostsVariance_(currentUserEmail)) {
+    throw new Error('Solo ' + _costsVarianceViewersLabel_() + ' pueden excluir viajes del ahorro.');
+  }
+  var id = String(requestId || '').trim();
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = id && sheet ? _getRowByRequestId_(id) : -1;
+  if (rowNumber === -1) throw new Error('Solicitud no encontrada.');
+  var actor = String(currentUserEmail || '').toLowerCase().trim();
+  var when = Utilities.formatDate(new Date(), 'America/Bogota', 'dd/MM/yyyy');
+  var why = String(reason == null ? '' : reason).replace(/\s+/g, ' ').trim();
+  if (exclude && why.length < SAVINGS_EXCLUDED_REASON_MIN) throw new Error('Escriba por qué este viaje no debe contar (mínimo ' + SAVINGS_EXCLUDED_REASON_MIN + ' caracteres).');
+  if (exclude && why.length > SAVINGS_EXCLUDED_REASON_MAX) throw new Error('El motivo es demasiado largo (máximo ' + SAVINGS_EXCLUDED_REASON_MAX + ' caracteres).');
+  var col = _ensureRequestColumn_(SAVINGS_EXCLUDED_HEADER, SAVINGS_EXCLUDED_NOTE); // después de validar: un pedido inválido no toca la hoja
+  if (exclude) {
+    var text = why + ' · ' + actor + ' · ' + when;
+    sheet.getRange(rowNumber, col).setValue(safeSheetValue_(text));
+    _policyAppendObs_(sheet, rowNumber, '[SISTEMA]: Excluida del ahorro del comparador de precios por ' + actor + ' (' + when + '): ' + why);
+    return { requestId: id, excluded: String(sheet.getRange(rowNumber, col).getValue() || '') };
+  }
+  if (!String(sheet.getRange(rowNumber, col).getValue() || '').trim()) return { requestId: id, excluded: '' };
+  sheet.getRange(rowNumber, col).setValue('');
+  _policyAppendObs_(sheet, rowNumber, '[SISTEMA]: Vuelve a contar en el ahorro del comparador de precios (' + actor + ', ' + when + ').');
+  return { requestId: id, excluded: '' };
 }
 
 /** Nombre en USUARIOS de un correo ('' si no está). */
@@ -18782,6 +18831,11 @@ function costsDashboard_getTripChanges(payload) {
 /** Detalle de un viaje del comparador de precios (#A86). Payload: { requestId, userEmail, sessionToken }. */
 function costsDashboard_getPriceTrackingDetail(payload) {
   return dispatch('getPriceTrackingDetail', payload || {});
+}
+
+/** Excluir un viaje del ahorro o volverlo a contar (#A110). Payload: { requestId, exclude, reason, userEmail, sessionToken }. */
+function costsDashboard_setSavingsExclusion(payload) {
+  return dispatch('setSavingsExclusion', payload || {});
 }
 
 // =====================================================================

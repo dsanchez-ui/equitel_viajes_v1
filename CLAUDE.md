@@ -431,6 +431,14 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   $89.384 (3,2 %). Todos los rastreados contra lo cotizado, tarifa con tarifa: TIPO 1 $1,35 M (30,5 %); TIPO 2 con maleta frente a
   Avianca/JetSMART/Wingo, Google $358 mil más caro; nacionales en total $275 mil (2 %). Google se busca con el mismo número de
   pasajeros y su precio es el total del grupo, como lo cotizado.
+- **Excluir a mano un viaje del ahorro** (#A110, David, 22-oct: el viaje a Miami de Francisco Amézquita, SOL-000658, es atípico). En el
+  detalle de cada viaje del comparador, «Excluir del ahorro» con motivo obligatorio; solo `COSTS_VARIANCE_ALLOWED`. Columna
+  `EXCLUIDA DEL AHORRO` (motivo · quién · fecha) + nota en OBSERVACIONES. El viaje sigue en la lista, marcado, pero no suma en ningún
+  total del comparador ni en la proyección; el titular dice cuál es y cuánto daría con él. **Nunca esconder un viaje sin decirlo.**
+  Cifras del cierre del estudio (base del 22-oct): 8 viajes comprados exactos $2.792.291; sin Miami 7 y $1.215.647; con la misma
+  aerolínea, a la par (Google $34.501 más caro en 5). Con la tarifa del manual, 20 viajes $5.485.521: Miami $1,58 M, volar otra
+  aerolínea $1,94 M, misma aerolínea $0,82 M (casi todo aproximado, LATAM) y sin dato $1,16 M. Lo cotizado por Aviatur ya trae sus
+  cargos (208 vuelos sin hotel: facturado = cotizado en la mediana).
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -703,8 +711,12 @@ autorización) y verificar antes de crear una versión nueva del web app.
   celular de Diego, pegó los cuatro archivos, corrió el menú 16 y publicó la versión nueva; el frontend `51ae8de` se construyó con
   `node:24.22.1-alpine` (0 vulnerabilidades) y es la revisión `00218` de Cloud Run. El PC Linux ya tiene Node 24.22.1 (`~/.local`).
   Queda: Node 24 en el Mac; `sudo apt update && sudo apt upgrade` en el PC (Python lo parchea Ubuntu); el 30-oct fijar markdown-it 14.3.3.
-- **#A109 (reserva por partes = tiquete comprado en los cambios; «No se reservó hotel» = $0 en el dashboard): implementado el 22-oct,
-  pendiente desplegar.** Pegar `Code.gs` → versión nueva del web app → push del frontend, seguidos. Nació de **SOL-000659** (compra
+- **#A109 (reserva por partes = tiquete comprado en los cambios; «No se reservó hotel» = $0 en el dashboard) y #A110 («Excluir del
+  ahorro» en el comparador y la respuesta en una frase): implementados el 22-oct, pendientes de desplegar** (pegar `Code.gs` y
+  `CostsDashboard.html`, versión nueva, push). Reunión del 22-oct (Yurani, David): el ahorro de comprar directo no paga una persona; los
+  análisis con nombre (tarifa, quién viaja, quién pide tarde, quién cambia) están en el artefacto de costos
+  (https://claude.ai/artifact/AoWDaTnRmtwBH83yX56zQ7). Pendientes de esa reunión: excepciones del manual por cargo (con Alejandro; falta el
+  cargo, que está en la lista de RR. HH.), informes gerenciales de Aviatur (los manda Yurani) y el caso de Sandra Omaña (SOL-000665). Pegar `Code.gs` → versión nueva del web app → push del frontend, seguidos. Nació de **SOL-000659** (compra
   guardada por partes) y su cambio **SOL-000667**: con el arreglo desplegado, Laura abre «Revisar Cambio», toca «Confirmar lo que se
   compró de SOL-000659» («No se reservó hotel», sin correo) y acepta; ya no hace falta denegar y volver a pedir el cambio.
 - **#A103 «Cambiar mi viaje», #A104 y #A105: desplegados el 21-oct.** Después del despliegue:

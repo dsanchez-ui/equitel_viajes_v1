@@ -3020,3 +3020,42 @@ Claude, desde el 30-oct: fijar markdown-it 14.3.3.
 - **Dashboard:** la primera vez que se abra recalcula todas las filas, una sola vez.
 
 **Rollback:** versión anterior del web app + revert del commit.
+
+---
+
+## **#A110 — Dashboard de costos: excluir a mano un viaje atípico del ahorro y la respuesta en una frase**
+**Fecha:** 2026-10-22 · **Pedido por:** David, después de la reunión del 22-oct con Yurani (*«si hay la posibilidad de omitir o como manualmente descartar una solicitud para que no cuente hacia el ahorro… la de Francisco, que va para Miami… es anormal»*; *«garantiza que el dashboard de costos… esté mostrando las cifras de forma clara»*). · **Estado:** Implementado; pendiente desplegar.
+
+**Síntoma:**
+- **Miami pesa más de la mitad de la cifra.** El comparador mostraba $2.792.291 en 8 viajes ya comprados con comparación exacta, y $1.576.644 eran de un solo viaje atípico: Bogotá–Miami, 3 pasajeros (SOL-000658). No había forma de sacarlo; en la reunión se restó a mano y salió mal ($1,4 M en vez de $1.215.647).
+- **La cifra se leyó al revés.** La frase del comparador ya decía que con la misma aerolínea Google era más caro, pero iba en medio de un párrafo. En la reunión se leyó como «se pagaron 2.792».
+
+**Arreglo:**
+- **«Excluir del ahorro»**, en el detalle de cada viaje del comparador:
+  - **Quién:** solo las mismas personas que ven el comparador (`COSTS_VARIANCE_ALLOWED`: Yurani, Diego y David), con un motivo obligatorio de 10 a 300 caracteres.
+  - **Dónde queda:** en la columna nueva `EXCLUIDA DEL AHORRO` (motivo · quién · fecha; la crea el sistema al final la primera vez) y en OBSERVACIONES.
+  - **Qué cambia:** el viaje sigue en la lista, marcado «no cuenta: excluido a mano del ahorro», pero sale de todos los totales del comparador y de la muestra de la proyección de ahorro.
+  - **Qué ve el titular:** cuál viaje no cuenta, por qué y cuánto daría con él.
+  - **Deshacer:** «Volver a contar».
+  - **En el servidor:** la acción `setSavingsExclusion` (`adminOnlyActions`, de escritura: lock e invalidación de la caché del dashboard). Valida antes de tocar la hoja.
+- **La respuesta arriba, en una frase:** por ejemplo, *«Con la misma aerolínea, lo pagado está a la par de Google o por debajo: la diferencia sale de volar otra aerolínea u otro vuelo.»* Si con la misma aerolínea Google tenía más de 5 % menos, dice cuánto.
+- **Arreglo de paso:** al recargar el comparador, un viaje abierto quedaba en «Cargando el detalle…». Pasaba también con «Actualizar datos». Ahora se cierran y se vuelven a pedir al abrirlos.
+- **CSV:** columna «Excluido del ahorro».
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-price-tracking.cjs` cubre:
+  - permisos (Laura y otros no pueden) y motivo obligatorio;
+  - que un pedido inválido no toque la hoja y que la solicitud exista;
+  - que el viaje siga en la lista y no sume en ningún total;
+  - la columna y la nota en observaciones;
+  - que al volver a contarlo los totales queden como antes.
+  
+  Probado al revés: sin el filtro, falla.
+- **Entorno local con la base del 22-oct, en Chrome:** el titular abre con la frase. Al excluir Miami queda en 7 viajes y $1.215.647, dice «Con él, la diferencia sería $2.792.291» y la proyección no lo usa. Al volver a contarlo, regresa a $2.792.291. Sin errores de JavaScript; observaciones guarda las dos constancias.
+
+**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` → versión nueva del web app. Va junto con #A109.
+- **Con el `Code.gs` viejo:** el botón responde «Acción desconocida» y nada cambia.
+- **Con el `CostsDashboard.html` viejo:** no hay botón, y los totales igual excluyen lo marcado.
+
+**Rollback:** versión anterior del web app. La columna puede quedarse vacía.

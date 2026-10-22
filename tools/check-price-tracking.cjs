@@ -47,7 +47,7 @@ function makeSheet(name, rows) {
     getLastColumn: () => t.reduce((m, r) => Math.max(m, r.length), 0),
     getMaxColumns: () => t.reduce((m, r) => Math.max(m, r.length), 0),
     appendRow(vals) { t.push(vals.map((v) => (typeof v === 'string' && v.startsWith("'") ? v.slice(1) : v))); },
-    setFrozenRows() {}, hideSheet() { s.hidden = true; },
+    setFrozenRows() {}, hideSheet() { s.hidden = true; }, insertColumnsAfter() {}, setColumnWidth() {}, // las columnas nuevas se escriben al final (getRange crece)
     protect() { const pr = { setDescription: () => pr, setWarningOnly: (w) => { s.protectedWarning = w; return pr; } }; return pr; },
     clearContents() { t.length = 0; },
     getRange(r, c, nr, nc) {
@@ -80,7 +80,7 @@ function makeSpreadsheet(sheets) {
 const H = ['ID RESPUESTA', 'STATUS', 'MODO_SOLICITUD', 'CIUDAD ORIGEN', 'CIUDAD DESTINO', 'FECHA IDA', 'FECHA VUELTA',
   '# PERSONAS QUE VIAJAN', 'HORA LLEGADA VUELO IDA', 'EVENTOS_JSON', 'COSTO_FINAL_TIQUETES', 'AEROLINEA', 'CANAL DE COMPRA',
   'EMPRESA', 'UNIDAD DE NEGOCIO', 'CORREO ENCUESTADO', 'CÉDULA PERSONA 1', 'NOMBRE PERSONA 1',
-  'HORA LLEGADA VUELO VUELTA', 'ES INTERNACIONAL', 'AEROLINEA REGRESO', 'COSTO_FINAL_HOTEL', 'TOTAL FACTURA', 'VALOR COMPRA TIQUETES'];
+  'HORA LLEGADA VUELO VUELTA', 'ES INTERNACIONAL', 'AEROLINEA REGRESO', 'COSTO_FINAL_HOTEL', 'TOTAL FACTURA', 'VALOR COMPRA TIQUETES', 'OBSERVACIONES'];
 const ev = (o) => JSON.stringify(o);
 const hace = (h) => new Date(Date.now() - h * 3600000).toISOString();
 const priv = ['pasajero@ejemplo.test', 'CEDULA-FICTICIA-1', 'NOMBRE PRIVADO'];
@@ -608,12 +608,38 @@ function main() {
     /escala/.test(q._ptProductGap_(snapMed({ directOnly: false }), {})), /±2 h/.test(q._ptProductGap_(snapMed({ referenceIsNear: false, cheapest: { airline: 'LATAM' } }), {})),
     q._ptProductGap_(snapMed({ hour: '', referenceIsNear: false, cheapest: { airline: 'LATAM' } }), { ida: 'LATAM' })], [true, true, '']);
 
+  // #A110: excluir a mano un viaje atípico del ahorro (el de Miami de la reunión del 22-oct).
+  const px = loadPlatform(t.ss);
+  const setX = (email, id, exclude, reason) => px.dispatch('setSavingsExclusion', { userEmail: email, sessionToken: 'x', requestId: id, exclude, reason });
+  const antesX = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
+  eq('excluir del ahorro: Laura no puede', /Yurani Prieto, Diego Caballero y David Sánchez/.test(setX('compras.equitel@equitel.com.co', 'SOL-6', true, 'Viaje atípico de prueba').error || ''), true);
+  eq('excluir del ahorro: otro usuario no puede', setX('alguien@ejemplo.test', 'SOL-6', true, 'Viaje atípico de prueba').success, false);
+  const sinMotivo = setX('dsanchez@equitel.com.co', 'SOL-6', true, 'corto');
+  eq('excluir del ahorro: sin motivo, no', [sinMotivo.success, /mínimo 10/.test(sinMotivo.error || '') || sinMotivo.error], [false, true]);
+  eq('excluir del ahorro: un pedido inválido no toca la hoja', t.base.data[0].includes('EXCLUIDA DEL AHORRO'), false);
+  eq('excluir del ahorro: solicitud que no existe', /no encontrada/.test(setX('dsanchez@equitel.com.co', 'SOL-404', true, 'Viaje atípico de prueba').error || ''), true);
+  const rx = setX('dsanchez@equitel.com.co', 'SOL-6', true, '  Viaje   atípico: no se repite ');
+  eq('excluir del ahorro: queda el motivo, quién y cuándo', rx.success && /^Viaje atípico: no se repite · dsanchez@equitel\.com\.co · \d{2}\/\d{2}\/\d{4}$/.test(rx.data.excluded), true);
+  const dx = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
+  const i6e = dx.items.find((i) => i.requestId === 'SOL-6');
+  eq('excluido: sigue en la lista, marcado, y no suma en ningún total',
+    [!!i6e && /^Viaje atípico/.test(i6e.excluded), dx.summary.excludedCount, dx.summary.purchased.overall.n, dx.summary.atPurchase.n, dx.summary.invoiced.n, dx.summary.overall.n],
+    [true, 1, antesX.summary.purchased.overall.n - 1, antesX.summary.atPurchase.n - 1, antesX.summary.invoiced.n - 1, antesX.summary.overall.n - 1]);
+  const rowX = t.base.data.find((r) => r[0] === 'SOL-6');
+  eq('excluido: la columna se creó al final y observaciones lo dice', [t.base.data[0][t.base.data[0].length - 1], /Excluida del ahorro del comparador de precios por dsanchez@equitel\.com\.co/.test(rowX[H.indexOf('OBSERVACIONES')])],
+    ['EXCLUIDA DEL AHORRO', true]);
+  const ry = setX('dsanchez@equitel.com.co', 'SOL-6', false);
+  if (!ry.success) failures.push('volver a contar: ' + ry.error);
+  const dy = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
+  eq('volver a contar: los totales quedan como antes', [ry.success, ry.data && ry.data.excluded, dy.summary.excludedCount, JSON.stringify(dy.summary.purchased) === JSON.stringify(antesX.summary.purchased),
+    /Vuelve a contar en el ahorro/.test(rowX[H.indexOf('OBSERVACIONES')])], [true, '', 0, true, true]);
+
   if (failures.length) {
     console.error(`\n✗ Rastreo de precios: ${failures.length} problema(s).\n`);
     failures.forEach((f) => console.error('  · ' + f));
     process.exit(1);
   }
-  console.log('Rastreo de precios: momentos de búsqueda, tramos por separado, internacional, formato anterior, solo sus pestañas, clave fuera de la hoja, cupo, reintentos, vendedores, permisos, cuentas y detalle del dashboard OK.');
+  console.log('Rastreo de precios: momentos de búsqueda, tramos por separado, internacional, formato anterior, solo sus pestañas, clave fuera de la hoja, cupo, reintentos, vendedores, permisos, cuentas, detalle del dashboard y viajes excluidos a mano del ahorro OK.');
 }
 
 main();
