@@ -6,6 +6,10 @@ import { fareLabel, fareOptionForNights } from '../utils/fare';
 import { formatCop } from '../utils/money';
 import { CityCombobox } from './CityCombobox';
 import { DateInput } from './DateInput';
+import { TripChangeContactsBox, TripChangeContactsInline } from './TripChangeContacts';
+
+/** Cierra la frase sin doble punto: «… 5:00 p. m.» ya termina en punto. */
+const withDot = (s: string): string => (s.endsWith('.') ? s : s + '.');
 
 interface TripChangeModalProps {
   /** Solicitudes que ve la persona: las suyas, o todas si es administrador. */
@@ -93,7 +97,7 @@ export const tripChangeEligibility = (r: TravelRequest, all: TravelRequest[], no
   const win = tripChangeWindow(toDateKey(r.departureDate), toDateKey(r.returnDate), nowMs, isAdmin);
   if (!win.open) {
     if (win.reason === 'ended') return { ok: false, win, why: 'El viaje ya terminó.', hidden: true };
-    return { ok: false, win, why: `El plazo para cambiarlo por la plataforma venció el ${fmtDayLong(win.deadlineKey)} a las ${fmtHourLabel(win.deadlineHour)}.`, hidden: false };
+    return { ok: false, win, why: `El plazo para cambiarlo por la plataforma venció el ${fmtDayLong(win.deadlineKey)} a las ${fmtHourLabel(win.deadlineHour)}`, hidden: false }; // la hora ya termina en punto
   }
   return { ok: true, win, why: '', hidden: false };
 };
@@ -167,6 +171,8 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   }, [requests, isAdmin]);
 
   const elig = req ? tripChangeEligibility(req, requests, nowMs, isAdmin) : null;
+  // #A106: el plazo del viajero, para que el área de viajes sepa si todavía puede pedirlo él mismo.
+  const travelerWin = req && isAdmin ? tripChangeWindow(toDateKey(req.departureDate), toDateKey(req.returnDate), nowMs, false) : null;
   const mode = elig?.win?.mode || 'full';
   const hotelOnly = req?.requestMode === 'HOTEL_ONLY';
   const bought = req?.status === RequestStatus.RESERVED;
@@ -210,7 +216,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
       if (!isAdmin && target && target !== baseTarget) {
         const dl = changeDeadline(target);
         if (!dl || nowMs >= dl.ms) {
-          problems.push(`La fecha nueva (${fmtDayLong(target)}) ya no da tiempo: para ese vuelo el plazo era el ${dl ? fmtDayLong(dl.dayKey) + ' a las ' + fmtHourLabel(dl.hour) : '—'}.`);
+          problems.push(`La fecha nueva (${fmtDayLong(target)}) ya no da tiempo: para ese vuelo el plazo era el ${dl ? fmtDayLong(dl.dayKey) + ' a las ' + fmtHourLabel(dl.hour) : '—.'}`);
         }
       }
     }
@@ -302,8 +308,21 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
         <div className="px-5 py-4 overflow-y-auto space-y-4 text-sm text-gray-800">
           {step === 'pick' && (
             <>
+              {!isAdmin && (
+                <p className="text-xs text-gray-600" data-change-platform-first>
+                  Todo cambio se pide aquí: así queda registrado y su jefe lo aprueba. Si escribe o llama, el área de viajes le pedirá que lo haga por aquí.
+                  Llamar es solo para cuando ya pasó el plazo y es urgente.
+                </p>
+              )}
               {pickList.length === 0 && (
-                <p className="text-gray-600">No tiene viajes que se puedan cambiar. Si necesita algo urgente, escríbale al área de viajes: <span className="font-semibold select-all">{config.contact}</span>.</p>
+                isAdmin
+                  ? <p className="text-gray-600">No hay viajes que se puedan cambiar.</p>
+                  : (
+                    <>
+                      <p className="text-gray-600">No tiene viajes que se puedan cambiar.</p>
+                      <TripChangeContactsBox config={config} title="Si ya pasó el plazo y es urgente" />
+                    </>
+                  )
               )}
               <ul className="space-y-2">
                 {pickList.map(({ r, e }) => (
@@ -320,10 +339,9 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                       </p>
                       <p className={`text-xs font-semibold mt-1 ${e.ok ? (e.win && e.win.deadlineKey === todayKey ? 'text-amber-700' : 'text-green-700') : 'text-red-700'}`}>
                         {e.ok && e.win
-                          ? (isAdmin ? 'Usted puede registrarlo sin plazo.' : (e.win.mode === 'return' ? 'La ida ya voló. Puede cambiar el regreso ' : 'Puede pedir el cambio ') + untilText(e.win, nowMs) + '.')
+                          ? (isAdmin ? 'Usted puede registrarlo sin plazo.' : (e.win.mode === 'return' ? 'La ida ya voló. Puede cambiar el regreso ' : 'Puede pedir el cambio ') + withDot(untilText(e.win, nowMs)))
                           : e.why}
                       </p>
-                      {!e.ok && <p className="text-xs text-gray-500 mt-0.5">Área de viajes: <span className="select-all">{config.contact}</span></p>}
                     </div>
                     {e.ok
                       ? <button type="button" onClick={() => { setReq(r); setForm(null); setStep('form'); }} className="bg-brand-red text-white px-3 py-2 rounded text-xs font-bold uppercase tracking-wide hover:bg-red-700 shrink-0">Cambiar este viaje</button>
@@ -331,6 +349,9 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   </li>
                 ))}
               </ul>
+              {!isAdmin && pickList.some(x => !x.e.ok) && (
+                <TripChangeContactsBox config={config} title="¿Un viaje ya no se puede cambiar aquí y es urgente?" />
+              )}
             </>
           )}
 
@@ -338,7 +359,14 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
             <>
               {!elig.ok && (
                 <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-3">
-                  <strong>No se puede pedir este cambio:</strong> {elig.why} Área de viajes: <span className="select-all">{config.contact}</span>.
+                  <strong>No se puede pedir este cambio:</strong> {elig.why}
+                  {!isAdmin && <> Si es urgente, <TripChangeContactsInline config={config} />.</>}
+                </div>
+              )}
+              {isAdmin && travelerWin && travelerWin.open && (
+                <div className="bg-amber-50 border border-amber-300 text-amber-950 rounded-md p-3 text-xs" data-change-traveler-can>
+                  <strong>El viajero todavía puede pedirlo él mismo</strong> con «Cambiar mi viaje», {withDot(untilText(travelerWin, nowMs))}{' '}
+                  Si le escribió o llamó, pídale que lo haga por la plataforma: así queda con su motivo y a su nombre. Regístrelo usted solo si es urgente.
                 </div>
               )}
               {isAdmin && String(req.requesterEmail || '').toLowerCase() && (

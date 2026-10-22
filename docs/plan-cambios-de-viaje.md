@@ -295,5 +295,10 @@ Están también al final del prototipo, cada una con su propuesta:
 4. ¿El tope de Cadena de Suministro ($1.200.000) se aplica al viaje con el cambio o solo al costo del cambio?
 5. ¿Dónde se ve el control de cambios (Métricas, dashboard de costos, informe mensual)?
 6. ¿Laura registra a nombre del viajero los cambios que llegan por correo, sin plazo?
+   **Decisión (Yurani y David, 22-oct, #A106):** la regla es que cada viajero lo pida en la plataforma. Si le
+   escriben o llaman dentro del plazo, Laura le pide que lo haga por ahí (la ventana se lo recuerda). Lo registra
+   ella solo si ya pasó el plazo y es urgente.
 7. ¿Se agrega el aviso de la maleta en el formulario de solicitud nueva?
 8. ¿Qué contacto se muestra después del plazo (hoy, compras.equitel@equitel.com.co)?
+   **Decisión (Yurani, 22-oct, #A106):** los celulares de Laura y, si no responde, de Diego. Se configuran en una
+   tabla de MISC (menú 16) con el celular tomado de USUARIOS, para cambiarlos sin tocar código si alguien cambia de rol.

@@ -400,6 +400,7 @@ function _resetPerExecutionCaches_() {
   _PASSPORT_FOLDER_CACHE = null;
   _TRIP_CHANGE_KEEP_OT = null;
   _TRIP_CHANGE_PENDING_INFO = null;
+  _TRIP_CONTACTS_CACHE = null;
 }
 
 /**
@@ -12109,6 +12110,7 @@ function onOpen() {
     .addItem('13. Aprobaciones por política: activar resumen cada 2 h', 'activarAprobacionesPolitica')
     .addItem('14. Aprobaciones por política: ver pendientes', 'menuVerAprobacionesPolitica')
     .addItem('15. Informe mensual de la política: prueba (solo a mí)', 'menuInformeMensualPrueba')
+    .addItem('16. Contactos para cambios de viaje', 'menuContactosCambios')
     .addToUi();
 }
 
@@ -20519,7 +20521,7 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
     throw new Error(win.reason === 'ended'
       ? 'El viaje ya terminó: no hay nada que cambiar.'
       : 'El plazo para pedir el cambio por la plataforma venció el ' + _changeDeadlineText_(win.deadlineKey, win.deadlineHour) +
-        '. Comuníquese con el área de viajes: ' + ADMIN_EMAIL + '.');
+        ' Si es urgente, ' + _tripContactsText_(_tripContacts_()) + '.'); // la hora ya termina en punto («5:00 p. m.»)
   }
   var norm = _normalizeTripChanges_(parentVals, changes, win.mode, isHotelOnly);
   var next = norm.next;
@@ -20529,7 +20531,7 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
     var dlNew = _changeDeadline_(newTarget);
     if (!dlNew || nowMs >= dlNew.ms) {
       throw new Error('La fecha nueva (' + _policyFmtDayLong_(newTarget) + ') ya no da tiempo: para ese vuelo el plazo era el ' +
-        _changeDeadlineText_(dlNew.dayKey, dlNew.hour) + '.');
+        _changeDeadlineText_(dlNew.dayKey, dlNew.hour));
     }
   }
   // El destino nuevo tiene que estar en la lista de ciudades (define si el viaje es internacional).
@@ -20770,7 +20772,213 @@ function _tripChangePublicInfo_(email) {
     try { showNotice = !_policyNoticeAcked_(e, TRIP_CHANGE_NOTICE_ID); } catch (err) { showNotice = true; } // si no se puede leer, se explica de nuevo
   }
   return { enabled: true, contact: ADMIN_EMAIL, reasonMin: TRIP_CHANGE_REASON_MIN, reasonMax: TRIP_CHANGE_REASON_MAX, serverNow: Date.now(),
-    noticeId: TRIP_CHANGE_NOTICE_ID, showNotice: showNotice };
+    noticeId: TRIP_CHANGE_NOTICE_ID, showNotice: showNotice,
+    contacts: _tripContacts_().map(function (c) { return { name: c.name, role: c.role, phone: c.phone, email: c.email }; }) };
+}
+
+// ---------------------------------------------------------------------
+// A QUIÉN LLAMAR SI YA PASÓ EL PLAZO (#A106; Yurani y David, 22-oct)
+// Todo cambio se pide en la plataforma. Solo cuando ya no se puede (pasó el plazo) y es
+// urgente, la app muestra a quién llamar: la primera persona y, si no responde, la siguiente.
+// La lista es una tabla en MISC, como la de accesos al dashboard (#A76): encabezados en las
+// filas 1 a 3, en cualquier columna; debajo, una fila por persona, en el orden en que se
+// llama. El nombre y el cargo salen de la tabla; el celular, de la columna 'Celular' de
+// USUARIOS (#A74), para que se corrija en un solo lugar. Si alguien cambia de rol, se cambia
+// su fila. El menú 16 crea la tabla (con Laura y Diego) y la revisa.
+// ---------------------------------------------------------------------
+var TRIP_CONTACTS_SHEET = 'MISC';
+var TRIP_CONTACTS_HEADERS = ['CONTACTO CAMBIOS · CORREO', 'CONTACTO CAMBIOS · NOMBRE', 'CONTACTO CAMBIOS · CARGO'];
+var TRIP_CONTACTS_DEFAULT = [
+  ['compras.equitel@equitel.com.co', 'Laura Molina', 'Área de viajes'],
+  ['directorcompras@equitel.com.co', 'Diego Caballero', 'Director de compras']
+];
+var TRIP_CONTACTS_MAX = 3;
+var TRIP_CONTACTS_CACHE_KEY = 'tripContacts_v1';
+var TRIP_CONTACTS_CACHE_SECONDS = 600; // un cambio en la tabla o en USUARIOS se ve en la app en 10 minutos (el menú 16, de inmediato)
+var _TRIP_CONTACTS_CACHE = null;
+
+/** Ubica la tabla de contactos en las filas 1 a 3 de MISC. Columnas 1-based. */
+function _tripContactsLocate_(sheet) {
+  var lastCol = sheet.getLastColumn(), lastRow = sheet.getLastRow();
+  if (lastCol < 1 || lastRow < 1) return { found: false, partial: false };
+  var values = sheet.getRange(1, 1, Math.min(3, lastRow), lastCol).getValues();
+  var partial = false;
+  for (var r = 0; r < values.length; r++) {
+    var cols = { email: -1, name: -1, role: -1 };
+    for (var c = 0; c < values[r].length; c++) {
+      var h = _csNormalize_(values[r][c]);
+      if (h.indexOf('contacto') === -1 || h.indexOf('cambio') === -1) continue;
+      if (cols.email === -1 && h.indexOf('correo') !== -1) cols.email = c + 1;
+      else if (cols.name === -1 && h.indexOf('nombre') !== -1) cols.name = c + 1;
+      else if (cols.role === -1 && h.indexOf('cargo') !== -1) cols.role = c + 1;
+    }
+    if (cols.email > 0 && cols.name > 0 && cols.role > 0) {
+      return { found: true, partial: false, headerRow: r + 1, emailCol: cols.email, nameCol: cols.name, roleCol: cols.role };
+    }
+    if (cols.email > 0 || cols.name > 0 || cols.role > 0) partial = true;
+  }
+  return { found: false, partial: partial };
+}
+
+/** {correo: celular de 10 dígitos o ''} de todos los usuarios de USUARIOS. */
+function _usuariosPhonesByEmail_() {
+  var map = {};
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet || sheet.getLastRow() < 2) return map;
+  var phoneCol = _getUsuarioPhoneCol_(sheet);
+  var n = sheet.getLastRow() - 1;
+  var emails = sheet.getRange(2, 3, n, 1).getValues(); // columna C = correo (USUARIOS se lee por posición)
+  var phones = phoneCol > 0 ? sheet.getRange(2, phoneCol, n, 1).getValues() : null;
+  for (var i = 0; i < n; i++) {
+    var e = String(emails[i][0] || '').toLowerCase().trim();
+    if (e && !Object.prototype.hasOwnProperty.call(map, e)) map[e] = phones ? _normalizePhone_(phones[i][0]) : '';
+  }
+  return map;
+}
+
+/** Lee la tabla (sin caché): {found, loc, rows: [{row, email, name, role}]}. */
+function _tripContactsRead_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TRIP_CONTACTS_SHEET);
+  var loc = sheet ? _tripContactsLocate_(sheet) : { found: false, partial: false };
+  var rows = [];
+  if (loc.found) {
+    var n = sheet.getLastRow() - loc.headerRow;
+    var data = n > 0 ? sheet.getRange(loc.headerRow + 1, 1, n, sheet.getLastColumn()).getValues() : [];
+    var clean = function (v) { return String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim(); };
+    data.forEach(function (d, i) {
+      var r = { row: loc.headerRow + 1 + i, email: clean(d[loc.emailCol - 1]).toLowerCase(), name: clean(d[loc.nameCol - 1]), role: clean(d[loc.roleCol - 1]) };
+      if (r.email || r.name || r.role) rows.push(r);
+    });
+  }
+  return { found: loc.found, partial: !!loc.partial, loc: loc, rows: rows };
+}
+
+/**
+ * A quién llamar si ya pasó el plazo, en orden: [{email, name, role, phone}] (phone: 10 dígitos o '').
+ * Se guarda 10 minutos en CacheService. Sin tabla, o si no se puede leer: [] y la app muestra el correo
+ * del área de viajes, como antes.
+ */
+function _tripContacts_() {
+  if (_TRIP_CONTACTS_CACHE) return _TRIP_CONTACTS_CACHE;
+  var cache = null;
+  try { cache = CacheService.getScriptCache(); } catch (e) { cache = null; }
+  if (cache) {
+    try {
+      var hit = cache.get(TRIP_CONTACTS_CACHE_KEY);
+      if (hit) { _TRIP_CONTACTS_CACHE = JSON.parse(hit); return _TRIP_CONTACTS_CACHE; }
+    } catch (e) { /* se lee de la hoja */ }
+  }
+  var out = [];
+  try {
+    var t = _tripContactsRead_();
+    if (t.rows.length) {
+      var phones = _usuariosPhonesByEmail_();
+      t.rows.forEach(function (r) {
+        if (!r.name || out.length >= TRIP_CONTACTS_MAX) return;
+        out.push({ email: r.email, name: r.name, role: r.role, phone: (r.email && phones[r.email]) || '' });
+      });
+    }
+  } catch (e) {
+    console.error('Contactos para cambios: no se pudo leer la tabla de ' + TRIP_CONTACTS_SHEET + ': ' + e);
+    out = [];
+  }
+  _TRIP_CONTACTS_CACHE = out;
+  if (cache) { try { cache.put(TRIP_CONTACTS_CACHE_KEY, JSON.stringify(out), TRIP_CONTACTS_CACHE_SECONDS); } catch (e) { /* sin caché */ } }
+  return out;
+}
+
+/** '3133251690' → '313 325 1690'. */
+function _formatPhoneText_(p) {
+  var d = String(p || '');
+  return d.length === 10 ? d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6) : d;
+}
+
+/**
+ * «llame a Laura Molina (área de viajes), 313 325 1690; si no responde, a Diego Caballero (director de
+ * compras), 323 295 8507». Sin contactos: «escríbale al área de viajes: compras.equitel@…».
+ */
+function _tripContactsText_(contacts) {
+  var list = (contacts || []).filter(function (c) { return c && c.name; });
+  if (!list.length) return 'escríbale al área de viajes: ' + ADMIN_EMAIL;
+  var one = function (c) {
+    var role = c.role ? ' (' + c.role.charAt(0).toLowerCase() + c.role.slice(1) + ')' : '';
+    return c.name + role + (c.phone ? ', ' + _formatPhoneText_(c.phone) : (c.email ? ', ' + c.email : ''));
+  };
+  return 'llame a ' + list.map(function (c, i) { return (i ? 'si no responde, a ' : '') + one(c); }).join('; ');
+}
+
+/**
+ * Crea la tabla de contactos en MISC si falta: encabezados en la fila 1, al final de lo usado y con una
+ * columna libre de separación, y debajo Laura y Diego. Idempotente: si ya existe, no toca nada.
+ */
+function prepararTablaContactosCambios() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(TRIP_CONTACTS_SHEET);
+  if (!sheet) throw new Error('No existe la hoja "' + TRIP_CONTACTS_SHEET + '".');
+  var loc = _tripContactsLocate_(sheet);
+  if (loc.found) return { created: false, headerRow: loc.headerRow, emailCol: loc.emailCol, nameCol: loc.nameCol, roleCol: loc.roleCol };
+  if (loc.partial) {
+    throw new Error('En ' + TRIP_CONTACTS_SHEET + ' (filas 1 a 3) están solo algunos encabezados de la tabla de contactos. Deje los tres ("' +
+      TRIP_CONTACTS_HEADERS.join('", "') + '") o borre los que quedaron para que el menú los cree.');
+  }
+  var col = sheet.getLastColumn() + 2;
+  if (sheet.getMaxColumns() < col + 2) sheet.insertColumnsAfter(sheet.getMaxColumns(), col + 2 - sheet.getMaxColumns());
+  sheet.getRange(1, col, 1, 3).setValues([TRIP_CONTACTS_HEADERS]).setFontWeight('bold');
+  sheet.getRange(2, col, TRIP_CONTACTS_DEFAULT.length, 3).setValues(TRIP_CONTACTS_DEFAULT);
+  SpreadsheetApp.flush();
+  return { created: true, headerRow: 1, emailCol: col, nameCol: col + 1, roleCol: col + 2 };
+}
+
+/** Revisa la tabla: a quién se llama, con qué celular, y qué falta. No escribe nada. */
+function revisarContactosCambios() {
+  _TRIP_CONTACTS_CACHE = null;
+  try { CacheService.getScriptCache().remove(TRIP_CONTACTS_CACHE_KEY); } catch (e) { /* sin caché */ }
+  var t = _tripContactsRead_();
+  var res = { found: t.found, loc: t.loc, contacts: _tripContacts_(), warnings: [] };
+  if (!t.found) return res;
+  var phones = _usuariosPhonesByEmail_();
+  var named = 0;
+  t.rows.forEach(function (r) {
+    var where = 'Fila ' + r.row + ': ';
+    if (!r.name) { res.warnings.push(where + 'falta el nombre; la fila no se muestra.'); return; }
+    named++;
+    if (named > TRIP_CONTACTS_MAX) { res.warnings.push(where + r.name + ' no se muestra: se muestran las primeras ' + TRIP_CONTACTS_MAX + ' personas.'); return; }
+    if (!r.role) res.warnings.push(where + 'falta el cargo de ' + r.name + '.');
+    if (!r.email) { res.warnings.push(where + 'falta el correo de ' + r.name + ': sin él no se encuentra su celular en USUARIOS.'); return; }
+    if (!Object.prototype.hasOwnProperty.call(phones, r.email)) { res.warnings.push(where + r.email + ' no está en USUARIOS: no hay de dónde tomar su celular.'); return; }
+    if (!phones[r.email]) res.warnings.push(where + r.name + ' no tiene un celular válido en USUARIOS (columna Celular): se muestra su correo en vez del teléfono.');
+  });
+  if (!named) res.warnings.push('La tabla no tiene a nadie: la app muestra el correo del área de viajes (' + ADMIN_EMAIL + ').');
+  return res;
+}
+
+function menuContactosCambios() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    console.log('menuContactosCambios: inicio');
+    _requireAnalyst_();
+    var prep = prepararTablaContactosCambios();
+    var rev = revisarContactosCambios();
+    var where = TRIP_CONTACTS_SHEET + ', columnas ' + _csColumnLetter_(prep.emailCol) + ' a ' + _csColumnLetter_(prep.roleCol) +
+      ' (encabezados en la fila ' + prep.headerRow + ')';
+    var lines = [];
+    lines.push((prep.created ? 'Tabla creada en ' + where + ', con Laura y Diego.' : 'Tabla en ' + where + '.'));
+    lines.push('Una fila por persona, en el orden en que se llama: la primera y, si no responde, la siguiente (máximo ' + TRIP_CONTACTS_MAX + '). ' +
+      'El correo es con el que la persona está en USUARIOS; el celular se toma de su columna Celular en USUARIOS.');
+    lines.push('');
+    lines.push('Lo que ve el viajero cuando ya pasó el plazo para pedir el cambio en la plataforma:');
+    lines.push('«Si es urgente, ' + _tripContactsText_(rev.contacts) + '.»');
+    if (rev.warnings.length) {
+      lines.push('');
+      lines.push('Revisar (' + rev.warnings.length + '):');
+      rev.warnings.forEach(function (w) { lines.push('• ' + w); });
+    }
+    lines.push('');
+    lines.push('Si cambia la tabla o un celular en USUARIOS, la app lo muestra en unos 10 minutos (o de inmediato al volver a correr este menú).');
+    ui.alert('Contactos para cambios de viaje', lines.join('\n'), ui.ButtonSet.OK);
+  } catch (e) {
+    console.error('menuContactosCambios: ' + (e && e.stack ? e.stack : e));
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
 }
 
 /**

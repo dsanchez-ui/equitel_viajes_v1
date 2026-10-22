@@ -2836,3 +2836,67 @@ Cualquier orden funciona: el botón nuevo aparece cuando están los dos lados.
 - **En cualquier orden:** ningún lado depende del otro.
 
 **Rollback:** revert del commit; backend = versión anterior del web app.
+
+---
+
+## **#A106 — «Cambiar mi viaje»: primero la plataforma; después del plazo, a quién llamar**
+**Fecha:** 2026-10-22 · **Pedido por:** Yurani (22-oct, sobre las preguntas 6 y 8 de [docs/plan-cambios-de-viaje.md](docs/plan-cambios-de-viaje.md): *«la teoría es que cada usuario lo pida desde su perfil»*; *«colocar el teléfono de Lau y el de Diego por si no responde Lau»*) y David (*«que se incentive al usuario a utilizar la plataforma por sobre todas las cosas»*; que los roles y teléfonos se puedan cambiar sin tocar código). · **Estado:** Implementado; pendiente desplegar.
+
+**Problema:**
+- Después del plazo, la app solo mostraba el correo del área de viajes. Yurani pidió los celulares de Laura y, si no responde, de Diego.
+- El texto no insistía en que todo cambio se pide por la plataforma. El aviso de Laura decía «si un cambio le llega por correo, regístrelo», lo que invitaba a seguir pidiendo por fuera.
+
+**Solución:**
+- **Tabla en MISC** con `CONTACTO CAMBIOS · CORREO`, `· NOMBRE` y `· CARGO`, como la de accesos al dashboard (#A76): encabezados buscados por nombre en las filas 1 a 3, una fila por persona en el orden en que se llama, máximo 3.
+  - **El celular sale de la columna `Celular` de USUARIOS** (#A74), para que se corrija en un solo lugar. Si alguien no tiene uno válido, se muestra su correo.
+  - **Menú 16. Contactos para cambios de viaje:** crea la tabla la primera vez con Laura Molina (área de viajes, `compras.equitel@…`) y Diego Caballero (director de compras, `directorcompras@…`), muestra el mensaje que ve el viajero y avisa qué falta (correo fuera de USUARIOS, sin celular, sin nombre o cargo, más de 3).
+  - **Caché** de 10 minutos en `CacheService` (no Script Properties), para no leer MISC y USUARIOS en cada inicio de sesión. El menú 16 la limpia.
+  - **Sin tabla, o si no se puede leer:** el correo del área de viajes, como antes.
+- **Servidor:**
+  - el bootstrap manda `tripChange.contacts` (nombre, cargo, celular, correo);
+  - el error de plazo vencido dice «Si es urgente, llame a Laura Molina (área de viajes), 313 325 1690; si no responde, a Diego Caballero (director de compras), …».
+- **App, viajero:**
+  - el aviso del panel y la explicación de la primera vez dicen que los cambios se piden ahí, «ya no por correo, teléfono ni WhatsApp», y que si escribe o llama le pedirán que lo haga por la plataforma;
+  - arriba de la lista de viajes, una línea con lo mismo;
+  - los teléfonos aparecen **solo cuando ya no se puede pedir el cambio** (un recuadro debajo de la lista y en el aviso «No se puede pedir este cambio»), en orden y se pueden tocar para llamar (`tel:`).
+- **App, área de viajes:**
+  - el aviso del panel dice que, dentro del plazo, le pida al viajero que lo haga en la plataforma, y que registre el cambio solo si ya pasó el plazo y es urgente;
+  - en «Solicitar Cambio», si el viajero todavía está en plazo, un recuadro amarillo lo dice y hasta cuándo. No bloquea: sugiere, y la persona decide.
+- **Los dos avisos del panel vuelven a salir una vez** con el texto nuevo (llaves `…_v2`).
+- **De paso:** se quitó el doble punto en «5:00 p. m..» y «12:00 m..» en el mensaje de plazo vencido (servidor y app), en «Puede pedir el cambio hasta…» y en el aviso de la fecha nueva.
+
+**Datos (copia del 19-oct):**
+- Laura tiene en USUARIOS el 313 325 1690, el mismo que dio Yurani.
+- Diego tiene el 310 245 1569, y Yurani dio el 323 295 8507: **hay que actualizarlo en USUARIOS** antes de que se muestre.
+
+**Compatibilidad:**
+- **App nueva con servidor anterior:** no llega `contacts` y se muestra el correo, como antes.
+- **Servidor nuevo con app anterior:** la app ignora `contacts` y sigue con el correo. El error de plazo vencido ya trae los teléfonos.
+
+**Verificado:**
+- `npm run verify` en verde.
+- `check-trip-change`, contactos:
+  - sin tabla, lista vacía y el correo;
+  - el menú crea la tabla al lado (con una columna libre) sin tocar lo demás, y no la duplica;
+  - la app recibe los contactos en orden con el celular de USUARIOS (también cuando Sheets lo da como número);
+  - el error de plazo vencido trae los dos teléfonos y sin doble punto;
+  - sin celular se muestra el correo y el menú lo avisa;
+  - máximo 3;
+  - con un encabezado suelto, el menú no adivina.
+- **En la app real** (entorno local con `Code.gs` y la copia del 19-oct, Chrome; el entorno crea la tabla como el menú 16):
+  - aviso del panel y explicación con «ni WhatsApp» y los teléfonos (enlace `tel:`);
+  - un viaje que sale hoy aparece como vencido, con un solo recuadro de a quién llamar, en orden;
+  - el servidor rechaza el cambio con el mensaje y los teléfonos;
+  - Laura ve el aviso nuevo y, en «Solicitar Cambio» de un viaje en plazo, el recuadro amarillo;
+  - sin errores de JavaScript.
+
+**Despliegue:**
+1. Actualizar el celular de Diego en USUARIOS a 323 295 8507 (sidebar *Gestionar Usuarios* o panel móvil).
+2. Pegar `server/Code.gs`.
+3. Correr el **menú 16** y revisar el mensaje.
+4. Crear la versión nueva del web app.
+5. Push del frontend.
+
+En cualquier orden funciona; sin el paso 3, se sigue mostrando el correo.
+
+**Rollback:** frontend = revert; backend = versión anterior del web app. La tabla de MISC puede quedarse.

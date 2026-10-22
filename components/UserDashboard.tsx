@@ -18,7 +18,7 @@ interface UserDashboardProps {
 
 const TERMINAL_STATUSES = ['ANULADO', 'PROCESADO', 'DENEGADO'];
 const PAGE_SIZE = 50;
-const CHANGE_NEWS_KEY = 'equitel_aviso_cambios_v1';
+const CHANGE_NEWS_KEY = 'equitel_aviso_cambios_v2'; // v2 (#A106): «siempre por aquí»; vuelve a salir una vez
 
 export const UserDashboard: React.FC<UserDashboardProps> = ({
   requests,
@@ -98,11 +98,12 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
          <div role="status" className="bg-blue-50 border border-blue-200 text-blue-950 rounded-md p-4 text-sm leading-relaxed flex gap-3 items-start" data-change-news>
            <span className="text-lg" aria-hidden="true">📣</span>
            <div className="flex-1 space-y-1">
-             <p className="font-bold">Nuevo: los cambios de viaje se piden aquí, ya no por correo</p>
+             <p className="font-bold">Nuevo: los cambios de viaje se piden aquí, ya no por correo, teléfono ni WhatsApp</p>
              <p>
                Con el botón <strong>«¿Necesita cambiar su viaje?»</strong> cambia la fecha, la hora, el destino o el equipaje en un minuto.
                Se puede pedir <strong>hasta las 5:00 p. m. del día hábil anterior al vuelo</strong> (si ese día es sábado, hasta las 12:00 m.).
                Si el tiquete ya está comprado, el cambio tiene costo y lo aprueba su jefe.
+               Si escribe o llama, el área de viajes le pedirá que lo haga por aquí; llamar es solo para cuando ya pasó el plazo y es urgente.
              </p>
            </div>
            <button type="button" onClick={closeChangeNews} className="text-blue-800 hover:text-blue-950 text-xs font-bold underline shrink-0">Entendido</button>

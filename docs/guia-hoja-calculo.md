@@ -79,10 +79,11 @@ Listado de ciudades con país. Se usa para el autocompletar de origen/destino en
 
 ### MISC
 
-Hoja con dos catálogos pequeños y una tabla de permisos:
+Hoja con dos catálogos pequeños y dos tablas:
 - Tarjetas de crédito disponibles (las que aparecen en el dropdown cuando registras una reserva)
 - Sedes (para el formulario de nueva solicitud)
 - Accesos al dashboard de costos: quién puede verlo y de qué unidad de negocio (ver abajo)
+- A quién llama el viajero cuando ya pasó el plazo para cambiar su viaje (ver abajo)
 
 **Lo que SÍ puedes hacer:** agregar sedes o tarjetas nuevas al final.
 
@@ -98,6 +99,16 @@ Dos columnas normales con los encabezados `DASHBOARD COSTOS · CORREO` y `DASHBO
 - Los cambios aplican la próxima vez que la persona abra el dashboard. No hay que desplegar nada.
 
 **Lo que NO debes hacer:** cambiar los encabezados de esas dos columnas ni escribir las unidades a mano sin revisarlas con el menú 9 (una unidad mal escrita no muestra datos).
+
+#### Contactos para cambios de viaje (#A106)
+
+Tres columnas con los encabezados `CONTACTO CAMBIOS · CORREO`, `CONTACTO CAMBIOS · NOMBRE` y `CONTACTO CAMBIOS · CARGO` en la **fila 1**. Las crea **Equitel Viajes → 16. Contactos para cambios de viaje**, al final de MISC y dejando una columna libre, con Laura Molina (área de viajes) y Diego Caballero (director de compras) debajo.
+
+- **Una fila por persona, en el orden en que se llama:** la primera y, si no responde, la siguiente. Se muestran máximo 3.
+- **El nombre y el cargo** son los que ve el viajero. **El correo** es con el que la persona está en USUARIOS: de ahí se toma su celular (columna *Celular*). Si alguien no tiene celular válido, se muestra su correo.
+- **Solo se muestra cuando ya no se puede pedir el cambio en el portal** (pasó el plazo) y es urgente. Antes, el portal pide que todo se haga por la plataforma.
+- **Si alguien cambia de rol**, se cambia su fila. Si cambia el celular, se corrige en USUARIOS (sidebar o panel móvil). La app lo muestra en unos 10 minutos, o de inmediato al volver a correr el menú 16.
+- Sin la tabla, el portal muestra el correo del área de viajes, como antes.
 
 ### REGLAS_COAPROBADOR
 

@@ -471,6 +471,8 @@ function seed(ctx, ss) {
     'CORREO DE QUIEN APRUEBA (AUTOMÁTICO)': TEST_APPROVER, 'APROBADO POR ÁREA? (AUTOMÁTICO)': approved, 'VIOLACION POLITICA': 'NO',
     'FECHA DE COMPRA DE TIQUETE': new Date(Date.now() - 2 * 86400000) });
   trips.push([id, 'Solo hospedaje, reservado: cambio de fechas del hotel']);
+  // #A106: la tabla de a quién llamar después del plazo, como la deja el menú 16 en producción.
+  if (typeof ctx.prepararTablaContactosCambios === 'function' && ss._sheets['MISC']) ctx.prepararTablaContactosCambios();
   ctx._resetPerExecutionCaches_();
   outbox.length = 0; // los avisos de crear los viajes de prueba no interesan
   return trips;

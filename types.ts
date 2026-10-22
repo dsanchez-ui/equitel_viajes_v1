@@ -404,6 +404,16 @@ export interface TripChangeConfig {
   /** Explicación de «Cambiar mi viaje» la primera vez (hasta tocar «Entendido»; constancia en el servidor). */
   noticeId?: string;
   showNotice?: boolean;
+  /** #A106: a quién llamar si ya pasó el plazo y es urgente, en orden (tabla de MISC, menú 16). Sin ella, `contact`. */
+  contacts?: TripChangeContact[];
+}
+
+/** #A106: una persona a quien llamar después del plazo. El celular sale de USUARIOS ('' si no tiene). */
+export interface TripChangeContact {
+  name: string;
+  role: string;
+  phone: string;
+  email?: string;
 }
 
 /** #A103: una fila del control de cambios (solo administradores). */

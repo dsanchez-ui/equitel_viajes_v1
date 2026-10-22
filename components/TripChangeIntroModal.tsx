@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TripChangeConfig } from '../types';
+import { TripChangeContactsInline } from './TripChangeContacts';
 
 interface TripChangeIntroModalProps {
   config: TripChangeConfig;
@@ -50,10 +51,10 @@ export const TripChangeIntroModal: React.FC<TripChangeIntroModalProps> = ({ conf
         </div>
 
         <ul className="px-5 py-4 overflow-y-auto space-y-4 text-sm leading-relaxed">
-          {point('📱', 'Se pide aquí, ya no por correo ni por teléfono',
-            <>Elija el viaje, marque qué cambia (fechas, horas, destino o maleta de bodega) y escriba el motivo. El área de viajes lo gestiona y le llegan las opciones por correo, como siempre.</>)}
+          {point('📱', 'Se pide aquí, ya no por correo, teléfono ni WhatsApp',
+            <>Elija el viaje, marque qué cambia (fechas, horas, destino o maleta de bodega) y escriba el motivo. Así queda registrado y su jefe lo aprueba. Si escribe o llama, el área de viajes le pedirá que lo haga por aquí.</>)}
           {point('⏰', 'Hasta las 5:00 p. m. del día hábil anterior al vuelo',
-            <>Si ese día es sábado, hasta las 12:00 m.; domingos y festivos no cuentan. Si el viaje ya empezó, solo se cambia el regreso. Después del plazo, escríbale al área de viajes: <strong className="select-all">{config.contact}</strong>.</>)}
+            <>Si ese día es sábado, hasta las 12:00 m.; domingos y festivos no cuentan. Si el viaje ya empezó, solo se cambia el regreso. Solo si ya pasó el plazo y es urgente, <TripChangeContactsInline config={config} />.</>)}
           {point('💰', 'Si el tiquete ya está comprado, el cambio tiene costo',
             <>La penalidad y la diferencia de tarifa. Lo aprueba su jefe, que ve cuánto costó el viaje y cuánto suma el cambio. Agregar la maleta después también cuesta: si cree que la va a necesitar, márquela al pedir el viaje.</>)}
           {point('✈️', 'Su tiquete actual sigue siendo el válido',

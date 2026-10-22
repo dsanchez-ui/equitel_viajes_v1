@@ -214,7 +214,7 @@ Las listas se consultan al abrir el panel y con **↻ Actualizar**. No envían c
 
 ### 5.6 Gestionar solicitudes de cambio («Cambiar mi viaje», #A103)
 
-Desde el 19-oct los viajeros piden los cambios con el botón **😕 ¿Necesita cambiar su viaje?**: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las **5:00 p. m. del día hábil anterior al vuelo** (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Después del plazo el portal les dice que escriban a compras.equitel@equitel.com.co.
+Desde el 19-oct los viajeros piden los cambios con el botón **😕 ¿Necesita cambiar su viaje?**: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las **5:00 p. m. del día hábil anterior al vuelo** (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Después del plazo, y solo si es urgente, el portal les dice a quién llamar y en qué orden (tabla de MISC, **menú 16**; ver abajo).
 
 Se crea una solicitud "hija" en `PENDIENTE_ANALISIS_CAMBIO`, ligada a la original, con lo de antes y lo de ahora. Te llega el correo **CAMBIO DE VIAJE**.
 
@@ -230,7 +230,11 @@ Se crea una solicitud "hija" en `PENDIENTE_ANALISIS_CAMBIO`, ligada a la origina
 
 Si el tiquete **no se había comprado**, la hija se cotiza como el viaje completo y la original se anula al aprobarse el cambio, como antes.
 
-**Cambios por fuera del plazo o por correo:** ábrelos desde el detalle de la solicitud con **Solicitar Cambio**. Lo registras a nombre del viajero, sin plazo, y queda constancia de que lo registraste tú. Si hay que cambiar pasajeros, el centro de costo o el hotel, usa **el formulario completo** desde esa misma ventana.
+**Si un viajero te pide un cambio por correo, teléfono o WhatsApp** (#A106, Yurani y David, 22-oct):
+- **Si todavía está en plazo**, pídele que lo haga en la plataforma con «Cambiar mi viaje»: así queda con su motivo y a su nombre. Si abres **Solicitar Cambio** en un viaje así, la ventana te avisa en amarillo que el viajero todavía puede pedirlo él mismo y hasta cuándo.
+- **Si ya pasó el plazo y es urgente**, ábrelo desde el detalle de la solicitud con **Solicitar Cambio**. Lo registras a nombre del viajero, sin plazo, y queda constancia de que lo registraste tú. Si hay que cambiar pasajeros, el centro de costo o el hotel, usa **el formulario completo** desde esa misma ventana.
+
+**A quién llama el viajero después del plazo (menú 16).** La lista está en MISC: correo, nombre y cargo de cada persona, en el orden en que se llama (la primera y, si no responde, la siguiente; máximo 3). El celular se toma de la columna *Celular* de USUARIOS, así que se corrige en un solo lugar (sidebar o panel móvil). **Equitel Viajes → 16. Contactos para cambios de viaje** crea la tabla la primera vez (con Laura y Diego), muestra el mensaje que ve el viajero y avisa si a alguien le falta el celular. Si alguien cambia de rol, se cambia su fila. La app lo muestra en unos 10 minutos, o de inmediato al volver a correr el menú.
 
 **Control:** *Métricas → 🔄 Cambios* muestra cada cambio con lo que costó el viaje, el costo del cambio, la penalidad, las maletas pedidas después y el total por unidad (y CSV). El dashboard de costos tiene la sección **Cambios de viaje** por unidad (cada líder ve las suyas) y el informe mensual trae la sección «Cambios de viaje».
 

@@ -298,6 +298,8 @@ Al regresar, si necesitas entregar soportes (facturas de taxi, recibos, etc.), e
 
 Si necesitas cambiar algo de un viaje que ya pediste, **no crees una solicitud nueva**: usa el botón grande **😕 ¿Necesita cambiar su viaje?** de tu panel (o **Cambiar mi viaje** en el detalle de la solicitud). Toma un minuto.
 
+**Todo cambio se pide aquí, no por correo, teléfono ni WhatsApp.** Así queda registrado y tu jefe lo aprueba. Si escribes o llamas al área de viajes mientras todavía se puede pedir en el portal, te pedirán que lo hagas por aquí.
+
 ### Qué puedes cambiar
 
 - **Fechas** (ida o regreso; en solo hospedaje, entrada o salida). Si el viaje lleva hotel, las noches se ajustan solas.
@@ -312,7 +314,7 @@ Puedes elegir varias cosas a la vez. Para algo distinto (por ejemplo, quitar el 
 - Hasta las **5:00 p. m. del día hábil anterior al vuelo**. Si ese día es sábado, hasta las **12:00 m.** Domingos y festivos no cuentan. Antes de ese límite lo puedes pedir a cualquier hora.
 - La **fecha nueva también tiene que dar tiempo**: no se puede mover el viaje a un día cuyo plazo ya pasó.
 - Si el viaje **ya empezó** (la ida ya voló), solo se cambia el **regreso**: fecha, hora o equipaje.
-- Después del plazo, el portal no deja pedir el cambio y te muestra a quién escribir: **compras.equitel@equitel.com.co**. El área de viajes lo registra a tu nombre.
+- Después del plazo, el portal no deja pedir el cambio. **Solo si es urgente**, te muestra a quién llamar y en qué orden: primero el área de viajes y, si no responde, el director de compras, con sus celulares. El área de viajes lo registra a tu nombre.
 
 La ventana te dice, viaje por viaje, hasta cuándo puedes pedir el cambio.
 

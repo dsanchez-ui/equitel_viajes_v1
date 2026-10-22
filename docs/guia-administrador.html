@@ -412,7 +412,7 @@
 </ul>
 <p>Las listas se consultan al abrir el panel y con <strong>↻ Actualizar</strong>. No envían correos ni cambian nada en la hoja.</p>
 <h3>5.6 Gestionar solicitudes de cambio («Cambiar mi viaje», #A103)</h3>
-<p>Desde el 19-oct los viajeros piden los cambios con el botón <strong>😕 ¿Necesita cambiar su viaje?</strong>: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las <strong>5:00 p. m. del día hábil anterior al vuelo</strong> (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Después del plazo el portal les dice que escriban a <a href="mailto:compras.equitel@equitel.com.co">compras.equitel@equitel.com.co</a>.</p>
+<p>Desde el 19-oct los viajeros piden los cambios con el botón <strong>😕 ¿Necesita cambiar su viaje?</strong>: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las <strong>5:00 p. m. del día hábil anterior al vuelo</strong> (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Después del plazo, y solo si es urgente, el portal les dice a quién llamar y en qué orden (tabla de MISC, <strong>menú 16</strong>; ver abajo).</p>
 <p>Se crea una solicitud “hija” en <code>PENDIENTE_ANALISIS_CAMBIO</code>, ligada a la original, con lo de antes y lo de ahora. Te llega el correo <strong>CAMBIO DE VIAJE</strong>.</p>
 <ol>
 <li>En el panel, la fila del cambio tiene <strong>🔄 Revisar Cambio</strong>. La ventana muestra:
@@ -429,7 +429,12 @@
 <li>Al <strong>registrar la reserva</strong> del cambio, la aerolínea, el canal, el PNR y la tarjeta vienen de la compra original: corrige solo lo que cambió. La original <strong>no se anula</strong>: queda «Cambiada» (columna <code>REEMPLAZADA POR</code>) y su costo sigue contando.</li>
 </ol>
 <p>Si el tiquete <strong>no se había comprado</strong>, la hija se cotiza como el viaje completo y la original se anula al aprobarse el cambio, como antes.</p>
-<p><strong>Cambios por fuera del plazo o por correo:</strong> ábrelos desde el detalle de la solicitud con <strong>Solicitar Cambio</strong>. Lo registras a nombre del viajero, sin plazo, y queda constancia de que lo registraste tú. Si hay que cambiar pasajeros, el centro de costo o el hotel, usa <strong>el formulario completo</strong> desde esa misma ventana.</p>
+<p><strong>Si un viajero te pide un cambio por correo, teléfono o WhatsApp</strong> (#A106, Yurani y David, 22-oct):</p>
+<ul>
+<li><strong>Si todavía está en plazo</strong>, pídele que lo haga en la plataforma con «Cambiar mi viaje»: así queda con su motivo y a su nombre. Si abres <strong>Solicitar Cambio</strong> en un viaje así, la ventana te avisa en amarillo que el viajero todavía puede pedirlo él mismo y hasta cuándo.</li>
+<li><strong>Si ya pasó el plazo y es urgente</strong>, ábrelo desde el detalle de la solicitud con <strong>Solicitar Cambio</strong>. Lo registras a nombre del viajero, sin plazo, y queda constancia de que lo registraste tú. Si hay que cambiar pasajeros, el centro de costo o el hotel, usa <strong>el formulario completo</strong> desde esa misma ventana.</li>
+</ul>
+<p><strong>A quién llama el viajero después del plazo (menú 16).</strong> La lista está en MISC: correo, nombre y cargo de cada persona, en el orden en que se llama (la primera y, si no responde, la siguiente; máximo 3). El celular se toma de la columna <em>Celular</em> de USUARIOS, así que se corrige en un solo lugar (sidebar o panel móvil). <strong>Equitel Viajes → 16. Contactos para cambios de viaje</strong> crea la tabla la primera vez (con Laura y Diego), muestra el mensaje que ve el viajero y avisa si a alguien le falta el celular. Si alguien cambia de rol, se cambia su fila. La app lo muestra en unos 10 minutos, o de inmediato al volver a correr el menú.</p>
 <p><strong>Control:</strong> <em>Métricas → 🔄 Cambios</em> muestra cada cambio con lo que costó el viaje, el costo del cambio, la penalidad, las maletas pedidas después y el total por unidad (y CSV). El dashboard de costos tiene la sección <strong>Cambios de viaje</strong> por unidad (cada líder ve las suyas) y el informe mensual trae la sección «Cambios de viaje».</p>
 <h3>5.7 Anular una solicitud</h3>
 <ol>

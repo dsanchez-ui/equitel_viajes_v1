@@ -277,7 +277,7 @@ function main() {
   at('2026-10-15T22:30:00Z'); // jueves 5:30 p. m.: venció el plazo del vuelo del viernes
   r = change(P2, { departureTimePreference: '15:00' });
   ok('después de las 5 p. m. del día hábil anterior: el viajero no puede (y se le dice a quién escribir)',
-    !r.success && /venció el jueves 15 de octubre a las 5:00 p\. m\./.test(r.error) && /compras\.equitel@equitel\.com\.co/.test(r.error));
+    !r.success && /venció el jueves 15 de octubre a las 5:00 p\. m\./.test(r.error) && /compras\.equitel@equitel\.com\.co/.test(r.error) && !/m\.\./.test(r.error));
   at(NOW);
   r = change(P2, { departureDate: '2026-10-15' });
   ok('fecha nueva sin tiempo (hoy): error', !r.success && /ya no da tiempo/.test(r.error));
@@ -468,12 +468,52 @@ function main() {
   ok('explicación: un id desconocido no deja constancia', ack.success && ack.data === false && !avisos.some((r) => r[1] === 'luis@p.co'));
   eq('bootstrap: la app recibe la regla', [ctx._tripChangePublicInfo_().enabled, ctx._tripChangePublicInfo_().reasonMin, ctx._tripChangePublicInfo_().contact], [true, 10, 'compras.equitel@equitel.com.co']);
 
+  // ───────────── A quién llamar después del plazo (#A106, 22-oct) ─────────────
+  reset();
+  eq('contactos: sin tabla en MISC, la lista llega vacía (la app muestra el correo)', ctx._tripChangePublicInfo_('ana@p.co').contacts, []);
+  const misc = [['TARJETA', 'EMPRESA'], ['', ''], ['TC-1', 'EQUITEL']];
+  sheets.MISC = makeSheet('MISC', misc);
+  env.users[0].push('Celular');
+  env.users.push(['400', 'MOLINA ORTIZ LAURA CRISTINA', 'compras.equitel@equitel.com.co', '3133251690'],
+    ['500', 'CABALLERO VARGAS DIEGO FERNANDO', 'directorcompras@equitel.com.co', 3232958507]);
+  let prep = ctx.prepararTablaContactosCambios();
+  eq('contactos: el menú crea la tabla al lado (una columna libre) con Laura y Diego',
+    [prep.created, prep.emailCol, misc[0].slice(3, 6), misc[1].slice(3, 6), misc[2].slice(3, 6), misc[2].slice(0, 2)],
+    [true, 4, ['CONTACTO CAMBIOS · CORREO', 'CONTACTO CAMBIOS · NOMBRE', 'CONTACTO CAMBIOS · CARGO'],
+      ['compras.equitel@equitel.com.co', 'Laura Molina', 'Área de viajes'], ['directorcompras@equitel.com.co', 'Diego Caballero', 'Director de compras'], ['TC-1', 'EQUITEL']]);
+  prep = ctx.prepararTablaContactosCambios();
+  ok('contactos: el menú no la vuelve a crear', !prep.created && misc[0].filter((h) => /CONTACTO/.test(h)).length === 3 && misc.length === 3);
+  reset();
+  eq('contactos: la app recibe a quién llamar, en orden, con el celular de USUARIOS', ctx._tripChangePublicInfo_('ana@p.co').contacts, [
+    { name: 'Laura Molina', role: 'Área de viajes', phone: '3133251690', email: 'compras.equitel@equitel.com.co' },
+    { name: 'Diego Caballero', role: 'Director de compras', phone: '3232958507', email: 'directorcompras@equitel.com.co' }]);
+  at(NOW);
+  const PC = bought({ departureDate: '16-10-2026', returnDate: '20-10-2026' });
+  at('2026-10-15T22:30:00Z'); // jueves 5:30 p. m.: venció el plazo del vuelo del viernes
+  r = change(PC, { departureTimePreference: '15:00' });
+  ok('contactos: después del plazo, el error dice a quién llamar y en qué orden', !r.success &&
+    /Si es urgente, llame a Laura Molina \(área de viajes\), 313 325 1690; si no responde, a Diego Caballero \(director de compras\), 323 295 8507\./.test(r.error));
+  at(NOW);
+  env.users.find((u) => u[2] === 'directorcompras@equitel.com.co')[3] = '';
+  reset();
+  const rev = ctx.revisarContactosCambios();
+  ok('contactos: sin celular se muestra el correo, y el menú lo avisa',
+    /si no responde, a Diego Caballero \(director de compras\), directorcompras@equitel\.com\.co$/.test(ctx._tripContactsText_(rev.contacts)) &&
+    rev.warnings.some((w) => /Diego Caballero no tiene un celular válido/.test(w)));
+  misc.push(['', '', '', 'a@p.co', 'Ana', 'Compras'], ['', '', '', 'b@p.co', 'Beto', 'Compras']);
+  reset();
+  eq('contactos: se muestran máximo 3, en el orden de la tabla', ctx._tripContacts_().map((c) => c.name), ['Laura Molina', 'Diego Caballero', 'Ana']);
+  sheets.MISC = makeSheet('MISC', [['CONTACTO CAMBIOS · CORREO']]);
+  let threw = '';
+  try { ctx.prepararTablaContactosCambios(); } catch (e) { threw = e.message; }
+  ok('contactos: con un encabezado suelto, el menú no adivina', /solo algunos encabezados/.test(threw));
+
   if (failures.length) {
     console.error('✗ Cambios de viaje (#A103): ' + failures.length + ' problema(s):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('✓ Cambios de viaje (#A103): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de viajes sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control e informe.');
+  console.log('✓ Cambios de viaje (#A103, #A106): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de viajes sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe y a quién llamar después del plazo.');
 }
 
 main();

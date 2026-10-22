@@ -403,6 +403,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     dashboard de costos (líder = sus unidades) y en el informe mensual.
   - **La primera vez que el viajero toca el botón**, una explicación corta; «Entendido» deja constancia en `CONSTANCIA AVISOS`
     (aviso `cambios-de-viaje-2026-10`, mismo `ackPolicyNotice` de #A100) y no vuelve a salir en ningún equipo (David, 20-oct).
+  - **Primero la plataforma** (#A106; Yurani y David, 22-oct): cada viajero pide su cambio en la app, «ya no por correo, teléfono ni
+    WhatsApp». Si le escriben o llaman a Laura dentro del plazo, ella le pide que lo haga por la plataforma (la ventana se lo recuerda);
+    lo registra a su nombre solo si ya pasó el plazo y es urgente. **Los teléfonos salen solo cuando ya no se puede pedir el cambio**, en
+    orden: la tabla `CONTACTO CAMBIOS` de MISC (correo, nombre y cargo; **menú 16**) y el celular de la columna `Celular` de USUARIOS.
+    Hoy: Laura Molina (área de viajes) y, si no responde, Diego Caballero (director de compras). Si alguien cambia de rol, se cambia la
+    fila; sin tabla, el correo del área de viajes.
 - **Comparador de precios: la cifra que se presenta** (#A104, auditoría del 19-oct). Por defecto el dashboard compara **solo viajes ya
   comprados** (RESERVADO o PROCESADO, con la búsqueda al comprar) y **solo comparaciones exactas**, contra **lo pagado** (#A102) o, si
   no se registró, lo cotizado; al lado, lo mismo **con la misma aerolínea**. Lo no comprado va aparte, nunca en el total; lo denegado o
@@ -462,7 +468,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 | **MAESTROS** | Centros de costo. |
 | **CDS vs UDEN** | Relación centro de costo ↔ unidad de negocio. |
 | **CIUDADES DEL MUNDO** | Ciudad/país para el autocompletado. |
-| **MISC** | Tarjetas de crédito (A:B), sedes (D) y la tabla de accesos al dashboard de costos (#A76). Los encabezados están en la fila 2 y los datos empiezan en la fila 3. Los encabezados de la tabla de accesos (`DASHBOARD COSTOS · CORREO` / `· UNIDAD DE NEGOCIO`) los crea el menú 9 en la **fila 1** (celdas normales, sin tablas de Google ni listas desplegables) y se buscan por nombre en las filas 1 a 3, así que pueden moverse de columna. |
+| **MISC** | Tarjetas de crédito (A:B), sedes (D), la tabla de accesos al dashboard de costos (#A76) y la de a quién llamar después del plazo de un cambio (`CONTACTO CAMBIOS · CORREO / NOMBRE / CARGO`, #A106; la crea el menú 16, encabezados buscados por nombre en las filas 1 a 3). Los encabezados están en la fila 2 y los datos empiezan en la fila 3. Los encabezados de la tabla de accesos (`DASHBOARD COSTOS · CORREO` / `· UNIDAD DE NEGOCIO`) los crea el menú 9 en la **fila 1** (celdas normales, sin tablas de Google ni listas desplegables) y se buscan por nombre en las filas 1 a 3, así que pueden moverse de columna. |
 | **REGLAS_COAPROBADOR** | Reglas de co-aprobación. |
 | **COMPARATIVO PRECIOS** / **COMPARATIVO ESTADO** | Ocultas. Las escribe el proyecto aparte del rastreo de precios (#A84): una fila por búsqueda y el estado del rastreo. Desde #A95 cada búsqueda guarda `TARIFA` y `MALETA DE MANO`. Las lee el dashboard de costos. No editarlas. |
 | **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
@@ -526,6 +532,7 @@ components/
   PolicyHeldPanel.tsx      Botón «En espera de preaprobación» del panel del analista: solo lectura (#A100)
   TripChangeModal.tsx      «Cambiar mi viaje»: elegir el viaje, qué cambia, resumen y motivo (#A103)
   TripChangeInfo.tsx       Antes / ahora, recuadro del cambio con su costo y aviso «Cambiada» (#A103)
+  TripChangeContacts.tsx   A quién llamar después del plazo, en una frase o en un recuadro (#A106)
   ChangeControlPanel.tsx   Métricas → Cambios: costo de los cambios, penalidad y por unidad (#A103)
   InvoiceReviewPanel.tsx   Barra "Listas para cerrar" y "Facturas por revisar" del panel del analista (#A83)
   ReservationModal.tsx     Registrar reserva (+ guardado parcial, #A57)
@@ -670,6 +677,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A99, #A100 y #A101 desplegados el 14-oct-2026** (cifras del dashboard que se pueden presentar, aprobación del CFO
   por la política e informe mensual). El activador `procesarAprobacionesPolitica` también envía el informe mensual: no
   hay otro. Si alguna vez se borra, no salen ni el resumen del CFO ni el informe (menú 14 para revisar).
+- **#A106 (primero la plataforma; teléfonos de Laura y Diego después del plazo): construido el 22-oct, pendiente de desplegar.**
+  Pasos de David: actualizar el celular de Diego en USUARIOS a 323 295 8507 (en la copia del 19-oct tiene 310 245 1569) → pegar `Code.gs`
+  → **menú 16** (crea la tabla en MISC y muestra el mensaje) → versión nueva del web app → push del frontend.
 - **#A103 «Cambiar mi viaje», #A104 y #A105: desplegados el 21-oct.** Después del despliegue:
   - **Prueba en producción** con PRUEBA1. Su aprobador (PRUEBA2) tiene un correo que no es de David: cambiarlo antes por
     `dsanchez+qa@equitel.com.co`. Avisarle a Laura, porque le llegan los correos del cambio.

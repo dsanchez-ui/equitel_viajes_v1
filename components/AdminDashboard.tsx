@@ -13,7 +13,7 @@ import { MetricsPanel } from './MetricsPanel';
 import { InvoiceReviewPanel } from './InvoiceReviewPanel';
 import { PolicyHeldPanel } from './PolicyHeldPanel';
 
-const CHANGE_NEWS_ADMIN_KEY = 'equitel_aviso_cambios_admin_v1';
+const CHANGE_NEWS_ADMIN_KEY = 'equitel_aviso_cambios_admin_v2'; // v2 (#A106): dentro del plazo, que lo pida el viajero
 
 /** #A103: aviso para el área de viajes del sistema nuevo de cambios. Se cierra con «Entendido» (en este navegador). */
 const ChangeNewsBanner: React.FC<{ pending: number }> = ({ pending }) => {
@@ -32,7 +32,8 @@ const ChangeNewsBanner: React.FC<{ pending: number }> = ({ pending }) => {
               Los viajeros piden los cambios desde la app (fecha, hora, destino o equipaje) hasta las 5:00 p. m. del día hábil anterior al vuelo.
               Al revisar un cambio verá lo de antes y lo de ahora, la compra original con sus archivos y un mensaje listo para la agencia.
               Si el tiquete ya estaba comprado, en «Confirmar costos» escribe <strong>solo el costo del cambio</strong> (penalidad, diferencia de tarifa y hotel):
-              la solicitud original no se anula, queda «Cambiada». Si un cambio le llega por correo, regístrelo desde el detalle con «Solicitar cambio», sin plazo.
+              la solicitud original no se anula, queda «Cambiada». <strong>Si un viajero le pide un cambio por correo, teléfono o WhatsApp y todavía está en plazo,
+              pídale que lo haga en la plataforma.</strong> Regístrelo usted desde el detalle con «Solicitar cambio» (sin plazo) solo si ya pasó el plazo y es urgente.
               El costo de todos los cambios se ve en Métricas → Cambios.
             </p>
           </div>
