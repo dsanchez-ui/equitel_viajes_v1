@@ -3105,7 +3105,8 @@ Falta que David excluya el viaje a Miami (SOL-000658) con su motivo.
 **Fix — `components/TimeInput.tsx`, gemelo de `DateInput` (#A105):**
 - Campo de texto visible `HH:MM (24 h)`, con los dos puntos automáticos, máximo 5 caracteres y validación propia: *«Escriba la hora en formato de 24 horas, por ejemplo 18:30 para las 6:30 de la tarde.»*
 - Debajo, la hora **en palabras** («Son las 6:22 de la tarde»): el viajero confirma de un vistazo que no se equivocó de mitad del día. Es la red de seguridad que faltaba en el caso de Don Simón.
-- Detrás de un botón de reloj queda el selector nativo, para quien lo prefiera. Entra y sale `HH:MM` de 24 h: **el contrato con el backend no cambia**.
+- El botón del reloj abre una **lista propia de horas** (cada 15 minutos, `18:30 · 6:30 de la tarde`), que se cierra al tocar afuera o con Escape y se abre hacia arriba si el campo está en la mitad de abajo de la pantalla. Entra y sale `HH:MM` de 24 h: **el contrato con el backend no cambia**.
+  - *Primero* ese botón abría el selector nativo (como el calendario de `DateInput`) y **no hacía nada** (David, 27-oct). Dos razones para no insistir: `showPicker()` sobre un `<input type="time">` solo lo atienden las versiones recientes de Chrome y, cuando abre, con el navegador en inglés muestra justamente las 12 horas con a. m./p. m. que este campo viene a evitar. Ya no queda ningún `<input type="time">` en la app, ni escondido.
 - Reemplaza los tres `<input type="time">` del formulario (ida, regreso y cada tramo del multidestino) y los dos de «Cambiar mi viaje».
 - `_tripChangeRows_` (servidor) y `TripChangeInfo` (app) muestran la hora en 24 h: lo que el aprobador lee en el correo es «07:00 → 18:22», nunca «7:00 a. m. → 6:22 p. m.».
 

@@ -430,9 +430,11 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     solicitud nueva. En solo hospedaje, **nada habla de vuelos**: ni los botones, ni los avisos, ni el correo al aprobador («El hospedaje
     ya está reservado… penalidad del hotel», con el hotel y su canal, nunca el PNR ni «diferencia de tarifa»).
 - **Las horas, siempre en 24 h** (#A112, Yurani, 27-oct: «hora militar y ya»): un viajero escribió «6.22» por las 18:22, sin «pm», y se
-  cotizó un vuelo a las 6 a. m. Todo campo de hora es `TimeInput` (`HH:MM` de 24 h, con la hora **en palabras** debajo y el reloj del
-  navegador detrás de un botón; entra y sale `HH:MM`). **Nunca un `<input type="time">` a la vista**: con Chrome en inglés sale el reloj
-  de 12 horas. Es la regla gemela de #A105 para las fechas. Los plazos en prosa («hasta las 5:00 p. m.») se quedan como están.
+  cotizó un vuelo a las 6 a. m. Todo campo de hora es `TimeInput` (`HH:MM` de 24 h, con la hora **en palabras** debajo y un botón que abre
+  una **lista propia de horas**, cada 15 minutos, también en 24 h; entra y sale `HH:MM`). **Nunca un `<input type="time">`**, ni siquiera
+  escondido detrás del botón como el calendario de `DateInput`: el selector nativo de hora solo lo abren las versiones recientes de Chrome
+  y, cuando abre, con el navegador en inglés muestra las 12 horas con a. m./p. m. que este campo viene a evitar. Es la regla gemela de
+  #A105 para las fechas. Los plazos en prosa («hasta las 5:00 p. m.») se quedan como están.
 - **Comparador de precios: la cifra que se presenta** (#A104, auditoría del 19-oct). Por defecto el dashboard compara **solo viajes ya
   comprados** (RESERVADO o PROCESADO, con la búsqueda al comprar) y **solo comparaciones exactas**, contra **lo pagado** (#A102) o, si
   no se registró, lo cotizado; al lado, lo mismo **con la misma aerolínea**. Lo no comprado va aparte, nunca en el total; lo denegado o
@@ -586,7 +588,7 @@ components/
   CancellationModal.tsx    Anulaciones
   CityCombobox.tsx         Autocompletado de ciudades (custom, reemplazó datalist)
   DateInput.tsx            Campo de fecha DD/MM/AAAA con calendario; reemplaza a <input type="date"> (#A105)
-  TimeInput.tsx            Campo de hora HH:MM de 24 h, con la hora en palabras; reemplaza a <input type="time"> (#A112)
+  TimeInput.tsx            Campo de hora HH:MM de 24 h, con la hora en palabras y lista propia de horas; reemplaza a <input type="time"> (#A112)
   Layout.tsx, ConfirmationDialog.tsx
 services/gasService.ts     Cliente HTTP hacia GAS (timeout 30 s + AbortController)
 utils/dateUtils.ts         Parseo/formato de fechas (zona America/Bogota)
