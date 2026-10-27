@@ -3,11 +3,10 @@ import { TravelRequest, TripChangeInfo } from '../types';
 import { fmtDayLong } from '../utils/changeWindow';
 import { formatCop } from '../utils/money';
 
+// #A112: hora en 24 h, igual que en el formulario (Yurani, 27-oct-2026).
 const fmtTime = (t: string): string => {
-  const m = /^(\d{2}):(\d{2})$/.exec(String(t || ''));
-  if (!m) return t ? String(t) : 'Sin hora';
-  const h = Number(m[1]);
-  return h === 12 ? `12:${m[2]} m.` : `${h % 12 || 12}:${m[2]} ${h < 12 ? 'a. m.' : 'p. m.'}`;
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(t || ''));
+  return m ? `${m[1]}:${m[2]}` : (t ? String(t) : 'Sin hora');
 };
 
 /** Filas «Qué / Antes / Ahora» de un cambio (#A103). Mismas palabras que `_tripChangeRows_` en Code.gs. */

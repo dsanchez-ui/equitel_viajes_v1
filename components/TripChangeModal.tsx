@@ -4,6 +4,7 @@ import { gasService } from '../services/gasService';
 import { ChangeWindow, changeDeadline, fmtDayLong, fmtHourLabel, isTripBought, toDateKey, tripChangeWindow, untilText } from '../utils/changeWindow';
 import { fareLabel, fareOptionForNights } from '../utils/fare';
 import { formatCop } from '../utils/money';
+import { TimeInput } from './TimeInput';
 import { CityCombobox } from './CityCombobox';
 import { DateInput } from './DateInput';
 import { TripChangeContactsBox, TripChangeContactsInline } from './TripChangeContacts';
@@ -53,12 +54,12 @@ const timeKey = (v: string | undefined): string => {
   return h <= 23 ? String(h).padStart(2, '0') + ':' + m[2] : '';
 };
 
+// #A112: la hora se muestra en 24 h («hora militar», Yurani 27-oct-2026). Con a. m./p. m.
+// se confundieron las 6:22 con las 18:22 y el vuelo se cotizó 12 horas antes.
 const fmtTime = (t: string): string => {
   if (!t) return 'Sin hora';
-  const [hh, mm] = t.split(':');
-  const h = Number(hh);
-  if (h === 12) return `12:${mm} m.`;
-  return `${h % 12 || 12}:${mm} ${h < 12 ? 'a. m.' : 'p. m.'}`;
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(t);
+  return m ? `${m[1]}:${m[2]}` : t;
 };
 
 const cap = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
@@ -453,14 +454,14 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   {mode === 'full' && (
                     <label className="block text-xs font-semibold text-gray-600">
                       Hora del vuelo de ida
-                      <input type="time" data-change-field="depTime" style={{ colorScheme: 'light' }} className={inputCls} value={form.depTime} onChange={e => setF({ depTime: e.target.value })} />
+                      <TimeInput dataAttrs={{ 'data-change-field': 'depTime' }} className={inputCls} value={form.depTime} onChange={v => setF({ depTime: v })} ariaLabel="Hora nueva del vuelo de ida" />
                       <TimeHint value={form.depTime} before={base.depTime} />
                     </label>
                   )}
                   {base.ret && (
                     <label className="block text-xs font-semibold text-gray-600">
                       Hora del vuelo de regreso
-                      <input type="time" data-change-field="retTime" style={{ colorScheme: 'light' }} className={inputCls} value={form.retTime} onChange={e => setF({ retTime: e.target.value })} />
+                      <TimeInput dataAttrs={{ 'data-change-field': 'retTime' }} className={inputCls} value={form.retTime} onChange={v => setF({ retTime: v })} ariaLabel="Hora nueva del vuelo de regreso" />
                       <TimeHint value={form.retTime} before={base.retTime} />
                     </label>
                   )}

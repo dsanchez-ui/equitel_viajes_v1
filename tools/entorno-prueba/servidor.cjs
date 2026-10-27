@@ -56,14 +56,39 @@ const log = (...m) => console.log('[prueba]', ...m);
 // ---------------------------------------------------------------------------
 // 1. La base exportada
 // ---------------------------------------------------------------------------
+// Python para leer el .xlsx. No se asume que `python3` sea el bueno: en el Mac es el del
+// sistema (3.9, sin la opción -P) aunque Homebrew tenga uno nuevo, porque las fórmulas
+// python@3.x solo enlazan `python3.14` y compañía. Se prueba cada candidato con openpyxl
+// y se usa -P solo donde existe (3.11+); si no, basta -E.
+function pythonParaXlsx() {
+  const candidatos = ['python3.14', 'python3.13', 'python3.12', 'python3.11', 'python3', 'python'];
+  const faltaOpenpyxl = [];
+  for (const bin of candidatos) {
+    let version;
+    try {
+      version = execFileSync(bin, ['-E', '-c', 'import sys, openpyxl; print("%d.%d" % sys.version_info[:2])'],
+        { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8' }).trim();
+    } catch (e) {
+      if (e.status) faltaOpenpyxl.push(bin); // existe pero sin openpyxl
+      continue;
+    }
+    const [mayor, menor] = version.split('.').map(Number);
+    return { bin, args: mayor > 3 || menor >= 11 ? ['-E', '-P'] : ['-E'] };
+  }
+  fail('No encontré un Python con openpyxl para leer el .xlsx.' +
+    (faltaOpenpyxl.length ? ` Hay ${faltaOpenpyxl.join(', ')} sin openpyxl: ` +
+      `${faltaOpenpyxl[0]} -m pip install --user openpyxl` : ' Instale Python 3 y openpyxl.'));
+}
+
 function loadBase(file) {
   if (!file || file === true) fail('Falta la base: --base "/ruta/Sistema Tiquetes Equitel V2.xlsx"');
   if (!fs.existsSync(file)) fail('No existe el archivo ' + file);
   if (/\.xlsx$/i.test(file)) {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'equitel-prueba-'));
     const out = path.join(tmp, 'base.json');
+    const py = pythonParaXlsx();
     try {
-      execFileSync('python3', ['-E', '-P', path.join(__dirname, 'exportar_base.py'), file, out], { stdio: ['ignore', 'ignore', 'inherit'] });
+      execFileSync(py.bin, [...py.args, path.join(__dirname, 'exportar_base.py'), file, out], { stdio: ['ignore', 'ignore', 'inherit'] });
       return JSON.parse(fs.readFileSync(out, 'utf8'));
     } catch (e) {
       fail('No se pudo leer el .xlsx (¿está instalado openpyxl? pip install --user openpyxl): ' + e.message);

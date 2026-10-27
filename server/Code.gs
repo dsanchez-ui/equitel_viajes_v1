@@ -20753,12 +20753,12 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
 function _tripChangeRows_(info) {
   var c = (info && info.campos) || {};
   var day = function (k) { return k ? _policyFmtDayLong_(k) : 'Sin fecha'; };
+  // #A112: la hora se muestra en 24 h («hora militar», Yurani 27-oct-2026). Con a. m./p. m.
+  // se leyeron las 6:22 como las 6 de la mañana cuando eran las 18:22.
   var hour = function (t) {
     if (!t) return 'Sin hora';
-    var m = /^(\d{2}):(\d{2})$/.exec(t);
-    if (!m) return t;
-    var h = +m[1];
-    return h === 12 ? '12:' + m[2] + ' m.' : (h % 12 || 12) + ':' + m[2] + (h < 12 ? ' a. m.' : ' p. m.');
+    var m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(t);
+    return m ? m[1] + ':' + m[2] : t;
   };
   // #A111: en una solicitud de solo hospedaje no hay ida, regreso ni destino de vuelo.
   var soloHosp = !!(info && info.soloHospedaje);
@@ -20796,12 +20796,19 @@ function _tripChangeEmailHtml_(parent, data, info, reason) {
   var isHotelOnly = parent.requestMode === 'HOTEL_ONLY';
   var route = isHotelOnly ? 'hospedaje en ' + parent.destination : parent.origin + ' → ' + parent.destination;
   var c = info.compra || {};
+  // #A111: en solo hospedaje no hay tiquete ni diferencia de tarifa; el correo lo dice así.
+  var reservaTxt = isHotelOnly
+    ? (c.hotel ? '<br>Reserva <strong>' + escapeHtml_(c.hotel) + '</strong>' + (c.canalHotel ? ' · ' + escapeHtml_(c.canalHotel) : '') : '')
+    : (c.pnr ? '<br>Reserva <strong>' + escapeHtml_(c.pnr) + '</strong>' + (c.aerolinea ? ' · ' + escapeHtml_(c.aerolinea) : '') + (c.canal ? ' · ' + escapeHtml_(c.canal) : '') : '');
   var bought = info.comprado
     ? '<div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#78350f; line-height:1.55;">' +
-      '<strong>El tiquete ya está comprado.</strong> El cambio tiene costo (penalidad y diferencia de tarifa) y lo aprueba el aprobador, viendo lo que costó el viaje.' +
-      (c.pnr ? '<br>Reserva <strong>' + escapeHtml_(c.pnr) + '</strong>' + (c.aerolinea ? ' · ' + escapeHtml_(c.aerolinea) : '') + (c.canal ? ' · ' + escapeHtml_(c.canal) : '') : '') +
+      (isHotelOnly
+        ? '<strong>El hospedaje ya está reservado.</strong> El cambio puede tener costo (penalidad del hotel) y lo aprueba el aprobador, viendo lo que costó el viaje.'
+        : '<strong>El tiquete ya está comprado.</strong> El cambio tiene costo (penalidad y diferencia de tarifa) y lo aprueba el aprobador, viendo lo que costó el viaje.') +
+      reservaTxt +
       (info.parcial ? '<br><strong>La reserva se guardó por partes y no se ha confirmado.</strong> Antes de cotizar el cambio, confírmela en la plataforma con lo que se compró («Revisar Cambio»).' : '') + '</div>'
-    : '<div style="background-color:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#1e3a8a;">El tiquete aún no se había comprado: se cotiza de nuevo con los cambios, sin penalidad.</div>';
+    : '<div style="background-color:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#1e3a8a;">' +
+      (isHotelOnly ? 'El hospedaje aún no se había reservado: se cotiza de nuevo con los cambios, sin penalidad.' : 'El tiquete aún no se había comprado: se cotiza de nuevo con los cambios, sin penalidad.') + '</div>';
   var bagLater = _tripChangeBagLater_(info)
     ? '<div style="background-color:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:10px 12px; margin:10px 0; font-size:12px; color:#9a3412;">Se pidió la maleta de bodega después de comprar el tiquete: pedida desde el principio no habría penalidad.</div>' : '';
   var who = info.rol === 'administrador' ? ' (lo registró el área de compras: ' + escapeHtml_(info.registradoPor) + ')' : '';

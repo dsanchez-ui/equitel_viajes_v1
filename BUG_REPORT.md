@@ -3082,8 +3082,35 @@ Falta que David excluya el viaje a Miami (SOL-000658) con su motivo.
 
 **Qué NO cambia:** agregar hospedaje donde la solicitud no lo tenía sigue siendo una solicitud nueva (cambia costo y flujo). Cambiar pasajeros, también.
 
-**Verificado:** `npm run verify` en verde (incluye `check:trip-change`), `tsc`, build y un solo archivo JavaScript. Diff acotado a `TripChangeModal.tsx`, `types.ts` y el bloque de cambios de viaje de `Code.gs`: 84 líneas agregadas, nada fuera del flujo.
+**Lo que apareció al probarlo (mismo #A111):** el correo que le llega al aprobador de un cambio de **solo hospedaje** decía «El tiquete ya está comprado. El cambio tiene costo (penalidad y diferencia de tarifa)» y mostraba el PNR y la aerolínea, que ahí no existen. `_tripChangeEmailHtml_` ahora dice «El hospedaje ya está reservado… (penalidad del hotel)» y muestra el hotel con su canal; sin reservar, «El hospedaje aún no se había reservado». Es el mismo síntoma que reportó Laura («como si fuera vuelo»), un paso más allá: en el correo.
 
-**Pendiente de prueba:** falta correr el entorno local (`npm run prueba:local`) con una exportación reciente para recorrerlo en pantalla — ver la nota del candado de correo en la respuesta a David.
+**Verificado:** `npm run verify` en verde (incluye `check:trip-change`), `tsc`, build y un solo archivo JavaScript. Además, **entorno local con el `Code.gs` real sobre una copia de la base del 22-oct** (499 solicitudes), por el API, no por la unidad de prueba:
+- **Solo hospedaje** (SOL-000498, el caso de Laura): el viajero cambia «HOTEL DE PRUEBA» → «AIRBNB EL POBLADO»; la hija queda con el hospedaje nuevo, `tipos: ["Hospedaje"]` y `soloHospedaje: true`; el correo dice **CAMBIO DE HOSPEDAJE** y no habla de tiquetes.
+- **Vuelo + hotel** (solicitud creada por el camino real): cambia solo el hospedaje, **sin tocar fechas ni horas**, `soloHospedaje: false`, y el correo muestra «Hospedaje · HOTEL CARIBE · APARTAMENTO CORPORATIVO EQUITEL».
+- **Vuelo sin hotel** (SOL-000497): rechazado con «Esta solicitud no incluye hospedaje. Para agregarlo, pida una solicitud nueva.»
+- De paso quedaron ejercitados el plazo (#A103/#A106: un viaje que sale mañana ya venció y ofrece los teléfonos de Laura y Diego), el viaje en curso (solo el regreso o el hospedaje), el límite de 10 solicitudes/día y el único cambio vivo por solicitud (#A63).
 
 **Despliegue:** pegar `Code.gs` → versión nueva del web app; el frontend sale con el push. **Orden indiferente:** con el `Code.gs` viejo el botón existe pero el servidor responde que no puede cambiar ese campo; con el frontend viejo, nada cambia.
+
+---
+
+## #A112 — La hora del viaje, siempre en 24 h («hora militar»)
+
+**Pedido por:** Yurani, 27-oct-2026 (chat), a partir de un caso real: Don Simón escribió **«6.22»** queriendo decir las **18:22**, no puso «pm», y el área de compras cotizó un vuelo a las **6 de la mañana**. «Hora militar y ya.»
+
+**Síntoma:** el campo de hora era un `<input type="time">`. Con Chrome en inglés muestra el reloj de 12 horas con a. m./p. m., y el viajero que escribe rápido elige la mitad del día equivocada sin notarlo. La hora viajaba bien (`HH:MM` de 24 h), pero **lo que la persona veía y escribía no era lo que creía**. Es el mismo problema de las fechas de #A105 (`mes/día/año` en inglés), en la hora.
+
+**Causa raíz:** el control nativo decide su formato según el idioma del navegador, no según el de la app. No hay manera de forzarle 24 h.
+
+**Fix — `components/TimeInput.tsx`, gemelo de `DateInput` (#A105):**
+- Campo de texto visible `HH:MM (24 h)`, con los dos puntos automáticos, máximo 5 caracteres y validación propia: *«Escriba la hora en formato de 24 horas, por ejemplo 18:30 para las 6:30 de la tarde.»*
+- Debajo, la hora **en palabras** («Son las 6:22 de la tarde»): el viajero confirma de un vistazo que no se equivocó de mitad del día. Es la red de seguridad que faltaba en el caso de Don Simón.
+- Detrás de un botón de reloj queda el selector nativo, para quien lo prefiera. Entra y sale `HH:MM` de 24 h: **el contrato con el backend no cambia**.
+- Reemplaza los tres `<input type="time">` del formulario (ida, regreso y cada tramo del multidestino) y los dos de «Cambiar mi viaje».
+- `_tripChangeRows_` (servidor) y `TripChangeInfo` (app) muestran la hora en 24 h: lo que el aprobador lee en el correo es «07:00 → 18:22», nunca «7:00 a. m. → 6:22 p. m.».
+
+**Qué NO cambia:** lo guardado en la hoja (`HORA LLEGADA VUELO IDA` / `VUELTA` siguen en `HH:MM`), el plazo de los cambios y sus mensajes en palabras («hasta las 5:00 p. m. del día hábil anterior»), que son prosa y se leen mejor así.
+
+**Verificado:** `npm run verify` en verde y, en el entorno local con el `Code.gs` real, un cambio de hora de punta a punta sobre un viaje real: se guarda `07:00 → 18:22` en el JSON del cambio y **el correo del aprobador muestra «Hora del vuelo de ida · 07:00 · 18:22»**, sin a. m. ni p. m. en ninguna parte del cuadro. Lo construido (`dist/`) trae el campo nuevo.
+
+**Despliegue:** el frontend sale con el push (es donde está el campo). `Code.gs` solo cambia cómo se *muestra* la hora en el correo del cambio: pegarlo y crear versión nueva cuando se despliegue #A111. **Orden indiferente:** con el `Code.gs` viejo la hora llega igual (24 h) y el correo la muestra como antes.

@@ -340,6 +340,68 @@ function main() {
   r = change(P8, { returnDate: '2026-11-25' }, 'Se alargó la auditoría tres días.');
   ok('solo hospedaje: las noches se recalculan', r.success && Number(cell(r.data.id, '# NOCHES (AUTOMÁTICO)')) === 5 && String(cell(r.data.id, 'NOMBRE HOTEL')).toUpperCase() === 'HOTEL X');
 
+  // #A111: cambiar DÓNDE se hospeda. Caso real SOL-000668 (Laura, 27-oct-2026): en Pereira
+  // no había hoteles y había que pasar a Airbnb, pero el formulario solo ofrecía fechas y
+  // ciudad — «las opciones que les salen es como si fuera vuelo».
+  at('2026-10-05T15:00:00Z');
+  const P8h = create(base({ requestMode: 'HOTEL_ONLY', origin: '', destination: 'PEREIRA, COLOMBIA', departureDate: '20-11-2026', returnDate: '22-11-2026', requiresHotel: true, hotelName: 'Hotel X', nights: 2 })).data;
+  at(NOW);
+  r = change(P8h, { hotelName: 'Airbnb Centro' }, 'En Pereira no hay hoteles disponibles.');
+  ok('solo hospedaje: se puede cambiar el hospedaje',
+     r.success && String(cell(r.data.id, 'NOMBRE HOTEL')).toUpperCase() === 'AIRBNB CENTRO');
+  const infoH = r.success ? JSON.parse(cell(r.data.id, 'CAMBIO PEDIDO (JSON)') || '{}') : {};
+  ok('solo hospedaje: el cambio se reporta como Hospedaje',
+     (infoH.tipos || []).indexOf('Hospedaje') !== -1 && !!(infoH.campos || {}).hotelName && infoH.soloHospedaje === true);
+  const filasH = r.success ? ctx._tripChangeRows_(infoH) : [];
+  ok('solo hospedaje: las filas dicen Hospedaje y no hablan de vuelo',
+     filasH.some(f => f[0] === 'Hospedaje' && String(f[2]).toUpperCase() === 'AIRBNB CENTRO')
+     && !filasH.some(f => /ida|regreso|vuelo|destino/i.test(f[0])));
+  at('2026-10-05T15:00:00Z');
+  const P8v = create(base({ requestMode: 'HOTEL_ONLY', origin: '', destination: 'CALI, COLOMBIA', departureDate: '20-11-2026', returnDate: '22-11-2026', requiresHotel: true, hotelName: 'Hotel Z', nights: 2 })).data;
+  at(NOW);
+  r = change(P8v, { hotelName: '   ' }, 'Se cayó la reserva del hotel por completo.');
+  ok('solo hospedaje: el hospedaje vacío se rechaza', !r.success && /d[óo]nde se quiere hospedar/i.test(r.error));
+
+  // Vuelo + hotel: también se puede cambiar el hospedaje sin tocar el vuelo.
+  at('2026-10-05T15:00:00Z');
+  const P8b = create(base({ departureDate: '20-11-2026', returnDate: '22-11-2026', requiresHotel: true, hotelName: 'Hotel Y', nights: 2 })).data;
+  at(NOW);
+  r = change(P8b, { hotelName: 'Apartamento Laureles' }, 'El hotel canceló la reserva anoche.');
+  ok('vuelo + hotel: se puede cambiar el hospedaje',
+     r.success && String(cell(r.data.id, 'NOMBRE HOTEL')).toUpperCase() === 'APARTAMENTO LAURELES'
+     && String(cell(r.data.id, 'FECHA IDA')).indexOf('20') === 0);
+
+  // Sin hospedaje: agregarlo es una solicitud nueva, no un cambio.
+  at('2026-10-05T15:00:00Z');
+  const P8c = create(base({ departureDate: '20-11-2026', returnDate: '22-11-2026', requiresHotel: false, hotelName: '', nights: 0 })).data;
+  at(NOW);
+  r = change(P8c, { hotelName: 'Hotel Nuevo' }, 'Ahora sí necesito hospedaje para el viaje.');
+  ok('sin hospedaje: no se puede agregar como cambio', !r.success && /no incluye hospedaje/i.test(r.error));
+
+  // #A112: la hora que ve el aprobador va en 24 h. Caso real (Yurani, 27-oct-2026): se
+  // escribió «6.22» por las 18:22, sin p. m., y se cotizó un vuelo a las 6 de la mañana.
+  at('2026-10-05T15:00:00Z');
+  const P8t = create(base({ departureDate: '20-11-2026', returnDate: '22-11-2026', departureTimePreference: '07:00', returnTimePreference: '06:22' })).data;
+  at(NOW);
+  r = change(P8t, { departureTimePreference: '18:22' }, 'Don Simón sale a las 6:22 de la tarde, no a las 6 de la mañana.');
+  const infoT = r.success ? JSON.parse(cell(r.data.id, 'CAMBIO PEDIDO (JSON)') || '{}') : {};
+  const filasT = r.success ? ctx._tripChangeRows_(infoT) : [];
+  const textoT = JSON.stringify(filasT);
+  ok('la hora del cambio se muestra en 24 h, nunca en a. m. / p. m.',
+     r.success && /"07:00"/.test(textoT) && /"18:22"/.test(textoT) && !/[ap]\.\s?m\./i.test(textoT));
+  // El correo completo tampoco: es lo que el aprobador lee de verdad.
+  const correoT = (log.mails[log.mails.length - 1] || {}).html || '';
+  ok('el correo del cambio no trae ninguna hora en a. m. / p. m.',
+     correoT.indexOf('18:22') !== -1 && !/\d{1,2}:\d{2}\s*[ap]\.?\s?m\.?/i.test(correoT.replace(/<[^>]*>/g, ' ')));
+  // La app muestra lo mismo que el servidor (gemelo de TripChangeInfo.fmtTime).
+  const fmtApp = fs.readFileSync(path.join(ROOT, 'components', 'TripChangeInfo.tsx'), 'utf8');
+  ok('la app no formatea horas en a. m. / p. m. (gemelo de _tripChangeRows_)',
+     /\[01\]\\d\|2\[0-3\]/.test(fmtApp) && !/a\.\s?m\./.test(fmtApp.split('const fmtTime')[1].split('};')[0]));
+  // Y el formulario no vuelve a un reloj de 12 horas (#A112, como #A105 con las fechas).
+  const sinTime = ['RequestForm.tsx', 'TripChangeModal.tsx'].filter(f =>
+    /type="time"/.test(fs.readFileSync(path.join(ROOT, 'components', f), 'utf8')));
+  ok('ningún formulario usa <input type="time"> a la vista: solo TimeInput', sinTime.length === 0, sinTime.join(', '));
+
   // ───────────── 4. El navegador no puede inyectar el cambio ─────────────
   at('2026-10-05T15:00:00Z');
   r = create(base({ departureDate: '20-11-2026', returnDate: '21-11-2026', tripChange: { v: 1, comprado: true, costoOriginal: 9e9 }, 'CAMBIO PEDIDO (JSON)': '{"v":1}' }));
@@ -608,7 +670,7 @@ function main() {
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard).');
+  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard), cambiar el hospedaje en solo hospedaje y en vuelo + hotel (#A111) y la hora en 24 h (#A112).');
 }
 
 main();

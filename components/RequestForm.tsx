@@ -16,6 +16,7 @@ import { validateOptionalPhone } from '../utils/phone';
 // tools/check-single-bundle.cjs falla si vuelve a aparecer un import() en la app.
 import { generateTravelRequestEmail } from '../utils/EmailGenerator';
 import { DateInput } from './DateInput';
+import { TimeInput } from './TimeInput';
 
 interface RequestFormProps {
   userEmail: string;
@@ -79,14 +80,13 @@ interface TramoFieldsProps {
   disabled: boolean;
   onUpdate: (index: number, field: keyof ExtraTramo, value: string | boolean | number) => void;
   onRemove: (index: number) => void;
-  onOpenPicker: (e: React.MouseEvent<HTMLInputElement>) => void;
 }
 
 // Bloque de campos de un tramo extra — espejo del itinerario del tramo 1
 // (CityCombobox + fecha + hora) más un sub-bloque compacto de hotel.
 const TramoFields: React.FC<TramoFieldsProps> = ({
   index, tramo, totalLegs, cities, isCitiesLoading, minDate, intl,
-  suggestedNights, disabled, onUpdate, onRemove, onOpenPicker
+  suggestedNights, disabled, onUpdate, onRemove
 }) => {
   const legNumber = index + 2;
   return (
@@ -134,12 +134,12 @@ const TramoFields: React.FC<TramoFieldsProps> = ({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700">Hora Requerida de Vuelo (Pref.)</label>
-          <input type="time" style={{ colorScheme: 'light' }}
-            className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer"
+          <TimeInput
+            className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900"
             value={tramo.departureTimePreference}
-            onChange={(e) => onUpdate(index, 'departureTimePreference', e.target.value)}
-            onClick={onOpenPicker}
+            onChange={(v) => onUpdate(index, 'departureTimePreference', v)}
             disabled={disabled}
+            ariaLabel="Hora requerida de vuelo del tramo"
           />
         </div>
       </div>
@@ -699,12 +699,6 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   const handleCityChange = (fieldName: string, value: string) => {
     setFormData(prev => ({ ...prev, [fieldName]: value }));
-  };
-
-  const handleOpenPicker = (e: React.MouseEvent<HTMLInputElement>) => {
-    try {
-      if ('showPicker' in e.currentTarget) e.currentTarget.showPicker();
-    } catch (error) { }
   };
 
   const handlePassengerChange = (index: number, field: keyof Passenger, value: string) => {
@@ -1935,7 +1929,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             {!isHotelOnly && (
               <div>
                 <label className="block text-sm font-medium text-gray-700">Hora Requerida de Vuelo - Ida (Pref.)</label>
-                <input type="time" name="departureTimePreference" style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.departureTimePreference} onChange={handleInputChange} onClick={handleOpenPicker} />
+                <TimeInput name="departureTimePreference" className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.departureTimePreference} onChange={(v) => setFormData(prev => ({ ...prev, departureTimePreference: v }))} ariaLabel="Hora requerida de vuelo de ida" />
               </div>
             )}
             {/* Fecha Check-out / Vuelta — hotel-only o round-trip */}
@@ -1957,7 +1951,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                 {!isHotelOnly && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700">Hora Requerida de Vuelo - Vuelta (Pref.)</label>
-                    <input type="time" name="returnTimePreference" style={{ colorScheme: 'light' }} className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900 cursor-pointer" value={formData.returnTimePreference} onChange={handleInputChange} onClick={handleOpenPicker} />
+                    <TimeInput name="returnTimePreference" className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.returnTimePreference} onChange={(v) => setFormData(prev => ({ ...prev, returnTimePreference: v }))} ariaLabel="Hora requerida de vuelo de vuelta" />
                   </div>
                 )}
               </>
@@ -2025,7 +2019,6 @@ export const RequestForm: React.FC<RequestFormProps> = ({
               disabled={loading || isLocked}
               onUpdate={updateTramo}
               onRemove={removeTramo}
-              onOpenPicker={handleOpenPicker}
             />
           ))}
           {multiDestino && extraTramos.length < MAX_EXTRA_TRAMOS && (
