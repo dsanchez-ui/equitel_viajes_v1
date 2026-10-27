@@ -393,6 +393,8 @@ export interface TripChangeRequestChanges {
   returnTimePreference?: string;
   destination?: string;
   checkedBaggage?: boolean;
+  /** #A111: dónde se hospeda (hotel, apartamento, Airbnb…). Solo si la solicitud ya incluye hospedaje. */
+  hotelName?: string;
 }
 
 /** #A103: lo que manda el servidor en bootstrap. Que llegue activa «Cambiar mi viaje». */

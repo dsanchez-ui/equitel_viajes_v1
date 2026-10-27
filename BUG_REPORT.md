@@ -3061,3 +3061,29 @@ Falta que David excluya el viaje a Miami (SOL-000658) con su motivo.
 - **Con el `CostsDashboard.html` viejo:** no hay botón, y los totales igual excluyen lo marcado.
 
 **Rollback:** versión anterior del web app. La columna puede quedarse vacía.
+
+---
+
+## #A111 — «Cambiar mi viaje» no dejaba cambiar el hospedaje
+
+**Reportado por:** Laura, 27-oct-2026 (chat), sobre **SOL-000668**: hay que pasar de hotel a Airbnb porque en Pereira no hay hoteles disponibles, «pero no les permite realizar la modificación porque las opciones que les salen es como si fuera vuelo».
+
+**Síntoma:** en una solicitud de **solo hospedaje**, «Cambiar mi viaje» solo ofrecía *Fechas* y *Ciudad*. No había forma de cambiar **dónde se hospeda**, que era justo lo que necesitaban. Encima, los avisos hablaban de vuelos («El tiquete aún no se ha comprado», «La ida ya voló», «para ese vuelo el plazo era»), que es lo que Laura describe como «como si fuera vuelo». El viajero quedaba sin salida: el enlace al formulario completo solo lo ven los administradores.
+
+**Causa raíz:** el flujo de #A103 se diseñó alrededor del vuelo. `TRIP_CHANGE_KEYS` no incluía `hotelName`, así que el hospedaje **no era un campo cambiable** en ninguna solicitud — ni de solo hospedaje ni de vuelo + hotel. `requestTripChange` copiaba `hotelName` de la padre tal cual. Las etiquetas de solo hospedaje estaban resueltas a medias: las fechas y la ciudad sí, pero los avisos de compra y de plazo no.
+
+**Fix (el hospedaje es un cambio más, en las dos clases de solicitud):**
+- `TRIP_CHANGE_KEYS` + `hotelName`; `_normalizeTripChanges_` lo valida (debe incluir hospedaje, no vacío, máx. 200, normalizado a mayúsculas) y lo reporta como tipo **Hospedaje**.
+- `requestTripChange` lleva el hospedaje actual en `parentVals` y escribe el nuevo en `data.hotelName`; guarda `soloHospedaje` en el JSON del cambio.
+- `_tripChangeRows_` dice «Entrada/Salida al hotel» y «Ciudad del hospedaje» cuando es solo hospedaje, y agrega la fila **Hospedaje**.
+- También se puede cambiar **con el viaje en curso** (modo `return`): es cuando más se necesita, como en este caso.
+- `TripChangeModal`: botón **Hospedaje** (visible si la solicitud ya incluye hospedaje: solo hospedaje **o** vuelo + hotel), campo de texto con el actual a la vista, y los avisos de compra, de viaje en curso y del paso final ahora hablan de reserva y no de tiquete cuando es solo hospedaje.
+- Guardarropa de consistencia: una solicitud de solo hospedaje siempre admite el cambio aunque una fila vieja tenga «REQUIERE HOSPEDAJE» en No — si no, el formulario lo ofrecería y el servidor lo rechazaría.
+
+**Qué NO cambia:** agregar hospedaje donde la solicitud no lo tenía sigue siendo una solicitud nueva (cambia costo y flujo). Cambiar pasajeros, también.
+
+**Verificado:** `npm run verify` en verde (incluye `check:trip-change`), `tsc`, build y un solo archivo JavaScript. Diff acotado a `TripChangeModal.tsx`, `types.ts` y el bloque de cambios de viaje de `Code.gs`: 84 líneas agregadas, nada fuera del flujo.
+
+**Pendiente de prueba:** falta correr el entorno local (`npm run prueba:local`) con una exportación reciente para recorrerlo en pantalla — ver la nota del candado de correo en la respuesta a David.
+
+**Despliegue:** pegar `Code.gs` → versión nueva del web app; el frontend sale con el push. **Orden indiferente:** con el `Code.gs` viejo el botón existe pero el servidor responde que no puede cambiar ese campo; con el frontend viejo, nada cambia.

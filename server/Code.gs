@@ -20379,7 +20379,10 @@ var TRIP_CHANGE_REASON_MAX = 500;
 // Explicación de «Cambiar mi viaje» la primera vez que se toca el botón (David, 20-oct): su
 // «Entendido» queda en CONSTANCIA AVISOS con este id, como el aviso de #A100.
 var TRIP_CHANGE_NOTICE_ID = 'cambios-de-viaje-2026-10';
-var TRIP_CHANGE_KEYS = ['departureDate', 'returnDate', 'departureTimePreference', 'returnTimePreference', 'destination', 'checkedBaggage'];
+// #A111: `hotelName` permite cambiar DÓNDE se hospeda (hotel, apartamento, Airbnb…).
+// Sin él, una solicitud de solo hospedaje no tenía nada que cambiar salvo fechas y
+// ciudad, y el viajero quedaba sin salida (caso SOL-000668, Laura 27-oct).
+var TRIP_CHANGE_KEYS = ['departureDate', 'returnDate', 'departureTimePreference', 'returnTimePreference', 'destination', 'checkedBaggage', 'hotelName'];
 
 // Estado por ejecución: la OT de la padre se copia tal cual (no se revalida con la
 // regla de OT nueva, #A66) y el JSON del cambio se escribe en createNewRequest.
@@ -20574,12 +20577,14 @@ function _tripChangeTimeKey_(v) {
  */
 function _normalizeTripChanges_(parent, changes, mode, isHotelOnly) {
   if (!changes || typeof changes !== 'object') throw new Error('No llegó qué quiere cambiar.');
-  var next = { dep: parent.dep, ret: parent.ret, depTime: parent.depTime, retTime: parent.retTime, dest: parent.dest, bag: parent.bag };
-  var allowed = mode === 'return' ? ['returnDate', 'returnTimePreference', 'checkedBaggage'] : TRIP_CHANGE_KEYS;
+  var next = { dep: parent.dep, ret: parent.ret, depTime: parent.depTime, retTime: parent.retTime, dest: parent.dest, bag: parent.bag, hotel: parent.hotel };
+  // #A111: el hospedaje también se puede cambiar con el viaje en curso — es justo
+  // cuando más se necesita (el hotel no tenía cupo y hay que mover al viajero).
+  var allowed = mode === 'return' ? ['returnDate', 'returnTimePreference', 'checkedBaggage', 'hotelName'] : TRIP_CHANGE_KEYS;
   Object.keys(changes).forEach(function (k) {
     var v = changes[k];
     if (TRIP_CHANGE_KEYS.indexOf(k) === -1) return;
-    if (allowed.indexOf(k) === -1) throw new Error('Con el viaje en curso solo se puede cambiar el regreso (fecha, hora o equipaje).');
+    if (allowed.indexOf(k) === -1) throw new Error('Con el viaje en curso solo se puede cambiar el regreso (fecha, hora o equipaje) o el hospedaje.');
     if (k === 'departureDate' || k === 'returnDate') {
       var key = _normalizeBirthdate_(v);
       if (!key) throw new Error('La fecha nueva no es válida.');
@@ -20600,6 +20605,17 @@ function _normalizeTripChanges_(parent, changes, mode, isHotelOnly) {
       if (isHotelOnly) throw new Error('Una solicitud de solo hospedaje no lleva maleta de bodega.');
       if (typeof v !== 'boolean') throw new Error('Indique si necesita maleta de bodega.');
       next.bag = v;
+    } else if (k === 'hotelName') {
+      // #A111: cambiar dónde se hospeda. Solo si la solicitud ya incluye hospedaje:
+      // agregarlo donde no lo había cambia el costo y el flujo, y eso es una solicitud nueva.
+      // Una solicitud de solo hospedaje SIEMPRE lo incluye, aunque alguna fila vieja
+      // tenga «REQUIERE HOSPEDAJE» en No: si no, el formulario ofrecería el cambio
+      // y el servidor lo rechazaría.
+      if (!parent.requiresHotel && !isHotelOnly) throw new Error('Esta solicitud no incluye hospedaje. Para agregarlo, pida una solicitud nueva.');
+      var hn = String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toUpperCase();
+      if (!hn) throw new Error('Escriba dónde se quiere hospedar (hotel, apartamento, Airbnb…).');
+      if (hn.length > 200) throw new Error('El nombre del hospedaje es demasiado largo (máximo 200 caracteres).');
+      next.hotel = hn;
     }
   });
   if (next.ret && next.dep && next.ret < next.dep) throw new Error('El regreso no puede ser antes de la ida.');
@@ -20615,6 +20631,7 @@ function _normalizeTripChanges_(parent, changes, mode, isHotelOnly) {
   add('departureTimePreference', parent.depTime, next.depTime, 'Hora');
   add('returnTimePreference', parent.retTime, next.retTime, 'Hora');
   add('destination', parent.dest, next.dest, 'Destino');
+  add('hotelName', parent.hotel, next.hotel, 'Hospedaje');
   if (next.bag !== parent.bag && typeof next.bag === 'boolean') add('checkedBaggage', parent.bag === true, next.bag, 'Equipaje');
   if (!tipos.length) throw new Error('No cambió nada: elija qué quiere cambiar y escriba el valor nuevo.');
   return { next: next, campos: campos, tipos: tipos };
@@ -20654,7 +20671,9 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
   var parentVals = {
     dep: _psDateKey_(row[H('FECHA IDA')]), ret: _psDateKey_(row[H('FECHA VUELTA')]),
     depTime: _tripChangeTimeKey_(row[H('HORA LLEGADA VUELO IDA')]), retTime: _tripChangeTimeKey_(row[H('HORA LLEGADA VUELO VUELTA')]),
-    dest: String(p.destination || '').trim().toUpperCase(), bag: p.checkedBaggage === true ? true : (p.checkedBaggage === false ? false : null)
+    dest: String(p.destination || '').trim().toUpperCase(), bag: p.checkedBaggage === true ? true : (p.checkedBaggage === false ? false : null),
+    // #A111: hospedaje actual, para poder cambiarlo y para comparar antes/ahora.
+    hotel: String(p.hotelName || '').replace(/\s+/g, ' ').trim().toUpperCase(), requiresHotel: p.requiresHotel === true
   };
   var nowMs = Date.now();
   var win = _tripChangeWindow_(parentVals.dep, parentVals.ret, nowMs, isAdmin);
@@ -20671,7 +20690,8 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
   if (!isAdmin && newTarget !== win.target) {
     var dlNew = _changeDeadline_(newTarget);
     if (!dlNew || nowMs >= dlNew.ms) {
-      throw new Error('La fecha nueva (' + _policyFmtDayLong_(newTarget) + ') ya no da tiempo: para ese vuelo el plazo era el ' +
+      throw new Error('La fecha nueva (' + _policyFmtDayLong_(newTarget) + ') ya no da tiempo: para ' +
+        (isHotelOnly ? 'ese hospedaje' : 'ese vuelo') + ' el plazo era el ' +
         _changeDeadlineText_(dlNew.dayKey, dlNew.hour));
     }
   }
@@ -20690,6 +20710,8 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
   var cost = _tripChangeOriginalCost_(p);
   var info = {
     v: 1, padre: p.requestId, estadoPadre: st, comprado: comprado, modo: win.mode, tipos: norm.tipos, campos: norm.campos,
+    // #A111: para que las filas «Qué / Antes / Ahora» hablen de hospedaje y no de vuelos.
+    soloHospedaje: isHotelOnly,
     costoOriginal: cost.costo, costoOriginalFuente: cost.fuente,
     registradoPor: actor, rol: (isAdmin && actor !== String(p.requesterEmail || '').toLowerCase().trim()) ? 'administrador' : 'viajero',
     at: new Date(nowMs).toISOString()
@@ -20702,7 +20724,8 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
     requesterEmail: p.requesterEmail, company: p.company, origin: isHotelOnly ? '' : p.origin, destination: next.dest,
     workOrder: p.workOrder || '', passengers: (p.passengers || []).map(function (x) { return { name: x.name, idNumber: x.idNumber, email: x.email || '' }; }),
     costCenter: p.costCenter, variousCostCenters: p.variousCostCenters || '', costCenterName: p.costCenterName, businessUnit: p.businessUnit, site: p.site,
-    requiresHotel: p.requiresHotel, hotelName: p.hotelName || '', nights: nights,
+    // #A111: el hospedaje nuevo si lo cambió; si no, el mismo de la padre.
+    requiresHotel: p.requiresHotel, hotelName: next.hotel || p.hotelName || '', nights: nights,
     departureDate: _tripChangeDdmm_(next.dep), returnDate: next.ret ? _tripChangeDdmm_(next.ret) : '',
     departureTimePreference: isHotelOnly ? '' : next.depTime, returnTimePreference: isHotelOnly ? '' : next.retTime,
     // Los cambios no se miden con la anticipación (#A100): su regla es el plazo de #A103.
@@ -20737,12 +20760,15 @@ function _tripChangeRows_(info) {
     var h = +m[1];
     return h === 12 ? '12:' + m[2] + ' m.' : (h % 12 || 12) + ':' + m[2] + (h < 12 ? ' a. m.' : ' p. m.');
   };
+  // #A111: en una solicitud de solo hospedaje no hay ida, regreso ni destino de vuelo.
+  var soloHosp = !!(info && info.soloHospedaje);
   var out = [];
-  if (c.departureDate) out.push(['Fecha de ida', day(c.departureDate.antes), day(c.departureDate.ahora)]);
-  if (c.returnDate) out.push(['Fecha de regreso', day(c.returnDate.antes), day(c.returnDate.ahora)]);
+  if (c.departureDate) out.push([soloHosp ? 'Entrada al hotel' : 'Fecha de ida', day(c.departureDate.antes), day(c.departureDate.ahora)]);
+  if (c.returnDate) out.push([soloHosp ? 'Salida del hotel' : 'Fecha de regreso', day(c.returnDate.antes), day(c.returnDate.ahora)]);
   if (c.departureTimePreference) out.push(['Hora del vuelo de ida', hour(c.departureTimePreference.antes), hour(c.departureTimePreference.ahora)]);
   if (c.returnTimePreference) out.push(['Hora del vuelo de regreso', hour(c.returnTimePreference.antes), hour(c.returnTimePreference.ahora)]);
-  if (c.destination) out.push(['Destino', c.destination.antes || '—', c.destination.ahora]);
+  if (c.destination) out.push([soloHosp ? 'Ciudad del hospedaje' : 'Destino', c.destination.antes || '—', c.destination.ahora]);
+  if (c.hotelName) out.push(['Hospedaje', c.hotelName.antes || '—', c.hotelName.ahora]);
   if (c.checkedBaggage) out.push(['Maleta de bodega', c.checkedBaggage.antes ? 'Sí' : 'No', c.checkedBaggage.ahora ? 'Sí' : 'No']);
   return out;
 }

@@ -27,7 +27,7 @@ interface TripChangeModalProps {
 }
 
 type Step = 'pick' | 'form' | 'done';
-type Toggle = 'fechas' | 'horas' | 'destino' | 'equipaje';
+type Toggle = 'fechas' | 'horas' | 'destino' | 'equipaje' | 'hospedaje';
 
 const TERMINAL = ['ANULADO', 'DENEGADO', 'PROCESADO'];
 const BLOCKED: Record<string, string> = {
@@ -110,6 +110,8 @@ interface FormState {
   retTime: string;
   dest: string;
   bag: boolean;
+  /** #A111: dónde se hospeda. */
+  hotel: string;
   reason: string;
   tried: boolean;
 }
@@ -120,7 +122,8 @@ const baseOf = (r: TravelRequest) => ({
   depTime: timeKey(r.departureTimePreference),
   retTime: timeKey(r.returnTimePreference),
   dest: String(r.destination || '').trim().toUpperCase(),
-  bag: r.checkedBaggage === true
+  bag: r.checkedBaggage === true,
+  hotel: String(r.hotelName || '').replace(/\s+/g, ' ').trim().toUpperCase()
 });
 
 /**
@@ -149,7 +152,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   useEffect(() => {
     if (req && !form) {
       const b = baseOf(req);
-      setForm({ t: { fechas: false, horas: false, destino: false, equipaje: false }, ...b, reason: '', tried: false });
+      setForm({ t: { fechas: false, horas: false, destino: false, equipaje: false, hospedaje: false }, ...b, reason: '', tried: false });
     }
   }, [req, form]);
 
@@ -175,6 +178,9 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   const travelerWin = req && isAdmin ? tripChangeWindow(toDateKey(req.departureDate), toDateKey(req.returnDate), nowMs, false) : null;
   const mode = elig?.win?.mode || 'full';
   const hotelOnly = req?.requestMode === 'HOTEL_ONLY';
+  // #A111: se puede cambiar el hospedaje siempre que la solicitud ya lo incluya
+  // (solo hospedaje, o vuelo + hotel). Agregarlo donde no lo había es solicitud nueva.
+  const canHotel = !!req && (hotelOnly || req.requiresHotel === true);
   // #A109: la reserva guardada por partes (APROBADO) también es tiquete comprado.
   const bought = isTripBought(req);
   const base = req ? baseOf(req) : null;
@@ -205,6 +211,14 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
       rows.push(['Maleta de bodega', base.bag ? 'Sí' : 'No', form.bag ? 'Sí' : 'No']);
       tipos.push('Equipaje');
     }
+    if (form.t.hospedaje && canHotel) {
+      const hn = form.hotel.replace(/\s+/g, ' ').trim().toUpperCase();
+      if (hn && hn !== base.hotel) {
+        changes.hotelName = hn;
+        rows.push(['Hospedaje', base.hotel || '—', hn]);
+        tipos.push('Hospedaje');
+      }
+    }
   }
 
   const problems: string[] = [];
@@ -222,6 +236,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
       }
     }
     if (form.t.destino && mode === 'full' && !form.dest) problems.push('Elija el destino nuevo de la lista.');
+    if (form.t.hospedaje && canHotel && !form.hotel.trim()) problems.push('Escriba dónde se quiere hospedar (hotel, apartamento, Airbnb…).');
     if (form.tried) {
       if (!rows.length) problems.push('Elija qué quiere cambiar y escriba el valor nuevo.');
       if (form.reason.trim().length < config.reasonMin) problems.push(`Escriba el motivo del cambio (mínimo ${config.reasonMin} caracteres).`);
@@ -380,18 +395,19 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
               )}
               {bought ? (
                 <div className="bg-amber-50 border-l-4 border-amber-500 rounded-md p-3 text-amber-950">
-                  <strong>El tiquete ya está comprado.</strong> Cambiarlo tiene costo (penalidad de la aerolínea y diferencia de tarifa) y lo aprueba
+                  <strong>{hotelOnly ? 'El hospedaje ya está reservado.' : 'El tiquete ya está comprado.'}</strong> Cambiarlo puede tener costo ({hotelOnly ? 'penalidad del hotel y diferencia de tarifa' : 'penalidad de la aerolínea y diferencia de tarifa'}) y lo aprueba
                   {' '}{req.approverName ? <strong>{req.approverName}</strong> : 'su aprobador'}, que verá cuánto costó el viaje
                   {Number(req.totalCost) > 0 ? <> (${formatCop(Number(req.totalCost))} cotizado)</> : null} y cuánto suma el cambio.
                 </div>
               ) : (
                 <div className="bg-blue-50 border-l-4 border-blue-400 rounded-md p-3 text-blue-950">
-                  <strong>El tiquete aún no se ha comprado.</strong> El área de compras cotiza de nuevo con los cambios. No hay penalidad.
+                  <strong>{hotelOnly ? 'El hospedaje aún no se ha reservado.' : 'El tiquete aún no se ha comprado.'}</strong> El área de compras cotiza de nuevo con los cambios. No hay penalidad.
                 </div>
               )}
               {mode === 'return' && (
                 <div className="bg-blue-50 border-l-4 border-blue-400 rounded-md p-3 text-blue-950">
-                  <strong>La ida ya voló ({fmtDayLong(base.dep)}).</strong> Puede cambiar el regreso: fecha, hora o equipaje.
+                  <strong>{hotelOnly ? `El hospedaje ya empezó (${fmtDayLong(base.dep)}).` : `La ida ya voló (${fmtDayLong(base.dep)}).`}</strong>{' '}
+                  {hotelOnly ? 'Puede cambiar la salida o el hospedaje.' : 'Puede cambiar el regreso: fecha, hora o equipaje.'}
                 </div>
               )}
 
@@ -402,8 +418,9 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   {!hotelOnly && choice('horas', 'Horas', mode === 'return' ? 'Del vuelo de regreso' : 'De los vuelos')}
                   {choice('destino', hotelOnly ? 'Ciudad' : 'Destino', mode === 'return' ? 'No, con el viaje en curso' : `Actual: ${(base.dest.split(',')[0] || '').trim()}`, mode === 'return')}
                   {!hotelOnly && choice('equipaje', 'Equipaje', 'Maleta de bodega')}
+                  {canHotel && choice('hospedaje', 'Hospedaje', hotelOnly ? 'Hotel, apartamento, Airbnb…' : 'Cambiar el hotel')}
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Si necesita cambiar algo más (por ejemplo, quitar el hotel), escríbalo en el motivo. Para cambiar a quien viaja, pida una solicitud nueva.</p>
+                <p className="text-xs text-gray-500 mt-2">Si necesita cambiar algo más (por ejemplo, quitar el hospedaje), escríbalo en el motivo. Para cambiar a quien viaja, pida una solicitud nueva.</p>
               </div>
 
               {form.t.fechas && (
@@ -461,6 +478,26 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                       <p className="text-xs text-gray-400 mt-1">Destino actual: {base.dest}{req.origin && !hotelOnly ? ` · Origen: ${req.origin}` : ''}</p>
                     </>
                   )}
+                </fieldset>
+              )}
+
+              {form.t.hospedaje && canHotel && (
+                <fieldset className="border border-gray-200 rounded-md p-3">
+                  <legend className="text-xs font-bold text-gray-700 px-1">Hospedaje</legend>
+                  <label className="block text-xs text-gray-600 mb-1" htmlFor="tc-hotel">¿Dónde se quiere hospedar?</label>
+                  <input
+                    id="tc-hotel"
+                    type="text"
+                    maxLength={200}
+                    data-change-hotel
+                    className="w-full border border-gray-300 rounded-md px-2 py-1.5 text-sm uppercase"
+                    placeholder="Ej.: AIRBNB CENTRO, HOTEL MOVICH, APARTAMENTO…"
+                    value={form.hotel}
+                    onChange={e => setF({ hotel: e.target.value.toUpperCase() })}
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    Actual: {base.hotel || '— sin hospedaje definido —'}. Escriba el nombre o el tipo; el área de compras cotiza y confirma.
+                  </p>
                 </fieldset>
               )}
 
@@ -539,10 +576,10 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   <li>El área de compras revisa su cambio{created.comprado ? ' y se lo pide a la agencia' : ''}.</li>
                   <li>Le llegan por correo las opciones {created.comprado ? 'del cambio' : 'nuevas'} y usted describe cuál elige, como siempre.</li>
                   <li>Su aprobador aprueba {created.comprado ? 'el costo del cambio' : 'el viaje'}.</li>
-                  <li>Recibe {created.comprado ? 'el tiquete nuevo' : 'los tiquetes'} por correo.</li>
+                  <li>Recibe {hotelOnly ? (created.comprado ? 'la reserva nueva' : 'la reserva') : (created.comprado ? 'el tiquete nuevo' : 'los tiquetes')} por correo.</li>
                 </ol>
               </div>
-              {created.comprado && <p className="bg-blue-50 border border-blue-200 text-blue-900 rounded-md p-3">Hasta que reciba el tiquete nuevo, el que tiene sigue siendo el válido.</p>}
+              {created.comprado && <p className="bg-blue-50 border border-blue-200 text-blue-900 rounded-md p-3">Hasta que reciba {hotelOnly ? 'la reserva nueva, la que tiene sigue siendo la válida' : 'el tiquete nuevo, el que tiene sigue siendo el válido'}.</p>}
             </div>
           )}
         </div>
