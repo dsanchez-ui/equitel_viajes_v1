@@ -3115,3 +3115,53 @@ Falta que David excluya el viaje a Miami (SOL-000658) con su motivo.
 **Verificado:** `npm run verify` en verde y, en el entorno local con el `Code.gs` real, un cambio de hora de punta a punta sobre un viaje real: se guarda `07:00 → 18:22` en el JSON del cambio y **el correo del aprobador muestra «Hora del vuelo de ida · 07:00 · 18:22»**, sin a. m. ni p. m. en ninguna parte del cuadro. Lo construido (`dist/`) trae el campo nuevo.
 
 **Despliegue:** el frontend sale con el push (es donde está el campo). `Code.gs` solo cambia cómo se *muestra* la hora en el correo del cambio: pegarlo y crear versión nueva cuando se despliegue #A111. **Orden indiferente:** con el `Code.gs` viejo la hora llega igual (24 h) y el correo la muestra como antes.
+
+---
+
+## **#A113 — Dashboard de costos completo, solo para ver, para quien David decida (Juan Camilo)**
+**Fecha:** 2026-10-28 · **Pedido por:** David, después de la reunión del 28-oct con Juan Camilo Pineda (*«que ciertas personas que yo determine puedan acceder al dashboard y lo puedan ver tal como yo lo veo como administrador… por el momento solo Juan Camilo»*; Alejandro Gómez quizá después). · **Estado:** Implementado; pendiente desplegar.
+
+**Síntoma:**
+- Juan Camilo pidió seguir el ahorro de los tiquetes mes a mes, pero no podía ver el dashboard. Lo que pedía (variación, comparador de precios, proyección) era solo para Yurani, Diego y David, y además había que ser administrador.
+- La tabla de accesos de MISC daba unidades, no esas secciones (decisión de #A78). Hacerlo administrador le daba toda la plataforma: gestionar solicitudes y ver datos de los pasajeros.
+
+**Arreglo:**
+- **Valor nuevo en la tabla de accesos de MISC: `COMPLETO`** en la columna de la unidad (`COSTS_ACCESS_FULL`). David lo administra desde la hoja, sin tocar el código (su decisión del 28-oct: *«no me parece bien dejarlo fijo en el código»*). Hoy: `jcpineda@equitel.com.co | COMPLETO`. Mayúsculas, tildes y espacios no importan, como en las unidades.
+- **Por qué es seguro en la hoja:** quien puede editar MISC ya ve todos los datos de la base, así que darse `COMPLETO` no le muestra nada nuevo. Lo que sí cambia algo sigue en el código: excluir viajes del ahorro (`COSTS_VARIANCE_ALLOWED`, #A110) y saltar la aprobación (#A77). `TODAS` sigue dando solo las unidades.
+- **Qué ve:** el dashboard como un administrador: todas las unidades, la variación, los cambios de viaje, el comparador de precios con el detalle de cada viaje y la proyección.
+- **Qué no:**
+  - no excluye viajes del ahorro (#A110), ni ve el botón;
+  - no ve ni cambia la configuración;
+  - en la plataforma sigue siendo solicitante.
+- **En el servidor:**
+  - `_csResolveAccess_` le da todas las unidades con el rol `FULL_VIEWER`.
+  - `_canReadCostsVariance_` = la lista fija de la variación o `COMPLETO` en MISC; abre la variación, el comparador y el detalle. Si la tabla falta o no se puede leer, nadie más entra (falla cerrado, como #A76).
+  - Esas tres acciones salieron de `adminOnlyActions`: su lista las revalida en `dispatch` y otra vez dentro de cada función.
+  - Excluir sigue en `adminOnlyActions` y con `_canViewCostsVariance_`.
+  - El dashboard recibe `canExclude`.
+- **En la pantalla:** sin el botón «Excluir del ahorro» para quien solo mira; un viaje excluido sigue diciendo «No cuenta en el ahorro» con su motivo. Las etiquetas «Prueba · solo administradores» ahora dicen «Acceso restringido».
+- **Menú 9** acepta `COMPLETO` (no lo marca como unidad mal escrita), explica qué da y avisa si se le pone a un analista o superadmin: a Laura, por ejemplo, le mostraría la variación y el comparador (#A84: no los ve). **Menú 10** lista a quienes tienen `COMPLETO` y avisa si no están en USUARIOS (sin eso no pueden entrar).
+
+**Verificado:**
+- `npm run verify` en verde.
+- `tools/check-price-tracking.cjs`:
+  - sin fila en MISC, Juan Camilo no lo ve; con ` completo ` (minúsculas y espacios) lo ve igual que David, con el detalle;
+  - un líder de su unidad, ni con `TODAS`, no lo ve;
+  - el menú 9 acepta `COMPLETO` y avisa si se le pone a un analista;
+  - excluir le responde «Esta acción requiere permisos de administrador»;
+  - Laura sigue sin verlo.
+- `tools/check-savings-analysis.cjs`:
+  - todas las unidades (de la misma caché que David), la variación (rol `FULL_VIEWER`) y el comparador;
+  - `canExclude` y `canConfig` en falso; la configuración, no;
+  - David sí excluye y Laura no.
+- **Entorno local con la base del 22-oct, en Chrome, entrando como Juan Camilo:**
+  - ve las 18 unidades, la variación, los cambios de viaje, el comparador y la proyección;
+  - no tiene configuración ni «Excluir del ahorro»;
+  - como David, todo sigue igual;
+  - sin errores de JavaScript.
+
+**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` → versión nueva del web app → en MISC, debajo de los encabezados de la tabla de accesos, la fila `jcpineda@equitel.com.co | COMPLETO` → revisar con el menú 9. No hay cambios de frontend. Juan Camilo entra por el enlace del dashboard de costos con su correo y su PIN del portal.
+- **Con el `Code.gs` viejo y la fila puesta:** el menú viejo diría que `COMPLETO` no es una unidad y Juan Camilo entraría sin ver datos. Por eso la fila va después de la versión nueva.
+- **Con el `CostsDashboard.html` viejo:** vería el botón «Excluir del ahorro», pero el servidor no lo deja.
+
+**Rollback:** versión anterior del web app.

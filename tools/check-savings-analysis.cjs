@@ -124,7 +124,9 @@ function loadPlatform(opts = {}) {
   ctx.validateUserEmail_ = () => true;
   ctx._csLoadCache_ = () => ({ version: 2, entries: {} });
   ctx._csSaveCache_ = () => {};
-  ctx._csLoadAccessTable_ = () => ({ byEmail: { 'lider@ejemplo.test': { all: false, units: { potencia: 'POTENCIA' } }, 'lider2@ejemplo.test': { all: false, units: { servicio: 'SERVICIO' } } } });
+  ctx._csLoadAccessTable_ = () => ({ byEmail: { 'lider@ejemplo.test': { all: false, units: { potencia: 'POTENCIA' } }, 'lider2@ejemplo.test': { all: false, units: { servicio: 'SERVICIO' } },
+    // #A113: «COMPLETO» en la tabla de accesos de MISC.
+    'jcpineda@equitel.com.co': { all: true, full: true, units: {} } } });
   return { ctx, sheets, cache };
 }
 
@@ -194,6 +196,19 @@ function main() {
   const gL = ctx.dispatch('getCostsDashboard', who(LAURA, f));
   eq('datos generales: Laura (mismo alcance) usa la caché, pero con sus propios permisos', [gD.data._cache.fromCache, gL.data._cache.fromCache, gD.data.meta.access.canViewVariance, gL.data.meta.access.canViewVariance, gL.data.meta.access.canConfig],
     [false, true, true, false, false]);
+  // #A113: Juan Camilo no es administrador; con «COMPLETO» en MISC ve todo el dashboard como David (de la misma caché),
+  // sin excluir viajes ni cambiar la configuración.
+  const JC = 'jcpineda@equitel.com.co';
+  const gJ = ctx.dispatch('getCostsDashboard', who(JC, f));
+  const accOf = (g) => { const a = g.data.meta.access; return [a.scope, a.canViewVariance, a.canViewPriceTracking, a.canExclude, a.canConfig]; };
+  eq('Juan Camilo: todas las unidades, variación y comparador; no excluye ni configura', [gJ.success, gJ.data._cache.fromCache, gJ.data.rows.length === gD.data.rows.length].concat(accOf(gJ)),
+    [true, true, true, 'ALL', true, true, false, false]);
+  eq('David sí excluye; Laura no ve el comparador ni excluye', [accOf(gD)[3], accOf(gL)[2], accOf(gL)[3]], [true, false, false]);
+  const vJ = ctx.dispatch('getCostsVarianceReport', who(JC, { filters: { year: 2026 } }));
+  eq('Juan Camilo: la variación, con su propio rol', [vJ.success, vJ.success && vJ.data.meta.access.role], [true, 'FULL_VIEWER']);
+  eq('Juan Camilo: la configuración no', ctx.dispatch('getCostsDashboardConfig', who(JC)).success, false);
+  eq('Juan Camilo: guardar configuración, no', ctx.dispatch('setCostsDashboardConfig', who(JC, { config: {} })).success, false);
+  eq('Juan Camilo no es administrador de la plataforma', ctx.dispatch('getAllRequestsLite', who(JC)).data.length === ctx.dispatch('getMyRequestsLite', who(JC)).data.length, true);
   // Cada cálculo deja constancia de con qué unidades se hizo.
   const realBuild = ctx._csBuildData_;
   ctx._csBuildData_ = (filters, allowed) => { const d = realBuild(filters, allowed); d.builtFor = allowed ? allowed.join(',') : 'TODAS'; return d; };

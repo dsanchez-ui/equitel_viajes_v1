@@ -193,6 +193,13 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   (#A78, pedido de Yurani, 2026-09-14). Lista fija en el código (`COSTS_VARIANCE_ALLOWED`)
   y además deben ser administradores; no depende del rol ni de la tabla de MISC (`TODAS`
   no la da). Laura y apcompras dejaron de verla. El menú *10* lo muestra.
+- **Dashboard de costos completo, solo para ver** (#A113, David, 28-oct): quien no es administrador y David decide
+  (hoy solo Juan Camilo Pineda, `jcpineda@`; Alejandro Gómez, `agdg@`, quizá después) ve el dashboard igual que un
+  administrador: todas las unidades, variación, cambios, comparador y proyección. **Solo mira**: no excluye viajes del
+  ahorro ni ve ni cambia la configuración, y en la plataforma sigue siendo solicitante. **Se da en la tabla de accesos de MISC
+  con `COMPLETO`** en vez de la unidad (`COSTS_ACCESS_FULL`; David no quiere una lista fija en el código); `TODAS` sigue dando solo
+  las unidades. Las lecturas usan `_canReadCostsVariance_` y excluir sigue con `_canViewCostsVariance_` (lista fija). Entra con su
+  correo y su PIN del portal, por el enlace del dashboard.
 - **Top 10 de viajeros por costo** en las vistas anual, periodo y mensual del dashboard
   (#A78): el costo de cada viaje se reparte **en partes iguales entre sus pasajeros**
   (decisión de David). Los pasajeros llegan al navegador como ids opacos por respuesta
@@ -678,10 +685,18 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-10-22)
+### Para retomar (estado al 2026-10-28)
 
 - **En el Mac, antes de nada: [MIGRACION.md §0](MIGRACION.md)** (Node 24, revisión del equipo y el recordatorio para todos sus
   proyectos). En el PC Linux ya está hecho.
+- **#A113 (dashboard completo, solo para ver, para Juan Camilo): implementado el 28-oct, pendiente de desplegar** (pegar `Code.gs`
+  y `CostsDashboard.html` → versión nueva → fila `jcpineda@equitel.com.co | COMPLETO` en la tabla de accesos de MISC → menú 9;
+  no hay push de frontend). Reunión del 28-oct con Juan Camilo: él pidió seguir el
+  ahorro de los tiquetes **mes a mes** (este mes frente a los dos anteriores y el promedio), también el de comprar en la tarifa del
+  manual; David extiende SerpApi al plan de 1.000 búsquedas al mes cuando se acaben las actuales. El rastreo está en «TERMINADO»
+  desde el 21-oct: para seguir hay que quitar o mover `FIN_ESTUDIO` en el proyecto aparte. La API trae `price_history`
+  (61 días del precio más barato de cada tramo) y el rastreo no lo guarda: con él se mide cuánto subió el precio entre la solicitud
+  y la compra sin búsquedas de más (19 de 25 búsquedas guardadas lo traen).
 - **Todo está desplegado hasta #A110 (22-oct).** El 21-oct salieron #A102–#A105 (David pegó `Code.gs`, `CostsDashboard.html`,
   `AdminSidebar.html`, `AdminMobile.html` y `Rastreo.gs`, corrió el menú 12 y publicó la versión nueva); el 22-oct, #A106–#A110.
 - **Fechas de compra cambiadas por correcciones (#A102):** SOL-000100, 107, 202, 230, 249, 270, 435, 465, 494, 495, 516,

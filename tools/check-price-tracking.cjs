@@ -505,16 +505,38 @@ function main() {
   t = loadTracker();
   t.ctx.activarRastreo();
   const p = loadPlatform(t.ss);
+  // #A113: sin fila en la tabla de accesos de MISC, Juan Camilo no lo ve (falla cerrado).
+  eq('Juan Camilo sin «COMPLETO» en MISC no lo ve', p.dispatch('getPriceTracking', { userEmail: 'jcpineda@equitel.com.co', sessionToken: 'x' }).success, false);
+  t.ss.sheets['MISC'] = makeSheet('MISC', [
+    ['TARJETA', 'NUMERO', '', 'SEDE', '', '', '', 'DASHBOARD COSTOS · CORREO', 'DASHBOARD COSTOS · UNIDAD DE NEGOCIO'],
+    ['', '', '', 'Bogotá', '', '', '', ' JCPineda@equitel.com.co ', ' completo '],
+    ['', '', '', '', '', '', '', 'lider@ejemplo.test', 'POTENCIA'],
+    ['', '', '', '', '', '', '', 'todas@ejemplo.test', 'TODAS'],
+  ]);
+  p._resetPerExecutionCaches_();
   const snap = JSON.stringify(Object.values(t.ss.sheets).map((s) => s.data));
   const pide = (email) => p.dispatch('getPriceTracking', { userEmail: email, sessionToken: 'x' });
   eq('Laura (analista) no lo ve: lo frena el dispatch con mensaje limpio', pide('compras.equitel@equitel.com.co').error,
-    'El comparador de precios está restringido a Yurani Prieto, Diego Caballero y David Sánchez.');
+    'El comparador de precios está restringido a Yurani Prieto, Diego Caballero y David Sánchez y a quien tenga «COMPLETO» en los accesos al dashboard de costos.');
   let lanzo = '';
   try { p.getPriceTracking('compras.equitel@equitel.com.co'); } catch (e) { lanzo = e.message; }
   eq('y la función también la frena', /restringido/.test(lanzo), true);
   eq('otro usuario no lo ve', pide('alguien@ejemplo.test').success, false);
+  eq('un líder de su unidad no lo ve, ni con TODAS (#A113: solo COMPLETO)', [pide('lider@ejemplo.test').success, pide('todas@ejemplo.test').success], [false, false]);
+  // Menú 9: COMPLETO es un valor válido (no «unidad que no coincide»); a un analista sí le cambia algo y se avisa.
+  const misc = t.ss.sheets['MISC'];
+  misc.data.push(['', '', '', '', '', '', '', 'compras.equitel@equitel.com.co', 'COMPLETO']);
+  const rev = p.revisarAccesosDashboardCostos();
+  const revJC = rev.people.find((x) => x.email === 'jcpineda@equitel.com.co');
+  eq('menú 9: Juan Camilo con COMPLETO, sin avisos de unidad', [revJC && revJC.full, revJC && revJC.all, rev.warnings.some((w) => /COMPLETO" no coincide|completo" no coincide/.test(w))], [true, true, false]);
+  eq('menú 9: un analista con COMPLETO trae el aviso de que también vería el comparador', rev.warnings.some((w) => /^compras\.equitel@equitel\.com\.co es analista .*COMPLETO.*comparador/.test(w)), true);
+  misc.data.pop();
+  p._resetPerExecutionCaches_();
   const r = pide('dsanchez@equitel.com.co');
   eq('David lo ve', r.success, true);
+  // #A113: Juan Camilo no es administrador; con «COMPLETO» en MISC (mayúsculas y espacios no importan) lo ve igual que David.
+  const rJC = pide('jcpineda@equitel.com.co');
+  eq('Juan Camilo (solo ver, sin ser administrador) lo ve igual que David', [rJC.success, rJC.success && JSON.stringify(rJC.data.items) === JSON.stringify(r.data.items)], [true, true]);
   const d = r.data;
   eq('no escribe nada', JSON.stringify(Object.values(t.ss.sheets).map((s) => s.data)) === snap, true);
   eq('sin correos, cédulas ni nombres', priv.some((x) => JSON.stringify(d).includes(x)), false);
@@ -545,8 +567,10 @@ function main() {
   // Detalle de un viaje (#A86)
   t.ss.sheets['USUARIOS'] = makeSheet('USUARIOS', [['#', 'NOMBRE', 'CORREO'], ['1', 'Laura de Prueba', 'compras.equitel@equitel.com.co']]);
   const det = (email, id) => p.dispatch('getPriceTrackingDetail', { userEmail: email, sessionToken: 'x', requestId: id });
-  eq('detalle: Laura no lo ve', det('compras.equitel@equitel.com.co', 'SOL-1').error, 'El comparador de precios está restringido a Yurani Prieto, Diego Caballero y David Sánchez.');
+  eq('detalle: Laura no lo ve', det('compras.equitel@equitel.com.co', 'SOL-1').error, 'El comparador de precios está restringido a Yurani Prieto, Diego Caballero y David Sánchez y a quien tenga «COMPLETO» en los accesos al dashboard de costos.');
   const dd = det('dsanchez@equitel.com.co', 'SOL-1');
+  const ddJC = det('jcpineda@equitel.com.co', 'SOL-1');
+  eq('detalle: Juan Camilo (#A113) lo ve igual', [ddJC.success, ddJC.success && JSON.stringify(ddJC.data.request) === JSON.stringify(dd.data.request)], [true, true]);
   eq('detalle: lo que registró el área de compras y lo que pidió el viajero', dd.success && [dd.data.request.quoted, dd.data.request.airline, dd.data.request.channel, dd.data.request.passengers,
     dd.data.request.departure, dd.data.request.departureTime, dd.data.request.returnDate, dd.data.request.returnTime, dd.data.request.costConfirmedBy],
     [400000, 'LATAM', 'Aviatur', 1, plus(14), '07:00', plus(16), '06:00', { email: 'compras.equitel@equitel.com.co', name: 'Laura de Prueba' }]);
@@ -614,6 +638,8 @@ function main() {
   const antesX = loadPlatform(t.ss).getPriceTracking('dsanchez@equitel.com.co');
   eq('excluir del ahorro: Laura no puede', /Yurani Prieto, Diego Caballero y David Sánchez/.test(setX('compras.equitel@equitel.com.co', 'SOL-6', true, 'Viaje atípico de prueba').error || ''), true);
   eq('excluir del ahorro: otro usuario no puede', setX('alguien@ejemplo.test', 'SOL-6', true, 'Viaje atípico de prueba').success, false);
+  eq('excluir del ahorro: Juan Camilo (#A113) solo mira, no puede', setX('jcpineda@equitel.com.co', 'SOL-6', true, 'Viaje atípico de prueba').error,
+    'Esta acción requiere permisos de administrador.');
   const sinMotivo = setX('dsanchez@equitel.com.co', 'SOL-6', true, 'corto');
   eq('excluir del ahorro: sin motivo, no', [sinMotivo.success, /mínimo 10/.test(sinMotivo.error || '') || sinMotivo.error], [false, true]);
   eq('excluir del ahorro: un pedido inválido no toca la hoja', t.base.data[0].includes('EXCLUIDA DEL AHORRO'), false);

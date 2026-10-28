@@ -93,8 +93,9 @@ Dos columnas normales con los encabezados `DASHBOARD COSTOS · CORREO` y `DASHBO
 
 - **Analistas y superadmins** ven todas las unidades sin estar en la tabla.
 - **Cada fila da acceso a una persona a una unidad:** el correo con el que entra al portal y la unidad de negocio escrita igual que en las solicitudes. El menú 9 muestra la lista de unidades válidas. Para varias unidades, una fila por unidad; `TODAS` da acceso a todas.
+- **`COMPLETO` en vez de la unidad: todo el dashboard, solo para mirar** (desde el 28-oct-2026; hoy, Juan Camilo Pineda). Esa persona lo ve como un administrador: todas las unidades, la variación, los cambios de viaje, el comparador de precios y la proyección. No excluye viajes del ahorro ni cambia la configuración, y en la plataforma sigue siendo solicitante. No se le pone a un analista (a Laura le mostraría la variación y el comparador): el menú 9 avisa si pasa.
 - **Quien no esté en la tabla no puede entrar al dashboard**, aunque sea aprobador.
-- **La vista "Variación cotizado vs facturado" no depende de esta tabla:** solo la ven Yurani Prieto, Diego Caballero y David Sánchez. Es una regla fija en el código; agregar a alguien aquí, aunque sea con `TODAS`, no se la muestra. Se comprueba con **Equitel Viajes → 10. Ver administradores y permisos especiales**.
+- **La vista "Variación cotizado vs facturado" y el comparador de precios** los ven Yurani Prieto, Diego Caballero y David Sánchez (regla fija en el código) y quien tenga `COMPLETO`. Con `TODAS` no se ven. Excluir un viaje del ahorro, solo ellos tres. Se comprueba con **Equitel Viajes → 10. Ver administradores y permisos especiales**.
 - La tabla se crea y se revisa con **Equitel Viajes → 9. Accesos al dashboard de costos**. La primera vez escribe solo los dos encabezados, al final de MISC y dejando una columna libre. Cada vez que se usa muestra quién ve qué y las unidades válidas, y avisa de errores: correo no registrado en USUARIOS, unidad mal escrita, filas repetidas o incompletas.
 - Los cambios aplican la próxima vez que la persona abra el dashboard. No hay que desplegar nada.
 

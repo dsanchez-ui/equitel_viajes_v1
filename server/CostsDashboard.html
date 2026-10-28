@@ -1278,7 +1278,7 @@
     <div id="priceSection" class="view-section">
       <div class="view-title">
         🔎 Comparador de precios de tiquetes
-        <span class="badge-admin">Prueba · solo administradores</span>
+        <span class="badge-admin">Acceso restringido</span>
         <span class="view-subtitle">¿lo cotizado estaba caro frente a Google Flights?</span>
       </div>
 
@@ -1413,7 +1413,7 @@
     <div id="savingsSection" class="view-section">
       <div class="view-title">
         📈 Proyección de ahorro
-        <span class="badge-admin">Prueba · solo administradores</span>
+        <span class="badge-admin">Acceso restringido</span>
         <span class="view-subtitle">¿cuánto se habría ahorrado comprando lo que recomienda el comparador?</span>
       </div>
 
@@ -1815,6 +1815,8 @@ function loadDashboard(fresh) {
         priceData = null;
         document.getElementById('priceSection').style.display = 'none';
         document.getElementById('savingsSection').style.display = 'none';
+      } else if (priceData && ptCanExclude()) {
+        renderPriceTable(); // #A113: el comparador pudo llegar antes y sin el botón «Excluir del ahorro»
       }
     })
     .withFailureHandler(function(err) {
@@ -3859,7 +3861,17 @@ function _ptToggle(id) {
 // ---------------------------------------------------------------------
 var ptExcl = {}; // requestId → { open, saving, error }
 
+/** ¿Puede excluir viajes del ahorro? (#A110). Quien solo mira (#A113), no. Hasta saberlo, no se ofrece. */
+function ptCanExclude() {
+  var acc = (fullYearData && fullYearData.meta && fullYearData.meta.access) || null;
+  if (!acc) return false;
+  return acc.canExclude !== undefined ? acc.canExclude === true : acc.canViewPriceTracking === true; // Code.gs anterior: como antes
+}
+
 function _ptExclusionHtml(it) {
+  if (!ptCanExclude()) {
+    return it.excluded ? '<div class="pt-excl on"><span><b>No cuenta en el ahorro.</b> ' + escHtml(it.excluded) + '</span></div>' : '';
+  }
   var st = ptExcl[it.requestId] || {};
   var id = escHtml(it.requestId);
   var err = st.error ? '<span class="pt-err">' + escHtml(st.error) + '</span>' : '';

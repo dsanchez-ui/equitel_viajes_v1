@@ -40,7 +40,8 @@ Hacen falta tres piezas, y la sección las muestra en este orden:
 4. **Privado.** Ningún nombre, cédula ni correo de viajeros o solicitantes llega al
    navegador. Solo totales, ids de solicitud, empresa y unidad.
 5. **No toca la operación.** Solo lectura sobre la base. Lo ven las mismas tres personas de
-   la variación (`COSTS_VARIANCE_ALLOWED`); Laura y los líderes no.
+   la variación (`COSTS_VARIANCE_ALLOWED`) y, desde el 28-oct, quien tenga `COMPLETO` en la tabla de
+   accesos de MISC (hoy Juan Camilo Pineda), solo para mirar (#A113); Laura y los líderes no.
 
 ## 3. Velocidad (el pilar)
 

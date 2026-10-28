@@ -634,7 +634,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getCostsVarianceReport', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'getPolicyHeldRequests', 'dismissInvoiceAlert', 'getPriceTracking', 'getPriceTrackingDetail', 'getChangeControl', 'setSavingsExclusion'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'getPolicyHeldRequests', 'dismissInvoiceAlert', 'getChangeControl', 'setSavingsExclusion'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -655,13 +655,16 @@ function dispatch(action, payload) {
       return { success: false, error: _skipApprovalDeniedMsg_() };
     }
     // Variación cotizado vs facturado del dashboard de costos (#A78): lista fija
-    // en el código (COSTS_VARIANCE_ALLOWED), no el rol. Se revalida en cada request.
-    if (action === 'getCostsVarianceReport' && !_canViewCostsVariance_(currentUserEmail)) {
+    // en el código (COSTS_VARIANCE_ALLOWED), no el rol, más quien tenga COMPLETO en
+    // la tabla de accesos de MISC (#A113, que no es administrador: por eso estas tres
+    // no van en adminOnlyActions).
+    // Se revalida en cada request.
+    if (action === 'getCostsVarianceReport' && !_canReadCostsVariance_(currentUserEmail)) {
       return { success: false, error: _costsVarianceDeniedMsg_() };
     }
     // Comparador de precios del estudio (#A84): las mismas personas que la variación.
-    if ((action === 'getPriceTracking' || action === 'getPriceTrackingDetail') && !_canViewCostsVariance_(currentUserEmail)) {
-      return { success: false, error: 'El comparador de precios está restringido a ' + _costsVarianceViewersLabel_() + '.' };
+    if ((action === 'getPriceTracking' || action === 'getPriceTrackingDetail') && !_canReadCostsVariance_(currentUserEmail)) {
+      return { success: false, error: 'El comparador de precios está restringido a ' + _costsReadersLabel_() + '.' };
     }
 
     // LOCKING STRATEGY: Block execution until lock is acquired to prevent race conditions.
@@ -7973,14 +7976,45 @@ function _canViewCostsVariance_(email) {
   return listed && isUserAnalyst(e);
 }
 
-/** "Yurani Prieto, Diego Caballero y David Sánchez". */
-function _costsVarianceViewersLabel_() {
-  var names = COSTS_VARIANCE_ALLOWED.map(function(p) { return p.name; });
+// =====================================================================
+// DASHBOARD DE COSTOS COMPLETO, SOLO PARA VER (#A113, David, 28-oct-2026)
+// =====================================================================
+// Quien tenga «COMPLETO» (COSTS_ACCESS_FULL) en la tabla de accesos de MISC ve el
+// dashboard de costos igual que un administrador: todas las unidades, la variación,
+// el comparador de precios, la proyección de ahorro y los cambios de viaje. Solo
+// mira: no excluye viajes del ahorro ni cambia la configuración. Lo administra David
+// desde la hoja (decisión del 28-oct; hoy, Juan Camilo Pineda). Quien edita la hoja
+// ya ve todos los datos, así que darse este permiso no le muestra nada nuevo.
+// =====================================================================
+function _isCostsFullViewer_(email) {
+  var e = String(email || '').toLowerCase().trim();
+  var acc = e ? _csLoadAccessTable_().byEmail[e] : null;
+  return !!(acc && acc.full);
+}
+
+/** Ve la variación, el comparador y la proyección: la lista fija de la variación o «COMPLETO» en MISC (#A113). */
+function _canReadCostsVariance_(email) {
+  return _canViewCostsVariance_(email) || _isCostsFullViewer_(email);
+}
+
+/** "Ana, Beto y Carla". */
+function _namesLabel_(people) {
+  var names = people.map(function(p) { return p.name; });
   return names.length > 1 ? names.slice(0, -1).join(', ') + ' y ' + names[names.length - 1] : names.join('');
 }
 
+/** "Yurani Prieto, Diego Caballero y David Sánchez": la lista fija; solo ellos excluyen viajes del ahorro. */
+function _costsVarianceViewersLabel_() {
+  return _namesLabel_(COSTS_VARIANCE_ALLOWED);
+}
+
+/** Quienes ven la variación y el comparador: la lista fija y quien tenga «COMPLETO» en MISC (#A113). */
+function _costsReadersLabel_() {
+  return _costsVarianceViewersLabel_() + ' y a quien tenga «' + COSTS_ACCESS_FULL + '» en los accesos al dashboard de costos';
+}
+
 function _costsVarianceDeniedMsg_() {
-  return 'La variación cotizado vs facturado está restringida a ' + _costsVarianceViewersLabel_() + '.';
+  return 'La variación cotizado vs facturado está restringida a ' + _costsReadersLabel_() + '.';
 }
 
 // =====================================================================
@@ -8165,7 +8199,12 @@ function _revisarPermisosAdministradores_() {
     superAdmins: supers.map(person),
     analysts: analysts.map(person),
     skipApproval: SKIP_APPROVAL_ALLOWED.map(function(p) { return { email: p.email, name: p.name, active: _canSkipApproval_(p.email) }; }),
-    costsVariance: COSTS_VARIANCE_ALLOWED.map(function(p) { return { email: p.email, name: p.name, active: _canViewCostsVariance_(p.email) }; })
+    costsVariance: COSTS_VARIANCE_ALLOWED.map(function(p) { return { email: p.email, name: p.name, active: _canViewCostsVariance_(p.email) }; }),
+    // #A113: «COMPLETO» en la tabla de accesos de MISC. Para entrar basta estar en USUARIOS (con su PIN).
+    costsFullView: (function() {
+      var by = _csLoadAccessTable_().byEmail;
+      return Object.keys(by).filter(function(e) { return by[e].full; }).sort().map(function(e) { return { email: e, name: names[e] || '', active: !!names[e] }; });
+    })()
   };
 }
 
@@ -8185,7 +8224,14 @@ function menuVerPermisosAdministradores() {
     r.costsVariance.forEach(function(p) {
       lines.push('• ' + p.name + ' (' + p.email + ')' + (p.active ? '' : ' — hoy NO la ve: no está como administrador'));
     });
-    lines.push('Nadie más la ve, aunque sea superadmin o analista.');
+    lines.push('Nadie más la ve, aunque sea superadmin o analista, salvo quien tenga ' + COSTS_ACCESS_FULL + ' (abajo). Solo ellos tres pueden excluir un viaje del ahorro.');
+    lines.push('');
+    lines.push('Ven TODO el dashboard de costos, solo para mirar («' + COSTS_ACCESS_FULL + '» en la tabla de accesos de MISC, menú 9):');
+    if (!r.costsFullView.length) lines.push('• (nadie)');
+    r.costsFullView.forEach(function(p) {
+      lines.push('• ' + (p.name ? p.name + ' (' + p.email + ')' : p.email) + (p.active ? '' : ' — hoy NO puede entrar: no está en USUARIOS'));
+    });
+    lines.push('Ven todas las unidades, la variación, el comparador de precios y la proyección; no excluyen viajes ni cambian la configuración.');
     lines.push('');
     lines.push('Superadmins (' + r.superAdmins.length + '):');
     if (!r.superAdmins.length) lines.push('• (ninguno)');
@@ -17328,7 +17374,8 @@ function invalidateBudgetUsageCache_(unidad) {
 // Pedido de Yurani: ciertos líderes ven el dashboard SOLO de su(s) unidad(es).
 //   - ANALYST y SUPERADMIN: todas las unidades (administran el sistema).
 //   - Personas de la tabla de accesos de MISC: solo las unidades asignadas;
-//     "TODAS" da acceso completo.
+//     "TODAS" da todas las unidades; "COMPLETO", además, la variación, el comparador
+//     de precios y la proyección, solo para mirar (#A113).
 //   - Cualquier otro usuario, incluidos los aprobadores que no estén en la
 //     tabla: sin acceso. Reemplaza la regla anterior "todo aprobador entra"
 //     (2026-05-11), que dejaba ver las cifras de todas las unidades.
@@ -17346,6 +17393,8 @@ var COSTS_ACCESS_HEADER_SEARCH_ROWS = 3;  // se buscan en las filas 1 a 3
 var COSTS_ACCESS_EMAIL_HEADER = 'DASHBOARD COSTOS · CORREO';
 var COSTS_ACCESS_UNIT_HEADER = 'DASHBOARD COSTOS · UNIDAD DE NEGOCIO';
 var COSTS_ACCESS_ALL_UNITS = 'TODAS';
+// #A113: todo el dashboard, como un administrador, solo para mirar (variación, comparador y proyección incluidos).
+var COSTS_ACCESS_FULL = 'COMPLETO';
 var COSTS_ACCESS_DENIED_MSG = 'Acceso no autorizado al dashboard de costos. Si lo necesitas, pídele al área de compras que te asigne tu unidad de negocio.';
 
 /** Columnas (0-based) de la tabla de accesos en la fila de encabezados; -1 si no están. */
@@ -17387,7 +17436,7 @@ function _csLocateAccessTable_(sheet) {
  * Lee la tabla de accesos (una vez por ejecución). Si no se puede leer, no da
  * acceso a nadie fuera de los administradores (falla cerrado).
  * @return {{found: boolean, headerRow: number, emailCol: number, unitCol: number,
- *   byEmail: Object<string, {all: boolean, units: Object<string, string>}>,
+ *   byEmail: Object<string, {all: boolean, full: boolean, units: Object<string, string>}>,
  *   entries: Array<{row: number, email: string, unit: string}>}}
  */
 var _CS_ACCESS_CACHE = null;
@@ -17403,6 +17452,7 @@ function _csLoadAccessTable_() {
       out.emailCol = loc.emailCol;
       out.unitCol = loc.unitCol;
       var allNorm = _csNormalize_(COSTS_ACCESS_ALL_UNITS);
+      var fullNorm = _csNormalize_(COSTS_ACCESS_FULL);
       var n = sheet.getLastRow() - loc.headerRow;
       var data = n > 0 ? sheet.getRange(loc.headerRow + 1, 1, n, sheet.getLastColumn()).getValues() : [];
       for (var r = 0; r < data.length; r++) {
@@ -17411,9 +17461,10 @@ function _csLoadAccessTable_() {
         if (!email && !unit) continue;
         out.entries.push({ row: loc.headerRow + 1 + r, email: email, unit: unit });
         if (!unit || email.indexOf('@') === -1) continue;
-        var acc = out.byEmail[email] || (out.byEmail[email] = { all: false, units: {} });
+        var acc = out.byEmail[email] || (out.byEmail[email] = { all: false, full: false, units: {} });
         var norm = _csNormalize_(unit);
-        if (norm === allNorm) acc.all = true;
+        if (norm === fullNorm) { acc.full = true; acc.all = true; }
+        else if (norm === allNorm) acc.all = true;
         else if (!acc.units[norm]) acc.units[norm] = unit;
       }
     }
@@ -17441,6 +17492,10 @@ function _csResolveAccess_(currentUserEmail) {
     return { canView: true, canConfig: superAdmin, email: email, role: superAdmin ? 'SUPERADMIN' : 'ANALYST', allUnits: true, units: [], unitLabels: [] };
   }
   var acc = _csLoadAccessTable_().byEmail[email];
+  // #A113: «COMPLETO» en la tabla: todo el dashboard, igual que un administrador, sin cambiar nada.
+  if (acc && acc.full) {
+    return { canView: true, canConfig: false, email: email, role: 'FULL_VIEWER', allUnits: true, units: [], unitLabels: [] };
+  }
   if (!acc || (!acc.all && Object.keys(acc.units).length === 0)) return none;
   var norms = acc.all ? [] : Object.keys(acc.units);
   return {
@@ -17512,7 +17567,7 @@ function prepararTablaAccesosDashboardCostos() {
 /**
  * Revisa la tabla de accesos: quién ve qué y posibles errores. No escribe nada.
  * @return {{found: boolean, emailCol: number, unitCol: number,
- *   people: Array<{email: string, name: string, all: boolean, units: string[], isAdmin: boolean}>, warnings: string[]}}
+ *   people: Array<{email: string, name: string, all: boolean, full: boolean, units: string[], isAdmin: boolean}>, warnings: string[]}}
  */
 function revisarAccesosDashboardCostos() {
   _CS_ACCESS_CACHE = null;
@@ -17522,6 +17577,7 @@ function revisarAccesosDashboardCostos() {
   var known = _csKnownUnits_();
   res.knownUnits = Object.keys(known).map(function(k) { return known[k]; }).sort(function(a, b) { return a.localeCompare(b, 'es'); });
   var allNorm = _csNormalize_(COSTS_ACCESS_ALL_UNITS);
+  var fullNorm = _csNormalize_(COSTS_ACCESS_FULL);
   var names = {};
   var usuarios = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
   if (usuarios && usuarios.getLastRow() > 1) {
@@ -17539,7 +17595,7 @@ function revisarAccesosDashboardCostos() {
     var norm = _csNormalize_(e.unit);
     if (seen[e.email + '|' + norm]) { res.warnings.push(where + 'fila repetida (' + e.email + ' · ' + e.unit + ').'); return; }
     seen[e.email + '|' + norm] = true;
-    if (norm !== allNorm && !known[norm]) {
+    if (norm !== allNorm && norm !== fullNorm && !known[norm]) {
       res.warnings.push(where + 'la unidad "' + e.unit + '" no coincide con ninguna unidad de negocio; ' + e.email + ' no verá datos de ella. Elíjala de la lista.');
     }
   });
@@ -17550,11 +17606,17 @@ function revisarAccesosDashboardCostos() {
       email: email,
       name: names[email] || '',
       all: acc.all,
+      full: acc.full,
       units: Object.keys(acc.units).map(function(k) { return acc.units[k]; }),
       isAdmin: isAdmin
     });
     if (!names[email]) res.warnings.push(email + ' no está registrado en USUARIOS: no podrá iniciar sesión en el dashboard.');
-    if (isAdmin) res.warnings.push(email + ' es analista o superadmin: ya ve todas las unidades, su fila no cambia nada.');
+    // #A113: a un analista, COMPLETO sí le cambia algo: le muestra la variación y el comparador de precios.
+    if (isAdmin && acc.full && !_canViewCostsVariance_(email)) {
+      res.warnings.push(email + ' es analista o superadmin y tiene ' + COSTS_ACCESS_FULL + ': también ve la variación cotizado vs facturado y el comparador de precios. Si no es lo que se quiere, borre esa fila.');
+    } else if (isAdmin) {
+      res.warnings.push(email + ' es analista o superadmin: ya ve todas las unidades, su fila no cambia nada.');
+    }
   });
   return res;
 }
@@ -17571,16 +17633,18 @@ function menuAccesosDashboardCostos() {
     var lines = [];
     lines.push((prep.created ? 'Encabezados creados en ' : 'Tabla en ') + where + '.');
     lines.push('Debajo, una fila por persona y unidad: el correo con el que entra al portal y la unidad de negocio escrita igual que en la lista del final (o TODAS).');
+    lines.push(COSTS_ACCESS_FULL + ' en vez de la unidad: ve todo el dashboard como un administrador (variación, comparador de precios, proyección y cambios), solo para mirar: no excluye viajes del ahorro ni cambia la configuración.');
     lines.push('');
     lines.push('Quién puede ver el dashboard de costos:');
     lines.push('• Analistas y superadmins: todas las unidades.');
     var viewers = rev.people.filter(function(pp) { return !pp.isAdmin; });
     if (viewers.length === 0) lines.push('• Nadie más por ahora.');
     viewers.forEach(function(pp) {
-      lines.push('• ' + (pp.name ? pp.name + ' (' + pp.email + ')' : pp.email) + ': ' + (pp.all ? 'TODAS' : pp.units.join(', ')));
+      lines.push('• ' + (pp.name ? pp.name + ' (' + pp.email + ')' : pp.email) + ': ' +
+        (pp.full ? COSTS_ACCESS_FULL + ' (todo, solo para mirar)' : pp.all ? 'TODAS' : pp.units.join(', ')));
     });
     lines.push('• Cualquier otra persona: sin acceso.');
-    lines.push('La vista "Variación cotizado vs facturado" solo la ven ' + _costsVarianceViewersLabel_() + '.');
+    lines.push('La variación cotizado vs facturado y el comparador de precios solo los ven ' + _costsReadersLabel_() + '. Excluir un viaje del ahorro, solo ' + _costsVarianceViewersLabel_() + '.');
     if (rev.warnings.length) {
       lines.push('');
       lines.push('Revisar (' + rev.warnings.length + '):');
@@ -17588,7 +17652,7 @@ function menuAccesosDashboardCostos() {
       if (rev.warnings.length > 12) lines.push('• … y ' + (rev.warnings.length - 12) + ' más.');
     }
     lines.push('');
-    lines.push('Unidades de negocio válidas: ' + [COSTS_ACCESS_ALL_UNITS].concat(rev.knownUnits).join(' · '));
+    lines.push('Unidades de negocio válidas: ' + [COSTS_ACCESS_FULL, COSTS_ACCESS_ALL_UNITS].concat(rev.knownUnits).join(' · '));
     ui.alert('Accesos al dashboard de costos', lines.join('\n'), ui.ButtonSet.OK);
   } catch (e) {
     console.error('menuAccesosDashboardCostos: ' + (e && e.stack ? e.stack : e));
@@ -17615,10 +17679,12 @@ function getCostsDashboard(filters, currentUserEmail, fresh) {
   data.meta.access = {
     canView: access.canView,
     canConfig: access.canConfig,
-    // Variación cotizado vs facturado (#A78): solo la lista fija de Code.gs.
-    canViewVariance: _canViewCostsVariance_(access.email),
+    // Variación cotizado vs facturado (#A78): la lista fija de Code.gs y quien tenga COMPLETO en MISC (#A113).
+    canViewVariance: _canReadCostsVariance_(access.email),
     // Comparador de precios (#A84): las mismas personas.
-    canViewPriceTracking: _canViewCostsVariance_(access.email),
+    canViewPriceTracking: _canReadCostsVariance_(access.email),
+    // Excluir un viaje del ahorro (#A110): solo COSTS_VARIANCE_ALLOWED; los de solo ver, no.
+    canExclude: _canViewCostsVariance_(access.email),
     scope: access.allUnits ? 'ALL' : 'UNITS',
     units: access.allUnits ? [] : access.unitLabels
   };
@@ -17706,8 +17772,8 @@ function resetCostsDashboardConfig(currentUserEmail) {
 function getCostsVarianceReport(filters, currentUserEmail, fresh) {
   filters = filters || {};
 
-  // Defensa en profundidad: dispatch ya lo valida (#A78).
-  if (!_canViewCostsVariance_(currentUserEmail)) {
+  // Defensa en profundidad: dispatch ya lo valida (#A78, #A113).
+  if (!_canReadCostsVariance_(currentUserEmail)) {
     throw new Error(_costsVarianceDeniedMsg_());
   }
   var access = _csResolveAccess_(currentUserEmail);
@@ -18366,8 +18432,8 @@ function _ptAggregate_(pairs) {
  * Solo lee: la pestaña del rastreo, su estado y la hoja de solicitudes.
  */
 function getPriceTracking(currentUserEmail, fresh) {
-  if (!_canViewCostsVariance_(currentUserEmail)) {
-    throw new Error('El comparador de precios está restringido a ' + _costsVarianceViewersLabel_() + '.');
+  if (!_canReadCostsVariance_(currentUserEmail)) {
+    throw new Error('El comparador de precios está restringido a ' + _costsReadersLabel_() + '.');
   }
   // Las búsquedas nuevas del rastreo (otro proyecto) cambian el número de filas de su pestaña.
   return _dashCached_(['priceTracking', _ptTrackerStamp_()], fresh, _ptBuildTracking_);
@@ -18655,8 +18721,8 @@ function _ptUserName_(email) {
  * pasajeros ni del solicitante.
  */
 function getPriceTrackingDetail(currentUserEmail, requestId, fresh) {
-  if (!_canViewCostsVariance_(currentUserEmail)) {
-    throw new Error('El comparador de precios está restringido a ' + _costsVarianceViewersLabel_() + '.');
+  if (!_canReadCostsVariance_(currentUserEmail)) {
+    throw new Error('El comparador de precios está restringido a ' + _costsReadersLabel_() + '.');
   }
   var id = String(requestId || '').trim();
   if (!id) throw new Error('Falta la solicitud.');
