@@ -43,11 +43,20 @@ No guarda nombres, cédulas ni correos. Tampoco busca:
 - viajes que ya salieron;
 - otros estados.
 
+Desde el 28-oct (#A115) cada tramo guarda además el **historial de precios de Google**: el precio
+más barato de esa búsqueda, día por día, unos 60 días atrás (`price_history`). El dashboard lo usa en
+**Mes a mes** para medir cuánto se movió el precio entre la solicitud y la compra, sin gastar
+búsquedas de más.
+
+**Seguimiento continuo** (Juan Camilo y David, 28-oct): el estudio del 7 al 21-oct se volvió
+permanente. No hay fecha de fin; `FIN_ESTUDIO` es opcional.
+
 **Cupo** (una consulta por tramo):
 - Solo ida: 1 consulta por momento. Ida y regreso: 2. Internacional de ida y regreso: 3.
-- Con dos momentos por solicitud son unas 4 consultas por viaje de ida y regreso: unas 100 a 120
-  en dos semanas, dentro de las 250 gratis del mes.
-- Nunca deja a la cuenta con menos de 15 búsquedas.
+- Con dos momentos por solicitud son unas 4 consultas por viaje de ida y regreso. El estudio gastó
+  124 en dos semanas: **unas 280 al mes**. El plan gratis da 250; el de 1.000 sobra.
+- Nunca deja a la cuenta con menos de 15 búsquedas: si se acaban, se detiene solo («SIN CUPO») y
+  sigue cuando se renueve el cupo o se suba de plan.
 - Tiene un tope de 40 consultas al día.
 
 ## Instalación (unos 15 minutos)
@@ -116,13 +125,14 @@ La clave queda solo en este proyecto: nunca se escribe en la hoja ni en el repos
 ### Paso 6. Activar el rastreo
 
 Elige **activarRastreo** en la lista de funciones y pulsa **Ejecutar**. Hace cuatro cosas:
-1. Fija el estudio: empieza hoy y termina en 14 días (propiedades `INICIO_ESTUDIO` y `FIN_ESTUDIO`).
+1. Fija el inicio (`INICIO_ESTUDIO`, hoy) si no estaba. No pone fecha de fin: el rastreo sigue hasta
+   que lo apagues (paso 7). Si había una `FIN_ESTUDIO` que ya pasó, la quita.
 2. Crea las dos pestañas ocultas en la base de datos.
 3. Instala el disparador cada 15 minutos.
 4. Hace la primera pasada: busca las solicitudes de la lista del paso 5.
 
-El registro termina con algo como `Rastreo activo cada 15 minutos, del 2026-10-07 al
-2026-10-21. Primera pasada: 6 búsqueda(s), estado ACTIVO.`
+El registro termina con algo como `Rastreo activo cada 15 minutos desde el 2026-10-07, sin fecha de
+fin. Primera pasada: 6 búsqueda(s), estado ACTIVO.`
 
 **Comprobar:** abre el dashboard de costos con tu cuenta. Al final aparece la sección
 **🔎 Comparador de precios de tiquetes** con estado *ACTIVO* y las solicitudes buscadas.
@@ -130,11 +140,24 @@ El registro termina con algo como `Rastreo activo cada 15 minutos, del 2026-10-0
 ### Paso 7. Apagarlo
 
 Elige **desactivarRastreo** y pulsa **Ejecutar**. Quita el disparador; lo buscado se conserva
-y el dashboard lo sigue mostrando. Para retomarlo, ejecuta **activarRastreo** otra vez (no
-cambia las fechas ya fijadas).
+y el dashboard lo sigue mostrando. Para retomarlo, ejecuta **activarRastreo** otra vez (conserva
+el inicio).
 
-Al pasar `FIN_ESTUDIO` deja de buscar solo, aunque el disparador siga instalado. Para
-alargar el estudio, cambia `FIN_ESTUDIO` en las propiedades (formato `AAAA-MM-DD`).
+Si se pone una `FIN_ESTUDIO` (formato `AAAA-MM-DD`), al pasar esa fecha deja de buscar solo,
+aunque el disparador siga instalado; `activarRastreo` la quita y vuelve a empezar.
+
+## Reactivar el rastreo con el historial (#A115, 28-oct)
+
+El estudio terminó el 21-oct («TERMINADO» en el dashboard). Para seguir:
+1. Abre el proyecto **Equitel · Rastreo de precios**, archivo **Rastreo**: borra todo, pega el
+   contenido nuevo de [Rastreo.gs](Rastreo.gs) y guarda (`Ctrl+S`). `Nucleo` no cambia.
+2. Elige **activarRastreo** y pulsa **Ejecutar**: quita la fecha de fin del 21-oct, reinstala el
+   disparador y hace la primera pasada. No pide permisos nuevos.
+3. En el dashboard de costos, el comparador dice *«✅ Funcionando · … · seguimiento continuo desde
+   el 7-oct»*.
+
+No repite ninguna búsqueda: las de antes se quedan como están (sin historial) y las nuevas lo traen.
+Cuando subas al plan de 1.000 búsquedas no hay que cambiar nada aquí.
 
 ## Actualizar el código (#A86: búsqueda por tramos)
 
@@ -155,7 +178,7 @@ Si el rastreo ya está instalado:
 | Propiedad | Por defecto | Qué hace |
 |---|---|---|
 | `INICIO_ESTUDIO` | el día de `activarRastreo` | Solo busca *al cotizar* si los costos se confirmaron desde esta fecha |
-| `FIN_ESTUDIO` | inicio + 14 días | Después de esta fecha no busca |
+| `FIN_ESTUDIO` | (vacía: sin fin) | Opcional: después de esta fecha no busca. `activarRastreo` quita una que ya pasó |
 | `DOS_NIVELES` | `compra` | `compra`, `cotizacion`, `ambos` o `no`: en ese momento busca también con el otro equipaje (sin maleta / con maleta de mano), para ver los dos precios de cada vuelo en el dashboard (#A97). Gasta 1 consulta más por tramo. Si la del otro equipaje quedó con más de 3 horas frente a la principal, la repite una vez para tener las dos del mismo momento (#A98) |
 | `VENDEDORES` | `no` | `compra`, `cotizacion` o `ambos`: además busca quién vende el vuelo de referencia de cada tramo (Aviatur, la aerolínea, otras agencias). Gasta 1 consulta más por tramo |
 | `MAX_POR_EJECUCION` | `8` | Búsquedas por pasada; lo demás queda para la siguiente |

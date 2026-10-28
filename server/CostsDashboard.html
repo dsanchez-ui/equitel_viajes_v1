@@ -415,6 +415,44 @@
       font-weight: 700;
     }
 
+    /* ===== PESTAÑAS (28-oct, David: «está demasiado largo») ===== */
+    /* Cada sección del dashboard es una pestaña; solo se dibuja la que se ve. */
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #e5e7eb;
+    }
+    .tab {
+      flex: 0 0 auto;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 999px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tab:hover { background: #f3f4f6; }
+    .tab.on { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .tab:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+    #dashboardScreen .view-section { margin-top: 4px; padding-top: 0; border-top: none; }
+    /* En celular la tarjeta de filtros pegada arriba ocupaba casi toda la pantalla, y los botones del
+       encabezado se salían por la derecha. */
+    @media (max-width: 760px) {
+      .filters-card { position: static; }
+      .header-actions { flex-wrap: wrap; }
+      .tab { padding: 6px 11px; font-size: 12.5px; }
+    }
+    /* ===== MES A MES (28-oct, pedido de Juan Camilo) ===== */
+    #momSection { display: none; }
+    table.variance.sa-table td.mom-avg, table.variance.sa-table th.mom-avg { background: #f9fafb; font-weight: 700; }
+    .mom-delta { display: block; font-size: 11px; font-weight: 600; margin-top: 2px; }
+
     /* ===== PRINT REPLACEMENT (imagen de chart para impresión) ===== */
     /* La img se inserta junto al canvas pero solo se ve al imprimir.
        Esto evita el bug de "expansion infinita" que pasaba al ocultar el
@@ -435,7 +473,7 @@
         page-break-inside: avoid;
         margin-bottom: 8px;
       }
-      .header-actions, .export-bar, #btnLogout, #configCard, #btnConfig {
+      .header-actions, .export-bar, #btnLogout, #configCard, #btnConfig, .tabs {
         display: none !important;
       }
       /* Quitar sticky en print — la card de filtros no debe quedar pegada
@@ -853,9 +891,10 @@
         <span id="fsUnit"></span>
         <span id="fsScope"></span>
       </div>
+      <div class="tabs" id="tabBar" role="tablist" aria-label="Secciones del dashboard"></div>
     </div>
 
-    <details class="pt-legend how-legend">
+    <details class="pt-legend how-legend" id="budgetHow">
       <summary>¿Cómo se calcula? Gasto, presupuesto y disponible</summary>
       <dl>
         <dt>Qué se cuenta</dt>
@@ -885,7 +924,7 @@
     <!-- ============================================================== -->
     <!-- VISTA ANUAL                                                     -->
     <!-- ============================================================== -->
-    <div class="view-section">
+    <div class="view-section" id="annualSection">
       <div class="view-title">
         📅 Vista Anual — Acumulado <span id="yearLabel" style="color: var(--brand);"></span>
         <span class="view-subtitle" id="annualSubtitle">(enero a diciembre)</span>
@@ -1047,7 +1086,7 @@
     <!-- ============================================================== -->
     <!-- VISTA MENSUAL                                                   -->
     <!-- ============================================================== -->
-    <div class="view-section">
+    <div class="view-section" id="monthlySection">
       <div class="view-title">
         📆 Vista Mensual —
         <select id="monthlySelector"></select>
@@ -1115,6 +1154,71 @@
         </div>
         <div id="monthlyTopEmpty" class="empty-state" style="display: none;">No hay viajes con costo en este mes con los filtros seleccionados.</div>
         <p class="top-note">El costo de cada viaje se reparte en partes iguales entre sus pasajeros. Respeta los filtros de arriba.</p>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MES A MES (28-oct, pedido de Juan Camilo): este mes frente a los    -->
+    <!-- anteriores. Sale de los datos del comparador, sin llamadas aparte.  -->
+    <!-- ============================================================== -->
+    <div id="momSection" class="view-section">
+      <div class="view-title">
+        🗓️ Mes a mes
+        <span class="badge-admin">Acceso restringido</span>
+        <span class="view-subtitle">este mes frente a los anteriores: compras, tarifa del manual, anticipación y Google</span>
+      </div>
+
+      <div class="sa-controls">
+        <label>Hasta <select id="momTo"></select></label>
+        <label>Meses
+          <select id="momSpan">
+            <option value="3" selected>Los últimos 3</option>
+            <option value="6">Los últimos 6</option>
+            <option value="all">Desde abril de 2026</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="pt-headline" id="momHeadline">Cargando…</div>
+
+      <details class="pt-legend">
+        <summary>¿Cómo se calcula?</summary>
+        <dl>
+          <dt>Qué se cuenta</dt>
+          <dd>Los viajes en avión comprados (reservados o procesados), en el mes de la compra. Respeta la empresa y la unidad de arriba.</dd>
+          <dt>Gasto y costo por tiquete</dt>
+          <dd>Lo pagado al comprar o, si no se registró, lo cotizado. Tiquetes = pasajeros × 2 si hay regreso (× 1 si es solo ida). Los
+            costos menores a $10.000 no cuentan: no son reales.</dd>
+          <dt>Tarifa del manual</dt>
+          <dd>La que registró el área de compras frente a la que corresponde por las noches del viaje: TIPO 1 de 0 a 1 noche, TIPO 2 de 2 a 5 y
+            TIPO 3 de 6 o más. «Superior» = una tarifa más alta que la del manual, igual que en el informe mensual. Se registra desde el 8 de
+            octubre: antes, la fila sale vacía.</dd>
+          <dt>Comprados a tiempo</dt>
+          <dd>8 días o más entre la compra y el vuelo (30 si es internacional), como en el informe mensual. No cuentan las modificaciones ni lo
+            registrado después de comprar. El informe mide además la anticipación de la solicitud, por mes de la solicitud.</dd>
+          <dt>Frente a Google</dt>
+          <dd>Los viajes ya comprados con comparación exacta, igual que el comparador por defecto: lo pagado (o cotizado) menos lo más barato
+            en Google al comprar, sumado viaje por viaje (los que Google tenía más caros restan). Los excluidos a mano no cuentan.</dd>
+          <dt>Precio en Google mientras se gestionaba</dt>
+          <dd>Del historial de precios que da Google en cada búsqueda (se guarda desde el 28 de octubre): lo más barato para ese viaje el día de
+            la solicitud frente al día de la compra. Muestra cuánto se movió el mercado mientras se aprobaba y compraba; es lo más barato de
+            Google (cualquier aerolínea), no el vuelo comprado.</dd>
+          <dt>Promedio</dt>
+          <dd>Para conteos y pesos, el total de los meses de la tabla ÷ el número de meses. Para % y costos por tiquete, el total de los meses
+            ÷ su base (así un mes con pocos viajes no pesa igual que uno con muchos). El mes en curso cuenta con lo que lleva hasta hoy.</dd>
+        </dl>
+      </details>
+
+      <div class="kpi-grid" id="momKpis"></div>
+
+      <div class="card">
+        <h2>Mes por mes <span style="font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--muted); font-size: 11px;" id="momScope"></span></h2>
+        <div class="variance-table-wrap" style="max-height: none;">
+          <table class="variance sa-table" id="momTable"></table>
+        </div>
+      </div>
+      <div class="export-bar" style="justify-content: flex-start; margin-top: 0;">
+        <button id="btnExportMomCsv" class="btn-secondary">📥 Exportar mes a mes (CSV)</button>
       </div>
     </div>
 
@@ -1519,8 +1623,8 @@
       <div id="loadInfo" style="margin-top: 4px;"></div>
     </div>
 
-    <!-- EXPORT BUTTONS -->
-    <div class="export-bar">
+    <!-- EXPORT BUTTONS (las vistas de presupuesto: Año, Periodo y Mes) -->
+    <div class="export-bar" id="budgetExport">
       <button id="btnExportCSV" class="btn-secondary">📥 Exportar CSV</button>
       <button id="btnExportPDF" class="btn-secondary">🖨️ Exportar PDF (imprimir)</button>
     </div>
@@ -1633,6 +1737,7 @@ function showDashboard() {
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('dashboardScreen').style.display = '';
   document.getElementById('loggedEmail').textContent = session.email;
+  applyTabs();
 }
 
 // =====================================================================
@@ -1684,6 +1789,11 @@ function handleLogin() {
 
 function handleLogout() {
   clearSession();
+  // Lo que cargó la persona anterior no queda en memoria ni en las pestañas.
+  varianceData = null; priceData = null; changesData = null;
+  tabAvail = { anual: true, periodo: true, mes: true };
+  tabDirty = {};
+  tabChosen = false;
   document.getElementById('loginEmail').value = '';
   document.getElementById('loginPin').value = '';
   showLogin();
@@ -1738,6 +1848,99 @@ function initFilters() {
     if (m === selectedMonth) optM.selected = true;
     mSel.appendChild(optM);
   }
+}
+
+// =====================================================================
+// PESTAÑAS (28-oct, David: «que hayan pestañas al principio del dashboard»)
+// =====================================================================
+// Cada sección es una pestaña. Los datos se siguen pidiendo todos a la vez (#A89) para
+// que cambiar de pestaña no espere al servidor; lo que se ahorra es dibujar: solo se
+// dibuja la pestaña que se ve, y las demás quedan marcadas para cuando se abran. Las
+// restringidas aparecen cuando el servidor las entrega (a quien no las ve, nunca).
+var TABS = [
+  { id: 'anual', label: '📅 Año', els: ['budgetHow', 'annualSection', 'budgetExport'] },
+  { id: 'periodo', label: '🎯 Periodo actual', els: ['budgetHow', 'periodSection', 'budgetExport'] },
+  { id: 'mes', label: '📆 Mes', els: ['budgetHow', 'monthlySection', 'budgetExport'] },
+  { id: 'mesames', label: '🗓️ Mes a mes', els: ['momSection'] },
+  { id: 'variacion', label: '📊 Cotizado vs facturado', els: ['varianceSection'] },
+  { id: 'cambios', label: '🔄 Cambios de viaje', els: ['changesSection'] },
+  { id: 'comparador', label: '🔎 Comparador de precios', els: ['priceSection'] },
+  { id: 'proyeccion', label: '📈 Proyección de ahorro', els: ['savingsSection'] }
+];
+var TAB_RENDER = {
+  anual: function() { if (filteredData) renderAnnualView(filteredData); },
+  periodo: function() { if (filteredData) renderPeriodView(filteredData); },
+  mes: function() { if (filteredData) renderMonthlyView(filteredData, selectedMonth); },
+  mesames: function() { if (priceData && priceData.analysis) renderMonthOverMonth(); },
+  variacion: function() { if (varianceData) renderVarianceView(); },
+  cambios: function() { if (changesData) renderTripChanges(); },
+  comparador: function() { if (priceData) renderPriceTracking(); },
+  proyeccion: function() { if (priceData && priceData.analysis) renderSavings(); }
+};
+var TAB_KEY = '_costsDashTab';
+var tabAvail = { anual: true, periodo: true, mes: true };
+var tabDirty = {};
+var tabActive = 'anual';
+var tabChosen = false; // la persona ya eligió una pestaña en esta carga: no se le cambia sola
+var tabWanted = (function() { try { return sessionStorage.getItem(TAB_KEY) || 'anual'; } catch (e) { return 'anual'; } })();
+var tabLabels = {};
+
+function tabDef(id) { return TABS.filter(function(t) { return t.id === id; })[0]; }
+
+/** Una sección está disponible (su dato llegó y el servidor la deja ver) o no. */
+function setTabAvailable(id, on) {
+  on = !!on;
+  if (!!tabAvail[id] === on) return;
+  tabAvail[id] = on;
+  // La pestaña de la última visita aparece cuando llega su dato, si la persona no ha elegido otra.
+  if (on && id === tabWanted && !tabChosen) tabActive = id;
+  if (!on && tabActive === id) tabActive = 'anual';
+  applyTabs();
+}
+
+/** Marca secciones para volver a dibujar; la que se ve se dibuja ya. */
+function tabsRefresh(ids) {
+  ids.forEach(function(id) { tabDirty[id] = true; });
+  renderActiveTab();
+}
+
+function renderActiveTab() {
+  var id = tabActive;
+  if (!tabDirty[id] || !tabAvail[id]) return;
+  tabDirty[id] = false;
+  TAB_RENDER[id]();
+}
+
+/** Botones de las pestañas disponibles y la sección de la activa. */
+function applyTabs() {
+  if (!tabAvail[tabActive]) tabActive = 'anual';
+  var bar = document.getElementById('tabBar');
+  bar.innerHTML = TABS.filter(function(t) { return tabAvail[t.id]; }).map(function(t) {
+    var on = t.id === tabActive;
+    return '<button type="button" class="tab' + (on ? ' on' : '') + '" role="tab" aria-selected="' + on + '" data-tab="' + t.id + '">' +
+      escHtml(tabLabels[t.id] || t.label) + '</button>';
+  }).join('');
+  var show = {};
+  tabDef(tabActive).els.forEach(function(id) { show[id] = true; });
+  TABS.forEach(function(t) {
+    t.els.forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = show[id] ? 'block' : 'none';
+    });
+  });
+  renderActiveTab();
+}
+
+function showTab(id) {
+  if (!tabAvail[id]) return;
+  tabChosen = true;
+  tabWanted = id;
+  try { sessionStorage.setItem(TAB_KEY, id); } catch (e) {}
+  if (id === tabActive) return;
+  tabActive = id;
+  applyTabs();
+  var bar = document.getElementById('tabBar');
+  if (bar && bar.getBoundingClientRect().top < 0) window.scrollTo(0, 0);
 }
 
 // =====================================================================
@@ -1807,16 +2010,15 @@ function loadDashboard(fresh) {
       var acc = (fullYearData.meta && fullYearData.meta.access) || {};
       if (acc.canViewVariance !== true) {
         varianceData = null;
-        document.getElementById('varianceSection').style.display = 'none';
-      } else if (varianceData) {
-        renderVarianceView();
+        setTabAvailable('variacion', false);
       }
       if (acc.canViewPriceTracking !== true) {
         priceData = null;
-        document.getElementById('priceSection').style.display = 'none';
-        document.getElementById('savingsSection').style.display = 'none';
+        setTabAvailable('comparador', false);
+        setTabAvailable('proyeccion', false);
+        setTabAvailable('mesames', false);
       } else if (priceData && ptCanExclude()) {
-        renderPriceTable(); // #A113: el comparador pudo llegar antes y sin el botón «Excluir del ahorro»
+        tabsRefresh(['comparador']); // #A113: el comparador pudo llegar antes y sin el botón «Excluir del ahorro»
       }
     })
     .withFailureHandler(function(err) {
@@ -1850,15 +2052,22 @@ function refreshView() {
   if (!fullYearData) return;
   document.getElementById('yearLabel').textContent = fullYearData.meta.year;
   filteredData = applyClientFilters(fullYearData);
-  renderAnnualView(filteredData);
-  renderPeriodView(filteredData);
-  renderMonthlyView(filteredData, selectedMonth);
   renderMeta();
   renderFilterSummary();
-  // Variance: si ya hay datos cargados, refrescar con los nuevos filtros client-side.
-  if (varianceData) renderVarianceView();
-  if (priceData && priceData.analysis) renderSavings();
-  if (changesData) renderTripChanges();
+  // El periodo (trimestre, bimestre…): su nombre va en la pestaña y en «¿Cómo se calcula?». Si es el año
+  // completo, repetiría la vista anual y no se muestra.
+  var pm = (fullYearData.meta && fullYearData.meta.budgetPeriodMonths) || 2;
+  var bounds = getCurrentPeriodBounds(pm);
+  tabLabels.periodo = '🎯 Periodo: ' + (bounds.periodMonths === 3 ? bounds.label : bounds.periodMonths === 1 ? MONTHS[bounds.fromMonth - 1]
+    : MONTHS[bounds.fromMonth - 1] + '–' + MONTHS[bounds.toMonth - 1]);
+  Array.prototype.forEach.call(document.querySelectorAll('.how-period'), function(el) {
+    el.textContent = bounds.periodMonths === 1 ? '1 mes' : bounds.periodMonths + ' meses';
+  });
+  if (bounds.periodMonths === 12 && charts.periodDonut) { charts.periodDonut.destroy(); charts.periodDonut = null; }
+  setTabAvailable('periodo', bounds.periodMonths !== 12);
+  applyTabs();
+  // Todo lo que depende de los filtros de arriba: se dibuja la pestaña que se ve; las demás, al abrirlas.
+  tabsRefresh(['anual', 'periodo', 'mes', 'mesames', 'variacion', 'cambios', 'proyeccion']);
 }
 
 /**
@@ -2609,17 +2818,8 @@ function computePeriodData(filtered, bounds) {
 function renderPeriodView(data) {
   if (!fullYearData) return;
   var pm = (fullYearData.meta && fullYearData.meta.budgetPeriodMonths) || 2;
-  var section = document.getElementById('periodSection');
-  // Si el periodo es anual (12), esta sección duplicaría la vista anual.
-  // Ocultar para evitar redundancia visual. Destruir chart previo si existe
-  // para evitar leak cuando alguien cambia el config a 12 en runtime.
-  if (pm === 12) {
-    if (section) section.style.display = 'none';
-    if (charts.periodDonut) { charts.periodDonut.destroy(); charts.periodDonut = null; }
-    return;
-  } else {
-    if (section) section.style.display = '';
-  }
+  // Si el periodo es anual (12), duplicaría la vista anual: su pestaña no aparece (refreshView).
+  if (pm === 12) return;
   var bounds = getCurrentPeriodBounds(pm);
   var year = fullYearData.meta.year;
   document.getElementById('periodLabel').textContent = bounds.label + ' ' + year;
@@ -2632,9 +2832,6 @@ function renderPeriodView(data) {
     subtitleText = bounds.periodMonths + ' meses';
   }
   document.getElementById('periodSubtitle').textContent = '(' + subtitleText + ')';
-  Array.prototype.forEach.call(document.querySelectorAll('.how-period'), function(el) {
-    el.textContent = bounds.periodMonths === 1 ? '1 mes' : bounds.periodMonths + ' meses';
-  });
 
   var pData = computePeriodData(data, bounds);
   renderKpis('periodKpis', pData, bounds.label + ' ' + year);
@@ -2935,8 +3132,8 @@ function loadTripChanges(fresh) {
       }
       changesData = response.data;
       noteLoad('changes', t0, changesData);
-      document.getElementById('changesSection').style.display = 'block';
-      renderTripChanges();
+      setTabAvailable('cambios', true);
+      tabsRefresh(['cambios']);
     })
     .withFailureHandler(function(err) { console.warn('Cambios de viaje:', (err && err.message) || 'error de conexión'); })
     .costsDashboard_getTripChanges({ userEmail: session.email, sessionToken: session.token, fresh: fresh === true });
@@ -3014,7 +3211,7 @@ function loadVarianceReport(fresh) {
         var errMsg = (response && response.error) || 'No se pudo cargar el reporte de variación.';
         // Si es restricción de acceso, ocultar sin alarmar.
         if (errMsg.indexOf('restring') !== -1 || errMsg.indexOf('admin') !== -1) {
-          document.getElementById('varianceSection').style.display = 'none';
+          setTabAvailable('variacion', false);
           return;
         }
         console.warn('Variance report error:', errMsg);
@@ -3022,9 +3219,8 @@ function loadVarianceReport(fresh) {
       }
       varianceData = response.data;
       noteLoad('variance', t0, varianceData);
-      document.getElementById('varianceSection').style.display = 'block';
-      // Los filtros de empresa y unidad salen de los datos generales; si aún no llegan, se pinta al llegar.
-      if (fullYearData) renderVarianceView();
+      setTabAvailable('variacion', true);
+      tabsRefresh(['variacion']);
     })
     .withFailureHandler(function(err) {
       var msg = (err && err.message) || 'Error de conexión.';
@@ -3336,7 +3532,7 @@ var PT_STATUS = { APROBADO: 'Por comprar', PENDIENTE_APROBACION: 'Esperando apro
 var PT_MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 var PT_STATES = {
   'ACTIVO': '✅ Funcionando',
-  'TERMINADO': '🏁 Estudio terminado',
+  'TERMINADO': '🏁 Rastreo detenido: llegó a su fecha de fin',
   'SIN CONFIGURAR': '⚠️ Falta configurar el proyecto aparte',
   'CLAVE INVALIDA': '⚠️ La clave de SerpApi no es válida',
   'SIN CUPO': '⏸️ Sin búsquedas disponibles en SerpApi',
@@ -3414,10 +3610,10 @@ function loadPriceTracking(fresh) {
       if (!response || !response.success) {
         var errMsg = (response && response.error) || 'No se pudo cargar el comparador de precios.';
         if (errMsg.indexOf('restring') !== -1 || errMsg.indexOf('admin') !== -1) {
-          document.getElementById('priceSection').style.display = 'none';
+          setTabAvailable('comparador', false);
           return;
         }
-        document.getElementById('priceSection').style.display = 'block';
+        setTabAvailable('comparador', true);
         var h = document.getElementById('ptHealth');
         h.className = 'pt-health warn';
         h.textContent = 'No se pudo cargar el comparador de precios: ' + errMsg;
@@ -3427,15 +3623,13 @@ function loadPriceTracking(fresh) {
       noteLoad('price', t0, priceData);
       ptDetails = {};
       ptOpen = {}; // el detalle se vuelve a pedir al abrirlo (antes quedaba en «Cargando…»)
-      document.getElementById('priceSection').style.display = 'block';
-      renderPriceTracking();
-      if (priceData.analysis) {
-        document.getElementById('savingsSection').style.display = 'block';
-        renderSavings();
-      }
+      setTabAvailable('comparador', true);
+      setTabAvailable('proyeccion', !!priceData.analysis);
+      setTabAvailable('mesames', !!priceData.analysis);
+      tabsRefresh(['comparador', 'proyeccion', 'mesames']);
     })
     .withFailureHandler(function(err) {
-      document.getElementById('priceSection').style.display = 'block';
+      setTabAvailable('comparador', true);
       var h = document.getElementById('ptHealth');
       h.className = 'pt-health warn';
       h.textContent = 'No se pudo cargar el comparador de precios: ' + ((err && err.message) || 'error de conexión') + '.';
@@ -3458,7 +3652,8 @@ function _ptRenderHealth(meta) {
   var partes = [late ? '⚠️ No ha corrido en más de 45 minutos: revise el disparador del proyecto aparte' : (PT_STATES[estado] || estado)];
   if (estado === 'ACTIVO' && !late) partes.push('revisa cada 15 minutos');
   if (last) partes.push('última revisión ' + ptAgo(last));
-  if (st['INICIO ESTUDIO']) partes.push(st['FIN ESTUDIO'] ? 'estudio del ' + ptDay(st['INICIO ESTUDIO']) + ' al ' + ptDay(st['FIN ESTUDIO']) : 'estudio desde el ' + ptDay(st['INICIO ESTUDIO']));
+  // Desde el 28-oct el rastreo sigue sin fecha de fin (antes, el estudio del 7 al 21-oct).
+  if (st['INICIO ESTUDIO']) partes.push(st['FIN ESTUDIO'] ? 'rastreo del ' + ptDay(st['INICIO ESTUDIO']) + ' al ' + ptDay(st['FIN ESTUDIO']) : 'seguimiento continuo desde el ' + ptDay(st['INICIO ESTUDIO']));
   partes.push(ptPlural(meta.searches, 'búsqueda hecha', 'búsquedas hechas'));
   if (st['QUEDAN EN SERPAPI'] !== '' && st['QUEDAN EN SERPAPI'] !== undefined) partes.push('quedan ' + st['QUEDAN EN SERPAPI'] + ' este mes');
   var text = partes.join(' · ');
@@ -4186,7 +4381,16 @@ function _ptReadingHtml(it, r, snap, ida, reg, rt) {
   if (dias !== null && dias >= 0 && dias < minimo) {
     lines.push('<b>Anticipación:</b> se buscó ' + ptPlural(dias, 'día', 'días') + ' antes del viaje (la política pide ' + minimo + '); con poca anticipación los precios suben.');
   }
-  // 6. Qué tan comparable.
+  // 6. Cómo se movió el precio en Google mientras se gestionaba (28-oct, del historial de Google de esta búsqueda).
+  var pr = snap.moment === 'COMPRA' ? it.priceRise : null;
+  if (pr && pr.atRequest > 0) {
+    var dr = pr.atBuy - pr.atRequest;
+    lines.push('<b>Precio en Google mientras se gestionaba:</b> lo más barato para este viaje era ' + fmtMoney(pr.atRequest) + ' el ' + escHtml(ptDayLong(pr.fromDay)) +
+      ' (la solicitud) y ' + fmtMoney(pr.atBuy) + ' el ' + escHtml(ptDayLong(pr.buyDay)) + ' (la compra): ' +
+      (Math.abs(dr) < PT_SAME ? 'igual' : (dr > 0 ? 'subió ' : 'bajó ') + fmtMoney(Math.abs(dr)) + ' (' + ptPctText(dr / pr.atRequest * 100) + ')') +
+      ' en ' + ptPlural(pr.days, 'día', 'días') + '. Es lo más barato de Google, no necesariamente el vuelo comprado.');
+  }
+  // 7. Qué tan comparable.
   var f = it.fare || {};
   if (f.quality) lines.push(ptQualityHtml(f) + ' <span class="pt-muted">' + escHtml(f.qualityReason || '') + '</span>');
   if (!lines.length) return '';
@@ -4398,7 +4602,11 @@ function saTrips() {
       modCost: r[ix.cambioConCosto] === 1, multi: r[ix.multidestino] === 1, quoted: r[ix.cotizadoTiquetes] || 0,
       invoiced: r[ix.facturado] || 0, lead: r[ix.anticipacion], channel: r[ix.canal] || '',
       company: r[ix.empresa] >= 0 ? a.companies[r[ix.empresa]] : '', unit: r[ix.unidad] >= 0 ? a.units[r[ix.unidad]] : '',
-      tipo: ix.tarifa === undefined ? 0 : (r[ix.tarifa] || 0) // #A97: TIPO del manual por noches (0 = sin dato)
+      tipo: ix.tarifa === undefined ? 0 : (r[ix.tarifa] || 0), // #A97: TIPO del manual por noches (0 = sin dato)
+      // «Mes a mes» (28-oct): tarifa comprada (0 = sin registrar), lo pagado y si se compró a tiempo (1 / 0 / null).
+      fareBought: ix.tarifaComprada === undefined ? null : (r[ix.tarifaComprada] || 0),
+      paid: ix.pagadoTiquetes === undefined ? 0 : (r[ix.pagadoTiquetes] || 0),
+      onTime: ix.aTiempo === undefined ? null : r[ix.aTiempo]
     };
   }).filter(function(t) {
     return (!company || norm(t.company) === company) && (!unit || norm(t.unit) === unit);
@@ -4996,6 +5204,269 @@ function exportSavingsCsv() {
   setTimeout(function() { URL.revokeObjectURL(a.href); a.remove(); }, 500);
 }
 
+// =====================================================================
+// MES A MES (28-oct, pedido de Juan Camilo: «comparemos este mes con el mes pasado,
+// con el mes antepasado y cuánto fue el promedio»). Sale de la tabla del análisis y de
+// los viajes del comparador que ya llegaron: ninguna llamada aparte al servidor. Las
+// reglas son las del informe mensual (#A101) y las del comparador por defecto (#A104).
+// =====================================================================
+var MOM_NOW = (function() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2); })();
+
+/** Meses desde abril de 2026 hasta el mes en curso. */
+function momAllMonths() {
+  var out = [];
+  for (var m = SA_START; m <= MOM_NOW && out.length < 120; m = momAddMonth(m, 1)) out.push(m);
+  return out;
+}
+function momAddMonth(ym, n) {
+  var y = +ym.slice(0, 4), mo = +ym.slice(5, 7) - 1 + n;
+  y += Math.floor(mo / 12);
+  mo = ((mo % 12) + 12) % 12;
+  return y + '-' + ('0' + (mo + 1)).slice(-2);
+}
+
+/** Viajes del comparador con los filtros de empresa y unidad de arriba. */
+function momItems() {
+  var norm = function(x) { return String(x || '').toLowerCase().trim(); };
+  var company = norm((document.getElementById('f_company') || {}).value);
+  var unit = norm((document.getElementById('f_unit') || {}).value);
+  return ((priceData && priceData.items) || []).filter(function(it) {
+    return (!company || norm(it.company) === company) && (!unit || norm(it.unit) === unit);
+  });
+}
+
+function momAcc() {
+  return { flights: 0, tickets: 0, spend: 0, ticketsCost: 0, spend1: 0, tickets1: 0, spend23: 0, tickets23: 0,
+    nFare: 0, superior: 0, n1: 0, n1basic: 0, nOT: 0, onTime: 0, leads: [],
+    gN: 0, gBase: 0, gMarket: 0, sN: 0, sBase: 0, sMarket: 0, rN: 0, rFrom: 0, rBuy: 0, rPcts: [] };
+}
+
+/** Acumulados por mes (de compra) y de todos los meses juntos. */
+function momCompute(months, trips, items) {
+  var by = {};
+  months.forEach(function(m) { by[m] = momAcc(); });
+  trips.forEach(function(t) {
+    var a = by[t.month];
+    if (!a || t.st !== 'C' || !t.flight) return;
+    a.flights++;
+    var tk = saTickets(t.pax, t.rt);
+    a.tickets += tk;
+    var cost = t.paid >= SA_MIN_COST ? t.paid : t.quoted;
+    if (cost >= SA_MIN_COST) {
+      a.spend += cost; a.ticketsCost += tk;
+      if (t.tipo === 1) { a.spend1 += cost; a.tickets1 += tk; } else if (t.tipo >= 2) { a.spend23 += cost; a.tickets23 += tk; }
+    }
+    // Tarifa: la comprada frente a la del manual por noches; «superior» como en el informe mensual.
+    if (t.fareBought) {
+      a.nFare++;
+      if (t.fareBought > t.tipo) a.superior++;
+      if (t.tipo === 1) { a.n1++; if (t.fareBought === 1) a.n1basic++; }
+    }
+    if (t.onTime === 0 || t.onTime === 1) { a.nOT++; a.onTime += t.onTime; }
+    if (typeof t.lead === 'number' && t.lead >= 0) a.leads.push(t.lead);
+  });
+  items.forEach(function(it) {
+    var a = by[it.purchaseMonth];
+    if (!a || it.excluded || !ptIsPurchased(it)) return;
+    var b = it.base || it.quoted;
+    // Frente a Google: ya comprado y comparación exacta, como el comparador por defecto (#A104).
+    if (it.fare && it.fare.quality === 'exacta' && b && it.market) {
+      a.gN++; a.gBase += b; a.gMarket += it.market;
+      if (it.sameAirline) { a.sN++; a.sBase += b; a.sMarket += it.sameAirline; }
+    }
+    var r = it.priceRise;
+    if (r && r.atRequest > 0 && r.atBuy > 0) { a.rN++; a.rFrom += r.atRequest; a.rBuy += r.atBuy; a.rPcts.push((r.atBuy - r.atRequest) / r.atRequest); }
+  });
+  var total = momAcc();
+  months.forEach(function(m) {
+    var a = by[m];
+    Object.keys(total).forEach(function(k) { total[k] = Array.isArray(total[k]) ? total[k].concat(a[k]) : total[k] + a[k]; });
+  });
+  return { by: by, total: total };
+}
+
+/** Cifras de un mes (k = 1) o el promedio de k meses: conteos y pesos ÷ k; % y por tiquete sobre su base. */
+function momView(a, k) {
+  var div = function(x, y) { return y > 0 ? x / y : null; };
+  return {
+    flights: a.flights / k, tickets: a.tickets / k, spend: a.spend / k,
+    perTicket: div(a.spend, a.ticketsCost), perTicket1: div(a.spend1, a.tickets1), perTicket23: div(a.spend23, a.tickets23),
+    nFare: a.nFare / k, inManual: a.nFare ? 1 - a.superior / a.nFare : null, superior: a.superior / k,
+    tipo1Basic: div(a.n1basic, a.n1),
+    onTime: div(a.onTime, a.nOT), lead: saStat(a.leads, 'median'),
+    gN: a.gN / k, gBase: a.gN ? a.gBase / k : null, gMarket: a.gN ? a.gMarket / k : null,
+    gDiff: a.gN ? (a.gBase - a.gMarket) / k : null, gPct: div(a.gBase - a.gMarket, a.gBase),
+    sN: a.sN / k, sDiff: a.sN ? (a.sBase - a.sMarket) / k : null, sPct: div(a.sBase - a.sMarket, a.sBase),
+    rN: a.rN / k, rPct: saStat(a.rPcts, 'median'), rDiff: a.rN ? (a.rBuy - a.rFrom) / k : null
+  };
+}
+
+/** Filas de la tabla: [grupo] o [etiqueta, campo, tipo]. */
+var MOM_ROWS = [
+  ['g', 'Compras de tiquetes (por mes de compra)'],
+  ['Viajes en avión comprados', 'flights', 'count'],
+  ['Tiquetes', 'tickets', 'count'],
+  ['Gasto en tiquetes (lo pagado o cotizado)', 'spend', 'big'],
+  ['Costo promedio por tiquete', 'perTicket', 'money'],
+  ['Por tiquete, viajes de 0 a 1 noche (TIPO 1)', 'perTicket1', 'money'],
+  ['Por tiquete, viajes de 2 noches o más', 'perTicket23', 'money'],
+  ['g', 'Tarifa del manual (se registra desde el 8-oct)'],
+  ['Compras con la tarifa registrada', 'nFare', 'count'],
+  ['En la tarifa del manual o una menor', 'inManual', 'pct'],
+  ['Con una tarifa superior', 'superior', 'count'],
+  ['Viajes de 0 a 1 noche comprados en TIPO 1', 'tipo1Basic', 'pct'],
+  ['g', 'Anticipación de la compra'],
+  ['Comprados a tiempo (8 días; 30 si es internacional)', 'onTime', 'pct'],
+  ['Días típicos entre la compra y el vuelo', 'lead', 'days'],
+  ['g', 'Frente a Google (ya comprados, comparación exacta)'],
+  ['Viajes comparados', 'gN', 'count'],
+  ['Lo pagado (o cotizado)', 'gBase', 'big'],
+  ['Lo más barato en Google', 'gMarket', 'big'],
+  ['Diferencia (lo pagado − Google)', 'gDiff', 'diff', 'gPct'],
+  ['Con la misma aerolínea', 'sDiff', 'diff', 'sPct'],
+  ['g', 'Precio en Google mientras se gestionaba (desde el 28-oct)'],
+  ['Viajes con dato', 'rN', 'count'],
+  ['Cuánto cambió, típico (de la solicitud a la compra)', 'rPct', 'rise'],
+  ['Lo que cambió, sumado (pesos)', 'rDiff', 'riseMoney']
+];
+
+/** Celda de la tabla. avg = la columna del promedio (conteos con un decimal). */
+function momCell(v, kind, avg, pct) {
+  if (v === null || v === undefined || (typeof v === 'number' && isNaN(v))) return '—';
+  if (kind === 'count') return avg ? saNum(v, 1) : String(Math.round(v));
+  if (kind === 'big') return saM(v);
+  if (kind === 'money') return fmtMoney(Math.round(v));
+  if (kind === 'pct') return saPct(v);
+  if (kind === 'days') return (Math.round(v * 10) / 10).toString().replace('.', ',') + ' días';
+  if (kind === 'diff') {
+    if (Math.abs(v) < PT_SAME) return 'Igual';
+    return '<span class="' + (v > 0 ? 'sa-neg' : 'sa-pos') + '">' + saM(Math.abs(v)) + (v > 0 ? ' más caro' : ' más barato') + '</span>' +
+      (pct !== null && pct !== undefined ? '<span class="mom-delta">' + ptPctText(pct * 100) + ' de lo pagado</span>' : '');
+  }
+  if (kind === 'rise') return Math.abs(v) < 0.005 ? 'Igual' : '<span class="' + (v > 0 ? 'sa-neg' : 'sa-pos') + '">' + (v > 0 ? 'subió ' : 'bajó ') + ptPctText(v * 100) + '</span>';
+  if (kind === 'riseMoney') return Math.abs(v) < PT_SAME ? 'Igual' : '<span class="' + (v > 0 ? 'sa-neg' : 'sa-pos') + '">' + (v > 0 ? 'subió ' : 'bajó ') + saM(Math.abs(v)) + '</span>';
+  return String(v);
+}
+
+/** El mismo valor para el CSV: número sin formato (pesos redondeados; % con un decimal). */
+function momRaw(v, kind) {
+  if (v === null || v === undefined || (typeof v === 'number' && isNaN(v))) return '';
+  if (kind === 'pct' || kind === 'rise') return (Math.round(v * 1000) / 10).toString().replace('.', ',');
+  if (kind === 'count' || kind === 'days') return (Math.round(v * 10) / 10).toString().replace('.', ',');
+  return String(Math.round(v));
+}
+
+/**
+ * « · ▲ 13 % más que el promedio» (verde si es mejor, rojo si es peor). better = 'low' o 'high'.
+ * Con points, la diferencia de dos porcentajes en puntos: « · ▲ 5 puntos más que el promedio».
+ */
+function momVsAvg(cur, avg, better, points) {
+  if (cur === null || cur === undefined || avg === null || avg === undefined || (!points && !(avg > 0))) return '';
+  var r = points ? (cur - avg) * 100 : (cur / avg - 1) * 100;
+  if (Math.abs(r) < 0.5) return ' · igual al promedio';
+  var good = better === 'low' ? r < 0 : r > 0;
+  var size = points ? (Math.round(Math.abs(r)) === 1 ? '1 punto' : Math.round(Math.abs(r)) + ' puntos') : ptPctText(r);
+  return ' · <span class="' + (good ? 'sa-pos' : 'sa-neg') + '">' + (r > 0 ? '▲ ' : '▼ ') + size + (r > 0 ? ' más' : ' menos') + '</span> que el promedio';
+}
+
+/** Elige los meses de la tabla con «Hasta» y «Meses». */
+function momWindow() {
+  var all = momAllMonths();
+  var toSel = document.getElementById('momTo');
+  var prev = toSel.value;
+  toSel.innerHTML = all.slice().reverse().map(function(m) {
+    return '<option value="' + m + '">' + saMonthLabel(m) + (m === MOM_NOW ? ' (en curso)' : '') + '</option>';
+  }).join('');
+  toSel.value = all.indexOf(prev) !== -1 ? prev : MOM_NOW;
+  var to = toSel.value || MOM_NOW;
+  var span = document.getElementById('momSpan').value;
+  var upto = all.filter(function(m) { return m <= to; });
+  return span === 'all' ? upto : upto.slice(-Number(span || 3));
+}
+
+var momLast = null; // lo último calculado, para el CSV
+
+function renderMonthOverMonth() {
+  if (!priceData || !priceData.analysis) return;
+  var months = momWindow();
+  var trips = saTrips();
+  var c = momCompute(months, trips, momItems());
+  var k = months.length || 1;
+  var views = {};
+  months.forEach(function(m) { views[m] = momView(c.by[m], 1); });
+  var avg = momView(c.total, k);
+  momLast = { months: months, views: views, avg: avg };
+  var last = months[months.length - 1];
+  var cur = views[last];
+  var hasFare = trips.some(function(t) { return t.fareBought !== null; });
+  var label = function(m) { return saMonthLabel(m) + (m === MOM_NOW ? ' (en curso)' : ''); };
+
+  // La respuesta en dos frases, arriba.
+  var box = document.getElementById('momHeadline');
+  if (!cur || !cur.flights) {
+    box.className = 'pt-headline';
+    box.innerHTML = 'En <b>' + escHtml(label(last)) + '</b> todavía no hay viajes en avión comprados con estos filtros.' +
+      (k > 1 ? ' En la tabla, los meses anteriores.' : '');
+  } else {
+    var html = 'En <b>' + escHtml(label(last)) + '</b> se compraron <b>' + ptPlural(Math.round(cur.flights), 'viaje en avión', 'viajes en avión') + '</b> (' +
+      ptPlural(Math.round(cur.tickets), 'tiquete', 'tiquetes') + ') por <b>' + saM(cur.spend) + '</b>: <b>' + fmtMoney(Math.round(cur.perTicket || 0)) + ' por tiquete</b>' +
+      (k > 1 ? momVsAvg(cur.perTicket, avg.perTicket, 'low') + ' de los ' + k + ' meses (' + fmtMoney(Math.round(avg.perTicket || 0)) + ')' : '') + '.';
+    if (cur.nFare) html += ' El <b>' + saPct(cur.inManual) + '</b> de las compras con tarifa registrada fue en la tarifa del manual o una menor' +
+      (k > 1 && avg.inManual !== null ? ' (promedio: ' + saPct(avg.inManual) + ')' : '') + '.';
+    if (cur.gN) html += ' Frente a Google, en ' + ptPlural(Math.round(cur.gN), 'viaje ya comprado', 'viajes ya comprados') + ', lo pagado fue ' + momCell(cur.gDiff, 'diff', false, null) + '.';
+    box.className = 'pt-headline';
+    box.innerHTML = html + (last === MOM_NOW ? '<div class="pt-note">El mes en curso va hasta hoy: sus totales todavía crecen.</div>' : '');
+  }
+
+  // Este mes frente al promedio.
+  var kpi = function(lbl, value, extra) {
+    return '<div class="kpi"><div class="label">' + escHtml(lbl) + '</div><div class="value">' + value + '</div><div class="extra">' + extra + '</div></div>';
+  };
+  var avgTxt = function(txt) { return k > 1 ? 'promedio: ' + txt : 'un solo mes en la tabla'; };
+  document.getElementById('momKpis').innerHTML =
+    kpi('Costo por tiquete · ' + saShortMonth(last), escHtml(momCell(cur && cur.perTicket, 'money')), avgTxt(escHtml(momCell(avg.perTicket, 'money'))) + (k > 1 && cur ? momVsAvg(cur.perTicket, avg.perTicket, 'low') : '')) +
+    kpi('En la tarifa del manual', escHtml(momCell(cur && cur.inManual, 'pct')), hasFare ? avgTxt(escHtml(momCell(avg.inManual, 'pct'))) + (k > 1 && cur ? momVsAvg(cur.inManual, avg.inManual, 'high', true) : '') : 'falta pegar el Code.gs nuevo') +
+    kpi('Comprados a tiempo', escHtml(momCell(cur && cur.onTime, 'pct')), hasFare ? avgTxt(escHtml(momCell(avg.onTime, 'pct'))) + (k > 1 && cur ? momVsAvg(cur.onTime, avg.onTime, 'high', true) : '') : 'falta pegar el Code.gs nuevo') +
+    kpi('Frente a Google', cur && cur.gN ? momCell(cur.gDiff, 'diff', false, null) : '—',
+      cur && cur.gN ? 'en ' + ptPlural(Math.round(cur.gN), 'viaje ya comprado', 'viajes ya comprados') + ' (comparación exacta)' : 'sin viajes comparados ese mes');
+
+  // La tabla: meses en columnas y el promedio al final.
+  var norm = function(id) { var el = document.getElementById(id); return el && el.value ? el.value : ''; };
+  var scope = [norm('f_company'), norm('f_unit')].filter(Boolean).join(' · ');
+  document.getElementById('momScope').textContent = 'por mes de compra' + (scope ? ' · solo ' + scope : '') + ' · el mes en curso va hasta hoy';
+  var head = '<thead><tr><th></th>' + months.map(function(m) { return '<th class="num">' + escHtml(saShortMonth(m)) + (m === MOM_NOW ? ' *' : '') + '</th>'; }).join('') +
+    '<th class="num mom-avg">Promedio' + (k > 1 ? ' de ' + k + ' meses' : '') + '</th></tr></thead>';
+  var body = MOM_ROWS.map(function(r) {
+    if (r[0] === 'g') return '<tr class="sa-group"><td colspan="' + (months.length + 2) + '">' + escHtml(r[1]) + '</td></tr>';
+    var cell = function(v, isAvg) { return momCell(v[r[1]], r[2], isAvg, r[3] ? v[r[3]] : null); };
+    return '<tr><td>' + escHtml(r[0]) + '</td>' + months.map(function(m) { return '<td class="num">' + cell(views[m], false) + '</td>'; }).join('') +
+      '<td class="num mom-avg">' + cell(avg, true) + '</td></tr>';
+  }).join('');
+  document.getElementById('momTable').innerHTML = head + '<tbody>' + body + '</tbody>';
+}
+
+function exportMonthOverMonthCsv() {
+  if (!momLast) return;
+  var q = function(v) {
+    var t = String(v === null || v === undefined ? '' : v);
+    if (typeof v === 'string' && /^[=+\-@]/.test(t)) t = "'" + t;
+    return /[;"\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+  };
+  var lines = [['Mes a mes', 'Generado ' + new Date().toLocaleString('es-CO')].map(q).join(';'),
+    ['Concepto'].concat(momLast.months.map(function(m) { return m + (m === MOM_NOW ? ' (en curso)' : ''); }), ['Promedio de ' + momLast.months.length + ' meses']).map(q).join(';')];
+  MOM_ROWS.forEach(function(r) {
+    if (r[0] === 'g') { lines.push(q(r[1])); return; }
+    lines.push([r[0]].concat(momLast.months.map(function(m) { return momRaw(momLast.views[m][r[1]], r[2]); }), [momRaw(momLast.avg[r[1]], r[2])]).map(q).join(';'));
+  });
+  var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mes-a-mes-' + new Date().toISOString().slice(0, 10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function() { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
 function escHtml(s) {
   if (s === null || s === undefined) return '';
   return String(s)
@@ -5426,6 +5897,17 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   var saCsv = document.getElementById('btnExportSavingsCsv');
   if (saCsv) saCsv.addEventListener('click', exportSavingsCsv);
+
+  // PESTAÑAS (28-oct)
+  document.getElementById('tabBar').addEventListener('click', function(e) {
+    var b = e.target.closest ? e.target.closest('button[data-tab]') : null;
+    if (b) showTab(b.getAttribute('data-tab'));
+  });
+  // MES A MES (28-oct): los controles recalculan en el navegador.
+  ['momTo', 'momSpan'].forEach(function(id) {
+    document.getElementById(id).addEventListener('change', function() { if (priceData) renderMonthOverMonth(); });
+  });
+  document.getElementById('btnExportMomCsv').addEventListener('click', exportMonthOverMonthCsv);
 
   // Bootstrap: si hay sesión guardada, entrar directo
   session = loadSession();

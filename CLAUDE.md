@@ -340,6 +340,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     búsquedas de momentos distintos: el precio cambia entre una y otra. El detalle de cada viaje abre con
     **«Qué dice esta comparación»**: misma aerolínea, de dónde sale la diferencia, aeropuerto (Olaya Herrera), bodega,
     anticipación y qué tan comparable es.
+  - **Seguimiento continuo y con el historial de Google** (#A115; Juan Camilo y David, 28-oct: se sigue pagando SerpApi, plan de
+    1.000 búsquedas al mes, para comparar mes a mes). Ya no hay fecha de fin: `activarRastreo` quita una que ya pasó y no pone otra
+    (`FIN_ESTUDIO` opcional). Cada tramo guarda `hist` (el precio más barato de esa búsqueda, día por día, ~60 días; `price_history`)
+    y el dashboard calcula `priceRise` (lo más barato el día de la solicitud frente al de la compra). Es lo más barato de Google, no el
+    vuelo comprado: se presenta como «cuánto se movió el mercado mientras se gestionaba». El rastreo lee solo las columnas que necesita
+    y el dashboard solo los tramos de las búsquedas que usa (`_ptHydrate_`): la pestaña crece unas 300 búsquedas al mes.
 - **Dashboard de costos: la velocidad es el pilar** (#A89, David, 2026-10-08: *"si no es rápido,
   nadie lo va a utilizar"*). Todas las secciones se piden **en paralelo** y sus respuestas se guardan
   en **`CacheService`** (`_dashCached_`), con una llave que lleva el alcance del usuario y una versión
@@ -347,6 +353,19 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   datos* recalcula. **Nunca guardar nada en Script Properties** (decisión de David). Toda visual
   nueva sale de un payload en caché, lee la hoja una sola vez y no encadena llamadas; los controles
   interactivos calculan en el navegador. Ver [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §3.
+- **Dashboard de costos por pestañas** (#A117, David, 28-oct: *«está demasiado largo»*): Año · Periodo · Mes · Mes a mes · Cotizado vs
+  facturado · Cambios de viaje · Comparador de precios · Proyección de ahorro, al final de la tarjeta de filtros. Se ve una sección a la
+  vez. **Los datos se siguen pidiendo todos en paralelo** (#A89): lo que ahorra es el dibujo, porque solo se dibuja la pestaña que se ve
+  (`tabsRefresh` marca las demás y se dibujan al abrirlas). Las restringidas aparecen solo cuando el servidor entrega su dato
+  (`setTabAvailable`), y nunca a quien no las ve. Una sección nueva = una entrada en `TABS` y `TAB_RENDER`: no dibujar directamente al
+  llegar los datos. En celular, la tarjeta de filtros no queda pegada arriba.
+- **«Mes a mes»** (#A116, pedido de Juan Camilo, 28-oct: *«este mes con el mes pasado, con el mes antepasado y cuánto fue el promedio»*):
+  pestaña con lo comprado, el costo por tiquete (también en TIPO 1), la tarifa del manual, la anticipación, la comparación con Google y el
+  movimiento del precio en Google, por mes de compra y con el promedio. Mismo permiso que el comparador. Sale de los payloads que ya
+  llegan (sin llamadas nuevas) y respeta empresa y unidad. **Mismas reglas que el informe mensual (#A101)**: «superior» = tarifa comprada
+  mayor que la del manual por noches; «a tiempo» = 8 días (30 internacional) entre la compra y el vuelo, sin modificaciones ni
+  trazabilidad (columnas `tarifaComprada`, `pagadoTiquetes` y `aTiempo` del análisis). Frente a Google = la cifra por defecto del
+  comparador (#A104: ya comprados, exactas, sin excluidos). Promedio: conteos y pesos ÷ meses; % y por tiquete sobre el total de su base.
 - **Proyección de ahorro** (#A90, pedido de Juan Camilo, 2026-10-08): sección del dashboard de costos
   con volumen de viajes, ahorro observado del comparador (partido en *comprando la misma aerolínea*
   y *cambiando de vuelo o aerolínea*) y proyección por mes con método elegible y un rango (de solo
@@ -692,31 +711,30 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 - **En el Mac, antes de nada: [MIGRACION.md §0](MIGRACION.md)** (Node 24, revisión del equipo y el recordatorio para todos sus
   proyectos). En el PC Linux ya está hecho.
-- **Pendiente de pegar en Apps Script (28-oct): #A111–#A114.** El frontend de #A111 y #A112 (cambio de hospedaje y horas en 24 h,
-  sesión del 27-oct) salió con su push; el de #A114 (calendario), con el del 28-oct. Falta pegar **`Code.gs`** (#A111, #A112, #A113),
-  **`CostsDashboard.html`** (#A113), **`AdminSidebar.html`** y **`AdminMobile.html`** (#A114) → versión nueva del web app → fila
-  `jcpineda@equitel.com.co | COMPLETO` en la tabla de accesos de MISC → menú 9. **El `Code.gs` bueno es el de `main` después del 28-oct**:
-  el que se preparó primero en el PC Linux para #A113 no traía #A111/#A112 (se hicieron en otra sesión); si se pegó ese, pegar de nuevo.
-  Los dos lados de #A111 y #A112 se combinaron en el PC el 28-oct (`npm run verify`, el entorno local y el navegador, en verde).
-- **#A113 (dashboard completo, solo para ver, para Juan Camilo):** reunión del 28-oct con Juan Camilo: él pidió seguir el
-  ahorro de los tiquetes **mes a mes** (este mes frente a los dos anteriores y el promedio), también el de comprar en la tarifa del
-  manual; David extiende SerpApi al plan de 1.000 búsquedas al mes cuando se acaben las actuales. El rastreo está en «TERMINADO»
-  desde el 21-oct: para seguir hay que quitar o mover `FIN_ESTUDIO` en el proyecto aparte. La API trae `price_history`
-  (61 días del precio más barato de cada tramo) y el rastreo no lo guarda: con él se mide cuánto subió el precio entre la solicitud
-  y la compra sin búsquedas de más (19 de 25 búsquedas guardadas lo traen).
-- **Todo está desplegado hasta #A110 (22-oct).** El 21-oct salieron #A102–#A105 (David pegó `Code.gs`, `CostsDashboard.html`,
+- **Pendiente de desplegar (28-oct, noche): #A115, #A116 y #A117** (rastreo continuo con el historial de Google, «Mes a mes» y el
+  dashboard por pestañas). Sin push de frontend: pegar **`Code.gs`** y **`CostsDashboard.html`** → versión nueva del web app; en el
+  proyecto aparte del rastreo, pegar **`Rastreo.gs`** (archivo **Rastreo**; `Nucleo` no cambia) y ejecutar **`activarRastreo`** una vez
+  (quita la fecha de fin del 21-oct y reinstala el disparador). Con el plan gratis de SerpApi (250 al mes) el rastreo continuo gasta
+  ~280: se detiene solo en la reserva hasta que David suba al plan de 1.000. Las filas del historial en «Mes a mes» se llenan con las
+  búsquedas desde ese momento.
+- **#A111–#A114: desplegados el 28-oct.** David pegó `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y `AdminMobile.html` (versión
+  nueva); el frontend de #A111/#A112 salió el 27-oct y el de #A114 (calendario) es la revisión `00224` de Cloud Run. Si en MISC aún no está
+  la fila `jcpineda@equitel.com.co | COMPLETO`, agregarla y revisarla con el menú 9. Numeración: #A111/#A112 los usó otra sesión el 27-oct;
+  los del PC Linux quedaron como #A113 (Juan Camilo, `COMPLETO`) y #A114 (calendario).
+- **Reunión del 28-oct con Juan Camilo:** seguir el ahorro de los tiquetes **mes a mes** (hecho: #A115, #A116); David extiende SerpApi al
+  plan de 1.000 búsquedas al mes cuando se acaben las actuales; el top 3 de tareas automatizadas de Comex para el 1-dic (otro proyecto).
+- **Todo está desplegado hasta #A114 (28-oct).** El 21-oct salieron #A102–#A105 (David pegó `Code.gs`, `CostsDashboard.html`,
   `AdminSidebar.html`, `AdminMobile.html` y `Rastreo.gs`, corrió el menú 12 y publicó la versión nueva); el 22-oct, #A106–#A110.
 - **Fechas de compra cambiadas por correcciones (#A102):** SOL-000100, 107, 202, 230, 249, 270, 435, 465, 494, 495, 516,
   526, 527, 545, 552 y 635. Si se quieren corregir, que el área de compras confirme cada fecha y la corrija a mano.
 - **Fechas que vienen (sin código):**
-  - **21-oct:** termina el estudio de precios (#A84). Decidir si sigue (SerpApi gratis, 250 búsquedas al mes)
-    y revisar la proyección con Yurani antes de mostrársela a Alejandro: sin 15 comparaciones exactas no da
-    cifra al año (#A99).
+  - **21-oct:** terminó el estudio de precios (#A84). Desde #A115 el rastreo sigue sin fecha de fin. Pendiente: revisar la
+    proyección con Yurani antes de mostrársela a Alejandro: sin 15 comparaciones exactas no da cifra al año (#A99).
   - **Martes 3-nov:** primer informe mensual automático (octubre) para Alejandro, con copia a Yurani y David.
     Revisar que llegó y que `INFORMES ENVIADOS` tiene su fila. Octubre trae poca tarifa (se registra desde el
     8-oct); desde noviembre sale completa.
-- **Estudio de precios:** activo del 7 al 21-oct-2026. El 7-oct quedaban 212 búsquedas de
-  SerpApi (plan gratis, 250 al mes).
+- **Estudio de precios:** activo del 7 al 21-oct-2026 (124 consultas en 2 semanas); desde #A115, seguimiento continuo (~280
+  consultas al mes: plan de 1.000 cuando David lo suba).
 - **Decisiones abiertas:** mostrarle el comparador a Laura: **en pausa**, no se ha decidido si se le muestra
   (David, 14-oct). Siguiente paso posible del valor pagado: compararlo con Google en el comparador sin esperar la factura.
 - **Fuera del repositorio:** el documento de demostración para Alejandro

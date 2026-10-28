@@ -80,7 +80,8 @@ function makeSpreadsheet(sheets) {
 const H = ['ID RESPUESTA', 'STATUS', 'MODO_SOLICITUD', 'CIUDAD ORIGEN', 'CIUDAD DESTINO', 'FECHA IDA', 'FECHA VUELTA',
   '# PERSONAS QUE VIAJAN', 'HORA LLEGADA VUELO IDA', 'EVENTOS_JSON', 'COSTO_FINAL_TIQUETES', 'AEROLINEA', 'CANAL DE COMPRA',
   'EMPRESA', 'UNIDAD DE NEGOCIO', 'CORREO ENCUESTADO', 'CÉDULA PERSONA 1', 'NOMBRE PERSONA 1',
-  'HORA LLEGADA VUELO VUELTA', 'ES INTERNACIONAL', 'AEROLINEA REGRESO', 'COSTO_FINAL_HOTEL', 'TOTAL FACTURA', 'VALOR COMPRA TIQUETES', 'OBSERVACIONES'];
+  'HORA LLEGADA VUELO VUELTA', 'ES INTERNACIONAL', 'AEROLINEA REGRESO', 'COSTO_FINAL_HOTEL', 'TOTAL FACTURA', 'VALOR COMPRA TIQUETES', 'OBSERVACIONES',
+  'FECHA SOLICITUD', 'FECHA DE COMPRA DE TIQUETE'];
 const ev = (o) => JSON.stringify(o);
 const hace = (h) => new Date(Date.now() - h * 3600000).toISOString();
 const priv = ['pasajero@ejemplo.test', 'CEDULA-FICTICIA-1', 'NOMBRE PRIVADO'];
@@ -91,6 +92,11 @@ function solicitudes() {
   set('SOL-6', 'TOTAL FACTURA', 410000);        // ya comprada y facturada, sin hotel
   set('SOL-9', 'COSTO_FINAL_HOTEL', 200000);    // con hotel: la factura lo incluye
   set('SOL-9', 'TOTAL FACTURA', 900000);
+  // «Mes a mes» (28-oct): días de la solicitud para medir cuánto se movió el precio en Google hasta la compra.
+  set('SOL-1', 'FECHA SOLICITUD', plus(-10));   // dentro del historial (60 días)
+  set('SOL-12', 'FECHA SOLICITUD', plus(-1));   // ese día Google no trae precio: se toma el siguiente
+  set('SOL-6', 'FECHA SOLICITUD', plus(-90));   // antes de lo que cubre el historial
+  set('SOL-6', 'FECHA DE COMPRA DE TIQUETE', today);
   return [H].concat(rows);
 }
 function filasBase() {
@@ -122,7 +128,7 @@ function loadTracker(opts = {}) {
   const ctx = {
     console: { log: (...a) => log.consola.push(a.join(' ')), warn: (...a) => log.consola.push(a.join(' ')), error: (...a) => log.consola.push(a.join(' ')) },
     Utilities: { formatDate },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); } }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = String(v); }, deleteProperty: (k) => { delete props[k]; } }) },
     SpreadsheetApp: { openById: (id) => { if (id !== 'HOJA-ID') throw new Error('sin acceso'); return ss; } },
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
     ScriptApp: {
@@ -150,6 +156,13 @@ function loadTracker(opts = {}) {
         if (f === 'vacio') return resp(200, { error: "Google Flights hasn't returned any results for this query." });
         if (p.booking_token) return resp(200, VENDEDORES);
         const r = JSON.parse(JSON.stringify(EJEMPLO));
+        // Historial de precios de Google (28-oct): 61 días hasta hoy, al mediodía de Bogotá, $300.000 + $1.000 por día;
+        // falta el penúltimo día. Hacia Cali (CLO) llega en milisegundos; en las demás, en segundos, como SerpApi.
+        if (log.historial !== false) {
+          const hoyMs = Date.parse(today + 'T12:00:00-05:00');
+          const div = p.arrival_id === 'CLO' ? 1 : 1000;
+          r.price_insights = Object.assign({}, r.price_insights, { price_history: Array.from({ length: 61 }, (_, k) => [(hoyMs - (60 - k) * 86400000) / div, 300000 + 1000 * k]).filter((_, k) => k !== 59) });
+        }
         const gf = log.urlMala === 'clave' ? 'https://www.google.com/travel/flights?x=' + p.api_key
           : log.urlMala === 'otra' ? 'javascript:alert(1)'
             : 'https://www.google.com/travel/flights?hl=es-419&gl=co&curr=COP&tfs=PRUEBA-' + encodeURIComponent(p.departure_id + '-' + p.arrival_id + '-' + p.outbound_date);
@@ -208,7 +221,7 @@ function main() {
     ['SOL-1 COMPRA', 'SOL-12 COMPRA', 'SOL-2 COTIZACION', 'SOL-6 COMPRA', 'SOL-8 COMPRA', 'SOL-9 COMPRA']);
   t.ctx.activarRastreo();
   t.ctx.activarRastreo();
-  eq('fechas del estudio: hoy y 14 días después', [t.props.INICIO_ESTUDIO, t.props.FIN_ESTUDIO], [today, plus(14)]);
+  eq('seguimiento continuo (28-oct): inicio hoy y sin fecha de fin', [t.props.INICIO_ESTUDIO, t.props.FIN_ESTUDIO], [today, undefined]);
   eq('un solo disparador cada 15 minutos', t.log.triggers, ['rastrearPrecios']);
   const hoja = t.ss.sheets['COMPARATIVO PRECIOS'];
   eq('pestañas ocultas y con aviso al editar', [hoja.hidden, hoja.protectedWarning, t.ss.sheets['COMPARATIVO ESTADO'].hidden], [true, true, true]);
@@ -234,6 +247,8 @@ function main() {
     ['05:00 Avianca 612400', '05:40 Wingo 389200', '06:30 LATAM 455900', '07:05 Avianca 498600', '13:20 JetSMART 351700', '06:00 Avianca 540100']);
   eq('SOL-1: el vuelo con escala trae sus dos números, la escala y la duración', t1[0].ops[5].slice(1, 6), ['AV 9290 / AV 9902', '06:00', '08:50', 1, 170]);
   eq('SOL-1: los tramos tenían directos y solo esos cuentan', t1.map((l) => l.dir), [true, true]);
+  eq('SOL-1: cada tramo guarda el historial de Google, un precio por día (el día que falta, null)',
+    t1.map((l) => [l.hist.d, l.hist.p.length, l.hist.p[0], l.hist.p[59], l.hist.p[60]]), [[plus(-60), 61, 300000, null, 360000], [plus(-60), 61, 300000, null, 360000]]);
   eq('SOL-1: cada tramo guarda el enlace a la misma búsqueda en Google Flights', t1.map((l) => l.url),
     ['BOG-MDE,EOH-' + plus(14), 'MDE,EOH-BOG-' + plus(16)].map((x) => 'https://www.google.com/travel/flights?hl=es-419&gl=co&curr=COP&tfs=PRUEBA-' + encodeURIComponent(x)));
   eq('SOL-1: búsquedas de ida y de regreso con sus fechas', t.log.search.filter((p) => ['BOG|MDE,EOH|' + plus(14), 'MDE,EOH|BOG|' + plus(16)].includes(p.departure_id + '|' + p.arrival_id + '|' + p.outbound_date)).length, 2);
@@ -247,6 +262,7 @@ function main() {
   const s8 = filas.find((r) => r['ID SOLICITUD'] === 'SOL-8');
   eq('SOL-8 (Tunja): sin aeropuerto, sin consultar', [s8['RESULTADO'], s8['CONSULTAS'], /más cercano/.test(s8['DETALLE'])], ['SIN_AEROPUERTO', 0, true]);
   eq('SOL-2: 2 pasajeros', [t.log.search.find((p) => p.arrival_id === 'CLO' && p.outbound_date === plus(10)).adults], ['2']);
+  eq('SOL-2: el historial también se entiende con la fecha en milisegundos', JSON.parse(s2['TRAMOS'])[0].hist.p.slice(-2), [null, 360000]);
   eq('estado ACTIVO', estadoOf(t.ss)['ESTADO'], 'ACTIVO');
 
   // 2. Idempotente
@@ -282,6 +298,21 @@ function main() {
   t = loadTracker({ props: { INICIO_ESTUDIO: plus(-20), FIN_ESTUDIO: plus(-6) } });
   t.ctx.rastrearPrecios();
   eq('estudio terminado: no busca', [t.log.search.length, estadoOf(t.ss)['ESTADO']], [0, 'TERMINADO']);
+  // 28-oct: activarRastreo reactiva el rastreo quitando la fecha de fin que ya pasó; una futura se respeta.
+  t.ctx.activarRastreo();
+  eq('reactivar: quita la fecha de fin vencida, conserva el inicio y vuelve a buscar',
+    [t.props.FIN_ESTUDIO, t.props.INICIO_ESTUDIO, t.log.search.length > 0, estadoOf(t.ss)['ESTADO']], [undefined, plus(-20), true, 'ACTIVO']);
+  t = loadTracker({ props: { INICIO_ESTUDIO: today, FIN_ESTUDIO: plus(30) } });
+  t.ctx.activarRastreo();
+  eq('una fecha de fin futura se respeta', t.props.FIN_ESTUDIO, plus(30));
+  t = loadTracker({ props: { INICIO_ESTUDIO: today } });
+  t.log.historial = false;
+  t.ctx.rastrearPrecios();
+  // Un historial más largo de la cuenta guarda los últimos 120 días (los cercanos a la compra).
+  const largo = t.ctx.rpHistorial_({ price_insights: { price_history: Array.from({ length: 200 }, (_, k) => [Date.parse(plus(-199 + k) + 'T12:00:00-05:00') / 1000, 1000 + k]) } });
+  eq('historial largo: los últimos 120 días', [largo.d, largo.p.length, largo.p[0], largo.p[119]], [plus(-119), 120, 1080, 1199]);
+  eq('historial vacío o con basura: nada', [t.ctx.rpHistorial_({}), t.ctx.rpHistorial_({ price_insights: { price_history: [['x', 5], [1, -3], null] } })], [null, null]);
+  eq('sin historial en la respuesta: el tramo queda igual, sin hist', JSON.parse(rowsOf(t.ss.sheets['COMPARATIVO PRECIOS'])[0]['TRAMOS']).every((l) => l.hist === undefined), true);
   t = loadTracker({ props: { INICIO_ESTUDIO: today, MAX_POR_EJECUCION: '2' } });
   t.ctx.rastrearPrecios();
   eq('tope por ejecución: deja el resto pendiente', [rowsOf(t.ss.sheets['COMPARATIVO PRECIOS']).length, estadoOf(t.ss)['PENDIENTES']], [2, 4]);
@@ -545,7 +576,13 @@ function main() {
   eq('SOL-1: más barato en Google (ida + regreso), diferencia y misma aerolínea', [i1.quoted, i1.market, i1.difference, i1.sameAirline, i1.marketMoment, i1.channel], [400000, 778400, -378400, 911800, 'COMPRA', 'Aviatur']);
   eq('SOL-1: horas pedidas y tramos en la lista, sin la lista de vuelos (va en el detalle)', [i1.departureTime, i1.returnTime, i1.atPurchase.legs.map((l) => l.leg + ' ' + l.near.airline + ' ' + l.near.departs + ' ' + l.reference), i1.atPurchase.legs[0].options],
     ['07:00', '06:00', ['IDA Wingo 05:40 389200', 'REGRESO Wingo 05:40 389200'], undefined]);
+  // «Mes a mes» (28-oct): lo más barato en Google el día de la solicitud y el de la compra, del historial de cada tramo.
+  eq('SOL-1: ida + regreso, $350.000 cada tramo hace 10 días y $360.000 hoy', i1.priceRise, { fromDay: plus(-10), buyDay: today, days: 10, atRequest: 700000, atBuy: 720000 });
+  eq('la lista no lleva el historial completo (va en el detalle)', [i1.atPurchase.legs.every((l) => l.history === undefined), JSON.stringify(d).includes('"prices"')], [true, false]);
+  const i6m = d.items.find((i) => i.requestId === 'SOL-6');
+  eq('SOL-6: solicitud de antes del historial, sin subida; mes de compra', [i6m.priceRise, i6m.purchaseMonth], [null, today.slice(0, 7)]);
   const i12 = d.items.find((i) => i.requestId === 'SOL-12');
+  eq('SOL-12: el día de la solicitud no tiene precio en Google: se toma el siguiente', i12.priceRise, { fromDay: today, buyDay: today, days: 0, atRequest: 360000, atBuy: 360000 });
   eq('SOL-12 sin hora pedida: referencia del día', [i12.market, i12.atPurchase.referenceIsNear], [351700, false]);
   const i8 = d.items.find((i) => i.requestId === 'SOL-8');
   eq('SOL-8 sin aeropuerto: sin mercado', [i8.market, i8.atPurchase.result], [null, 'SIN_AEROPUERTO']);
@@ -575,6 +612,7 @@ function main() {
     dd.data.request.departure, dd.data.request.departureTime, dd.data.request.returnDate, dd.data.request.returnTime, dd.data.request.costConfirmedBy],
     [400000, 'LATAM', 'Aviatur', 1, plus(14), '07:00', plus(16), '06:00', { email: 'compras.equitel@equitel.com.co', name: 'Laura de Prueba' }]);
   const dl = dd.data.searches.COMPRA.legs;
+  eq('detalle: el historial de Google de cada tramo', dl.map((l) => [l.history.start, l.history.prices.length, l.history.prices[60]]), [[plus(-60), 61, 360000], [plus(-60), 61, 360000]]);
   eq('detalle: cada tramo con todos sus vuelos', [dd.data.searchCount, dd.data.searches.COTIZACION, dl.map((l) => l.leg + ':' + l.options.length), dl[1].options[1]],
     [{ COTIZACION: 0, COMPRA: 1 }, null, ['IDA:6', 'REGRESO:6'], { airline: 'Wingo', flights: 'P5 7120', departs: '05:40', arrives: '06:45', stops: 0, minutes: 65, price: 389200 }]);
   eq('detalle: sin datos de los pasajeros ni del solicitante', priv.some((x) => JSON.stringify(dd).includes(x)), false);

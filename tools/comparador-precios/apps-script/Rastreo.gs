@@ -24,14 +24,22 @@
  *      el estado del rastreo en «COMPARATIVO ESTADO». El dashboard de costos las
  *      lee (sección restringida; Laura no la ve).
  *
+ * Seguimiento continuo (David y Juan Camilo, 28-oct-2026): el estudio del 7 al 21-oct se
+ * vuelve permanente para comparar el ahorro mes a mes. Ya no hay fecha de fin (FIN_ESTUDIO
+ * es opcional) y cada tramo guarda el historial de precios de Google (price_history: el
+ * precio más barato de esa búsqueda, día por día, unos 60 días atrás). Con él se mide
+ * cuánto subió el precio entre la solicitud y la compra sin gastar búsquedas de más.
+ *
  * Núcleo de la búsqueda: el archivo Nucleo.gs del proyecto es una copia exacta de
  * tools/comparador-precios/comparador.cjs (cpParametros, cpUrl, cpResumir…).
  *
  * Propiedades del script (Configuración del proyecto → Propiedades del script):
  *   SERPAPI_KEY        clave de SerpApi (obligatoria; nunca se escribe en la hoja)
  *   SPREADSHEET_ID     ID de la hoja de la base de datos (obligatorio)
- *   INICIO_ESTUDIO     AAAA-MM-DD (lo pone activarRastreo: hoy)
- *   FIN_ESTUDIO        AAAA-MM-DD (lo pone activarRastreo: inicio + 14 días); después no busca
+ *   INICIO_ESTUDIO     AAAA-MM-DD (lo pone activarRastreo: hoy). Al cotizar solo se buscan los
+ *                      costos confirmados desde ese día.
+ *   FIN_ESTUDIO        AAAA-MM-DD, opcional: después no busca. Desde el 28-oct no se pone sola
+ *                      (seguimiento continuo) y activarRastreo quita una que ya pasó.
  *   MAX_POR_EJECUCION  búsquedas por ejecución (8)
  *   MAX_BUSQUEDAS_DIA  tope diario de consultas a SerpApi (40)
  *   RESERVA_MINIMA     nunca deja a la cuenta con menos búsquedas que esto (15)
@@ -48,7 +56,6 @@ var RP_HOJA_ESTADO = 'COMPARATIVO ESTADO';
 var RP_ZONA = 'America/Bogota';
 var RP_FUNCION = 'rastrearPrecios';
 var RP_MINUTOS = 15;
-var RP_DIAS_ESTUDIO = 14;
 var RP_VENTANA_COMPRA_MS = 6 * 60 * 60 * 1000;
 // #A98: los dos precios de un vuelo (sin maleta / con maleta) solo se comparan si se buscaron
 // con menos de 3 horas de diferencia: los precios cambian con el tiempo.
@@ -76,6 +83,9 @@ var RP_ENCABEZADOS = [
   // #A95: la tarifa del viaje y con cuántas maletas de mano se buscó.
   'TARIFA', 'MALETA DE MANO'
 ];
+
+// Historial de precios de Google por tramo (28-oct): como mucho estos días; Google da unos 60.
+var RP_HIST_MAX_DIAS = 120;
 
 // #A95 (reunión del 8-oct, Yurani: «comparar peras con peras»): se busca con el mismo
 // equipaje de la tarifa del viaje (manual COM-P-02). TIPO 1 (Basic) sin maleta; TIPO 2
@@ -209,21 +219,29 @@ function rpLeerHechas_(hoja) {
   var hechas = {};
   var consultasHoy = 0;
   if (!hoja || hoja.getLastRow() < 2) return { hechas: hechas, consultasHoy: 0 };
-  var v = hoja.getRange(1, 1, hoja.getLastRow(), hoja.getLastColumn()).getValues();
+  // Solo las columnas que hacen falta (28-oct): con el seguimiento continuo la pestaña crece y
+  // TRAMOS (los vuelos y el historial de cada búsqueda) es lo más pesado; corre cada 15 minutos.
   var h = {};
-  v[0].forEach(function(x, i) { h[String(x).trim()] = i; });
+  hoja.getRange(1, 1, 1, hoja.getLastColumn()).getValues()[0].forEach(function(x, i) { h[String(x).trim()] = i; });
+  var n = hoja.getLastRow() - 1;
+  var columna = function(nombre) {
+    return h[nombre] === undefined ? null : hoja.getRange(2, h[nombre] + 1, n, 1).getValues();
+  };
+  var ids = columna('ID SOLICITUD'), momentos = columna('MOMENTO'), formatos = columna('FORMATO');
+  var maletas = columna('MALETA DE MANO'), fechas = columna('FECHA BUSQUEDA'), consultas = columna('CONSULTAS');
+  var de = function(col, r) { return col ? col[r][0] : ''; };
   var hoy = rpHoy_();
-  for (var r = 1; r < v.length; r++) {
-    var id = String(v[r][h['ID SOLICITUD']] || '').trim();
-    var formato = h['FORMATO'] === undefined ? 0 : rpNumero_(v[r][h['FORMATO']]);
+  for (var r = 0; r < n; r++) {
+    var id = String(de(ids, r) || '').trim();
+    var formato = formatos ? rpNumero_(de(formatos, r)) : 0;
     if (id && formato >= RP_FORMATO) {
-      var clave = id + '|' + String(v[r][h['MOMENTO']] || '').trim();
-      var nivel = h['MALETA DE MANO'] !== undefined && rpNumero_(v[r][h['MALETA DE MANO']]) > 0 ? 1 : 0;
+      var clave = id + '|' + String(de(momentos, r) || '').trim();
+      var nivel = maletas && rpNumero_(de(maletas, r)) > 0 ? 1 : 0;
       hechas[clave] = hechas[clave] || {};
       // La más reciente de cada equipaje (#A98); 1 si la fecha no se entiende (cuenta como hecha).
-      hechas[clave][nivel] = Math.max(hechas[clave][nivel] || 0, rpMs_(v[r][h['FECHA BUSQUEDA']]) || 1);
+      hechas[clave][nivel] = Math.max(hechas[clave][nivel] || 0, rpMs_(de(fechas, r)) || 1);
     }
-    if (rpFecha_(v[r][h['FECHA BUSQUEDA']]) === hoy) consultasHoy += rpNumero_(v[r][h['CONSULTAS']]);
+    if (rpFecha_(de(fechas, r)) === hoy) consultasHoy += rpNumero_(de(consultas, r));
   }
   return { hechas: hechas, consultasHoy: consultasHoy };
 }
@@ -416,6 +434,34 @@ function rpUrlGoogle_(json, clave) {
   return u.slice(0, 1500);
 }
 
+/**
+ * Historial del precio más barato de Google para esa búsqueda (price_insights.price_history: pares
+ * [fecha, precio], unos 60 días atrás), compacto para la hoja: { d: primer día 'AAAA-MM-DD' en
+ * Bogotá, p: [precio de cada día desde d; null si ese día no hay] }. null si la respuesta no lo trae.
+ * Acepta la fecha en segundos o en milisegundos.
+ */
+function rpHistorial_(json) {
+  var h = json && json.price_insights && json.price_insights.price_history;
+  if (!Array.isArray(h) || !h.length) return null;
+  var porDia = {};
+  h.forEach(function(x) {
+    if (!Array.isArray(x) || x.length < 2) return;
+    var t = Number(x[0]), precio = Number(x[1]);
+    if (!isFinite(t) || t <= 0 || !(precio > 0)) return;
+    porDia[Utilities.formatDate(new Date(t < 1e12 ? t * 1000 : t), RP_ZONA, 'yyyy-MM-dd')] = Math.round(precio);
+  });
+  var dias = Object.keys(porDia).sort();
+  if (!dias.length) return null;
+  // Si Google trajera más días de la cuenta, se guardan los últimos: los cercanos a la compra son los que importan.
+  var ultimo = dias[dias.length - 1];
+  var desde = dias[0] < rpSumarDias_(ultimo, 1 - RP_HIST_MAX_DIAS) ? rpSumarDias_(ultimo, 1 - RP_HIST_MAX_DIAS) : dias[0];
+  var p = [];
+  for (var dia = desde, k = 0; dia <= ultimo && k < RP_HIST_MAX_DIAS; dia = rpSumarDias_(dia, 1), k++) {
+    p.push(porDia[dia] === undefined ? null : porDia[dia]);
+  }
+  return { d: desde, p: p };
+}
+
 /** Tramos que se buscan: la ida y, si hay, el regreso con su propia hora y aerolínea. */
 function rpTramos_(cand) {
   var v = cand.viaje;
@@ -535,6 +581,8 @@ function rpBuscar_(cand, cfg) {
     r.params = params;
     var url = rpUrlGoogle_(json, cfg.clave);
     if (url) r.tramo.url = url;
+    var hist = r.tramo.ok ? rpHistorial_(json) : null;
+    if (hist) r.tramo.hist = hist;
     return r;
   });
   fila['AEROPUERTOS'] = hechos[0].params.departure_id + ' → ' + hechos[0].params.arrival_id;
@@ -591,6 +639,8 @@ function rpBuscar_(cand, cfg) {
       var rr = rpResumenTramo_('IDA Y VUELTA', pr, cpResumir(jr, v), v.horaIda, cand.aerolinea, cfg.clave);
       var urlRt = rpUrlGoogle_(jr, cfg.clave);
       if (urlRt) rr.tramo.url = urlRt;
+      var histRt = rr.tramo.ok ? rpHistorial_(jr) : null;
+      if (histRt) rr.tramo.hist = histRt;
       legs.push(rr.tramo);
       if (rr.tramo.ok && rr.tramo.ref) {
         fila['IDA Y VUELTA JUNTOS'] = rr.tramo.ref;
@@ -727,7 +777,7 @@ function rpEjecutar_(ahoraMs) {
   };
   if (!cfg.clave) return terminar('SIN CONFIGURAR', 'Falta la propiedad SERPAPI_KEY.');
   if (!cfg.inicio) return terminar('SIN CONFIGURAR', 'Falta INICIO_ESTUDIO: ejecute activarRastreo().');
-  if (cfg.fin && rpHoy_() > cfg.fin) return terminar('TERMINADO', 'El estudio terminó el ' + cfg.fin + '. Para seguir, cambie FIN_ESTUDIO.');
+  if (cfg.fin && rpHoy_() > cfg.fin) return terminar('TERMINADO', 'El rastreo terminó el ' + cfg.fin + ' (FIN_ESTUDIO). Para seguir, ejecute activarRastreo().');
 
   var leidas = rpLeerHechas_(tabs.hoja);
   info.consultasHoy = leidas.consultasHoy;
@@ -795,26 +845,31 @@ function probarConfiguracion() {
       (x.otroNivel ? ' (otro equipaje, para los dos precios por vuelo)' : '') + ' · ' +
       rpConsultasNecesarias_(x) + ' consulta(s)');
   });
-  lineas.push(cfg.inicio ? 'Estudio: ' + cfg.inicio + ' a ' + (cfg.fin || '(sin fin)') + '.' : 'El estudio aún no está activo: ejecute activarRastreo().');
+  lineas.push(cfg.inicio ? 'Seguimiento desde el ' + cfg.inicio + (cfg.fin ? ' hasta el ' + cfg.fin : ', sin fecha de fin') + '.' : 'El rastreo aún no está activo: ejecute activarRastreo().');
   console.log(lineas.join('\n'));
   return lineas.join('\n');
 }
 
-/** Fija las fechas del estudio (si faltan), crea las pestañas, instala el disparador y hace la primera pasada. */
+/**
+ * Fija el inicio (si falta), crea las pestañas, instala el disparador y hace la primera pasada.
+ * Seguimiento continuo (28-oct): no pone fecha de fin y quita una que ya pasó (la del estudio del
+ * 7 al 21-oct), así basta ejecutarla para reactivar el rastreo. Una FIN_ESTUDIO futura se respeta.
+ */
 function activarRastreo() {
   var p = PropertiesService.getScriptProperties();
   var cfg = rpConfig_();
   if (!cfg.clave) throw new Error('Falta la propiedad SERPAPI_KEY.');
   var abierto = rpAbrir_(cfg);
   if (!cfg.inicio) p.setProperty('INICIO_ESTUDIO', rpHoy_());
-  if (!cfg.fin) p.setProperty('FIN_ESTUDIO', rpSumarDias_(p.getProperty('INICIO_ESTUDIO'), RP_DIAS_ESTUDIO));
+  if (cfg.fin && rpHoy_() > cfg.fin) p.deleteProperty('FIN_ESTUDIO');
   rpPestanas_(abierto.ss);
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === RP_FUNCION) ScriptApp.deleteTrigger(t);
   });
   ScriptApp.newTrigger(RP_FUNCION).timeBased().everyMinutes(RP_MINUTOS).create();
   var r = rastrearPrecios();
-  var msg = 'Rastreo activo cada ' + RP_MINUTOS + ' minutos, del ' + p.getProperty('INICIO_ESTUDIO') + ' al ' + p.getProperty('FIN_ESTUDIO') +
+  var fin = p.getProperty('FIN_ESTUDIO');
+  var msg = 'Rastreo activo cada ' + RP_MINUTOS + ' minutos desde el ' + p.getProperty('INICIO_ESTUDIO') + (fin ? ' hasta el ' + fin : ', sin fecha de fin') +
     '. Primera pasada: ' + (r.buscadas || 0) + ' búsqueda(s), estado ' + r.estado + (r.detalle ? ' (' + r.detalle + ')' : '') + '.';
   console.log(msg);
   return msg;

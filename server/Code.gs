@@ -18177,7 +18177,9 @@ function _ptLeg_(l, withOptions) {
     optionCount: num(l.total) || (Array.isArray(l.ops) ? l.ops.length : 0),
     // La misma búsqueda en Google Flights, para ir a comprar (#A87). Solo direcciones de Google Flights.
     googleUrl: /^https:\/\/www\.google\.com\/travel\/flights\?[^\s"'<>]*$/.test(String(l.url || '')) ? String(l.url) : '',
-    vendors: Array.isArray(l.vend) ? l.vend.map(function(x) { return { seller: String(x.v || ''), price: num(x.p), isAirline: x.a === true }; }) : []
+    vendors: Array.isArray(l.vend) ? l.vend.map(function(x) { return { seller: String(x.v || ''), price: num(x.p), isAirline: x.a === true }; }) : [],
+    // Historial de lo más barato en Google para esa búsqueda, día por día (28-oct; antes no se guardaba).
+    history: _ptHistory_(l.hist)
   };
   if (withOptions) {
     out.options = (Array.isArray(l.ops) ? l.ops : []).map(function(o) {
@@ -18188,19 +18190,91 @@ function _ptLeg_(l, withOptions) {
   return out;
 }
 
-/** Una fila de la pestaña → la búsqueda resumida para el dashboard. Con withOptions, los vuelos de cada tramo. */
-function _ptSnapshot_(r, withOptions) {
+/** Historial de Google de un tramo (28-oct): { start: 'AAAA-MM-DD', prices: [precio o null, uno por día] }; null si no hay. */
+function _ptHistory_(h) {
+  if (!h || typeof h !== 'object' || !/^\d{4}-\d{2}-\d{2}$/.test(String(h.d || '')) || !Array.isArray(h.p) || !h.p.length || h.p.length > 400) return null;
+  return { start: String(h.d), prices: h.p.map(function(x) { var v = Number(x); return x === null || !isFinite(v) || v <= 0 ? null : Math.round(v); }) };
+}
+
+/** Precio de un historial un día 'AAAA-MM-DD'; null si ese día no lo cubre. */
+function _ptHistoryAt_(hist, day) {
+  if (!hist || !day) return null;
+  var i = _psDayNumber_(day) - _psDayNumber_(hist.start);
+  return i >= 0 && i < hist.prices.length ? hist.prices[i] : null;
+}
+
+/**
+ * Cuánto cambió lo más barato de Google entre el día de la solicitud y el de la búsqueda al comprar (28-oct,
+ * «mes a mes»). Sale del historial de precios de Google (price_history) de esa misma búsqueda: el de cada tramo
+ * que forma la referencia, sumados día por día como el comparador. Es lo más barato de Google (con escala o
+ * sin ella, cualquier aerolínea), no el vuelo comprado: mide cómo se movió el mercado mientras se gestionaba.
+ * Si un día no tiene precio, se toma el siguiente de la solicitud o el anterior de la compra (hasta 2 y 3
+ * días). null sin historial (búsquedas anteriores al 28-oct) o si la solicitud es de antes de lo que cubre
+ * (unos 60 días).
+ */
+function _ptPriceRise_(snap, requestDay) {
+  if (!snap || snap.moment !== 'COMPRA' || snap.result !== 'OK' || !requestDay || !snap.at) return null;
+  var legs = _ptRefLegs_(snap);
+  if (!legs.length || legs.some(function(l) { return !l.history; })) return null;
+  var total = function(day) {
+    var t = 0;
+    for (var i = 0; i < legs.length; i++) {
+      var v = _ptHistoryAt_(legs[i].history, day);
+      if (v === null) return null;
+      t += v;
+    }
+    return t;
+  };
+  var searchDay = Utilities.formatDate(new Date(snap.at), 'America/Bogota', 'yyyy-MM-dd');
+  var buyDay = '', atBuy = null;
+  for (var k = 0; k <= 3 && atBuy === null; k++) {
+    buyDay = _psKeyFromDayNumber_(_psDayNumber_(searchDay) - k);
+    atBuy = total(buyDay);
+  }
+  if (atBuy === null || requestDay > buyDay) return null;
+  var fromDay = '', atRequest = null;
+  for (var j = 0; j <= 2 && atRequest === null; j++) {
+    fromDay = _psKeyFromDayNumber_(_psDayNumber_(requestDay) + j);
+    if (fromDay > buyDay) break;
+    atRequest = total(fromDay);
+  }
+  if (atRequest === null) return null;
+  return { fromDay: fromDay, buyDay: buyDay, days: _psDayNumber_(buyDay) - _psDayNumber_(fromDay), atRequest: atRequest, atBuy: atBuy };
+}
+
+/** Los tramos de una búsqueda (TRAMOS) → la lista para el dashboard. */
+function _ptParseLegs_(json, withOptions) {
+  try {
+    var raw = json ? JSON.parse(json) : [];
+    return Array.isArray(raw) ? raw.map(function(l) { return _ptLeg_(l, withOptions); }).filter(Boolean) : [];
+  } catch (e) { return []; }
+}
+
+/**
+ * Lee los tramos de una búsqueda creada con lazy, la primera vez que hacen falta (28-oct). Con el
+ * seguimiento continuo la pestaña crece cada mes y cada búsqueda trae sus vuelos y el historial de
+ * Google: el dashboard solo lee los tramos de las búsquedas que usa (la última de cada viaje).
+ */
+function _ptHydrate_(snap) {
+  if (snap && snap.legs === null) {
+    snap.legs = _ptParseLegs_(snap._tramos, false);
+    delete snap._tramos;
+  }
+  return snap;
+}
+
+/**
+ * Una fila de la pestaña → la búsqueda resumida para el dashboard. Con withOptions, los vuelos de cada tramo.
+ * Con lazy, los tramos se leen después, solo si hacen falta (_ptHydrate_).
+ */
+function _ptSnapshot_(r, withOptions, lazy) {
   var n = function(k) { var x = _csToNumber_(r[k]); return x > 0 ? Math.round(x) : null; };
   var near = n('MAS BARATO CERCA HORA');
   var day = n('MAS BARATO');
   var vendors = [];
   try { vendors = r['VENDEDORES'] ? JSON.parse(r['VENDEDORES']) : []; } catch (e) { vendors = []; }
   var format = Math.round(_csToNumber_(r['FORMATO'])) || 1;
-  var legs = [];
-  try {
-    var raw = r['TRAMOS'] ? JSON.parse(r['TRAMOS']) : [];
-    if (Array.isArray(raw)) legs = raw.map(function(l) { return _ptLeg_(l, withOptions); }).filter(Boolean);
-  } catch (e) { legs = []; }
+  var legs = lazy ? null : _ptParseLegs_(r['TRAMOS'], withOptions);
   var v2 = format >= 2;
   var atHour = v2 ? String(r['REFERENCIA A LA HORA'] || '').trim() : (near ? 'SI' : 'NO');
   var sameNear = n('MISMA AEROLINEA CERCA HORA'), sameDay = n('MISMA AEROLINEA DIA');
@@ -18226,6 +18300,7 @@ function _ptSnapshot_(r, withOptions) {
     referenceKind: String(r['REFERENCIA TIPO'] || '').trim() || (v2 || !String(r['FECHA REGRESO'] || '').trim() ? 'TRAMOS' : 'IDA Y VUELTA'),
     roundTripTogether: n('IDA Y VUELTA JUNTOS'),
     legs: legs,
+    _tramos: lazy ? String(r['TRAMOS'] || '') : undefined,
     typicalRange: String(r['RANGO TIPICO'] || '').trim(), googleLevel: String(r['NIVEL GOOGLE'] || '').trim(),
     aviatur: n('AVIATUR EN GOOGLE'), vendors: Array.isArray(vendors) ? vendors : [],
     queries: _csToNumber_(r['CONSULTAS']),
@@ -18275,7 +18350,7 @@ function _ptFare_(row, cell, snaps) {
 /** Aerolíneas del vuelo de referencia de una búsqueda (el que se usa para comparar). */
 function _ptRefAirlines_(snap) {
   if (!snap) return [];
-  var legs = snap.legs || [];
+  var legs = _ptHydrate_(snap).legs || [];
   var pick = function(l) { var o = l && (l.referenceIsNear ? l.near : l.cheapest); return o && o.airline ? [o.airline] : []; };
   if (snap.format >= 2 && legs.length) {
     var rt = legs.filter(function(l) { return l.leg === 'IDA Y VUELTA'; })[0];
@@ -18288,7 +18363,7 @@ function _ptRefAirlines_(snap) {
 
 /** Tramos de una búsqueda que forman el precio de referencia (formato 2 o más). */
 function _ptRefLegs_(snap) {
-  var legs = (snap && snap.format >= 2 && snap.legs) || [];
+  var legs = (snap && snap.format >= 2 && _ptHydrate_(snap).legs) || [];
   var rt = legs.filter(function(l) { return l.leg === 'IDA Y VUELTA'; });
   if (snap && snap.referenceKind === 'IDA Y VUELTA' && rt.length) return rt;
   return legs.filter(function(l) { return l.leg === 'IDA' || l.leg === 'REGRESO'; });
@@ -18481,7 +18556,7 @@ function _ptBuildTracking_() {
     var id = String(r['ID SOLICITUD'] || '').trim();
     var moment = String(r['MOMENTO'] || '').trim();
     if (!id || (moment !== 'COTIZACION' && moment !== 'COMPRA')) return;
-    var s = _ptSnapshot_(r);
+    var s = _ptSnapshot_(r, false, true); // los tramos, solo de las búsquedas que se usen (_ptHydrate_)
     if (s.at && (!meta.firstSearchAt || s.at < meta.firstSearchAt)) meta.firstSearchAt = s.at;
     if (s.at && s.at > meta.lastSearchAt) meta.lastSearchAt = s.at;
     var e = byId[id] || (byId[id] = { COTIZACION: [], COMPRA: [] });
@@ -18544,8 +18619,8 @@ function _ptBuildTracking_() {
         airline: String(cell(row, 'AEROLINEA') || '').trim(),
         returnAirline: String(cell(row, 'AEROLINEA REGRESO') || '').trim(), // #A85
         channel: String(cell(row, 'CANAL DE COMPRA') || '').trim(),
-        atQuote: _ptPickSnap_(snaps.COTIZACION, fare.level),
-        atPurchase: _ptPickSnap_(snaps.COMPRA, fare.level),
+        atQuote: _ptHydrate_(_ptPickSnap_(snaps.COTIZACION, fare.level)),
+        atPurchase: _ptHydrate_(_ptPickSnap_(snaps.COMPRA, fare.level)),
         market: market,
         marketMoment: ref ? ref.moment : '',
         sameAirline: same,
@@ -18556,10 +18631,18 @@ function _ptBuildTracking_() {
         invoicedVsGoogle: inv.invoiced && !inv.includesHotel && market ? inv.invoiced - market : null,
         fare: fare.info,
         // #A110: excluido a mano del ahorro (motivo · quién · fecha); '' = cuenta.
-        excluded: String(cell(row, SAVINGS_EXCLUDED_HEADER) || '').trim()
+        excluded: String(cell(row, SAVINGS_EXCLUDED_HEADER) || '').trim(),
+        // «Mes a mes» (28-oct): el mes de la compra y cómo se movió lo más barato de Google entre la solicitud y la compra.
+        purchaseMonth: (_psDateKey_(cell(row, 'FECHA DE COMPRA DE TIQUETE')) || '').slice(0, 7),
+        priceRise: _ptPriceRise_(_ptPickSnap_(snaps.COMPRA, fare.level),
+          _psDateKey_(cell(row, 'FECHA SOLICITUD')) || _psDateKey_(cell(row, 'FECHA/HORA (AUTOMÁTICO)')))
       });
     }
   }
+  // El historial completo solo va en el detalle de cada viaje: en la lista, cada viaje ya trae su subida (priceRise).
+  items.forEach(function(it) {
+    [it.atQuote, it.atPurchase].forEach(function(snap) { if (snap) (snap.legs || []).forEach(function(l) { delete l.history; }); });
+  });
   var rank = { APROBADO: 0, PENDIENTE_APROBACION: 1, RESERVADO: 2, PROCESADO: 3 };
   items.sort(function(a, b) {
     var ra = rank[a.status] === undefined ? 9 : rank[a.status], rb = rank[b.status] === undefined ? 9 : rank[b.status];
@@ -18607,7 +18690,11 @@ function _ptBuildTracking_() {
 var SA_COLUMNS = ['mes', 'mesSolicitud', 'estado', 'vuelo', 'idaVuelta', 'pasajeros', 'internacional', 'hotel',
   'cambio', 'cambioConCosto', 'multidestino', 'cotizadoTiquetes', 'facturado', 'anticipacion', 'canal', 'empresa', 'unidad',
   // #A97: la tarifa del manual por las noches del viaje (1, 2 o 3; 0 en solo hospedaje).
-  'tarifa'];
+  'tarifa',
+  // «Mes a mes» (28-oct), con las reglas del informe mensual (#A101): la tarifa comprada (TIPO registrado; 0 =
+  // sin registrar), lo pagado por los tiquetes (#A102; 0 = no se registró) y si se compró con la anticipación de
+  // la política (1 / 0; null si no cuenta: modificación, registrada después de comprar o sin fecha de compra).
+  'tarifaComprada', 'pagadoTiquetes', 'aTiempo'];
 
 function _saTrips_(vals, hm, config) {
   var out = { columns: SA_COLUMNS, rows: [], companies: [], units: [], generatedAt: new Date().toISOString() };
@@ -18633,6 +18720,13 @@ function _saTrips_(vals, hm, config) {
     var month = (buyKey || reqKey || depKey).slice(0, 7);
     if (!month) continue;
     var inv = _invoiceTotalsForClose_(row, hm, config);
+    var paidRaw = _paidCellValue_(cell(row, PAID_TICKETS_HEADER));
+    var paid = typeof paidRaw === 'number' && paidRaw >= COST_MIN_PESOS ? Math.round(paidRaw) : 0;
+    // Comprado a tiempo, como el informe mensual: días entre la compra y la ida ≥ 8 (30 si es internacional).
+    var counts = buyKey && depKey && String(cell(row, 'TIPO DE SOLICITUD') || '').trim().toUpperCase() !== 'MODIFICACION' &&
+      !/SOLO POR TRAZABILIDAD/i.test(String(cell(row, 'SELECCION_TEXTO') || ''));
+    var minDays = String(cell(row, 'ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI' ? POLICY_MIN_DAYS_INTERNATIONAL : POLICY_MIN_DAYS_NATIONAL;
+    var onTime = counts ? (_psDayNumber_(depKey) - _psDayNumber_(buyKey) >= minDays ? 1 : 0) : null;
     out.rows.push([
       month,
       (reqKey || month).slice(0, 7),
@@ -18652,7 +18746,10 @@ function _saTrips_(vals, hm, config) {
       dict(out.companies, coIdx, cell(row, 'EMPRESA')),
       dict(out.units, unIdx, cell(row, 'UNIDAD DE NEGOCIO')),
       String(cell(row, 'MODO_SOLICITUD') || '').trim() === 'SOLO_HOSPEDAJE' ? 0
-        : _fareOptionForNights_(_fareNights_(depKey, _psDateKey_(cell(row, 'FECHA VUELTA')), cell(row, '# NOCHES (AUTOMÁTICO)')))
+        : _fareOptionForNights_(_fareNights_(depKey, _psDateKey_(cell(row, 'FECHA VUELTA')), cell(row, '# NOCHES (AUTOMÁTICO)'))),
+      _fareOptionValue_(String(cell(row, FARE_TYPE_HEADER) || '').replace(/TIIPO/i, 'TIPO')) || 0,
+      paid,
+      onTime
     ]);
   }
   return out;

@@ -3205,3 +3205,145 @@ web app (el sidebar toma el archivo al guardar; el panel móvil, con la versión
 
 **Rollback:** revert del commit (app); versión anterior del web app y el `AdminSidebar.html` anterior.
 
+---
+
+## **#A115 — Rastreo de precios continuo y con el historial de precios de Google**
+**Fecha:** 2026-10-28 · **Pedido por:** Juan Camilo Pineda en la reunión del 28-oct con David (*«yo sí seguiría pagando la API solamente para saber el tema de tarifas»*; David extiende SerpApi al plan de 1.000 búsquedas al mes cuando se acaben las actuales). · **Estado:** Implementado; pendiente desplegar.
+
+**Contexto:**
+- El estudio de precios (#A84) corrió del 7 al 21-oct y quedó en «TERMINADO»: para seguir había que mover `FIN_ESTUDIO` a mano.
+- Cada respuesta de Google trae `price_insights.price_history`: el precio más barato de esa búsqueda, día por día, unos 60 días
+  atrás. El rastreo no lo guardaba. Con él se mide cuánto subió el precio entre la solicitud y la compra sin gastar búsquedas.
+- Con el seguimiento continuo la pestaña `COMPARATIVO PRECIOS` crece (unas 300 búsquedas al mes) y el rastreo la leía entera cada 15
+  minutos, incluidos los vuelos de cada búsqueda.
+
+**Arreglo (proyecto aparte, `Rastreo.gs`; `Nucleo` no cambia):**
+- **Seguimiento continuo:** `activarRastreo` ya no pone fecha de fin y quita una que ya pasó, así basta ejecutarla para reactivar el
+  rastreo. `FIN_ESTUDIO` queda opcional (una fecha futura se respeta). `INICIO_ESTUDIO` se conserva (7-oct).
+- **Historial de Google por tramo:** cada tramo de `TRAMOS` guarda `hist` = `{ d: primer día, p: [precio de cada día] }` (días sin
+  precio en `null`; la fecha llega en segundos o en milisegundos). Unos 500 caracteres por tramo. Sin `price_history` en la respuesta,
+  el tramo queda igual. No cambia el formato (`RP_FORMATO` sigue en 3): no se repite ninguna búsqueda.
+- **Lectura más liviana:** `rpLeerHechas_` lee solo las seis columnas que necesita (no `TRAMOS`).
+- **Plataforma (`Code.gs`):** `_ptPriceRise_` saca de esos historiales lo más barato el día de la solicitud y el día de la búsqueda
+  al comprar (sumando los tramos, como el comparador). Si un día falta, toma el siguiente de la solicitud o el anterior de la compra
+  (hasta 2 y 3 días). Cada viaje del comparador trae `priceRise` y `purchaseMonth`. El historial completo solo va en el detalle de un
+  viaje: en la lista se quita. El detalle dice «Precio en Google mientras se gestionaba: … subió $X en N días».
+- El estado del comparador dice «seguimiento continuo desde el 7-oct».
+
+**Cupo:** el estudio gastó 124 consultas en 2 semanas (25 viajes), unas 280 al mes. Con el plan gratis (250) se detiene solo en la
+reserva de 15 («SIN CUPO») hasta que se renueve; con el plan de 1.000 sobra. El tope diario sigue en 40.
+
+**Verificado:**
+- `tools/check-price-tracking.cjs`:
+  - `activarRastreo` deja el inicio y no pone fin;
+  - con una fecha de fin vencida, la quita y vuelve a buscar; una futura se respeta;
+  - cada tramo guarda su historial (61 días, el día sin precio en `null`; también con la fecha en milisegundos);
+  - sin `price_history`, el tramo queda igual.
+- En la plataforma: SOL-1 (ida y regreso) sube de $700.000 a $720.000 en 10 días. Si el día de la solicitud no tiene precio, se toma
+  el siguiente. Una solicitud de antes del historial queda sin dato. La lista no lleva el historial y el detalle sí.
+- Entorno local con una copia de la base del 22-oct y un historial de prueba: el detalle de SOL-000659 dice «subió $1.193 (menos de
+  1 %) en 2 días». En esa copia las compras se hicieron entre 0 y 5 días después de la solicitud (lo típico, 1 día).
+
+**Despliegue:** en el proyecto aparte, pegar `Rastreo.gs` (archivo **Rastreo**) y ejecutar **activarRastreo** una vez. En la plataforma,
+pegar `Code.gs` → versión nueva del web app. Orden indiferente: con el `Code.gs` viejo, el historial se guarda y no se usa; con el
+`Rastreo.gs` viejo, el comparador sigue igual y «mes a mes» deja vacías las filas del historial.
+
+**Rollback:** `desactivarRastreo` en el proyecto aparte; versión anterior del web app.
+
+---
+
+## **#A116 — «Mes a mes»: este mes frente a los anteriores y el promedio**
+**Fecha:** 2026-10-28 · **Pedido por:** Juan Camilo Pineda en la reunión del 28-oct (*«comparemos este mes con el mes pasado, con el mes
+antepasado y cuánto fue el promedio»*, también el ahorro de comprar la tarifa del manual: *«si se va un día tiene que ser la tarifa…»*). ·
+**Estado:** Implementado; pendiente desplegar.
+
+**Arreglo:** pestaña nueva **🗓️ Mes a mes** del dashboard de costos, para quienes ven el comparador (`_canReadCostsVariance_`, hoy Yurani,
+Diego, David y Juan Camilo). Sale de la tabla del análisis y de los viajes del comparador que ya llegan (#A89): ninguna llamada aparte;
+todo se calcula en el navegador y respeta la empresa y la unidad de arriba.
+- **Arriba, la respuesta:** viajes, gasto y costo por tiquete del último mes frente al promedio, el % en la tarifa del manual y, si hay,
+  la diferencia con Google.
+- **Cuatro recuadros:**
+  - costo por tiquete;
+  - en la tarifa del manual;
+  - comprados a tiempo;
+  - frente a Google.
+
+  Cada uno muestra el mes y el promedio; los porcentajes se comparan en puntos.
+- **La tabla, por mes de compra, con el promedio al final:**
+  - **Compras:** viajes, tiquetes, gasto y costo por tiquete, y por tiquete en viajes de 0 a 1 noche y de 2 o más.
+  - **Tarifa del manual:** compras con tarifa registrada; en la tarifa del manual o una menor; con una superior; viajes de 0 a 1 noche
+    comprados en TIPO 1.
+  - **Anticipación de la compra:** comprados a tiempo y días típicos entre la compra y el vuelo.
+  - **Frente a Google:** ya comprados, comparación exacta, sin los excluidos a mano (#A110): lo pagado, Google, la diferencia neta y con
+    la misma aerolínea.
+  - **Precio en Google mientras se gestionaba:** la subida típica y sumada, del historial de #A115.
+- **Controles:** «Hasta» (cualquier mes) y «Meses» (los últimos 3, 6 o desde abril). Exportar CSV con números sin formato.
+- **Mismas reglas del informe mensual (#A101):** «superior» = tarifa comprada mayor que la del manual por noches; «a tiempo» = 8 días o
+  más entre la compra y el vuelo (30 internacional), sin modificaciones ni lo registrado después de comprar. El promedio divide conteos
+  y pesos entre los meses, y los % y costos por tiquete entre el total de su base. El *¿Cómo se calcula?* lo dice (#A93).
+- **`Code.gs`:** la tabla del análisis (`SA_COLUMNS`) suma al final `tarifaComprada`, `pagadoTiquetes` y `aTiempo`. Con un dashboard
+  anterior no cambia nada; con un `Code.gs` anterior, esas filas salen vacías y el recuadro lo dice.
+
+**Verificado:**
+- `tools/check-savings-analysis.cjs` (77 comprobaciones): las columnas nuevas con la hoja sintética, y las cuentas de «mes a mes» con
+  un caso hecho a mano. El caso cubre: lo pagado si se registró, costo simbólico fuera del gasto, superior, TIPO 1 en TIPO 1, a tiempo,
+  mediana de días, Google solo exactas y compradas, sin excluidos, la subida típica y sumada, el promedio de 2 meses, las celdas en
+  palabras y el CSV.
+- Entorno local, base del 22-oct, como Juan Camilo:
+  - octubre (hasta el 22): 37 viajes, 71 tiquetes, $37,7 M; $530.627 por tiquete (13 % más que el promedio de agosto a octubre,
+    $470.804);
+  - en la tarifa del manual, 74 % (promedio 69 %); viajes de 0 a 1 noche en TIPO 1, 50 %;
+  - comprados a tiempo, 27 % (promedio 26 %);
+  - frente a Google, 8 viajes ya comprados, $2,8 M más caro (20 %; incluye Miami, SOL-000658, sin excluir en esa copia); con la misma
+    aerolínea, $444.607 más barato;
+  - «Hasta», «Meses» y el filtro por empresa funcionan; un líder no ve la pestaña. Sin errores de JavaScript.
+
+**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` → versión nueva del web app.
+
+**Rollback:** versión anterior del web app.
+
+---
+
+## **#A117 — Dashboard de costos por pestañas, más liviano y usable en celular**
+**Fecha:** 2026-10-28 · **Pedido por:** David (*«se me hace que ya está demasiado largo… que hayan pestañas al principio del dashboard…
+lo más eficiente y rápido posible»*). · **Estado:** Implementado; pendiente desplegar.
+
+**Síntoma:** todas las secciones iban una debajo de otra: buscar algo era «dispendioso», y al cargar se dibujaban todas (8 gráficas y las
+tablas grandes) aunque se viera solo la primera. En celular, la tarjeta de filtros pegada arriba ocupaba casi toda la pantalla y los
+botones del encabezado se salían por la derecha.
+
+**Arreglo (`CostsDashboard.html`):**
+- **Pestañas al final de la tarjeta de filtros:** 📅 Año · 🎯 Periodo (Q4, o Sep–Oct si es bimestral) · 📆 Mes · 🗓️ Mes a mes · 📊 Cotizado
+  vs facturado · 🔄 Cambios de viaje · 🔎 Comparador de precios · 📈 Proyección de ahorro. Se ve una sección a la vez. El *¿Cómo se
+  calcula?* del presupuesto y los botones de exportar van con Año, Periodo y Mes.
+- **Quién ve qué no cambia:** las pestañas restringidas aparecen cuando el servidor entrega su dato. A quien no las ve, nunca le aparecen
+  (un líder: Año, Periodo, Mes y Cambios). El periodo anual no tiene pestaña (repetiría Año).
+- **Más rápido sin perder la carga en paralelo (#A89):** los datos se siguen pidiendo todos a la vez, así cambiar de pestaña no espera
+  al servidor. Lo que cambió es el dibujo: solo se dibuja la pestaña que se ve. Las demás quedan marcadas y se dibujan al abrirlas, también
+  después de cambiar un filtro.
+- **Recuerda la pestaña** de la última visita en esa pestaña del navegador (`sessionStorage`). Vuelve a ella cuando llega su dato, salvo
+  que la persona ya haya elegido otra. Al salir se borra lo cargado por la persona anterior.
+- **Celular:** las pestañas pasan a la línea siguiente (todas a la vista), la tarjeta de filtros no se queda pegada arriba y los botones
+  del encabezado bajan de línea. Sin desborde a 390 px de ancho.
+- **Imprimir (PDF)** imprime la pestaña que se ve.
+- **`Code.gs`, comparador:** los tramos de cada búsqueda (con los vuelos y, desde #A115, el historial) se leen solo para las búsquedas
+  que se usan, la última de cada viaje y momento (`_ptHydrate_`). Antes se leían todas, y con el seguimiento continuo crecen unas 300
+  al mes. La respuesta es la misma.
+
+**Verificado:**
+- `npm run verify` en verde.
+- Chrome sin ventana, entorno local con la base del 22-oct:
+  - Juan Camilo ve las 8 pestañas y arranca en Año con solo esa sección;
+  - solo se dibujan las gráficas de Año;
+  - cada pestaña se ve sola y se dibuja al abrirla (periodo, mes, variación, cambios, comparador, proyección);
+  - al filtrar por empresa, la pestaña abierta se redibuja;
+  - al recargar, vuelve a «Mes a mes»;
+  - un líder ve solo Año, Periodo, Mes y Cambios;
+  - en celular, sin desborde y nada fuera de la pantalla.
+- La prueba de #A113 (Juan Camilo solo para mirar, David con «Excluir del ahorro» y configuración), adaptada a las pestañas, sigue en
+  verde. Sin errores de JavaScript.
+
+**Despliegue:** pegar `CostsDashboard.html` (y `Code.gs`, para la lectura liviana) → versión nueva del web app.
+
+**Rollback:** versión anterior del web app.
+

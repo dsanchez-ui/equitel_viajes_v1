@@ -241,7 +241,7 @@ Si el tiquete **no se había comprado**, la hija se cotiza como el viaje complet
 
 **A quién llama el viajero después del plazo (menú 16).** La lista está en MISC: correo, nombre y cargo de cada persona, en el orden en que se llama (la primera y, si no responde, la siguiente; máximo 3). El celular se toma de la columna *Celular* de USUARIOS, así que se corrige en un solo lugar (sidebar o panel móvil). **Equitel Viajes → 16. Contactos para cambios de viaje** crea la tabla la primera vez (con Laura y Diego), muestra el mensaje que ve el viajero y avisa si a alguien le falta el celular. Si alguien cambia de rol, se cambia su fila. La app lo muestra en unos 10 minutos, o de inmediato al volver a correr el menú.
 
-**Control:** *Métricas → 🔄 Cambios* muestra cada cambio con lo que costó el viaje, el costo del cambio, la penalidad, las maletas pedidas después y el total por unidad (y CSV). El dashboard de costos tiene la sección **Cambios de viaje** por unidad (cada líder ve las suyas) y el informe mensual trae la sección «Cambios de viaje».
+**Control:** *Métricas → 🔄 Cambios* muestra cada cambio con lo que costó el viaje, el costo del cambio, la penalidad, las maletas pedidas después y el total por unidad (y CSV). El dashboard de costos tiene la pestaña **🔄 Cambios de viaje** por unidad (cada líder ve las suyas) y el informe mensual trae la sección «Cambios de viaje».
 
 ### 5.7 Anular una solicitud
 

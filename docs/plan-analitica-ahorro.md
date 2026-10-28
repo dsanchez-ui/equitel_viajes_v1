@@ -314,6 +314,16 @@ Aviatur.
 
 ## 9. Pendientes y prioridades
 
+**28-oct, pedidos de la reunión con Juan Camilo (hechos, pendiente de pegar):**
+- [x] **Seguimiento continuo del rastreo (#A115)**, con el historial de precios de Google por tramo.
+- [x] **«Mes a mes» (#A116):** este mes frente a los anteriores y el promedio; compras, costo por tiquete,
+  tarifa del manual, anticipación, Google y cuánto se movió el precio mientras se gestionaba.
+- [x] **Dashboard por pestañas (#A117)**, dibujando solo la que se ve.
+- [ ] **David:** pegar `Code.gs` y `CostsDashboard.html` (versión nueva) y `Rastreo.gs` en el proyecto
+  aparte; ejecutar `activarRastreo`. Subir SerpApi al plan de 1.000 cuando se acaben las del mes.
+- [ ] Con un mes de historial: revisar la subida típica entre la solicitud y la compra, y si vale la pena
+  mostrarla también por unidad o por anticipación de la solicitud.
+
 **Hoy, 8-oct, para la reunión de las 2 p. m.**, en este orden:
 
 - [x] **P0 Velocidad (#A89):** llamadas en paralelo; caché de respuestas en `CacheService`
@@ -369,6 +379,16 @@ Aviatur.
 | 14 | Base de los % | Todo % va sobre lo cotizado (o lo facturado si ya se compró), nunca sobre el precio de Google (David, 13-oct, #A99) |
 
 ## 11. Bitácora
+
+- **2026-10-28** — Reunión de David con Juan Camilo: se sigue pagando SerpApi (plan de 1.000 al mes) para comparar el ahorro
+  mes a mes. Implementados #A115 (rastreo continuo con `price_history`), #A116 («Mes a mes») y #A117 (pestañas, dibujar solo la
+  que se ve, lectura liviana de los tramos). Con la base del 22-oct, octubre hasta el 22:
+  - 37 viajes en avión, 71 tiquetes, $530.627 por tiquete (13 % más que el promedio de agosto a octubre);
+  - 74 % en la tarifa del manual o una menor; viajes de 0 a 1 noche en TIPO 1, 50 %;
+  - 27 % comprado a tiempo;
+  - frente a Google, 8 viajes ya comprados con comparación exacta.
+  En la copia de prueba, las compras se hacen entre 0 y 5 días después de la solicitud (lo típico, 1 día): el movimiento del precio
+  entre la solicitud y la compra debería ser pequeño; el historial real lo dirá.
 
 - **2026-10-13** — Revisión del dashboard con la base del día, antes de presentarlo (#A99):
   - **La proyección de $187,9 M al año no se sostenía:** salía de 6 comparaciones TIPO 2, todas aproximadas; el tope era el máximo % observado y 247 de 377 viajes llegaban a él. Ahora no hay cifra al año sin 15 comparaciones exactas (hoy hay 0), y el tope es la mediana.

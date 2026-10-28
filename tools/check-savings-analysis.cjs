@@ -65,6 +65,7 @@ const iso = (n) => { const d = new Date(Date.UTC(2026, 8, 1 + n)); return d.toIS
 const H = ['ID RESPUESTA', 'FECHA SOLICITUD', 'STATUS', 'MODO_SOLICITUD', 'CIUDAD ORIGEN', 'CIUDAD DESTINO', 'FECHA IDA', 'FECHA VUELTA',
   '# PERSONAS QUE VIAJAN', 'FECHA DE COMPRA DE TIQUETE', 'COSTO_FINAL_TIQUETES', 'COSTO_FINAL_HOTEL', 'TOTAL FACTURA', 'ES INTERNACIONAL',
   'TIPO DE SOLICITUD', 'ES_CAMBIO_CON_COSTO', 'OBSERVACIONES', 'CANAL DE COMPRA', 'AEROLINEA', 'EMPRESA', 'UNIDAD DE NEGOCIO',
+  'TIPO DE COMPRA DE TKT', 'VALOR COMPRA TIQUETES', 'SELECCION_TEXTO',
   'EVENTOS_JSON', 'CORREO ENCUESTADO', 'CÉDULA PERSONA 1', 'NOMBRE PERSONA 1'];
 const priv = ['viajero@ejemplo.test', 'CEDULA-PRIVADA-9', 'NOMBRE PRIVADO'];
 const R = (o) => H.map((k) => (k in o ? o[k] : '')).map((v, i) => (i >= H.length - 3 ? priv[i - (H.length - 3)] : v));
@@ -73,7 +74,8 @@ function requests() {
     // A: ida y vuelta, 1 pasajero, comprado en sep, con hotel y factura, 2 días de anticipación, Aviatur
     R({ 'ID RESPUESTA': 'SOL-1', 'FECHA SOLICITUD': iso(0), STATUS: 'PROCESADO', MODO_SOLICITUD: 'VIAJE', 'CIUDAD ORIGEN': 'BOGOTA', 'CIUDAD DESTINO': 'MEDELLIN',
       'FECHA IDA': iso(5), 'FECHA VUELTA': iso(7), '# PERSONAS QUE VIAJAN': 1, 'FECHA DE COMPRA DE TIQUETE': iso(3), COSTO_FINAL_TIQUETES: 600000, COSTO_FINAL_HOTEL: 300000,
-      'TOTAL FACTURA': 950000, 'TIPO DE SOLICITUD': 'ORIGINAL', 'CANAL DE COMPRA': 'Aviatur', EMPRESA: 'Equitel', 'UNIDAD DE NEGOCIO': 'POTENCIA' }),
+      'TOTAL FACTURA': 950000, 'TIPO DE SOLICITUD': 'ORIGINAL', 'CANAL DE COMPRA': 'Aviatur', EMPRESA: 'Equitel', 'UNIDAD DE NEGOCIO': 'POTENCIA',
+      'TIPO DE COMPRA DE TKT': 'TIPO 3', 'VALOR COMPRA TIQUETES': 580000 }),
     // B: solo ida, 2 pasajeros, comprado en sep, modificación con costo, multidestino, internacional, 20 días, Directo
     R({ 'ID RESPUESTA': 'SOL-2', 'FECHA SOLICITUD': iso(1), STATUS: 'RESERVADO', MODO_SOLICITUD: 'VIAJE', 'CIUDAD ORIGEN': 'BOGOTA', 'CIUDAD DESTINO': 'MIAMI',
       'FECHA IDA': iso(30), '# PERSONAS QUE VIAJAN': 2, 'FECHA DE COMPRA DE TIQUETE': iso(10), COSTO_FINAL_TIQUETES: 3000000, 'ES INTERNACIONAL': 'SI',
@@ -225,7 +227,10 @@ function main() {
   // 3. La tabla compacta del análisis
   const a = r1.data.analysis;
   eq('columnas del análisis', a.columns, ['mes', 'mesSolicitud', 'estado', 'vuelo', 'idaVuelta', 'pasajeros', 'internacional', 'hotel', 'cambio', 'cambioConCosto',
-    'multidestino', 'cotizadoTiquetes', 'facturado', 'anticipacion', 'canal', 'empresa', 'unidad', 'tarifa']);
+    'multidestino', 'cotizadoTiquetes', 'facturado', 'anticipacion', 'canal', 'empresa', 'unidad', 'tarifa', 'tarifaComprada', 'pagadoTiquetes', 'aTiempo']);
+  // «Mes a mes» (28-oct): tarifa comprada, lo pagado y si se compró a tiempo, con las reglas del informe mensual.
+  eq('mes a mes: SOL-1 TIPO 3 comprada, $580.000 pagados, 2 días antes (tarde); SOL-2 es una modificación (no cuenta); solo hospedaje sin compra',
+    [a.rows[0].slice(18), a.rows[1].slice(18), a.rows[3].slice(18)], [[3, 580000, 0], [0, 0, null], [0, 0, null]]);
   const byIdx = (i) => a.rows[i];
   // #A97: la tarifa del manual por noches: SOL-1 (2 noches) TIPO 2; SOL-2 (solo ida sin hotel) TIPO 1; solo hospedaje 0.
   eq('tarifa por noches en el análisis', [byIdx(0)[17], byIdx(1)[17], byIdx(3)[17]], [2, 1, 0]);
@@ -346,12 +351,47 @@ function main() {
     ['en Google, 25 % menos que lo cotizado', 'en Google, 8,0 % más que lo cotizado', 'Igual', 'en Google, 13 % menos que lo facturado']);
   eq('sin al menos 15 comparaciones exactas no hay cifra al año', b.SA_MIN_EXACT, 15);
 
+  // 5. «Mes a mes» (28-oct): cada cifra, con un caso hecho a mano.
+  const M = (o) => Object.assign({ month: '2026-09', st: 'C', flight: true, rt: true, pax: 1, quoted: 600000, paid: 0, tipo: 1, fareBought: 0, onTime: null, lead: null }, o);
+  const momTrips = [
+    M({ paid: 580000, fareBought: 1, onTime: 1, lead: 10 }),                                     // sep: TIPO 1 en TIPO 1, a tiempo, pagado
+    M({ rt: false, pax: 2, quoted: 500000, tipo: 2, fareBought: 3, onTime: 0, lead: 3 }),        // sep: TIPO 2 comprado en TIPO 3 (superior), tarde
+    M({ st: 'A' }), M({ flight: false }),                                                       // anulado y solo hospedaje: no cuentan
+    M({ quoted: 5000 }),                                                                        // costo simbólico: viaje y tiquetes sí, gasto no
+    M({ month: '2026-10', quoted: 700000, fareBought: 2, lead: 1 }),                             // oct: TIPO 1 comprado en TIPO 2
+  ];
+  const MI = (o) => Object.assign({ purchaseMonth: '2026-10', bought: true, marketMoment: 'COMPRA', fare: { quality: 'exacta' }, base: 700000, quoted: 700000,
+    market: 600000, sameAirline: 690000, excluded: '', priceRise: null }, o);
+  const momItemsT = [
+    MI({ priceRise: { atRequest: 500000, atBuy: 600000 } }),                                      // pagó $100.000 más que Google; el precio subió 20 %
+    MI({ excluded: 'Viaje atípico' }),                                                           // excluido a mano: no cuenta
+    MI({ fare: { quality: 'aproximada' }, priceRise: { atRequest: 400000, atBuy: 380000 } }),    // aproximada: solo cuenta su precio (bajó 5 %)
+    MI({ bought: false, priceRise: { atRequest: 1, atBuy: 2 } }),                                 // sin comprar: no cuenta
+  ];
+  const mc = b.momCompute(['2026-09', '2026-10'], momTrips, momItemsT);
+  const sep = b.momView(mc.by['2026-09'], 1), oct = b.momView(mc.by['2026-10'], 1), prom = b.momView(mc.total, 2);
+  eq('mes a mes, sep: viajes, tiquetes, gasto (lo pagado si se registró) y por tiquete',
+    [sep.flights, sep.tickets, sep.spend, sep.perTicket, sep.perTicket1, sep.perTicket23], [3, 6, 1080000, 270000, 290000, 250000]);
+  eq('mes a mes, sep: tarifa del manual, TIPO 1 en TIPO 1, a tiempo y días típicos', [sep.nFare, sep.inManual, sep.superior, sep.tipo1Basic, sep.onTime, sep.lead],
+    [2, 0.5, 1, 1, 0.5, 6.5]);
+  eq('mes a mes, oct: frente a Google (exactas, sin excluidos ni sin comprar) y con la misma aerolínea',
+    [oct.gN, oct.gBase, oct.gMarket, oct.gDiff, Math.round(oct.gPct * 1000), oct.sN, oct.sDiff], [1, 700000, 600000, 100000, 143, 1, 10000]);
+  eq('mes a mes, oct: el precio en Google, de la solicitud a la compra (típico y sumado)', [oct.rN, Math.round(oct.rPct * 1000), oct.rDiff], [2, 75, 80000]);
+  eq('mes a mes, oct: sin dato de anticipación; TIPO 1 comprado en TIPO 2', [oct.onTime, oct.inManual, oct.tipo1Basic, oct.lead], [null, 0, 0, 1]);
+  eq('mes a mes, promedio de 2 meses: conteos y pesos ÷ 2; % y por tiquete sobre el total', [prom.flights, prom.tickets, prom.spend, Math.round(prom.perTicket),
+    Math.round(prom.inManual * 1000), prom.onTime, prom.lead, prom.gN, prom.gDiff, prom.rN, prom.rDiff], [2, 4, 890000, 296667, 333, 0.5, 3, 0.5, 50000, 1, 40000]);
+  eq('mes a mes: celdas en palabras', [b.momCell(100000, 'diff', false, 1 / 7), b.momCell(-500, 'diff'), b.momCell(0.2, 'rise'), b.momCell(2.5, 'count', true), b.momCell(null, 'pct')],
+    ['<span class="sa-neg">$100.000 más caro</span><span class="mom-delta">14 % de lo pagado</span>', 'Igual', '<span class="sa-neg">subió 20 %</span>', '2,5', '—']);
+  eq('mes a mes: CSV con números sin formato', [b.momRaw(0.3333, 'pct'), b.momRaw(296666.7, 'money'), b.momRaw(2.5, 'count'), b.momRaw(null, 'money')], ['33,3', '296667', '2,5', '']);
+  eq('mes a mes: meses desde abril de 2026 hasta el en curso', [b.momAllMonths()[0], b.momAllMonths().slice(-1)[0] === b.MOM_NOW, b.momAddMonth('2026-12', 1), b.momAddMonth('2026-01', -1)],
+    ['2026-04', true, '2027-01', '2025-12']);
+
   if (failures.length) {
     console.error(`\n✗ Velocidad y análisis de ahorro: ${failures.length} problema(s).\n`);
     failures.forEach((x) => console.error('  · ' + x));
     process.exit(1);
   }
-  console.log(`Velocidad y análisis de ahorro: caché (llave por alcance, invalidación, trozos, fallas), tabla del análisis y cuentas de la proyección OK (${checks} comprobaciones).`);
+  console.log(`Velocidad y análisis de ahorro: caché (llave por alcance, invalidación, trozos, fallas), tabla del análisis y cuentas de la proyección y del mes a mes OK (${checks} comprobaciones).`);
 }
 
 main();
