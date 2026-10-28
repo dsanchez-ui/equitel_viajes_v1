@@ -692,9 +692,13 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 - **En el Mac, antes de nada: [MIGRACION.md §0](MIGRACION.md)** (Node 24, revisión del equipo y el recordatorio para todos sus
   proyectos). En el PC Linux ya está hecho.
-- **#A113 (dashboard completo, solo para ver, para Juan Camilo): implementado el 28-oct, pendiente de desplegar** (pegar `Code.gs`
-  y `CostsDashboard.html` → versión nueva → fila `jcpineda@equitel.com.co | COMPLETO` en la tabla de accesos de MISC → menú 9;
-  no hay push de frontend). Reunión del 28-oct con Juan Camilo: él pidió seguir el
+- **Pendiente de pegar en Apps Script (28-oct): #A111–#A114.** El frontend de #A111 y #A112 (cambio de hospedaje y horas en 24 h,
+  sesión del 27-oct) salió con su push; el de #A114 (calendario), con el del 28-oct. Falta pegar **`Code.gs`** (#A111, #A112, #A113),
+  **`CostsDashboard.html`** (#A113), **`AdminSidebar.html`** y **`AdminMobile.html`** (#A114) → versión nueva del web app → fila
+  `jcpineda@equitel.com.co | COMPLETO` en la tabla de accesos de MISC → menú 9. **El `Code.gs` bueno es el de `main` después del 28-oct**:
+  el que se preparó primero en el PC Linux para #A113 no traía #A111/#A112 (se hicieron en otra sesión); si se pegó ese, pegar de nuevo.
+  Los dos lados de #A111 y #A112 se combinaron en el PC el 28-oct (`npm run verify`, el entorno local y el navegador, en verde).
+- **#A113 (dashboard completo, solo para ver, para Juan Camilo):** reunión del 28-oct con Juan Camilo: él pidió seguir el
   ahorro de los tiquetes **mes a mes** (este mes frente a los dos anteriores y el promedio), también el de comprar en la tarifa del
   manual; David extiende SerpApi al plan de 1.000 búsquedas al mes cuando se acaben las actuales. El rastreo está en «TERMINADO»
   desde el 21-oct: para seguir hay que quitar o mover `FIN_ESTUDIO` en el proyecto aparte. La API trae `price_history`

@@ -3160,7 +3160,9 @@ Falta que David excluya el viaje a Miami (SOL-000658) con su motivo.
   - como David, todo sigue igual;
   - sin errores de JavaScript.
 
-**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` → versión nueva del web app → en MISC, debajo de los encabezados de la tabla de accesos, la fila `jcpineda@equitel.com.co | COMPLETO` → revisar con el menú 9. No hay cambios de frontend. Juan Camilo entra por el enlace del dashboard de costos con su correo y su PIN del portal.
+**Numeración:** se hizo como #A111 en el PC Linux mientras otra sesión (27-oct) usaba #A111 y #A112 para el cambio de hospedaje y las horas en 24 h; al combinar las dos ramas el 28-oct quedó como #A113 (y el arreglo del calendario como #A114).
+
+**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` → versión nueva del web app → en MISC, debajo de los encabezados de la tabla de accesos, la fila `jcpineda@equitel.com.co | COMPLETO` → revisar con el menú 9. No hay cambios de frontend. El `Code.gs` es el de `main` después de combinar las ramas: trae también #A111 y #A112. Juan Camilo entra por el enlace del dashboard de costos con su correo y su PIN del portal.
 - **Con el `Code.gs` viejo y la fila puesta:** el menú viejo diría que `COMPLETO` no es una unidad y Juan Camilo entraría sin ver datos. Por eso la fila va después de la versión nueva.
 - **Con el `CostsDashboard.html` viejo:** vería el botón «Excluir del ahorro», pero el servidor no lo deja.
 
