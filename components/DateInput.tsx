@@ -6,6 +6,9 @@ import React, { useEffect, useRef, useState } from 'react';
 // fecha se ve y se escribe día/mes/año (las barras se ponen solas) y el calendario
 // del navegador sigue disponible con el botón. El valor que entra y sale es
 // 'AAAA-MM-DD', igual que antes, así que nada más cambia.
+// El calendario se abre con el clic de la persona sobre el campo nativo, invisible y
+// encima del botón (#A114): showPicker() falla en algunos navegadores y dentro de un
+// iframe de otro dominio (así no abría en el sidebar de Google Sheets).
 
 /** 'AAAA-MM-DD' → 'DD/MM/AAAA' ('' si no es una fecha). */
 export const isoToDmy = (iso: string | undefined | null): string => {
@@ -81,11 +84,12 @@ export const DateInput: React.FC<DateInputProps> = ({ value, onChange, min, max,
     else if (!next) onChange('');
   };
 
+  // Solo con el teclado (Enter en el botón): con el ratón o el dedo el clic cae en el campo nativo.
   const openCalendar = () => {
     const el = pickerRef.current as (HTMLInputElement & { showPicker?: () => void }) | null;
     if (!el || disabled) return;
-    try { if (el.showPicker) { el.showPicker(); return; } } catch { /* sin showPicker: el campo transparente recibe el clic */ }
-    el.focus();
+    try { if (el.showPicker) { el.showPicker(); return; } } catch { /* bloqueado: se escribe la fecha */ }
+    textRef.current?.focus();
   };
 
   return (
@@ -107,19 +111,7 @@ export const DateInput: React.FC<DateInputProps> = ({ value, onChange, min, max,
         className={`${className || ''} pr-10`}
         {...(dataAttrs || {})}
       />
-      <button
-        type="button"
-        onClick={openCalendar}
-        disabled={disabled}
-        aria-label="Abrir el calendario"
-        title="Abrir el calendario"
-        className="absolute right-1 top-1/2 -translate-y-1/2 mt-0.5 p-1.5 rounded text-gray-500 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-        </svg>
-      </button>
-      {/* El calendario del navegador. Invisible: solo se usa para elegir; lo que se ve es DD/MM/AAAA. */}
+      {/* El calendario del navegador: invisible, encima del botón, recibe el clic (lo que se ve es DD/MM/AAAA). */}
       <input
         ref={pickerRef}
         type="date"
@@ -131,8 +123,20 @@ export const DateInput: React.FC<DateInputProps> = ({ value, onChange, min, max,
         disabled={disabled}
         onChange={(e) => { setText(isoToDmy(e.target.value)); onChange(e.target.value); }}
         style={{ colorScheme: 'light' }}
-        className="absolute right-1 bottom-0 w-8 h-1 opacity-0 pointer-events-none"
+        className="date-overlay peer absolute right-1 top-1/2 -translate-y-1/2 mt-0.5 z-10 w-[30px] h-[30px] p-0 m-0 border-0 opacity-0 cursor-pointer disabled:cursor-not-allowed"
       />
+      <button
+        type="button"
+        onClick={openCalendar}
+        disabled={disabled}
+        aria-label="Abrir el calendario"
+        title="Abrir el calendario"
+        className="absolute right-1 top-1/2 -translate-y-1/2 mt-0.5 p-1.5 rounded text-gray-500 hover:text-gray-800 hover:bg-gray-100 peer-hover:text-gray-800 peer-hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+        </svg>
+      </button>
     </div>
   );
 };

@@ -3165,3 +3165,41 @@ Falta que David excluya el viaje a Miami (SOL-000658) con su motivo.
 - **Con el `CostsDashboard.html` viejo:** vería el botón «Excluir del ahorro», pero el servidor no lo deja.
 
 **Rollback:** versión anterior del web app.
+
+---
+
+## **#A114 — El botón del calendario no abría en el sidebar de Sheets (ni en el panel móvil)**
+**Fecha:** 2026-10-28 · **Reportado por:** David (al crear un usuario desde el sidebar de administración: *«no desplegó el calendario… garantiza que siempre se pueda desplegar»*). · **Estado:** Implementado; pendiente desplegar.
+
+**Síntoma:** en el sidebar de la hoja, el botón del calendario junto a la fecha de nacimiento no hacía nada. Había que escribir la
+fecha a mano. En la app sí abría.
+
+**Causa raíz:** desde #A105 la fecha se escribe en un campo de texto (DD/MM/AAAA) y el calendario del navegador queda en un campo
+`type="date"` oculto, que el botón abría con `showPicker()`. El sidebar de Sheets y las páginas del web app (panel móvil, dashboard)
+corren dentro de un iframe de otro dominio (`googleusercontent.com` dentro de `docs.google.com` o `script.google.com`), y ahí Chrome
+bloquea `showPicker()` con `SecurityError`. El respaldo (`focus()` sobre un campo invisible de 2 px sin clics) tampoco abre nada. La app
+corre en su propia página y por eso sí funcionaba. Comprobado en Chrome: el mismo código en una página normal abre el calendario y
+dentro de un iframe de otro dominio lanza `SecurityError`.
+
+**Arreglo:** el campo de fecha nativo, invisible, va **encima del botón** (30 × 30 px) y su ícono de calendario se estira sobre todo el
+campo (`::-webkit-calendar-picker-indicator` con `position: absolute` y 100 %). El clic o el toque de la persona cae en el control nativo
+del navegador y lo abre sin `showPicker()`, en cualquier iframe. Con el teclado, Enter en el botón intenta `showPicker()` y, si está
+bloqueado, deja el cursor en el campo de texto para escribir la fecha.
+- `attachDmyDateField` en `AdminSidebar.html` y `AdminMobile.html` (el panel móvil tenía el mismo problema).
+- `DateInput` de la app (todos sus campos de fecha) y `index.css`, para que funcione igual en todas partes (también en navegadores sin
+  `showPicker()`).
+- `npm run verify` revisa que el campo nativo siga encima del botón y con el ícono estirado (`tools/check-birthdate-rules.cjs`).
+
+**Verificado:**
+- Chrome sin ventana, con el `AdminSidebar.html` y el `AdminMobile.html` reales dentro de un iframe de otro dominio: **antes**, el clic
+  caía en el dibujo del botón y la fecha quedaba vacía; **ahora** cae en el campo nativo, abre el calendario y la fecha queda
+  (`28/10/2026`). Igual tocando con el dedo (emulación de celular).
+- La app en el entorno local (formulario de nueva solicitud, como solicitante), en su página y dentro de un iframe de otro dominio: el
+  calendario abre y la fecha queda en DD/MM/AAAA. El ícono se ve igual. Sin errores de JavaScript.
+- `npm run verify` en verde; con el `AdminSidebar.html` anterior, la comprobación nueva falla.
+
+**Despliegue:** push del frontend (app) + pegar `AdminSidebar.html` y `AdminMobile.html` en el editor de Apps Script → versión nueva del
+web app (el sidebar toma el archivo al guardar; el panel móvil, con la versión nueva). Cada parte funciona sola.
+
+**Rollback:** revert del commit (app); versión anterior del web app y el `AdminSidebar.html` anterior.
+

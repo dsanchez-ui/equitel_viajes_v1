@@ -809,7 +809,7 @@
 
   // Fecha DD/MM/AAAA (David, 21-oct-2026). El campo de fecha del navegador muestra el formato del
   // idioma del computador (en inglés, MM/DD/AAAA) y en Colombia eso confunde. Aquí la fecha se ve y se
-  // escribe día/mes/año (las barras se ponen solas) y el calendario sigue con el botón. El campo
+  // escribe día/mes/año (las barras se ponen solas) y el calendario se abre con el botón. El campo
   // original queda oculto y sigue guardando 'AAAA-MM-DD': el código que lo lee o lo llena no cambia.
   function attachDmyDateField(id) {
     var el = document.getElementById(id);
@@ -836,7 +836,16 @@
     btn.style.cssText = 'position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#6b7280;cursor:pointer;padding:4px;width:auto;margin:0;line-height:0;';
     wrap.appendChild(txt); wrap.appendChild(btn); wrap.appendChild(el);
     el.tabIndex = -1; el.setAttribute('aria-hidden', 'true');
-    el.style.cssText = 'position:absolute;right:6px;bottom:0;width:32px;height:2px;min-height:0;opacity:0;pointer-events:none;padding:0;margin:0;border:0;';
+    // El calendario se abre con el clic de la persona sobre el campo nativo, invisible y encima del botón
+    // (#A114): dentro de Google Sheets y del web app la página corre en un iframe de otro dominio y ahí
+    // Chrome bloquea showPicker() (SecurityError), así que el botón solo no abría nada.
+    el.style.cssText = 'position:absolute;right:6px;top:50%;transform:translateY(-50%);width:30px;height:30px;min-height:0;opacity:0;cursor:pointer;padding:0;margin:0;border:0;z-index:1;';
+    if (!document.getElementById('dmy-style')) {
+      var css = document.createElement('style');
+      css.id = 'dmy-style';
+      css.textContent = 'input[data-dmy]::-webkit-calendar-picker-indicator{position:absolute;left:0;top:0;width:100%;height:100%;margin:0;padding:0;cursor:pointer}';
+      document.head.appendChild(css);
+    }
     // Lo que el código escribe en el campo original (al cargar o limpiar el formulario) se muestra.
     Object.defineProperty(el, 'value', { configurable: true,
       get: function() { return proto.get.call(el); },
@@ -850,9 +859,10 @@
       el.dispatchEvent(new Event('change', { bubbles: true }));
     });
     el.addEventListener('change', function() { var iso = proto.get.call(el); if (iso && toIso(txt.value) !== iso) txt.value = toDmy(iso); });
+    // Con el teclado (Enter en el botón): el calendario si el navegador lo deja; si no, se escribe la fecha.
     btn.addEventListener('click', function() {
-      try { if (el.showPicker) { el.showPicker(); return; } } catch (e) { /* sin showPicker */ }
-      el.style.pointerEvents = 'auto'; el.focus();
+      try { if (el.showPicker) { el.showPicker(); return; } } catch (e) { /* bloqueado en el iframe */ }
+      txt.focus();
     });
     txt.value = toDmy(proto.get.call(el));
   }

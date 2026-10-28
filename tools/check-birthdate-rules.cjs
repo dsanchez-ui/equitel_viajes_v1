@@ -108,7 +108,45 @@ const CASES = [
   ['1925-09-10', false],                 // cumple 101 hoy
 ];
 
+/**
+ * #A114: el calendario se abre con el clic de la persona sobre el campo de fecha nativo, invisible y
+ * encima del botón. showPicker() no sirve en el sidebar de Sheets ni en el web app (iframe de otro
+ * dominio: SecurityError), así que el campo nativo no puede quedar sin recibir clics.
+ */
+function checkCalendarOverlay() {
+  const problems = [];
+  const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  for (const f of ['server/AdminSidebar.html', 'server/AdminMobile.html']) {
+    const src = read(f);
+    const fn = (src.match(/function attachDmyDateField\(id\) \{[\s\S]*?\n\s*txt\.value = toDmy/) || [''])[0];
+    if (!fn) { problems.push(f + ': no se encontró attachDmyDateField'); continue; }
+    const native = (fn.match(/el\.style\.cssText = '([^']*)'/) || [])[1] || '';
+    if (/pointer-events:\s*none/.test(native) || !/width:\s*30px/.test(native) || !/z-index:\s*1/.test(native)) {
+      problems.push(f + ': el campo de fecha nativo debe ir encima del botón y recibir el clic (' + native + ')');
+    }
+    if (!/::-webkit-calendar-picker-indicator\{position:absolute;left:0;top:0;width:100%;height:100%/.test(fn)) {
+      problems.push(f + ': falta el estilo que estira el ícono del calendario sobre el campo');
+    }
+  }
+  const di = read('components/DateInput.tsx');
+  const native = (di.match(/type="date"[\s\S]*?className="([^"]*)"/) || [])[1] || '';
+  if (!/\bdate-overlay\b/.test(native) || /pointer-events-none/.test(native) || !/\bz-10\b/.test(native)) {
+    problems.push('components/DateInput.tsx: el campo de fecha nativo debe ir encima del botón (date-overlay, z-10, sin pointer-events-none)');
+  }
+  if (di.indexOf('type="date"') > di.indexOf('aria-label="Abrir el calendario"')) {
+    problems.push('components/DateInput.tsx: el campo nativo va antes del botón (peer-hover del botón)');
+  }
+  if (!/input\.date-overlay::-webkit-calendar-picker-indicator\s*\{[^}]*position:\s*absolute[^}]*width:\s*100%[^}]*height:\s*100%/.test(read('index.css'))) {
+    problems.push('index.css: falta el estilo de input.date-overlay::-webkit-calendar-picker-indicator');
+  }
+  if (problems.length) {
+    console.error('\n✗ Calendario de los campos de fecha (#A114):\n' + problems.map((x) => '  · ' + x).join('\n') + '\n');
+    process.exit(1);
+  }
+}
+
 function main() {
+  checkCalendarOverlay();
   let back, front;
   try {
     back = loadBackend();
@@ -148,7 +186,7 @@ function main() {
   const accepted = CASES.filter((c) => c[1]).length;
   console.log(
     `Fecha de nacimiento: ${CASES.length} casos OK, frontend y backend coinciden ` +
-    `(${accepted} aceptados, ${CASES.length - accepted} rechazados).`
+    `(${accepted} aceptados, ${CASES.length - accepted} rechazados); el calendario abre con el clic en la app, el sidebar y el panel móvil.`
   );
 }
 

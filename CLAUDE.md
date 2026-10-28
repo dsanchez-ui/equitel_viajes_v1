@@ -215,7 +215,10 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   todo campo de fecha es `DateInput` (`DD/MM/AAAA` con barras automáticas y el calendario del navegador detrás de
   un botón; entra y sale `AAAA-MM-DD`). **Nunca un `<input type="date">` a la vista**: con Chrome en inglés sale
   mes/día/año. En el panel móvil y el sidebar, `attachDmyDateField`. `toLocaleString` / `toLocaleDateString` siempre con
-  `'es-CO'`. En la hoja las fechas ya son fechas de verdad: no se cambia cómo se guardan.
+  `'es-CO'`. En la hoja las fechas ya son fechas de verdad: no se cambia cómo se guardan. **El calendario se abre con el
+  clic de la persona sobre el campo nativo invisible que va encima del botón** (#A114): en el sidebar de Sheets y en el web
+  app la página corre en un iframe de otro dominio y ahí `showPicker()` falla (`SecurityError`); nunca volver a un campo
+  nativo con `pointer-events: none` que dependa de él (`npm run verify` lo revisa).
 - **Estadísticas de compra de tiquetes y hospedaje** (#A80, pedido de David para comparar
   agencias, 2026-09-29): pestaña *Compras y costos* del panel de Métricas, **solo
   administradores** (`getPurchaseStats` en `adminOnlyActions`), solo agregados (sin nombres,

@@ -19,6 +19,19 @@ input[type="time"]::-webkit-calendar-picker-indicator:hover {
     opacity: 1;
 }
 
+/* DateInput (#A114): el ícono del calendario nativo ocupa todo el campo invisible que va encima del botón,
+   así el clic de la persona abre el calendario sin showPicker(). */
+input.date-overlay::-webkit-calendar-picker-indicator {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
 /* Custom brand colors for Tailwind v4 */
 @theme {
   --color-brand-red: #D71920;
