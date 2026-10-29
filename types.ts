@@ -51,6 +51,78 @@ export interface PolicyHeldResponse {
   items: PolicyHeldItem[];
 }
 
+/**
+ * #A119: cómo va una aprobación (lo calcula el servidor con las reglas del flujo). covered = la cubrió
+ * otro voto de la misma persona; waiting = la solicitud aún no llega a esa aprobación.
+ */
+export type ApprovalStepState = 'approved' | 'covered' | 'denied' | 'skipped' | 'expired' | 'pending' | 'waiting' | 'not_needed' | 'other';
+
+export interface ApprovalStep {
+  role: string;
+  label: string;
+  state: ApprovalStepState;
+  who: string;
+  at: string;
+}
+
+/** #A119: una solicitud en «Mis aprobaciones» (sin cédulas, fechas de nacimiento ni celulares). */
+export interface MyApprovalItem {
+  id: string;
+  seq: number;
+  status: string;
+  statusText: string;
+  pending: boolean;
+  /** approval = voto de área, Gerencia, Cadena de Suministro o presupuesto; policy = excepción a la política de anticipación. */
+  kind: 'approval' | 'policy' | '';
+  role: string;
+  roleText: string;
+  requesterName: string;
+  requesterEmail: string;
+  travelers: string[];
+  company: string;
+  unit: string;
+  costCenter: string;
+  hotelOnly: boolean;
+  requiresHotel: boolean;
+  hotelName: string;
+  origin: string;
+  destination: string;
+  depDate: string;
+  retDate: string;
+  depTime: string;
+  retTime: string;
+  international: boolean;
+  totalCost: number;
+  ticketsCost: number;
+  hotelCost: number;
+  why: string[];
+  budgetNote: string;
+  notes: string;
+  selection: string;
+  fare: string;
+  fareReason: string;
+  policy: { leadDays: number | null; minDays: number; justification: string; expiryKey: string } | null;
+  options: { id: string; type: string; direction: string; url: string }[];
+  trail: ApprovalStep[];
+  myVote: { decision: string; at: string; roleText: string } | null;
+  outcome: string;
+}
+
+export interface MyApprovalsResponse {
+  pending: MyApprovalItem[];
+  history: MyApprovalItem[];
+  historyTotal: number;
+  historyMax: number;
+  policyApprover: boolean;
+}
+
+/** #A119: resultado de aprobar o denegar desde la app (mismos casos que la página del enlace del correo). */
+export interface ApprovalDecisionResult {
+  kind: string;
+  title: string;
+  message: string;
+}
+
 /** #A100: aviso de cómo funcionan ahora las solicitudes (bootstrap). show = mostrarlo ahora. */
 export interface PolicyNotice {
   id: string;

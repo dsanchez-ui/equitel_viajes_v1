@@ -25,9 +25,10 @@
     "check:savings": "node tools/check-savings-analysis.cjs",
     "check:links": "node tools/check-webapp-links.cjs",
     "check:trip-change": "node tools/check-trip-change.cjs",
+    "check:approvals": "node tools/check-approvals.cjs",
     "prueba:local": "node tools/entorno-prueba/servidor.cjs",
     "check:bundle": "node tools/check-single-bundle.cjs",
-    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:fare && npm run check:invoices && npm run check:policy && npm run check:monthly && npm run check:price-tracking && npm run check:savings && npm run check:trip-change && npm run check:links && npm run build && npm run check:bundle"
+    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:fare && npm run check:invoices && npm run check:policy && npm run check:monthly && npm run check:price-tracking && npm run check:savings && npm run check:trip-change && npm run check:approvals && npm run check:links && npm run build && npm run check:bundle"
   },
   "dependencies": {
     "react": "^19.2.4",

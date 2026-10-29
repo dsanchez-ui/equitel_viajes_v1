@@ -263,14 +263,14 @@ Queda registrado en OBSERVACIONES con tu correo, timestamp y justificación. No 
 
 **Quién puede:** solo Yurani Prieto y David Sánchez (decisión de Yurani, 2026-09-14). Es una lista fija en el código (`SKIP_APPROVAL_ALLOWED` en `Code.gs`), **no un rol**: ningún otro superadmin ni analista puede, aunque tenga acceso de administrador, y para cambiarla hay que modificar el código. Para comprobar quién puede: **Equitel Viajes → 10. Ver administradores y permisos especiales**. A los demás no les aparecen ni el botón ni la casilla, y el sistema rechaza el intento si llegara por otra vía.
 
-Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin mandar correos a los aprobadores:
+Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin esperar más votos:
 
 1. Fila con status `PENDIENTE_APROBACION` → abre el detalle.
 2. Aparece un banner ámbar **"⏩ Saltar etapa de aprobación (permiso especial)"** con un botón **"SALTAR APROBACIÓN"**.
 3. Click → justificación (≥10 caracteres) → confirma.
-4. La solicitud pasa directamente a `APROBADO`. Las columnas `APROBADO POR ÁREA?`, `APROBADO CDS`, `APROBADO CEO` y `APROBADO PRESUPUESTO` se marcan con `Sí (ETAPA SALTADA por tu.correo)` y la justificación queda en OBSERVACIONES. No se envía correo ni a los aprobadores ni al solicitante; el solicitante recibe el de "Tiquetes Comprados" cuando se registra la reserva.
+4. La solicitud pasa directamente a `APROBADO`. Las columnas `APROBADO POR ÁREA?`, `APROBADO CDS`, `APROBADO CEO` y `APROBADO PRESUPUESTO` se marcan con `Sí (ETAPA SALTADA por tu.correo)` y la justificación queda en OBSERVACIONES. Al solicitante no le llega correo (recibe el de "Tiquetes Comprados" cuando se registra la reserva). **A los aprobadores a los que ya se les había pedido el voto les llega un aviso** (#A118): que la solicitud quedó aprobada, que tú saltaste la etapa, cuándo y **con tu justificación**, y que no tienen nada pendiente. Escríbela pensando en que ellos la leen. Si alguno abre el enlace de un correo anterior, la página le dice lo mismo y no cambia nada.
 
-**Alternativa equivalente durante confirmación de costos:** en el modal **"Confirmar costos"** aparece un checkbox "Saltar etapa de aprobación" con el mismo efecto, útil cuando sabes desde antes que no quieres pasar por aprobadores.
+**Alternativa equivalente durante confirmación de costos:** en el modal **"Confirmar costos"** aparece un checkbox "Saltar etapa de aprobación" con el mismo efecto, útil cuando sabes desde antes que no quieres pasar por aprobadores. Ahí no se le pidió el voto a nadie, así que nadie recibe el aviso.
 
 ### 5.10 Omitir correo al registrar reserva
 
@@ -540,7 +540,7 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 
 | Función | Qué hace |
 |---|---|
-| `sendPendingApprovalReminders` | Recordatorio a aprobadores que no han aprobado. Respeta pausa si hay cambio activo. Cap 100 correos/run. |
+| `sendPendingApprovalReminders` | Recordatorio a los aprobadores a los que se les pidió el voto y todavía hace falta (en un viaje internacional basta Gerencia General o Cadena de Suministro). El primero, después de 2 horas laborales (#A118). Respeta pausa si hay cambio activo. Cap 100 correos/run. |
 | `sendPendingSelectionReminders` | Recordatorio al usuario que no ha descrito su selección. Mismo asunto = mismo hilo en Gmail. |
 | `processAdminReminders` | Resumen diario/periódico al admin de pendientes (cotizar, confirmar costos, reservar, cambios). |
 | `sendPendingConsultReminders` | Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio). |

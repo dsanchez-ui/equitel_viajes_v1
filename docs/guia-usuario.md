@@ -210,13 +210,27 @@ El correo de aprobación se envía **una sola vez**, justo después de que el á
 | Nacional > $1.200.000 | Tu aprobador de área **+** el **Director de Cadena de Suministro (CDS)**. Ambos deben aprobar. |
 | Internacional (cualquier monto) | Tu aprobador de área **+** el CDS y la **Gerencia General (CEO)**. Basta con que apruebe **uno** de los dos ejecutivos (CEO o CDS), además del aprobador de área. |
 
-Cada aprobador recibe un correo con botones **`APROBAR`** y **`DENEGAR`**. Hace click directamente desde el correo — no necesita entrar al portal. Cuando todos los que debían aprobar hayan aprobado, te llega un correo de **"Solicitud Aprobada"** y el proceso continúa.
+Cada aprobador recibe un correo con botones **`APROBAR`** y **`DENEGAR`**. Hace click directamente desde el correo — no necesita entrar al portal — o aprueba desde **Mis aprobaciones** en el portal (ver abajo). Cuando todos los que debían aprobar hayan aprobado, te llega un correo de **"Solicitud Aprobada"** y el proceso continúa.
 
 Si un aprobador **deniega**, la solicitud queda en estado `DENEGADO` y el proceso se detiene. En el correo de denegación verás el motivo que escribió el aprobador.
 
 ### Qué pasa si un aprobador no responde
 
 Si alguna aprobación se demora más de 3 días hábiles, el sistema **escala automáticamente a los superadmins** (David o Yurani) para que intervengan. Se detienen los recordatorios al aprobador original para no saturarlo. Los superadmins pueden contactar al aprobador, saltar la etapa manualmente (si ya hay autorización verbal fuera del sistema) o anular la solicitud. Tú no tienes que hacer nada — se gestiona internamente.
+
+### Si tú eres aprobador: «Mis aprobaciones»
+
+Si apruebas solicitudes de otras personas (eres jefe de alguien, o eres de Gerencia General, de Cadena de Suministro o quien aprueba el presupuesto), en la barra de arriba del portal tienes el botón **MIS APROBACIONES**, con el número de solicitudes que esperan tu voto.
+
+- **Por aprobar:** cada solicitud con el viaje, quién viaja, el costo, por qué necesita tu aprobación, lo que eligió el viajero y las opciones. Abajo, **cómo va cada aprobación** (quién ya aprobó y a qué hora, y a quién le falta). Puedes **Aprobar** o **Denegar** ahí mismo, con un comentario opcional; es lo mismo que hacerlo desde el correo.
+- **Historial:** lo que ya decidiste y cómo terminó cada solicitud (aprobada, denegada, anulada, o aprobada sin tu voto porque se saltó la etapa, con quién la saltó y por qué).
+
+Además, por correo:
+
+- Cuando votas (desde el correo o desde el portal), te llega la **confirmación** de tu decisión, con lo que falta.
+- Cuando la solicitud tiene su **decisión final** (aprobada, denegada, anulada o con la etapa saltada), te llega un aviso y ya no recibes más recordatorios.
+- El primer recordatorio llega cuando la solicitud lleva **2 horas laborales** esperando tu voto, y luego cada 2 horas en horario laboral.
+- Si abres el enlace de un correo viejo, la página te dice qué se decidió, quién y cuándo, y no cambia nada.
 
 ---
 

@@ -458,14 +458,14 @@
 <p>Queda registrado en OBSERVACIONES con tu correo, timestamp y justificación. No se envía correo al solicitante.</p>
 <h3>5.9 Saltar la etapa de APROBACIÓN (solo Yurani Prieto y David Sánchez)</h3>
 <p><strong>Quién puede:</strong> solo Yurani Prieto y David Sánchez (decisión de Yurani, 2026-09-14). Es una lista fija en el código (<code>SKIP_APPROVAL_ALLOWED</code> en <code>Code.gs</code>), <strong>no un rol</strong>: ningún otro superadmin ni analista puede, aunque tenga acceso de administrador, y para cambiarla hay que modificar el código. Para comprobar quién puede: <strong>Equitel Viajes → 10. Ver administradores y permisos especiales</strong>. A los demás no les aparecen ni el botón ni la casilla, y el sistema rechaza el intento si llegara por otra vía.</p>
-<p>Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin mandar correos a los aprobadores:</p>
+<p>Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin esperar más votos:</p>
 <ol>
 <li>Fila con status <code>PENDIENTE_APROBACION</code> → abre el detalle.</li>
 <li>Aparece un banner ámbar <strong>“⏩ Saltar etapa de aprobación (permiso especial)”</strong> con un botón <strong>“SALTAR APROBACIÓN”</strong>.</li>
 <li>Click → justificación (≥10 caracteres) → confirma.</li>
-<li>La solicitud pasa directamente a <code>APROBADO</code>. Las columnas <code>APROBADO POR ÁREA?</code>, <code>APROBADO CDS</code>, <code>APROBADO CEO</code> y <code>APROBADO PRESUPUESTO</code> se marcan con <code>Sí (ETAPA SALTADA por tu.correo)</code> y la justificación queda en OBSERVACIONES. No se envía correo ni a los aprobadores ni al solicitante; el solicitante recibe el de “Tiquetes Comprados” cuando se registra la reserva.</li>
+<li>La solicitud pasa directamente a <code>APROBADO</code>. Las columnas <code>APROBADO POR ÁREA?</code>, <code>APROBADO CDS</code>, <code>APROBADO CEO</code> y <code>APROBADO PRESUPUESTO</code> se marcan con <code>Sí (ETAPA SALTADA por tu.correo)</code> y la justificación queda en OBSERVACIONES. Al solicitante no le llega correo (recibe el de “Tiquetes Comprados” cuando se registra la reserva). <strong>A los aprobadores a los que ya se les había pedido el voto les llega un aviso</strong> (#A118): que la solicitud quedó aprobada, que tú saltaste la etapa, cuándo y <strong>con tu justificación</strong>, y que no tienen nada pendiente. Escríbela pensando en que ellos la leen. Si alguno abre el enlace de un correo anterior, la página le dice lo mismo y no cambia nada.</li>
 </ol>
-<p><strong>Alternativa equivalente durante confirmación de costos:</strong> en el modal <strong>“Confirmar costos”</strong> aparece un checkbox “Saltar etapa de aprobación” con el mismo efecto, útil cuando sabes desde antes que no quieres pasar por aprobadores.</p>
+<p><strong>Alternativa equivalente durante confirmación de costos:</strong> en el modal <strong>“Confirmar costos”</strong> aparece un checkbox “Saltar etapa de aprobación” con el mismo efecto, útil cuando sabes desde antes que no quieres pasar por aprobadores. Ahí no se le pidió el voto a nadie, así que nadie recibe el aviso.</p>
 <h3>5.10 Omitir correo al registrar reserva</h3>
 <p>En el modal <strong>“Registrar reserva”</strong> hay un checkbox <strong>“Enviar correo al usuario”</strong> marcado por default. Si el PNR ya se entregó al usuario por otro medio, desmárcalo. Aparece una confirmación doble para evitar errores. Queda nota en OBSERVACIONES.</p>
 <h3>5.11 Alternar vista admin ↔ usuario</h3>
@@ -754,7 +754,7 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <tbody>
 <tr>
 <td><code>sendPendingApprovalReminders</code></td>
-<td>Recordatorio a aprobadores que no han aprobado. Respeta pausa si hay cambio activo. Cap 100 correos/run.</td>
+<td>Recordatorio a los aprobadores a los que se les pidió el voto y todavía hace falta (en un viaje internacional basta Gerencia General o Cadena de Suministro). El primero, después de 2 horas laborales (#A118). Respeta pausa si hay cambio activo. Cap 100 correos/run.</td>
 </tr>
 <tr>
 <td><code>sendPendingSelectionReminders</code></td>

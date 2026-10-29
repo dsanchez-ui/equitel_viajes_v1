@@ -31,7 +31,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores y «Mis aprobaciones» + enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
    Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
    (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -50,7 +50,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + build + un solo .js  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones + build + un solo .js  ← antes de cualquier push
 npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
@@ -464,6 +464,21 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   escondido detrás del botón como el calendario de `DateInput`: el selector nativo de hora solo lo abren las versiones recientes de Chrome
   y, cuando abre, con el navegador en inglés muestra las 12 horas con a. m./p. m. que este campo viene a evitar. Es la regla gemela de
   #A105 para las fechas. Los plazos en prosa («hasta las 5:00 p. m.») se quedan como están.
+- **Avisos a los aprobadores** (#A118; Alejandro y David, 29-oct, caso SOL-000695: *«es una regla básica de la aplicación»*). Quien vota
+  (por el enlace o desde la app) recibe la **confirmación** de su decisión con lo que falta; con la **decisión final** (aprobada, etapa
+  saltada, denegada o anulada en aprobación) a los demás aprobadores **a los que se les pidió el voto** les llega un aviso **una sola
+  vez** (`approvalClosedNotice`), nunca al solicitante ni a quien decidió. Al saltar la etapa, el aviso lleva quién, cuándo y **la
+  justificación** (la leen los aprobadores); si «Confirmar costos» la saltó sin pedírsela a nadie, no se avisa a nadie. El enlace viejo
+  dice qué se decidió, quién y cuándo, y con la solicitud denegada o anulada no guarda el voto. **Recordatorios:** el primero después
+  de 2 horas laborales, y solo a quien se le pidió el voto y todavía hace falta (`_approvalAskedFor_` + `_approvalRolePending_`: en un
+  viaje internacional basta Gerencia General o Cadena de Suministro). Una sola regla de «a quién se le pide» para el correo, los
+  recordatorios, los avisos y la app: no volver a armar listas aparte.
+- **«Mis aprobaciones»** (#A119, propuesta de David del 29-oct a partir del pedido de Alejandro): botón en la barra de arriba **solo para
+  quien aprueba algo** (`approvals.isApprover` en el arranque), con lo pendiente (aprobar o denegar ahí mismo) y el historial (100 más
+  recientes), y cómo va cada aprobación. **El servidor decide qué filas ve cada persona y con qué rol vota** (`decideMyApproval` busca
+  su rol; la app solo manda ID y decisión); misma función que el enlace del correo (`_applyApprovalDecision_`, `_applyPolicyDecision_`
+  para las excepciones del CFO). Sin cédulas, fechas de nacimiento ni celulares; el motivo de una tarifa superior, solo al CFO. No va en
+  el sondeo de 30 s.
 - **Comparador de precios: la cifra que se presenta** (#A104, auditoría del 19-oct). Por defecto el dashboard compara **solo viajes ya
   comprados** (RESERVADO o PROCESADO, con la búsqueda al comprar) y **solo comparaciones exactas**, contra **lo pagado** (#A102) o, si
   no se registró, lo cotizado; al lado, lo mismo **con la misma aerolínea**. Lo no comprado va aparte, nunca en el total; lo denegado o
@@ -601,6 +616,7 @@ components/
   FareFields.tsx           Tarifa del manual COM-P-02: recomendada, excepción y aviso al cargar opciones (#A95); aviso del voto del CFO (#A100)
   PolicyNoticeModal.tsx    Ventana con las reglas nuevas de las solicitudes y «Entendido» con constancia (#A100)
   PolicyHeldPanel.tsx      Botón «En espera de preaprobación» del panel del analista: solo lectura (#A100)
+  MyApprovalsPanel.tsx     «Mis aprobaciones»: pendientes con aprobar/denegar, historial y cómo va cada aprobación (#A119)
   TripChangeModal.tsx      «Cambiar mi viaje»: elegir el viaje, qué cambia, resumen y motivo (#A103)
   TripChangeInfo.tsx       Antes / ahora, recuadro del cambio con su costo y aviso «Cambiada» (#A103)
   TripChangeContacts.tsx   A quién llamar después del plazo, en una frase o en un recuadro (#A106)
@@ -651,6 +667,7 @@ tools/check-single-bundle.cjs        La app es un solo archivo JavaScript, sin c
 tools/check-policy-approval.cjs      Aprobación del CFO por la política: espera, resumen, decisiones, vencimiento, tarifa y aviso (#A100)
 tools/check-monthly-report.cjs       Informe mensual de la política: primer día hábil, cifras, cuadros, CSV, envío una sola vez y prueba (#A101)
 tools/check-trip-change.cjs          Cambios de viaje: plazo igual en los dos lados, cambio con y sin compra, costo, aprobación, «Cambiada» (#A103)
+tools/check-approvals.cjs            Avisos a los aprobadores (caso SOL-000695), recordatorios y «Mis aprobaciones» (#A118, #A119)
 tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.gs real sobre una copia de la base; correos a una bandeja local (#A103)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
@@ -707,16 +724,23 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-10-28)
+### Para retomar (estado al 2026-10-29)
 
 - **En el Mac, antes de nada: [MIGRACION.md §0](MIGRACION.md)** (Node 24, revisión del equipo y el recordatorio para todos sus
   proyectos). En el PC Linux ya está hecho.
-- **Pendiente de desplegar (28-oct, noche): #A115, #A116 y #A117** (rastreo continuo con el historial de Google, «Mes a mes» y el
-  dashboard por pestañas). Sin push de frontend: pegar **`Code.gs`** y **`CostsDashboard.html`** → versión nueva del web app; en el
-  proyecto aparte del rastreo, pegar **`Rastreo.gs`** (archivo **Rastreo**; `Nucleo` no cambia) y ejecutar **`activarRastreo`** una vez
-  (quita la fecha de fin del 21-oct y reinstala el disparador). Con el plan gratis de SerpApi (250 al mes) el rastreo continuo gasta
-  ~280: se detiene solo en la reserva hasta que David suba al plan de 1.000. Las filas del historial en «Mes a mes» se llenan con las
-  búsquedas desde ese momento.
+- **#A115, #A116 y #A117 desplegados (David, 29-oct)** (rastreo continuo con el historial de Google, «Mes a mes» y el dashboard por
+  pestañas): pegó `Code.gs` y `CostsDashboard.html` (versión nueva), `Rastreo.gs` en el proyecto aparte, corrió `activarRastreo` y
+  revisó la fila `COMPLETO` de Juan Camilo en MISC. Con el plan gratis de SerpApi (250 al mes) el rastreo continuo gasta ~280: se
+  detiene solo en la reserva hasta que David suba al plan de 1.000. Las filas del historial en «Mes a mes» se llenan con las búsquedas
+  desde el 29-oct.
+- **Pendiente de desplegar (29-oct): #A118 y #A119** (avisos a los aprobadores tras el caso SOL-000695 de Alejandro, y «Mis
+  aprobaciones»). Orden: primero pegar **`Code.gs`** → versión nueva del web app (#A118 funciona ya con la app de hoy); después el push
+  del frontend (#A119; con el servidor anterior el botón no aparece). David le responde a Alejandro: la SOL-000695 está comprada
+  (Avianca, JJQNSS) y no pasó por su voto porque Yurani saltó la etapa para comprar los tramos nacionales.
+- **«Summary of failures» de los activadores (29-oct):** a veces en la mañana, p. ej. `sendPendingSelectionReminders` el 28-oct a las
+  8:02 (4 min y *«We're sorry, a server error occurred»*). David revisó Ejecuciones: todas las fallas de los últimos días son errores
+  del servidor de Google o tiempo agotado, sin línea del código. **No hay nada que corregir**: el recordatorio solo lee y envía, y la
+  pasada siguiente (2 h después) lo hace.
 - **#A111–#A114: desplegados el 28-oct.** David pegó `Code.gs`, `CostsDashboard.html`, `AdminSidebar.html` y `AdminMobile.html` (versión
   nueva); el frontend de #A111/#A112 salió el 27-oct y el de #A114 (calendario) es la revisión `00224` de Cloud Run. Si en MISC aún no está
   la fila `jcpineda@equitel.com.co | COMPLETO`, agregarla y revisarla con el menú 9. Numeración: #A111/#A112 los usó otra sesión el 27-oct;

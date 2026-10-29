@@ -10,6 +10,7 @@ import { TravelRequest, UserRole, Integrant, PolicyNotice, TripChangeConfig } fr
 import { PolicyNoticeModal } from './components/PolicyNoticeModal';
 import { TripChangeModal } from './components/TripChangeModal';
 import { TripChangeIntroModal } from './components/TripChangeIntroModal';
+import { MyApprovalsPanel } from './components/MyApprovalsPanel';
 import { LOGO_URL, APP_VERSION } from './constants';
 
 const POLL_INTERVAL_MS = 30000;
@@ -134,7 +135,8 @@ const App: React.FC = () => {
   const [userEmail, setUserEmail] = useState<string>('');
   const [userName, setUserName] = useState<string>('Integrante Equitel');
 
-  const [view, setView] = useState<'LIST' | 'NEW' | 'ADMIN'>('LIST');
+  // #A119: APPROVALS = «Mis aprobaciones».
+  const [view, setView] = useState<'LIST' | 'NEW' | 'ADMIN' | 'APPROVALS'>('LIST');
   const [requests, setRequests] = useState<TravelRequest[]>([]);
   const [selectedRequest, setSelectedRequest] = useState<TravelRequest | null>(null);
   // Etapa 1.2: spinner mientras getRequestById hidrata el detalle. Evita que
@@ -172,6 +174,9 @@ const App: React.FC = () => {
   const [tripChangeTarget, setTripChangeTarget] = useState<TravelRequest | 'pick' | null>(null);
   // #A103: la explicación se saltó por una falla al guardar la constancia (vuelve a salir en el próximo ingreso).
   const [tripChangeIntroSkipped, setTripChangeIntroSkipped] = useState(false);
+  // #A119: «Mis aprobaciones». enabled = el servidor dice que la persona aprueba algo; count = pendientes.
+  const [approvalsEnabled, setApprovalsEnabled] = useState(false);
+  const [approvalsCount, setApprovalsCount] = useState<number | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [loginEmailInput, setLoginEmailInput] = useState('');
   const [showPinModal, setShowPinModal] = useState(false);
@@ -201,6 +206,8 @@ const App: React.FC = () => {
       setPolicyNotice(null);
       setTripChangeTarget(null);
       setTripChangeIntroSkipped(false);
+      setApprovalsEnabled(false);
+      setApprovalsCount(null);
       setView('LIST');
       setLoading(false);
       alert('Tu sesión ha expirado. Por favor inicia sesión nuevamente.');
@@ -263,6 +270,7 @@ const App: React.FC = () => {
         setCanSkipApprovalFlag(resolveCanSkipApproval(data));
         setPolicyNotice(data.policyNotice && data.policyNotice.show ? data.policyNotice : null); // #A100
         setTripChangeConfig(readTripChangeConfig(data.tripChange)); // #A103
+        setApprovalsEnabled(!!data.approvals?.isApprover); // #A119
 
         await handleLoginSuccess(stored.email, (data.role as StoredRole) || 'REQUESTER', resolvedIntegrantes, /*skipFetch=*/true);
       } catch (err: any) {
@@ -334,6 +342,23 @@ const App: React.FC = () => {
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [userEmail, role, viewAsRequester]);
+
+  // #A119: el número del botón «Mis aprobaciones». Una vez al entrar; el panel lo pone al día al abrirse y
+  // después de cada decisión, y «Refrescar» también. Si falla, el botón queda sin número y el panel muestra
+  // el error con «Reintentar» (#A49): nunca un cero que no lo es.
+  const refreshApprovalsCount = useCallback(async () => {
+    try {
+      const d = await gasService.getMyApprovals();
+      if (userEmailRef.current) setApprovalsCount(d.pending.length);
+    } catch (e) {
+      console.warn('Mis aprobaciones: no se pudo contar lo pendiente', e);
+      setApprovalsCount(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (userEmail && approvalsEnabled) refreshApprovalsCount();
+  }, [userEmail, approvalsEnabled, refreshApprovalsCount]);
 
   const determineUserName = (email: string, currentIntegrantes: Integrant[] = []) => {
     // Defensive: si integrantes tiene filas con email/name undefined, no queremos
@@ -512,6 +537,7 @@ const App: React.FC = () => {
         setCanSkipApprovalFlag(resolveCanSkipApproval(data));
         setPolicyNotice(data.policyNotice && data.policyNotice.show ? data.policyNotice : null); // #A100
         setTripChangeConfig(readTripChangeConfig(data.tripChange)); // #A103
+        setApprovalsEnabled(!!data.approvals?.isApprover); // #A119
         await handleLoginSuccess(pendingPinEmail, (data.role as StoredRole) || session.role, resolvedIntegrantes, /*skipFetch=*/true);
         return true;
       } catch (bootstrapErr) {
@@ -629,6 +655,7 @@ const App: React.FC = () => {
         setCanSkipApprovalFlag(resolveCanSkipApproval(data));
         setPolicyNotice(data.policyNotice && data.policyNotice.show ? data.policyNotice : null); // #A100
         setTripChangeConfig(readTripChangeConfig(data.tripChange)); // #A103
+        setApprovalsEnabled(!!data.approvals?.isApprover); // #A119
         await handleLoginSuccess(pendingAdminEmail, (data.role as StoredRole) || sessionRole, loadedIntegrantes, /*skipFetch=*/true);
         return true;
       } catch (bootstrapErr) {
@@ -660,6 +687,8 @@ const App: React.FC = () => {
       setPolicyNotice(null);
       setTripChangeTarget(null);
       setTripChangeIntroSkipped(false);
+    setApprovalsEnabled(false);
+    setApprovalsCount(null);
     setViewAsRequester(false);
     setLoginEmailInput('');
 
@@ -736,8 +765,9 @@ const App: React.FC = () => {
   // AdminDashboard/UserDashboard pueda evitar re-renders innecesarios (Etapa 1.5).
   // Solo cambia si cambia el correo o el modo efectivo de admin.
   const handleManualRefresh = useCallback(async () => {
+    if (approvalsEnabled) refreshApprovalsCount(); // #A119, en paralelo
     await fetchRequests(userEmail, isEffectiveAdmin, false);
-  }, [userEmail, isEffectiveAdmin]);
+  }, [userEmail, isEffectiveAdmin, approvalsEnabled, refreshApprovalsCount]);
 
   // Hidratación al abrir detalle (Etapa 1.2): el dashboard pasa solicitudes lite
   // (sin analystOptions). Para el detalle pedimos el objeto COMPLETO antes de
@@ -1030,6 +1060,10 @@ const App: React.FC = () => {
       // una tabla ancha. El formulario y el dashboard de usuario se leen mejor
       // en la columna angosta de siempre.
       wide={isEffectiveAdmin && view === 'LIST'}
+      // #A119: no se ofrece con el formulario abierto (se perdería lo escrito).
+      onApprovals={approvalsEnabled && view !== 'NEW' ? () => setView((v) => (v === 'APPROVALS' ? 'LIST' : 'APPROVALS')) : undefined}
+      approvalsCount={approvalsCount}
+      approvalsActive={view === 'APPROVALS'}
     >
 
       {/* #A100: aviso de cómo funcionan ahora las solicitudes; constancia al tocar «Entendido». */}
@@ -1099,6 +1133,17 @@ const App: React.FC = () => {
           onCancel={handleFormCancel}
           isModification={!!modificationRequest}
           initialData={modificationRequest || undefined}
+        />
+      )}
+
+      {view === 'APPROVALS' && (
+        <MyApprovalsPanel
+          onBack={() => {
+            setView('LIST');
+            // Una decisión pudo cambiar la lista (p. ej. una aprobadora que también es administradora).
+            fetchRequests(userEmail, isEffectiveAdmin, true);
+          }}
+          onCountChange={setApprovalsCount}
         />
       )}
 

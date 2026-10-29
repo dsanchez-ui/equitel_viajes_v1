@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo, PolicyApprovalInfo, PolicyNotice, PolicyHeldResponse, TripChangeConfig, TripChangeRequestChanges, ChangeControl } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo, PolicyApprovalInfo, PolicyNotice, PolicyHeldResponse, MyApprovalsResponse, ApprovalDecisionResult, TripChangeConfig, TripChangeRequestChanges, ChangeControl } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -355,6 +355,8 @@ class GasService {
     policyNotice?: PolicyNotice | null;
     // #A103: «Cambiar mi viaje». Ausente con un backend anterior (sigue el formulario de siempre).
     tripChange?: TripChangeConfig | null;
+    // #A119: «Mis aprobaciones». Ausente con un backend anterior (no se muestra el botón).
+    approvals?: { isApprover: boolean } | null;
     integrantesHash?: string;
     integrantes?: Integrant[];
     requestsLite?: TravelRequest[];
@@ -396,6 +398,20 @@ class GasService {
   /** #A100: solicitudes en espera de la aprobación del CFO (solo administradores, solo lectura). */
   async getPolicyHeldRequests(): Promise<PolicyHeldResponse> {
     const response = await this.runGas('getPolicyHeldRequests', {});
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
+  /** #A119: «Mis aprobaciones» de quien inició sesión: lo pendiente y el historial. */
+  async getMyApprovals(): Promise<MyApprovalsResponse> {
+    const response = await this.runGas('getMyApprovals', {});
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
+  /** #A119: aprobar o denegar desde la app. El servidor decide con qué rol vota la persona. */
+  async decideMyApproval(requestId: string, decision: 'approved' | 'denied', comment: string): Promise<ApprovalDecisionResult> {
+    const response = await this.runGas('decideMyApproval', { requestId, decision, comment });
     if (!response.success) throw new Error(response.error);
     return response.data;
   }

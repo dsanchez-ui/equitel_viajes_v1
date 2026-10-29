@@ -3119,7 +3119,7 @@ Falta que David excluya el viaje a Miami (SOL-000658) con su motivo.
 ---
 
 ## **#A113 — Dashboard de costos completo, solo para ver, para quien David decida (Juan Camilo)**
-**Fecha:** 2026-10-28 · **Pedido por:** David, después de la reunión del 28-oct con Juan Camilo Pineda (*«que ciertas personas que yo determine puedan acceder al dashboard y lo puedan ver tal como yo lo veo como administrador… por el momento solo Juan Camilo»*; Alejandro Gómez quizá después). · **Estado:** Implementado; pendiente desplegar.
+**Fecha:** 2026-10-28 · **Pedido por:** David, después de la reunión del 28-oct con Juan Camilo Pineda (*«que ciertas personas que yo determine puedan acceder al dashboard y lo puedan ver tal como yo lo veo como administrador… por el momento solo Juan Camilo»*; Alejandro Gómez quizá después). · **Estado:** Desplegado el 28-oct.
 
 **Síntoma:**
 - Juan Camilo pidió seguir el ahorro de los tiquetes mes a mes, pero no podía ver el dashboard. Lo que pedía (variación, comparador de precios, proyección) era solo para Yurani, Diego y David, y además había que ser administrador.
@@ -3171,7 +3171,7 @@ Falta que David excluya el viaje a Miami (SOL-000658) con su motivo.
 ---
 
 ## **#A114 — El botón del calendario no abría en el sidebar de Sheets (ni en el panel móvil)**
-**Fecha:** 2026-10-28 · **Reportado por:** David (al crear un usuario desde el sidebar de administración: *«no desplegó el calendario… garantiza que siempre se pueda desplegar»*). · **Estado:** Implementado; pendiente desplegar.
+**Fecha:** 2026-10-28 · **Reportado por:** David (al crear un usuario desde el sidebar de administración: *«no desplegó el calendario… garantiza que siempre se pueda desplegar»*). · **Estado:** Desplegado el 28-oct.
 
 **Síntoma:** en el sidebar de la hoja, el botón del calendario junto a la fecha de nacimiento no hacía nada. Había que escribir la
 fecha a mano. En la app sí abría.
@@ -3208,7 +3208,7 @@ web app (el sidebar toma el archivo al guardar; el panel móvil, con la versión
 ---
 
 ## **#A115 — Rastreo de precios continuo y con el historial de precios de Google**
-**Fecha:** 2026-10-28 · **Pedido por:** Juan Camilo Pineda en la reunión del 28-oct con David (*«yo sí seguiría pagando la API solamente para saber el tema de tarifas»*; David extiende SerpApi al plan de 1.000 búsquedas al mes cuando se acaben las actuales). · **Estado:** Implementado; pendiente desplegar.
+**Fecha:** 2026-10-28 · **Pedido por:** Juan Camilo Pineda en la reunión del 28-oct con David (*«yo sí seguiría pagando la API solamente para saber el tema de tarifas»*; David extiende SerpApi al plan de 1.000 búsquedas al mes cuando se acaben las actuales). · **Estado:** Desplegado el 29-oct.
 
 **Contexto:**
 - El estudio de precios (#A84) corrió del 7 al 21-oct y quedó en «TERMINADO»: para seguir había que mover `FIN_ESTUDIO` a mano.
@@ -3255,7 +3255,7 @@ pegar `Code.gs` → versión nueva del web app. Orden indiferente: con el `Code.
 ## **#A116 — «Mes a mes»: este mes frente a los anteriores y el promedio**
 **Fecha:** 2026-10-28 · **Pedido por:** Juan Camilo Pineda en la reunión del 28-oct (*«comparemos este mes con el mes pasado, con el mes
 antepasado y cuánto fue el promedio»*, también el ahorro de comprar la tarifa del manual: *«si se va un día tiene que ser la tarifa…»*). ·
-**Estado:** Implementado; pendiente desplegar.
+**Estado:** Desplegado el 29-oct.
 
 **Arreglo:** pestaña nueva **🗓️ Mes a mes** del dashboard de costos, para quienes ven el comparador (`_canReadCostsVariance_`, hoy Yurani,
 Diego, David y Juan Camilo). Sale de la tabla del análisis y de los viajes del comparador que ya llegan (#A89): ninguna llamada aparte;
@@ -3306,7 +3306,7 @@ todo se calcula en el navegador y respeta la empresa y la unidad de arriba.
 
 ## **#A117 — Dashboard de costos por pestañas, más liviano y usable en celular**
 **Fecha:** 2026-10-28 · **Pedido por:** David (*«se me hace que ya está demasiado largo… que hayan pestañas al principio del dashboard…
-lo más eficiente y rápido posible»*). · **Estado:** Implementado; pendiente desplegar.
+lo más eficiente y rápido posible»*). · **Estado:** Desplegado el 29-oct.
 
 **Síntoma:** todas las secciones iban una debajo de otra: buscar algo era «dispendioso», y al cargar se dibujaban todas (8 gráficas y las
 tablas grandes) aunque se viera solo la primera. En celular, la tarjeta de filtros pegada arriba ocupaba casi toda la pantalla y los
@@ -3347,3 +3347,114 @@ botones del encabezado se salían por la derecha.
 
 **Rollback:** versión anterior del web app.
 
+
+---
+
+## **#A118 — Avisos a los aprobadores: confirmación, decisión final y quién decidió (caso SOL-000695)**
+**Fecha:** 2026-10-29 · **Reportado por:** Alejandro Gómez (correo a David, 29-oct: *«ya estaba aprobada, pero seguían llegando los
+recordatorios… el sistema solo dice "Decisión Previa Detectada", sin indicar si quedó aprobada o denegada»*) y David (*«es una regla
+básica de la aplicación… trabajen eso urgentemente»*). · **Estado:** Implementado; pendiente pegar `Code.gs`.
+
+**Qué pasó con la SOL-000695** (Simón García, Medellín → Bogotá, 15 al 19-nov; base del 29-oct):
+- 1:55 p. m. del 28-oct: el área de compras confirma costos ($528.868). La unidad ya había pasado el presupuesto de octubre: se le pide
+  el voto a Simón (es su propio aprobador de área) y a Alejandro (presupuesto). 1:56 p. m.: Simón aprueba.
+- Mientras faltaba el voto de Alejandro, el recordatorio le escribía cada 2 horas, **sin esperar nada**: el primero pudo salir a los
+  pocos minutos del correo original.
+- 4:40 p. m.: Yurani **salta la etapa de aprobación** («los internacionales están comprados»). Desde la regla de mayo, saltar la etapa
+  no le avisaba a nadie: el último correo de Alejandro seguía diciendo «APROBACIÓN REQUERIDA».
+- 6:09 p. m.: se compra (Avianca, JJQNSS). Después de las 4:40 ya no salió ningún recordatorio (solo se recuerda en
+  `PENDIENTE_APROBACION`).
+- Al abrir su enlace, Alejandro vio «**Usted** ya había registrado una decisión (Fecha: **Desconocida**)»: no fue él, y la fecha se
+  perdía porque la marca del salto (`Sí (ETAPA SALTADA por …)`) no tiene el formato `Sí_correo_fecha`.
+
+**Causa raíz:** ningún flujo le avisaba a un aprobador que su voto ya no hacía falta (salto de etapa, aprobación por otro, denegación,
+anulación), quien votaba solo veía la página del enlace, la página de decisión previa asumía que la casilla era de quien abría el
+enlace, y el recordatorio no tenía tiempo mínimo. Además, la lista de a quién recordar se armaba aparte de la de a quién se le pidió el
+voto: en un viaje internacional se le seguía recordando a Gerencia General aunque Cadena de Suministro ya hubiera aprobado (basta uno),
+y si el solicitante era el CEO o el director CDS se les recordaba a personas a las que nunca se les pidió.
+
+**Arreglo (`Code.gs`):**
+- **Confirmación a quien vota** (por el enlace del correo o desde la app): qué quedó registrado, qué falta y «cómo va cada aprobación»,
+  en el mismo hilo del correo de aprobación. También para el CFO cuando decide una **excepción a la política** (#A100).
+- **Aviso de decisión final**, una sola vez (`EVENTOS_JSON.approvalClosedNotice`), a cada aprobador al que se le pidió el voto, menos a
+  quien decidió y al solicitante (que tiene su propio aviso): aprobada, **etapa saltada** (quién, cuándo y su justificación), denegada
+  (quién y el motivo) o anulada estando en aprobación. A quién se le pidió el voto queda en `EVENTOS_JSON.approvalRequested`; en las
+  solicitudes anteriores se usa la regla de hoy. Si «Confirmar costos» saltó la aprobación sin pedírsela a nadie, no se avisa a nadie.
+- **La página del enlace dice qué se decidió, quién y cuándo**: «Yurani Prieto saltó la etapa de aprobación el 28/10/2026 16:40… Motivo:
+  … Ya no se necesita su aprobación. Estado actual: Aprobada y comprada». «Usted» solo si fue esa persona. Con la solicitud denegada o
+  anulada, el enlace ya no guarda el voto (antes lo guardaba sobre una solicitud muerta).
+- **Coaprobadores:** se registra quién votó (`Sí_b@…`), no la lista completa, para poder nombrarlo.
+- **Recordatorios:** el primero después de **2 horas laborales** (`APPROVAL_FIRST_REMINDER_MIN`); a quién, con la misma regla del
+  correo de aprobación (`_approvalAskedFor_`) y solo si su voto todavía hace falta (`_approvalRolePending_`).
+- La decisión vive en una sola función (`_applyApprovalDecision_`, antes dentro de `processApprovalFromEmail`), y la del CFO en
+  `_applyPolicyDecision_`: las usan el enlace y la app (#A119). Las reglas de aprobación no cambiaron.
+- Ninguno de estos correos cambia el flujo: si falla un envío, la decisión ya quedó.
+
+**Verificado:**
+- `npm run verify` en verde, con la prueba nueva `tools/check-approvals.cjs`:
+  - el caso SOL-000695 completo;
+  - confirmaciones, aviso final una sola vez, coaprobadores, denegada, anulada y salto en «Confirmar costos»;
+  - el recordatorio a los 30 minutos (no sale) y a las 2 h 10 min (sale);
+  - internacional con Cadena de Suministro aprobada, y solicitante CEO.
+  La prueba falla si se quita el aviso del salto, la espera o la regla internacional. `check-policy-approval` ahora también exige la
+  confirmación al CFO.
+- Entorno local con la base del 29-oct: la 695 en el historial de Alejandro dice quién saltó la etapa, cuándo y por qué. Al aprobar la
+  SOL-000698 le llegan la confirmación a Yurani y el aviso final a Juan Camilo (aprobó antes como área); al aprobar la 699, la
+  confirmación con «Falta: Aprobador de Área (RONCANCIO FUERTE YESID)».
+
+**Despliegue:** pegar `Code.gs` → versión nueva del web app. No cambia columnas ni activadores. Funciona con la app de hoy.
+
+**Rollback:** versión anterior del web app.
+
+---
+
+## **#A119 — «Mis aprobaciones»: lo pendiente, el historial y aprobar desde la app**
+**Fecha:** 2026-10-29 · **Pedido por:** Alejandro Gómez (*«una vista o un Sheet con todas las solicitudes y su estado: aprobadas,
+denegadas y pendientes de mi respuesta»*) y David (29-oct: *«un botón en la barra superior… mis aprobaciones… todo lo que tienen
+pendiente de aprobar y el historial… quién ya aprobó y a qué horas… que las pudieran aprobar desde ese mismo lugar»*, siempre que no
+afecte la rapidez, la seguridad ni traiga errores). · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+
+**Qué hace:**
+- **Botón MIS APROBACIONES** en la barra de arriba, solo para quien aprueba algo (aparece en el directorio como aprobador, es Gerencia
+  General, Cadena de Suministro o quien aprueba el presupuesto y las excepciones). Muestra cuántas esperan su voto. No sale con el
+  formulario de solicitud abierto.
+- **Por aprobar:** cada solicitud con:
+  - el viaje y quién viaja, quién la pidió, empresa, unidad y centro de costo;
+  - el costo, tiquetes y hotel, y la tarifa;
+  - por qué necesita su aprobación: internacional, más de $1.200.000, presupuesto excedido, tarifa superior o fuera de la política;
+  - la nota de presupuesto, el motivo del viaje, lo que eligió el viajero y las opciones;
+  - **cómo va cada aprobación**: quién aprobó y a qué hora, a quién le falta.
+
+  **Aprobar** o **Denegar** ahí mismo, con comentario opcional, con la misma función que el enlace del correo. Para el CFO, también las
+  excepciones a la política de anticipación (anticipación, justificación y vencimiento).
+- **Historial** (las 100 más recientes): qué decidió la persona y cómo terminó cada solicitud, con el detalle de cada aprobación.
+
+**Seguridad y rapidez:**
+- El servidor decide qué filas ve cada persona (solo donde es o fue aprobadora) y **con qué rol vota**. La app solo manda el ID y
+  «aprobar» o «denegar»; quien no es aprobador recibe un error y no cambia nada.
+- Sin cédulas, fechas de nacimiento ni celulares. El motivo de una tarifa superior solo le llega a quien vota por ella (el CFO). Las
+  imágenes de opciones, solo con dirección `https`.
+- Una lectura de la hoja por consulta. Se pide al entrar (para el número), al abrir el panel, al decidir y con «Refrescar»; no está
+  en el sondeo de 30 s. El arranque de sesión solo agrega un sí/no (`approvals.isApprover`), que sale del directorio que ya carga.
+- `decideMyApproval` toma el candado adentro, como el enlace del correo, e invalida el caché del dashboard de costos (#A89).
+- Si la consulta falla, el panel lo dice y deja reintentar (#A49).
+
+**Verificado:**
+- `npm run verify` en verde. `tools/check-approvals.cjs` cubre:
+  - la lista por persona: área, CFO y quien no aprueba (vacía), sin cédulas;
+  - pendiente e historial, el detalle de cada aprobación y solo imágenes `https`;
+  - aprobar dos veces;
+  - que quien no es aprobador no puede decidir, y que la excepción solo la decide el CFO.
+- Chrome sin ventana con el entorno local y la base del 29-oct:
+  - Alejandro ve el botón con 1 pendiente (la excepción de la SOL-000700, con su justificación);
+  - su historial tiene 120 solicitudes, con la 695 y el salto de etapa;
+  - aprueba desde la app y el contador queda en 0;
+  - Yurani en celular (390 px), sin desborde, con sus 2 pendientes y las imágenes de las opciones;
+  - sin errores de JavaScript.
+- Tiempo en el entorno local: ~0,3 s para quien más filas tiene (Yurani, 198 en su historial).
+
+**Despliegue (orden):** primero pegar `Code.gs` → versión nueva del web app (incluye #A118). Después el push del frontend.
+- Frontend nuevo con el servidor anterior: el arranque no trae `approvals` y el botón no aparece.
+- Servidor nuevo con el frontend anterior: la clave sobra y todo sigue igual.
+
+**Rollback:** frontend = revert del commit; servidor = versión anterior del web app.

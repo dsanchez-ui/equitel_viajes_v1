@@ -401,6 +401,7 @@ function _resetPerExecutionCaches_() {
   _TRIP_CHANGE_KEEP_OT = null;
   _TRIP_CHANGE_PENDING_INFO = null;
   _TRIP_CONTACTS_CACHE = null;
+  _APPROVAL_NAMES_CACHE = null;
 }
 
 /**
@@ -854,6 +855,12 @@ function dispatch(action, payload) {
 
       // NEW: DRIVE DELETION
       case 'deleteDriveFile': result = deleteDriveFile(payload.fileId); break;
+
+      // #A119: «Mis aprobaciones». Cualquier sesión válida: el servidor solo devuelve las filas
+      // donde la persona es (o fue) aprobadora y decide con qué rol vota. decideMyApproval no va
+      // en isWriteAction: toma el candado adentro, como el enlace del correo.
+      case 'getMyApprovals': result = getMyApprovals(currentUserEmail); break;
+      case 'decideMyApproval': result = decideMyApproval(payload.requestId, payload.decision, payload.comment, currentUserEmail); break;
 
       case 'anularSolicitud': result = anularSolicitud(payload.requestId, payload.reason); break;
       case 'cancelOwnRequest': result = cancelOwnRequest(payload.requestId, payload.reason, currentUserEmail); break;
@@ -2426,408 +2433,1060 @@ function processApprovalFromEmail(e) {
       return renderApprovalCommentPage(id, role, actor, decisionColor, sigT, sigVal);
   }
 
+  // #A119: el voto lo registra _applyApprovalDecision_, la misma función que usa «Mis
+  // aprobaciones» en la app. Las reglas son iguales por las dos vías.
+  const res = _applyApprovalDecision_({
+      id: id,
+      decision: decision,
+      role: role,
+      actor: actor,
+      comment: approvalComment,
+      // _safeDecode_: e.parameter ya viene decodificado — el decode extra
+      // legacy lanzaba URIError con '%' literal (ej. "excede el 10%")
+      // dejando la solicitud varada con voto registrado y sin status.
+      reason: e.parameter.reason ? _safeDecode_(e.parameter.reason) : ''
+  });
+  return renderMessagePage(res.title, res.html, res.color);
+}
+
+/**
+ * Registra el voto de un aprobador (antes vivía dentro de processApprovalFromEmail). Lo usan
+ * el enlace firmado del correo y «Mis aprobaciones» de la app (decideMyApproval, #A119): quien
+ * llama ya verificó quién vota (firma HMAC o sesión) y con qué rol.
+ *
+ * Devuelve { kind, title, html, color }. kind: busy | error | held | reassigned | already |
+ * closed | late | denied | approved_full | approved_partial. El html va para renderMessagePage;
+ * la app lo pasa a texto (_approvalPlainText_).
+ */
+function _applyApprovalDecision_(o) {
+  const id = o.id;
+  const decision = o.decision; // 'approved' or 'denied'
+  const role = o.role || 'NORMAL'; // 'NORMAL', 'CEO', 'CDS', 'BUDGET_OVERRUN'
+  const actor = o.actor; // Specific email of the person acting
+  // Comentario OPCIONAL del aprobador. Cap defensivo de 1000 chars (la página limita a 500 vía maxlength).
+  const approvalComment = String(o.comment || '').trim().substring(0, 1000);
+  const result = function(kind, title, html, color) { return { kind: kind, title: title, html: html, color: color }; };
+
   const lock = LockService.getScriptLock();
-  if (lock.tryLock(LOCK_WAIT_MS)) { 
-      try {
-          const ss = SpreadsheetApp.getActiveSpreadsheet();
-          const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
-
-          const rowNumber = _getRowByRequestId_(id);
-          if (rowNumber === -1) throw new Error(`Solicitud ${id} no encontrada.`);
-
-          // Etapa 2.5: consolidar lecturas pre-write en una sola pasada.
-          // Antes hacía ~5 round-trips a Sheets dispersos (status, isInternational,
-          // totalCost, expectedApprover, currentVal de la columna por rol). Ahora
-          // un único getValues() sobre la fila completa. El array `currentRow` se
-          // usa solo para los reads ANTERIORES a las escrituras de aprobación;
-          // tras las escrituras y el flush, sigue habiendo un segundo getValues()
-          // (línea ~2269) que lee los valores recién escritos — eso no se toca.
-          const currentRow = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
-          const statusIdx = H("STATUS");
-          const internationalIdx = H("ES INTERNACIONAL");
-          const costIdx = H("COSTO COTIZADO PARA VIAJE");
-          const expectedApproverIdx = H("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)");
-          const ceoColIdx = H("APROBADO CEO");
-          const cdsColIdx = H("APROBADO CDS");
-          const areaAutoColIdx = H("APROBADO POR ÁREA? (AUTOMÁTICO)");
-          const areaLegacyColIdx = H("APROBADO POR ÁREA?");
-          const areaTimeColIdx = H("FECHA/HORA (AUTOMÁTICO)");
-          const budgetColIdx = H("APROBADO PRESUPUESTO");
-          const requiereApPptoIdx = H("REQUIERE APROB PPTO");
-
-          const currentStatus = currentRow[statusIdx];
-          const isInternational = currentRow[internationalIdx] === "SI";
-          const totalCost = Number(currentRow[costIdx]) || 0;
-
-          // R10: CEO se excluye del flujo de ALTO COSTO NACIONAL. El CEO
-          // solo interviene en solicitudes INTERNACIONALES (donde es OR con CDS).
-          // El CDS sí interviene en ambos casos (internacional + alto costo).
-          const requiresCeoApproval = isInternational;
-          // #A103: en un cambio de tiquete comprado cuenta el viaje con el cambio.
-          const requiresCdsApproval = isInternational || _cdsCostBase_(totalCost, currentRow[H(TRIP_CHANGE_HEADER)]) > 1200000;
-          const requiresExecutiveApproval = requiresCeoApproval || requiresCdsApproval;
-
-          // #A100: en espera del CFO por la política de anticipación. Ningún enlace
-          // de aprobación de área sirve todavía (no debería existir uno).
-          if (currentStatus === POLICY_HOLD_STATUS) {
-              return renderMessagePage('Solicitud en espera', 'La solicitud ' + escapeHtml_(id) + ' todavía espera la aprobación por la política de anticipación. No se registró ningún cambio.', '#374151');
-          }
-
-          // If already fully processed, stop status update but allow logging if it's a late approval
-          const isAdvancedStatus = ['APROBADO', 'RESERVADO', 'PROCESADO', 'ANULADO', 'DENEGADO'].includes(currentStatus);
-
-          // 0. PREPARE LOGGING DATA (TRACEABILITY)
-          const now = new Date();
-          // #A24: forzar zona horaria Bogotá explícita. Si alguna vez el proyecto
-          // cambia de TZ (p.ej. lo heredara en UTC), el timestamp quedaría mal
-          // sin afectar al usuario — pero sí al auditor. Mejor explícito.
-          const timestamp = Utilities.formatDate(now, 'America/Bogota', "d/M/yyyy H:mm");
-          const isApproved = decision === 'approved';
-          const decisionPrefix = isApproved ? "Sí" : "No";
-          
-          let approverEmail = "";
-          if (role === 'CEO') approverEmail = CEO_EMAIL;
-          else if (role === 'CDS') approverEmail = DIRECTOR_EMAIL;
-          else if (role === 'BUDGET_OVERRUN') {
-              // El aprobador de presupuesto se configura en el dashboard. El
-              // link se firma con su email como actor — confiamos en el actor
-              // si la firma HMAC verificó (el cutover/legacy ya pasó la
-              // validación arriba). Como defensa, también validamos contra
-              // la config actual: si el actor NO coincide con el config, registramos
-              // el actor del link (lo que firmamos cuando se envió el correo) — esto
-              // permite que aunque cambien el email en el config después, los links
-              // ya enviados sigan funcionando.
-              approverEmail = actor || 'desconocido';
-          }
-          else {
-              // Etapa 2.5: leemos del array currentRow en lugar de un getRange extra.
-              // Use expected approver from sheet; only use actor if it matches to prevent impersonation
-              const expectedApprover = String(currentRow[expectedApproverIdx] || '').toLowerCase().trim();
-              // HARDENING (reasignación de aprobador): la columna puede tener uno o
-              // varios aprobadores (co-aprobadores internacionales) y pudo cambiar por
-              // una reevaluación. Si el link trae un actor que YA NO está entre los
-              // aprobadores vigentes (p. ej. un aprobador reemplazado usando un link
-              // viejo), se rechaza para no registrar la aprobación a nombre del
-              // aprobador actual. Actor vacío (links legacy sin actor) NO se rechaza.
-              const assignedApprovers = expectedApprover.split(',')
-                  .map(function(eApp) { return eApp.trim(); })
-                  .filter(function(eApp) { return eApp; });
-              const actorLower = String(actor || '').toLowerCase().trim();
-              if (actorLower && assignedApprovers.length && assignedApprovers.indexOf(actorLower) === -1) {
-                  return renderMessagePage(
-                      'Enlace ya no válido',
-                      'Esta solicitud fue reasignada a otro aprobador, por lo que este enlace ya no es válido.<br/>El aprobador actual recibió un correo nuevo para gestionarla.',
-                      '#374151'
-                  );
-              }
-              // Lógica ORIGINAL preservada sin cambios: las aprobaciones legítimas
-              // (actor que coincide, o links legacy sin actor) siguen idénticas.
-              if (actor && String(actor).toLowerCase().trim() === expectedApprover) {
-                approverEmail = actor;
-              } else {
-                approverEmail = expectedApprover || actor || 'desconocido';
-              }
-          }
-
-          // Log format: Decision_Email_Timestamp (or just Decision_Email for Area since Time is separate)
-          const logStringFull = `${decisionPrefix}_${approverEmail}_${timestamp}`;
-          const logStringArea = `${decisionPrefix}_${approverEmail}`;
-
-          // 1. LOG TO SPECIFIC COLUMNS (WITH OVERWRITE PROTECTION)
-          // Etapa 2.5: los `currentVal` se obtienen del array currentRow (ya leído).
-          // Las escrituras siguen igual — solo los reads previos se consolidaron.
-          let alreadyDecided = false;
-          let previousDecisionDate = "";
-
-          if (role === 'CEO') {
-              const currentVal = currentRow[ceoColIdx];
-              if (currentVal && String(currentVal).trim() !== "") {
-                  alreadyDecided = true;
-                  // Extract date from "Sí_email_date time"
-                  const parts = String(currentVal).split('_');
-                  if (parts.length >= 3) previousDecisionDate = parts[2];
-              } else {
-                  sheet.getRange(rowNumber, ceoColIdx + 1).setValue(logStringFull);
-              }
-          } else if (role === 'CDS') {
-              const currentVal = currentRow[cdsColIdx];
-              if (currentVal && String(currentVal).trim() !== "") {
-                  alreadyDecided = true;
-                  const parts = String(currentVal).split('_');
-                  if (parts.length >= 3) previousDecisionDate = parts[2];
-              } else {
-                  sheet.getRange(rowNumber, cdsColIdx + 1).setValue(logStringFull);
-              }
-          } else if (role === 'BUDGET_OVERRUN') {
-              if (budgetColIdx < 0) {
-                  // Defensa: la columna no existe en el sheet (no se hizo la
-                  // migración). Logueamos y dejamos seguir el flujo — el voto se
-                  // perderá pero la app no rompe.
-                  console.error('processApprovalFromEmail: columna "APROBADO PRESUPUESTO" no existe; rol BUDGET_OVERRUN no se puede registrar.');
-              } else {
-                  const currentVal = currentRow[budgetColIdx];
-                  if (currentVal && String(currentVal).trim() !== "") {
-                      alreadyDecided = true;
-                      const parts = String(currentVal).split('_');
-                      if (parts.length >= 3) previousDecisionDate = parts[2];
-                  } else {
-                      sheet.getRange(rowNumber, budgetColIdx + 1).setValue(logStringFull);
-                  }
-              }
-          } else {
-              // Normal Approver
-              const currentVal = currentRow[areaAutoColIdx];
-
-              // Check if THIS specific actor already approved (or if anyone approved and we want to block)
-              // Requirement: "si alguno de los dos aprueba, pues ya el proceso avanza"
-              // If A approves, currentVal = "Sí_A". If B clicks, currentVal is "Sí_A".
-              // We should treat this as "already decided" for the REQUEST, not necessarily for the PERSON.
-              // But for traceability, if B clicks, we might want to know.
-              // However, the logic below "if (alreadyDecided) return..." stops the flow.
-              // So if A approved, B gets "Decision Previa Detectada". This is consistent with "First one wins".
-
-              if (currentVal && String(currentVal).trim() !== "") {
-                  alreadyDecided = true;
-                  previousDecisionDate = currentRow[areaTimeColIdx];
-              } else {
-                  sheet.getRange(rowNumber, areaAutoColIdx + 1).setValue(logStringArea);
-                  sheet.getRange(rowNumber, areaTimeColIdx + 1).setValue(timestamp);
-                  sheet.getRange(rowNumber, areaLegacyColIdx + 1).setValue(decisionPrefix);
-              }
-          }
-          
-          if (alreadyDecided) {
-               return renderMessagePage(
-                  'Decisión Previa Detectada',
-                  `Usted ya había registrado una decisión para esta solicitud anteriormente (Fecha: ${escapeHtml_(previousDecisionDate) || 'Desconocida'}).<br/>No se han realizado cambios.`,
-                  '#374151'
-              );
-          }
-
-          // METRICS: registrar evento de aprobación (solo si es approval, no denial)
-          let commentSaved = false;
-          if (isApproved) {
-              _recordEvent_(id, 'approval', { role: role, email: approverEmail });
-              // COMENTARIO DEL APROBADOR (opcional): se guarda junto al voto —
-              // después del guard alreadyDecided (clicks duplicados NO guardan)
-              // y antes del flush, de modo que el click que completa la
-              // aprobación ya deja el comentario visible para el correo final
-              // (updateRequestStatus re-lee la fila). Nunca lanza (ver helper).
-              if (approvalComment) {
-                  commentSaved = _appendApproverComment_(sheet, rowNumber, role, approverEmail, actor, approvalComment) === true;
-              }
-          }
-
-          SpreadsheetApp.flush(); // Ensure log is written before potential denial return
-
-          // CHECK IF ALREADY ADVANCED - IF SO, STOP HERE
-          if (isAdvancedStatus) {
-              // COMENTARIO TARDÍO: la solicitud ya avanzó (p. ej. ya se reservó)
-              // y este aprobador dejó una instrucción que ya no saldría en el
-              // correo de aprobación (enviado antes). Sin este aviso, quedaría
-              // guardada en silencio — avisar al área de compras para que
-              // verifique si afecta la gestión ya realizada.
-              if (commentSaved) {
-                  try {
-                      const lateReq = mapRowToRequest(currentRow);
-                      const lateSubject = getStandardSubject(lateReq) + ' [COMENTARIO TARDÍO DE APROBADOR]';
-                      const lateHtml = HtmlTemplates.layout(
-                          id,
-                          `<p style="font-size:14px; color:#111827;">El aprobador <strong>${escapeHtml_(approverEmail)}</strong> (${escapeHtml_(_approverRoleLabel_(role))}) registró su aprobación <strong>después</strong> de que la solicitud ya había avanzado (estado actual: <strong>${escapeHtml_(String(currentStatus))}</strong>) y dejó este comentario:</p>
-                           <div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#374151; font-style:italic;">"${escapeHtml_(approvalComment).replace(/\n/g, '<br/>')}"</div>
-                           <p style="font-size:13px; color:#4b5563;">Por favor verifique si esta instrucción afecta la gestión ya realizada (p. ej. una compra o reserva en curso).</p>`,
-                          '#f59e0b',
-                          'COMENTARIO TARDÍO DE APROBADOR'
-                      );
-                      sendEmailRich(ADMIN_EMAIL, lateSubject, lateHtml, null);
-                  } catch (eLate) {
-                      console.error('Error notificando comentario tardío de aprobador: ' + eLate);
-                  }
-              }
-              return renderMessagePage(
-                  'Decisión Registrada',
-                  `Su decisión ha sido registrada en el sistema.${commentSaved ? '<br/>Su comentario también quedó registrado y se avisó al área de compras.' : ''}<br/><br/><strong>Nota:</strong> Esta solicitud ya había avanzado previamente y se encuentra en estado: <span style="color:blue">${escapeHtml_(currentStatus)}</span>. El flujo no se ha modificado.`,
-                  '#374151'
-              );
-          }
-
-          // 2. REJECTION: Any rejection kills the request instantly (ONLY IF NOT ADVANCED)
-          if (!isApproved) {
-              // Save denial reason to observations if provided.
-              // _safeDecode_: e.parameter ya viene decodificado — el decode extra
-              // legacy lanzaba URIError con '%' literal (ej. "excede el 10%")
-              // dejando la solicitud varada con voto registrado y sin status.
-              const denialReason = e.parameter.reason ? _safeDecode_(e.parameter.reason) : '';
-              if (denialReason) {
-                  const obsIdx = H("OBSERVACIONES");
-                  const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
-                  const denialNote = `[DENEGACIÓN - ${approverEmail}]: ${denialReason}`;
-                  sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + denialNote);
-              }
-
-              updateRequestStatus(id, 'DENEGADO', { denialReason: denialReason }); // Update global status
-
-              return renderMessagePage(
-                  'Decisión Registrada',
-                  `Ha <strong>DENEGADO</strong> la solicitud. El proceso se ha detenido.${denialReason ? '<br/><br/><strong>Motivo:</strong> ' + escapeHtml_(denialReason) : ''}`,
-                  '#D71920'
-              );
-          }
-
-          // 3. APPROVAL: CHECK COMPLETION
-          // We need to re-read or track state variables
-          // Re-read current row data to check other columns
-          const rowValues = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
-
-          // Check CEO & CDS columns
-          const cdsVal = rowValues[H("APROBADO CDS")];
-          const ceoVal = rowValues[H("APROBADO CEO")];
-          // For area, we check the (AUTOMÁTICO) column we just wrote to or legacy
-          const areaVal = rowValues[H("APROBADO POR ÁREA? (AUTOMÁTICO)")];
-
-          const cdsApproved = String(cdsVal).startsWith("Sí");
-          const ceoApproved = String(ceoVal).startsWith("Sí");
-          const areaApproved = String(areaVal).startsWith("Sí");
-
-          // BUDGET_OVERRUN: leer flag + voto. Tolerante a columna faltante.
-          const budgetVal = (budgetColIdx >= 0) ? rowValues[budgetColIdx] : '';
-          const budgetApproved = String(budgetVal).startsWith("Sí");
-          // OT-aware: si la solicitud tiene OT válida NO requiere aprobación de
-          // presupuesto (no debe bloquear la aprobación completa).
-          const _workOrderApprIdx = H("# ORDEN TRABAJO");
-          const _workOrderApprVal = (_workOrderApprIdx >= 0) ? rowValues[_workOrderApprIdx] : '';
-          // #A100: el mismo voto cubre la tarifa superior a la del manual.
-          const _fareFlagApprIdx = H(FARE_CFO_FLAG_HEADER);
-          const requiresBudgetOverrun = _requiresCfoVote_(
-              requiereApPptoIdx >= 0 ? rowValues[requiereApPptoIdx] : '',
-              _workOrderApprVal,
-              _fareFlagApprIdx >= 0 ? rowValues[_fareFlagApprIdx] : '');
-
-          // Detect special cases: requester is CEO/CDS, or the assigned area approver
-          // happens to be CEO/CDS (so a single click on the deduped email implicitly
-          // covers both the area and the executive role).
-          const requesterEmailRaw = rowValues[H("CORREO ENCUESTADO")];
-          const requesterLowerHere = String(requesterEmailRaw || '').toLowerCase().trim();
-          const ceoLowerHere = String(CEO_EMAIL).toLowerCase().trim();
-          const cdsLowerHere = String(DIRECTOR_EMAIL).toLowerCase().trim();
-          const requesterIsCeo = requesterLowerHere === ceoLowerHere;
-          const requesterIsCds = requesterLowerHere === cdsLowerHere;
-
-          const assignedAreaApproversRaw = rowValues[H("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)")];
-          const assignedAreaApprovers = String(assignedAreaApproversRaw || '').toLowerCase()
-              .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
-          const ceoIsAreaApprover = assignedAreaApprovers.indexOf(ceoLowerHere) !== -1;
-          const cdsIsAreaApprover = assignedAreaApprovers.indexOf(cdsLowerHere) !== -1;
-
-          // Budget approver del config — para simetría área↔budget.
-          var budgetApproverLowerHere = '';
-          try {
-              var _cfgB = _csLoadConfig_();
-              budgetApproverLowerHere = String(_cfgB.budgetApproverEmail || '').toLowerCase().trim();
-          } catch (e) { budgetApproverLowerHere = ''; }
-          const budgetApproverIsAreaApprover = budgetApproverLowerHere &&
-              assignedAreaApprovers.indexOf(budgetApproverLowerHere) !== -1;
-
-          // BUDGET satisfecho: voto directo, O simetrías:
-          //   - budget approver = área aprobador y aprobó como área
-          //   - budget approver = CEO y aprobó como CEO (dedup en sendApprovalRequestEmail)
-          //   - budget approver = CDS y aprobó como CDS (idem)
-          const budgetIsCeoHere = budgetApproverLowerHere && budgetApproverLowerHere === ceoLowerHere;
-          const budgetIsCdsHere = budgetApproverLowerHere && budgetApproverLowerHere === cdsLowerHere;
-          const budgetSatisfied = !requiresBudgetOverrun
-              || budgetApproved
-              || (budgetApproverIsAreaApprover && areaApproved)
-              || (budgetIsCeoHere && ceoApproved)
-              || (budgetIsCdsHere && cdsApproved);
-
-          let isFullyApproved = false;
-
-          if (requesterIsCeo) {
-              // CEO requested → his single approval (sent with role CEO) is enough
-              if (ceoApproved) isFullyApproved = true;
-              // LEGACY FALLBACK: in-flight requests created BEFORE the dedup change may
-              // have area + CDS marked already (because the old flow sent the CEO three
-              // separate emails). Honor that combination so they don't stall after deploy.
-              // Cannot trigger for new requests because the new flow only sends 1 email
-              // to CEO with role CEO, so the area and CDS columns stay empty.
-              else if (areaApproved && cdsApproved) isFullyApproved = true;
-          } else if (requesterIsCds) {
-              // CDS requested → his single approval (sent with role CDS) is enough
-              if (cdsApproved) isFullyApproved = true;
-              // LEGACY FALLBACK: same reasoning as the CEO branch above.
-              else if (areaApproved && ceoApproved) isFullyApproved = true;
-          } else if (requiresExecutiveApproval) {
-              // Standard executive flow: area + (CEO or CDS — según flags R10).
-              // Internacional: basta con UNO de los dos ejecutivos (OR).
-              // Alto costo nacional: solo CDS requerido (CEO excluido).
-              // Si el aprobador de área ES el CEO/CDS, su click ejecutivo
-              // implícitamente cubre también el rol de área (effectiveAreaApproved).
-              const effectiveAreaApproved = areaApproved
-                  || (ceoIsAreaApprover && ceoApproved)
-                  || (cdsIsAreaApprover && cdsApproved);
-              // SIMETRÍA (2026-05-12): si el aprobador de área ES el CEO/CDS y
-              // ya aprobó como área, su rol ejecutivo se considera satisfecho.
-              // Sin esto, si una sola persona es ambos roles (caso SOL-000155
-              // con Yurani = aprobadora + CDS) y hace UN solo click en el correo
-              // de área, la solicitud queda en limbo esperando una segunda
-              // aprobación "ejecutiva" que nunca llegará.
-              const executiveSatisfied = (requiresCeoApproval && ceoApproved)
-                                       || (requiresCdsApproval && cdsApproved)
-                                       || (requiresCeoApproval && ceoIsAreaApprover && areaApproved)
-                                       || (requiresCdsApproval && cdsIsAreaApprover && areaApproved);
-              // LEGACY FALLBACK R10: solicitudes alto costo nacional creadas ANTES
-              // del deploy recibieron correo al CEO bajo las reglas antiguas
-              // "CEO o CDS". Si el CEO ya aprobó antes del deploy, honrar esa
-              // decisión para no varar la solicitud. Solo dispara cuando CEO ya
-              // NO es requerido por R10 pero su voto está registrado.
-              const legacyCeoApproval = ceoApproved && !requiresCeoApproval;
-              if (effectiveAreaApproved && (executiveSatisfied || legacyCeoApproval)) {
-                  isFullyApproved = true;
-              }
-          } else {
-              // National + low cost: just the area approver
-              if (areaApproved) {
-                  isFullyApproved = true;
-              }
-          }
-
-          // BUDGET_OVERRUN (2026-05-21): condición adicional que se aplica a
-          // TODAS las ramas anteriores. Si la solicitud requiere aprobación
-          // de presupuesto y el aprobador (Alejandro o quien esté configurado)
-          // aún no votó, la solicitud NO está completamente aprobada — sin
-          // importar si CEO/CDS/área ya hicieron lo suyo.
-          // `budgetSatisfied` se calculó arriba y ya incluye la simetría
-          // (si el budget approver es también área aprobador y aprobó como
-          // área, queda cubierto).
-          if (isFullyApproved && !budgetSatisfied) {
-              isFullyApproved = false;
-          }
-
-          if (isFullyApproved) {
-              // METRICS: registrar evento de "todas las aprobaciones completas"
-              _recordEvent_(id, 'fullyApproved');
-              // This triggers the final status update, which also calculates Q TKT etc.
-              updateRequestStatus(id, 'APROBADO', {});
-              return renderMessagePage(
-                  'Aprobación Completa',
-                  `Su aprobación ha sido registrada. La solicitud ha completado todo el flujo de aprobaciones.`,
-                  '#059669'
-              );
-          } else {
-              return renderMessagePage(
-                  'Aprobación Parcial', 
-                  `Su aprobación ha sido registrada (${role}). La solicitud espera por el resto de aprobadores para finalizar.`,
-                  '#059669'
-              );
-          }
-
-      } catch (e) {
-          return renderMessagePage('Error', 'Error al procesar: ' + escapeHtml_(e.toString()), '#D71920');
-      } finally {
-          lock.releaseLock();
-      }
+  if (!lock.tryLock(LOCK_WAIT_MS)) {
+      return result('busy', 'Sistema Ocupado', 'Intente nuevamente.', '#D71920');
   }
-  return renderMessagePage("Sistema Ocupado", "Intente nuevamente.", '#D71920');
+  try {
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+
+      const rowNumber = _getRowByRequestId_(id);
+      if (rowNumber === -1) throw new Error(`Solicitud ${id} no encontrada.`);
+
+      // Etapa 2.5: consolidar lecturas pre-write en una sola pasada.
+      // Antes hacía ~5 round-trips a Sheets dispersos (status, isInternational,
+      // totalCost, expectedApprover, currentVal de la columna por rol). Ahora
+      // un único getValues() sobre la fila completa. El array `currentRow` se
+      // usa solo para los reads ANTERIORES a las escrituras de aprobación;
+      // tras las escrituras y el flush, sigue habiendo un segundo getValues()
+      // que lee los valores recién escritos — eso no se toca.
+      const currentRow = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+      const statusIdx = H("STATUS");
+      const internationalIdx = H("ES INTERNACIONAL");
+      const costIdx = H("COSTO COTIZADO PARA VIAJE");
+      const expectedApproverIdx = H("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)");
+      const ceoColIdx = H("APROBADO CEO");
+      const cdsColIdx = H("APROBADO CDS");
+      const areaAutoColIdx = H("APROBADO POR ÁREA? (AUTOMÁTICO)");
+      const areaLegacyColIdx = H("APROBADO POR ÁREA?");
+      const areaTimeColIdx = H("FECHA/HORA (AUTOMÁTICO)");
+      const budgetColIdx = H("APROBADO PRESUPUESTO");
+      const requiereApPptoIdx = H("REQUIERE APROB PPTO");
+
+      const currentStatus = currentRow[statusIdx];
+      const isInternational = currentRow[internationalIdx] === "SI";
+      const totalCost = Number(currentRow[costIdx]) || 0;
+
+      // R10: CEO se excluye del flujo de ALTO COSTO NACIONAL. El CEO
+      // solo interviene en solicitudes INTERNACIONALES (donde es OR con CDS).
+      // El CDS sí interviene en ambos casos (internacional + alto costo).
+      const requiresCeoApproval = isInternational;
+      // #A103: en un cambio de tiquete comprado cuenta el viaje con el cambio.
+      const requiresCdsApproval = isInternational || _cdsCostBase_(totalCost, currentRow[H(TRIP_CHANGE_HEADER)]) > 1200000;
+      const requiresExecutiveApproval = requiresCeoApproval || requiresCdsApproval;
+
+      // #A100: en espera del CFO por la política de anticipación. Ningún enlace
+      // de aprobación de área sirve todavía (no debería existir uno).
+      if (currentStatus === POLICY_HOLD_STATUS) {
+          return result('held', 'Solicitud en espera', 'La solicitud ' + escapeHtml_(id) + ' todavía espera la aprobación por la política de anticipación. No se registró ningún cambio.', '#374151');
+      }
+
+      // If already fully processed, stop status update but allow logging if it's a late approval
+      // (#A118: denegada o anulada ya no guarda votos; ver abajo).
+      const isAdvancedStatus = ['APROBADO', 'RESERVADO', 'PROCESADO'].includes(currentStatus);
+
+      // 0. PREPARE LOGGING DATA (TRACEABILITY)
+      const now = new Date();
+      // #A24: forzar zona horaria Bogotá explícita. Si alguna vez el proyecto
+      // cambia de TZ (p.ej. lo heredara en UTC), el timestamp quedaría mal
+      // sin afectar al usuario — pero sí al auditor. Mejor explícito.
+      const timestamp = Utilities.formatDate(now, 'America/Bogota', "d/M/yyyy H:mm");
+      const isApproved = decision === 'approved';
+      const decisionPrefix = isApproved ? "Sí" : "No";
+
+      let approverEmail = "";
+      if (role === 'CEO') approverEmail = CEO_EMAIL;
+      else if (role === 'CDS') approverEmail = DIRECTOR_EMAIL;
+      else if (role === 'BUDGET_OVERRUN') {
+          // El aprobador de presupuesto se configura en el dashboard. El
+          // link se firma con su email como actor — confiamos en el actor
+          // si la firma HMAC verificó (el cutover/legacy ya pasó la
+          // validación arriba). Como defensa, también validamos contra
+          // la config actual: si el actor NO coincide con el config, registramos
+          // el actor del link (lo que firmamos cuando se envió el correo) — esto
+          // permite que aunque cambien el email en el config después, los links
+          // ya enviados sigan funcionando.
+          approverEmail = actor || 'desconocido';
+      }
+      else {
+          // Etapa 2.5: leemos del array currentRow en lugar de un getRange extra.
+          // Use expected approver from sheet; only use actor if it matches to prevent impersonation
+          const expectedApprover = String(currentRow[expectedApproverIdx] || '').toLowerCase().trim();
+          // HARDENING (reasignación de aprobador): la columna puede tener uno o
+          // varios aprobadores (co-aprobadores internacionales) y pudo cambiar por
+          // una reevaluación. Si el link trae un actor que YA NO está entre los
+          // aprobadores vigentes (p. ej. un aprobador reemplazado usando un link
+          // viejo), se rechaza para no registrar la aprobación a nombre del
+          // aprobador actual. Actor vacío (links legacy sin actor) NO se rechaza.
+          const assignedApprovers = expectedApprover.split(',')
+              .map(function(eApp) { return eApp.trim(); })
+              .filter(function(eApp) { return eApp; });
+          const actorLower = String(actor || '').toLowerCase().trim();
+          if (actorLower && assignedApprovers.length && assignedApprovers.indexOf(actorLower) === -1) {
+              return result(
+                  'reassigned',
+                  'Enlace ya no válido',
+                  'Esta solicitud fue reasignada a otro aprobador, por lo que este enlace ya no es válido.<br/>El aprobador actual recibió un correo nuevo para gestionarla.',
+                  '#374151'
+              );
+          }
+          // #A119: con coaprobadores se registra quién votó, no la lista completa
+          // (así la página y «Mis aprobaciones» dicen quién fue). Links legacy sin
+          // actor: igual que antes.
+          if (actorLower && assignedApprovers.indexOf(actorLower) !== -1) {
+            approverEmail = String(actor).trim();
+          } else {
+            approverEmail = expectedApprover || actor || 'desconocido';
+          }
+      }
+
+      // Log format: Decision_Email_Timestamp (or just Decision_Email for Area since Time is separate)
+      const logStringFull = `${decisionPrefix}_${approverEmail}_${timestamp}`;
+      const logStringArea = `${decisionPrefix}_${approverEmail}`;
+
+      // #A118: la casilla de este rol ya tiene una decisión (de esta persona, de un
+      // coaprobador o un salto de etapa). Antes la página decía siempre «Usted ya
+      // había registrado una decisión» y, con el salto de etapa, «Fecha: Desconocida».
+      // Requirement: "si alguno de los dos aprueba, pues ya el proceso avanza"
+      // ("first one wins"): la casilla de área es una sola para los coaprobadores.
+      const roleColIdx = role === 'CEO' ? ceoColIdx : role === 'CDS' ? cdsColIdx : role === 'BUDGET_OVERRUN' ? budgetColIdx : areaAutoColIdx;
+      const previousVote = roleColIdx >= 0 ? _approvalVoteParse_(currentRow[roleColIdx], currentRow[areaTimeColIdx]) : null;
+      if (previousVote) {
+          return result('already', 'Decisión Previa Detectada', _approvalPreviousDecisionHtml_(currentRow, role, previousVote, actor), '#374151');
+      }
+      // #A118: denegada o anulada, el voto ya no sirve: no se guarda y la página dice qué pasó.
+      if (currentStatus === 'DENEGADO' || currentStatus === 'ANULADO') {
+          return result('closed', 'Ya no necesita su aprobación', _approvalNoLongerNeededHtml_(currentRow), '#374151');
+      }
+
+      // 1. LOG TO SPECIFIC COLUMNS
+      if (role === 'CEO') {
+          sheet.getRange(rowNumber, ceoColIdx + 1).setValue(logStringFull);
+      } else if (role === 'CDS') {
+          sheet.getRange(rowNumber, cdsColIdx + 1).setValue(logStringFull);
+      } else if (role === 'BUDGET_OVERRUN') {
+          if (budgetColIdx < 0) {
+              // Defensa: la columna no existe en el sheet (no se hizo la
+              // migración). Logueamos y dejamos seguir el flujo — el voto se
+              // perderá pero la app no rompe.
+              console.error('processApprovalFromEmail: columna "APROBADO PRESUPUESTO" no existe; rol BUDGET_OVERRUN no se puede registrar.');
+          } else {
+              sheet.getRange(rowNumber, budgetColIdx + 1).setValue(logStringFull);
+          }
+      } else {
+          // Normal Approver
+          sheet.getRange(rowNumber, areaAutoColIdx + 1).setValue(logStringArea);
+          sheet.getRange(rowNumber, areaTimeColIdx + 1).setValue(timestamp);
+          sheet.getRange(rowNumber, areaLegacyColIdx + 1).setValue(decisionPrefix);
+      }
+
+      // METRICS: registrar evento de aprobación (solo si es approval, no denial)
+      let commentSaved = false;
+      if (isApproved) {
+          _recordEvent_(id, 'approval', { role: role, email: approverEmail });
+          // COMENTARIO DEL APROBADOR (opcional): se guarda junto al voto —
+          // después del guard de decisión previa (clicks duplicados NO guardan)
+          // y antes del flush, de modo que el click que completa la
+          // aprobación ya deja el comentario visible para el correo final
+          // (updateRequestStatus re-lee la fila). Nunca lanza (ver helper).
+          if (approvalComment) {
+              commentSaved = _appendApproverComment_(sheet, rowNumber, role, approverEmail, actor, approvalComment) === true;
+          }
+      }
+
+      SpreadsheetApp.flush(); // Ensure log is written before potential denial return
+
+      // CHECK IF ALREADY ADVANCED - IF SO, STOP HERE
+      if (isAdvancedStatus) {
+          // COMENTARIO TARDÍO: la solicitud ya avanzó (p. ej. ya se reservó)
+          // y este aprobador dejó una instrucción que ya no saldría en el
+          // correo de aprobación (enviado antes). Sin este aviso, quedaría
+          // guardada en silencio — avisar al área de compras para que
+          // verifique si afecta la gestión ya realizada.
+          if (commentSaved) {
+              try {
+                  const lateReq = mapRowToRequest(currentRow);
+                  const lateSubject = getStandardSubject(lateReq) + ' [COMENTARIO TARDÍO DE APROBADOR]';
+                  const lateHtml = HtmlTemplates.layout(
+                      id,
+                      `<p style="font-size:14px; color:#111827;">El aprobador <strong>${escapeHtml_(approverEmail)}</strong> (${escapeHtml_(_approverRoleLabel_(role))}) registró su aprobación <strong>después</strong> de que la solicitud ya había avanzado (estado actual: <strong>${escapeHtml_(String(currentStatus))}</strong>) y dejó este comentario:</p>
+                       <div style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:6px; padding:12px 14px; margin:14px 0; font-size:13px; color:#374151; font-style:italic;">"${escapeHtml_(approvalComment).replace(/\n/g, '<br/>')}"</div>
+                       <p style="font-size:13px; color:#4b5563;">Por favor verifique si esta instrucción afecta la gestión ya realizada (p. ej. una compra o reserva en curso).</p>`,
+                      '#f59e0b',
+                      'COMENTARIO TARDÍO DE APROBADOR'
+                  );
+                  sendEmailRich(ADMIN_EMAIL, lateSubject, lateHtml, null);
+              } catch (eLate) {
+                  console.error('Error notificando comentario tardío de aprobador: ' + eLate);
+              }
+          }
+          return result(
+              'late',
+              'Decisión Registrada',
+              `Su decisión ha sido registrada en el sistema.${commentSaved ? '<br/>Su comentario también quedó registrado y se avisó al área de compras.' : ''}<br/><br/><strong>Nota:</strong> la solicitud ya había avanzado sin necesitar este voto: está <strong>${escapeHtml_(_approvalStatusText_(currentStatus))}</strong>. El flujo no se ha modificado.`,
+              '#374151'
+          );
+      }
+
+      // #A118: a quién le llega la confirmación de su decisión.
+      const confirmTo = _approvalMailTarget_(actor, approverEmail);
+
+      // 2. REJECTION: Any rejection kills the request instantly (ONLY IF NOT ADVANCED)
+      if (!isApproved) {
+          // Save denial reason to observations if provided.
+          const denialReason = String(o.reason || '').trim();
+          if (denialReason) {
+              const obsIdx = H("OBSERVACIONES");
+              const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
+              const denialNote = `[DENEGACIÓN - ${approverEmail}]: ${denialReason}`;
+              sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + denialNote);
+          }
+
+          updateRequestStatus(id, 'DENEGADO', { denialReason: denialReason }); // Update global status
+          _approvalAfterVote_(id, role, confirmTo, 'denied', 'DENEGADO');
+
+          return result(
+              'denied',
+              'Decisión Registrada',
+              `Ha <strong>DENEGADO</strong> la solicitud. El proceso se ha detenido.${denialReason ? '<br/><br/><strong>Motivo:</strong> ' + escapeHtml_(denialReason) : ''}`,
+              '#D71920'
+          );
+      }
+
+      // 3. APPROVAL: CHECK COMPLETION
+      // We need to re-read or track state variables
+      // Re-read current row data to check other columns
+      const rowValues = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+
+      // Check CEO & CDS columns
+      const cdsVal = rowValues[H("APROBADO CDS")];
+      const ceoVal = rowValues[H("APROBADO CEO")];
+      // For area, we check the (AUTOMÁTICO) column we just wrote to or legacy
+      const areaVal = rowValues[H("APROBADO POR ÁREA? (AUTOMÁTICO)")];
+
+      const cdsApproved = String(cdsVal).startsWith("Sí");
+      const ceoApproved = String(ceoVal).startsWith("Sí");
+      const areaApproved = String(areaVal).startsWith("Sí");
+
+      // BUDGET_OVERRUN: leer flag + voto. Tolerante a columna faltante.
+      const budgetVal = (budgetColIdx >= 0) ? rowValues[budgetColIdx] : '';
+      const budgetApproved = String(budgetVal).startsWith("Sí");
+      // OT-aware: si la solicitud tiene OT válida NO requiere aprobación de
+      // presupuesto (no debe bloquear la aprobación completa).
+      const _workOrderApprIdx = H("# ORDEN TRABAJO");
+      const _workOrderApprVal = (_workOrderApprIdx >= 0) ? rowValues[_workOrderApprIdx] : '';
+      // #A100: el mismo voto cubre la tarifa superior a la del manual.
+      const _fareFlagApprIdx = H(FARE_CFO_FLAG_HEADER);
+      const requiresBudgetOverrun = _requiresCfoVote_(
+          requiereApPptoIdx >= 0 ? rowValues[requiereApPptoIdx] : '',
+          _workOrderApprVal,
+          _fareFlagApprIdx >= 0 ? rowValues[_fareFlagApprIdx] : '');
+
+      // Detect special cases: requester is CEO/CDS, or the assigned area approver
+      // happens to be CEO/CDS (so a single click on the deduped email implicitly
+      // covers both the area and the executive role).
+      const requesterEmailRaw = rowValues[H("CORREO ENCUESTADO")];
+      const requesterLowerHere = String(requesterEmailRaw || '').toLowerCase().trim();
+      const ceoLowerHere = String(CEO_EMAIL).toLowerCase().trim();
+      const cdsLowerHere = String(DIRECTOR_EMAIL).toLowerCase().trim();
+      const requesterIsCeo = requesterLowerHere === ceoLowerHere;
+      const requesterIsCds = requesterLowerHere === cdsLowerHere;
+
+      const assignedAreaApproversRaw = rowValues[H("CORREO DE QUIEN APRUEBA (AUTOMÁTICO)")];
+      const assignedAreaApprovers = String(assignedAreaApproversRaw || '').toLowerCase()
+          .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
+      const ceoIsAreaApprover = assignedAreaApprovers.indexOf(ceoLowerHere) !== -1;
+      const cdsIsAreaApprover = assignedAreaApprovers.indexOf(cdsLowerHere) !== -1;
+
+      // Budget approver del config — para simetría área↔budget.
+      var budgetApproverLowerHere = '';
+      try {
+          var _cfgB = _csLoadConfig_();
+          budgetApproverLowerHere = String(_cfgB.budgetApproverEmail || '').toLowerCase().trim();
+      } catch (e) { budgetApproverLowerHere = ''; }
+      const budgetApproverIsAreaApprover = budgetApproverLowerHere &&
+          assignedAreaApprovers.indexOf(budgetApproverLowerHere) !== -1;
+
+      // BUDGET satisfecho: voto directo, O simetrías:
+      //   - budget approver = área aprobador y aprobó como área
+      //   - budget approver = CEO y aprobó como CEO (dedup en sendApprovalRequestEmail)
+      //   - budget approver = CDS y aprobó como CDS (idem)
+      const budgetIsCeoHere = budgetApproverLowerHere && budgetApproverLowerHere === ceoLowerHere;
+      const budgetIsCdsHere = budgetApproverLowerHere && budgetApproverLowerHere === cdsLowerHere;
+      const budgetSatisfied = !requiresBudgetOverrun
+          || budgetApproved
+          || (budgetApproverIsAreaApprover && areaApproved)
+          || (budgetIsCeoHere && ceoApproved)
+          || (budgetIsCdsHere && cdsApproved);
+
+      let isFullyApproved = false;
+
+      if (requesterIsCeo) {
+          // CEO requested → his single approval (sent with role CEO) is enough
+          if (ceoApproved) isFullyApproved = true;
+          // LEGACY FALLBACK: in-flight requests created BEFORE the dedup change may
+          // have area + CDS marked already (because the old flow sent the CEO three
+          // separate emails). Honor that combination so they don't stall after deploy.
+          // Cannot trigger for new requests because the new flow only sends 1 email
+          // to CEO with role CEO, so the area and CDS columns stay empty.
+          else if (areaApproved && cdsApproved) isFullyApproved = true;
+      } else if (requesterIsCds) {
+          // CDS requested → his single approval (sent with role CDS) is enough
+          if (cdsApproved) isFullyApproved = true;
+          // LEGACY FALLBACK: same reasoning as the CEO branch above.
+          else if (areaApproved && ceoApproved) isFullyApproved = true;
+      } else if (requiresExecutiveApproval) {
+          // Standard executive flow: area + (CEO or CDS — según flags R10).
+          // Internacional: basta con UNO de los dos ejecutivos (OR).
+          // Alto costo nacional: solo CDS requerido (CEO excluido).
+          // Si el aprobador de área ES el CEO/CDS, su click ejecutivo
+          // implícitamente cubre también el rol de área (effectiveAreaApproved).
+          const effectiveAreaApproved = areaApproved
+              || (ceoIsAreaApprover && ceoApproved)
+              || (cdsIsAreaApprover && cdsApproved);
+          // SIMETRÍA (2026-05-12): si el aprobador de área ES el CEO/CDS y
+          // ya aprobó como área, su rol ejecutivo se considera satisfecho.
+          // Sin esto, si una sola persona es ambos roles (caso SOL-000155
+          // con Yurani = aprobadora + CDS) y hace UN solo click en el correo
+          // de área, la solicitud queda en limbo esperando una segunda
+          // aprobación "ejecutiva" que nunca llegará.
+          const executiveSatisfied = (requiresCeoApproval && ceoApproved)
+                                   || (requiresCdsApproval && cdsApproved)
+                                   || (requiresCeoApproval && ceoIsAreaApprover && areaApproved)
+                                   || (requiresCdsApproval && cdsIsAreaApprover && areaApproved);
+          // LEGACY FALLBACK R10: solicitudes alto costo nacional creadas ANTES
+          // del deploy recibieron correo al CEO bajo las reglas antiguas
+          // "CEO o CDS". Si el CEO ya aprobó antes del deploy, honrar esa
+          // decisión para no varar la solicitud. Solo dispara cuando CEO ya
+          // NO es requerido por R10 pero su voto está registrado.
+          const legacyCeoApproval = ceoApproved && !requiresCeoApproval;
+          if (effectiveAreaApproved && (executiveSatisfied || legacyCeoApproval)) {
+              isFullyApproved = true;
+          }
+      } else {
+          // National + low cost: just the area approver
+          if (areaApproved) {
+              isFullyApproved = true;
+          }
+      }
+
+      // BUDGET_OVERRUN (2026-05-21): condición adicional que se aplica a
+      // TODAS las ramas anteriores. Si la solicitud requiere aprobación
+      // de presupuesto y el aprobador (Alejandro o quien esté configurado)
+      // aún no votó, la solicitud NO está completamente aprobada — sin
+      // importar si CEO/CDS/área ya hicieron lo suyo.
+      // `budgetSatisfied` se calculó arriba y ya incluye la simetría
+      // (si el budget approver es también área aprobador y aprobó como
+      // área, queda cubierto).
+      if (isFullyApproved && !budgetSatisfied) {
+          isFullyApproved = false;
+      }
+
+      if (isFullyApproved) {
+          // METRICS: registrar evento de "todas las aprobaciones completas"
+          _recordEvent_(id, 'fullyApproved');
+          // This triggers the final status update, which also calculates Q TKT etc.
+          updateRequestStatus(id, 'APROBADO', {});
+          _approvalAfterVote_(id, role, confirmTo, 'approved', 'APROBADO');
+          return result(
+              'approved_full',
+              'Aprobación Completa',
+              `Su aprobación ha sido registrada. La solicitud ha completado todo el flujo de aprobaciones.`,
+              '#059669'
+          );
+      }
+      _approvalAfterVote_(id, role, confirmTo, 'approved', '');
+      const missing = _approvalMissingText_(id);
+      return result(
+          'approved_partial',
+          'Aprobación Parcial',
+          `Su aprobación ha sido registrada (${escapeHtml_(_approverRoleLabel_(role))}). La solicitud espera por el resto de aprobadores para finalizar.` +
+              (missing ? '<br/><br/>Falta: ' + escapeHtml_(missing) + '.' : ''),
+          '#059669'
+      );
+
+  } catch (e) {
+      return result('error', 'Error', 'Error al procesar: ' + escapeHtml_(e.toString()), '#D71920');
+  } finally {
+      lock.releaseLock();
+  }
+}
+
+// =====================================================================
+// QUIÉN DECIDIÓ Y CUÁNDO, Y AVISOS A LOS APROBADORES (#A118)
+// =====================================================================
+// Caso SOL-000695 (28-oct): Alejandro tenía pendiente el voto de presupuesto,
+// Yurani saltó la etapa de aprobación y nadie le avisó. Su último correo seguía
+// diciendo «APROBACIÓN REQUERIDA» y el enlace mostraba «Usted ya había registrado
+// una decisión (Fecha: Desconocida)». Desde #A118:
+//   - quien vota recibe una confirmación de su decisión (mismo hilo del correo);
+//   - cuando la solicitud tiene decisión final (aprobada, denegada, etapa saltada
+//     o anulada), a los demás aprobadores a los que se les pidió el voto se les
+//     avisa una vez que ya no tienen nada pendiente;
+//   - la página del enlace dice qué se decidió, quién y cuándo;
+//   - el primer recordatorio sale después de 2 horas laborales (antes podía salir
+//     a los pocos minutos del correo original).
+// Ninguno de estos correos cambia el flujo: si fallan, la decisión ya quedó.
+// =====================================================================
+
+/** El primer recordatorio de aprobación sale cuando la solicitud lleva al menos esto pendiente (minutos laborales). */
+var APPROVAL_FIRST_REMINDER_MIN = 120;
+/** Nota que deja «Confirmar costos» cuando se salta la aprobación sin pedírsela a nadie (updateRequestStatus). */
+var APPROVAL_SKIP_AT_CONFIRM_NOTE = '[COSTOS]: Confirmados con intención de saltar aprobación';
+/** «Mis aprobaciones» (#A119): cuántas solicitudes del historial se envían (las más recientes). */
+var MY_APPROVALS_HISTORY_MAX = 100;
+/** Correo → nombre (USUARIOS y el nombre configurado de quien aprueba el presupuesto). Por ejecución. */
+var _APPROVAL_NAMES_CACHE = null;
+
+/** Texto de cada estado de una aprobación en los correos (la app tiene los suyos). */
+var APPROVAL_STATE_TEXT = {
+  approved: '✅ Aprobó',
+  covered: '✅ Aprobada con su otro voto',
+  denied: '❌ Denegó',
+  skipped: '⏭️ Etapa saltada por',
+  expired: '⌛ Venció sin respuesta',
+  pending: '⏳ Falta el voto de',
+  waiting: '🕓 Aún no se le pide a',
+  not_needed: '— No hizo falta',
+  other: 'Registrada'
+};
+
+function _approvalNamesMap_() {
+  if (_APPROVAL_NAMES_CACHE) return _APPROVAL_NAMES_CACHE;
+  var map = _policyUserNames_();
+  try {
+    var cfg = _csLoadConfig_();
+    var be = String(cfg.budgetApproverEmail || '').toLowerCase().trim();
+    if (be && String(cfg.budgetApproverName || '').trim()) map[be] = String(cfg.budgetApproverName).trim();
+  } catch (e) { /* sin config: solo USUARIOS */ }
+  _APPROVAL_NAMES_CACHE = map;
+  return map;
+}
+
+/** Nombre de una persona (o de varias, separadas por coma) a partir de su correo. */
+function _approvalWho_(emailRaw, names) {
+  var list = String(emailRaw || '').split(',').map(function(e) { return e.trim().toLowerCase(); }).filter(Boolean);
+  if (!list.length) return '';
+  names = names || _approvalNamesMap_();
+  return list.map(function(e) { return names[e] || e; }).join(' o ');
+}
+
+/** Fecha y hora de un voto como d/M/aaaa H:mm (24 h, #A112). Acepta Date, 'AAAA-MM-DD HH:mm' o el texto guardado. */
+function _approvalTimeText_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return isNaN(v.getTime()) ? '' : Utilities.formatDate(v, 'America/Bogota', 'd/M/yyyy H:mm');
+  }
+  var s = String(v).trim();
+  var m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/.exec(s);
+  return m ? (+m[3]) + '/' + (+m[2]) + '/' + m[1] + ' ' + (+m[4]) + ':' + m[5] : s;
+}
+
+/**
+ * Lee la casilla de un voto: «Sí_correo_fecha», «No_correo_fecha», «Sí_correo» (área, con la
+ * hora en FECHA/HORA (AUTOMÁTICO)), «Vencida_sistema_fecha» (política) o «Sí (ETAPA SALTADA por
+ * correo)». null si está vacía.
+ */
+function _approvalVoteParse_(raw, fallbackTime) {
+  var s = String(raw === null || raw === undefined ? '' : raw).trim();
+  if (!s) return null;
+  var skip = /^S[ií]\s*\(ETAPA SALTADA por\s*([^)]*)\)/i.exec(s);
+  if (skip) return { decision: 'skipped', email: skip[1].trim().toLowerCase(), at: _approvalTimeText_(fallbackTime) };
+  var parts = s.split('_');
+  var head = parts[0].trim().toLowerCase();
+  var decision = (head.indexOf('sí') === 0 || head.indexOf('si') === 0) ? 'approved'
+    : head.indexOf('no') === 0 ? 'denied'
+    : head.indexOf('vencida') === 0 ? 'expired' : 'other';
+  var email = parts.length >= 2 ? String(parts[1]).trim().toLowerCase() : '';
+  var at = parts.length >= 3 ? _approvalTimeText_(parts.slice(2).join('_').trim()) : _approvalTimeText_(fallbackTime);
+  return { decision: decision, email: email, at: at };
+}
+
+/** El estado de la solicitud en palabras (páginas, correos y «Mis aprobaciones»). */
+function _approvalStatusText_(status) {
+  var s = String(status || '').trim();
+  var map = {
+    PENDIENTE_OPCIONES: 'El área de compras está buscando opciones',
+    PENDIENTE_SELECCION: 'El viajero está eligiendo entre las opciones',
+    PENDIENTE_CONFIRMACION_COSTO: 'El área de compras está confirmando los costos',
+    PENDIENTE_APROBACION: 'Pendiente de aprobación',
+    PENDIENTE_ANALISIS_CAMBIO: 'Tiene un cambio en estudio',
+    APROBADO: 'Aprobada; falta la compra',
+    RESERVADO: 'Aprobada y comprada',
+    PROCESADO: 'Aprobada, comprada y cerrada',
+    DENEGADO: 'Denegada',
+    ANULADO: 'Anulada'
+  };
+  map[POLICY_HOLD_STATUS] = 'En espera de la aprobación por la política de anticipación';
+  return map[s] || s;
+}
+
+/** Último «[APROBACIÓN SALTADA por correo - fecha]: motivo» de OBSERVACIONES (skipApprovalStage). */
+function _approvalSkipInfo_(obsRaw) {
+  var re = /\[APROBACIÓN SALTADA por ([^\]]*?) - ([^\]]*)\]:\s*([^\n]*)/g, m, last = null;
+  while ((m = re.exec(String(obsRaw || '')))) last = m;
+  return last ? { email: last[1].trim().toLowerCase(), at: last[2].trim(), reason: last[3].trim() } : null;
+}
+
+/** Primer grupo de la última coincidencia de `re` (global) en el texto; '' si no hay. */
+function _approvalLastNote_(text, re) {
+  var m, last = '';
+  while ((m = re.exec(String(text || '')))) last = String(m[1] || '').trim();
+  return last;
+}
+
+/** A quién va la confirmación: el actor del enlace o de la sesión; si no hay, el aprobador si es un solo correo. */
+function _approvalMailTarget_(actor, approverEmail) {
+  var ok = function(e) { return /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(e); };
+  var a = String(actor || '').trim();
+  if (ok(a)) return a;
+  var b = String(approverEmail || '').trim();
+  return ok(b) ? b : '';
+}
+
+/** Hora preferida del viaje como HH:MM (24 h, #A112): la celda de hora llega como fecha de 1899 o como texto. */
+function _approvalClock_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') {
+    return isNaN(v.getTime()) ? '' : ('0' + v.getHours()).slice(-2) + ':' + ('0' + v.getMinutes()).slice(-2);
+  }
+  var m = /^(\d{1,2}):(\d{2})/.exec(String(v).trim());
+  return m ? ('0' + m[1]).slice(-2) + ':' + m[2] : '';
+}
+
+/** 'AAAA-MM-DD' → 'DD/MM/AAAA' (#A105). */
+function _approvalDmy_(v) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ''));
+  return m ? m[3] + '/' + m[2] + '/' + m[1] : String(v || '');
+}
+
+/** El html de las páginas pasado a texto para la app. */
+function _approvalPlainText_(html) {
+  return String(html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&amp;/g, '&')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * A quién se le pide el voto y con qué rol. Es la regla de sendApprovalRequestEmail (un correo por
+ * persona; ejecutivo > presupuesto > área), en un solo lugar para el correo, los avisos y «Mis
+ * aprobaciones». `req` = mapRowToRequest (también lite).
+ */
+function _approvalAskedFor_(req) {
+  var ceoLower = String(CEO_EMAIL).toLowerCase().trim();
+  var cdsLower = String(DIRECTOR_EMAIL).toLowerCase().trim();
+  var requesterLower = String(req.requesterEmail || '').toLowerCase().trim();
+  var budgetEmail = String(req.budgetApproverEmail || '').trim();
+  var budgetLower = budgetEmail.toLowerCase();
+  var wantsBudget = !!req.requiresBudgetOverrunApproval && !!budgetLower;
+
+  // CASE 1 / CASE 2: el solicitante es el CEO o el director CDS → solo él (más presupuesto).
+  if (requesterLower === ceoLower || requesterLower === cdsLower) {
+    var execEmail = requesterLower === ceoLower ? CEO_EMAIL : DIRECTOR_EMAIL;
+    var out = [{ email: execEmail, role: requesterLower === ceoLower ? 'CEO' : 'CDS' }];
+    if (wantsBudget && budgetLower !== requesterLower) out.push({ email: budgetEmail, role: 'BUDGET_OVERRUN' });
+    return out;
+  }
+
+  // CASE 3: flujo estándar con dedup por correo.
+  var totalCost = Number(req.totalCost) || 0;
+  var requiresCeo = !!req.isInternational;
+  var requiresCds = !!req.isInternational || (req.cdsCostBase !== undefined ? Number(req.cdsCostBase) || 0 : totalCost) > 1200000; // #A103
+  var planned = new Map();
+  if (requiresCeo) planned.set(ceoLower, { email: CEO_EMAIL, role: 'CEO' });
+  if (requiresCds) planned.set(cdsLower, { email: DIRECTOR_EMAIL, role: 'CDS' });
+  if (wantsBudget && !planned.has(budgetLower)) planned.set(budgetLower, { email: budgetEmail, role: 'BUDGET_OVERRUN' });
+  String(req.approverEmail || '').split(',').map(function(e) { return e.trim(); }).filter(Boolean).forEach(function(email) {
+    var lower = email.toLowerCase();
+    if (!planned.has(lower)) planned.set(lower, { email: email, role: 'NORMAL' });
+  });
+  return Array.from(planned.values());
+}
+
+/** ¿El voto de este rol todavía hace falta? (internacional: basta Gerencia General o Cadena de Suministro). */
+function _approvalRolePending_(role, req) {
+  if (String(req.status || '').trim() !== 'PENDIENTE_APROBACION') return false;
+  if (role === 'CEO') return req.effectiveApprovalCeo === 'PENDING' && req.effectiveApprovalCds !== 'APPROVED';
+  if (role === 'CDS') return req.effectiveApprovalCds === 'PENDING' && req.effectiveApprovalCeo !== 'APPROVED';
+  if (role === 'BUDGET_OVERRUN') return req.effectiveApprovalBudgetOverrun === 'PENDING';
+  return req.effectiveApprovalArea === 'PENDING';
+}
+
+/**
+ * Cómo va cada aprobación de la fila: [{ role, label, state, who, email, at }]. Usa el estado
+ * efectivo de computeEffectiveApprovalStatus_ (vía mapRowToRequest), así que sigue las mismas
+ * reglas que el flujo. state: approved | covered | denied | skipped | expired | pending | waiting |
+ * not_needed | other. `email` es el de quien votó (solo para uso interno).
+ */
+function _approvalTrail_(row, req, names) {
+  names = names || _approvalNamesMap_();
+  var cell = function(h) { var i = H(h); return (i > -1 && i < row.length) ? row[i] : ''; };
+  var areaTime = cell('FECHA/HORA (AUTOMÁTICO)');
+  var status = String(req.status || '').trim();
+  var before = ['PENDIENTE_OPCIONES', 'PENDIENTE_SELECCION', 'PENDIENTE_CONFIRMACION_COSTO', POLICY_HOLD_STATUS].indexOf(status) !== -1;
+  var steps = [];
+  var push = function(role, vote, state, expectedEmail) {
+    var voter = vote && vote.email ? vote.email : '';
+    steps.push({
+      role: role,
+      label: _approverRoleLabel_(role),
+      state: state,
+      who: _approvalWho_(voter || expectedEmail, names),
+      email: voter,
+      at: vote ? vote.at : ''
+    });
+  };
+
+  var policyVote = _approvalVoteParse_(cell(POLICY_DECISION_HEADER), '');
+  if (policyVote) push('POLICY_EXCEPTION', policyVote, policyVote.decision, '');
+  else if (status === POLICY_HOLD_STATUS) push('POLICY_EXCEPTION', null, 'pending', _policyApprovalConfig_().email);
+
+  var add = function(role, eff, header, expectedEmail, neededIfPending) {
+    if (!eff || eff === 'NA') return;
+    var vote = _approvalVoteParse_(cell(header), areaTime);
+    if (vote) { push(role, vote, vote.decision, expectedEmail); return; }
+    var state = eff === 'APPROVED' ? 'covered'
+      : eff === 'DENIED' ? 'denied'
+      : before ? 'waiting'
+      : (status === 'PENDIENTE_APROBACION' && neededIfPending) ? 'pending'
+      : 'not_needed';
+    push(role, null, state, expectedEmail);
+  };
+  add('NORMAL', req.effectiveApprovalArea, 'APROBADO POR ÁREA? (AUTOMÁTICO)', req.approverEmail, true);
+  add('CDS', req.effectiveApprovalCds, 'APROBADO CDS', DIRECTOR_EMAIL, req.effectiveApprovalCeo !== 'APPROVED');
+  add('CEO', req.effectiveApprovalCeo, 'APROBADO CEO', CEO_EMAIL, req.effectiveApprovalCds !== 'APPROVED');
+  add('BUDGET_OVERRUN', req.effectiveApprovalBudgetOverrun, 'APROBADO PRESUPUESTO', req.budgetApproverEmail, true);
+  return steps;
+}
+
+function _approvalTrailHtml_(steps) {
+  if (!steps || !steps.length) return '';
+  var td = 'padding:6px 8px; border-bottom:1px solid #e5e7eb; vertical-align:top;';
+  return '<p style="margin:20px 0 6px; font-size:12px; font-weight:bold; color:#6b7280; text-transform:uppercase;">Cómo va cada aprobación</p>' +
+    '<table style="width:100%; border-collapse:collapse; font-size:12px; color:#374151;">' +
+    steps.map(function(s) {
+      return '<tr><td style="' + td + ' font-weight:bold;">' + escapeHtml_(s.label) + '</td>' +
+        '<td style="' + td + '">' + escapeHtml_(APPROVAL_STATE_TEXT[s.state] || s.state) + '</td>' +
+        '<td style="' + td + '">' + escapeHtml_(s.who || '') + '</td>' +
+        '<td style="' + td + ' white-space:nowrap;">' + escapeHtml_(s.at || '') + '</td></tr>';
+    }).join('') + '</table>';
+}
+
+/** Resumen corto de la solicitud para los correos de #A118 (el correo de aprobación ya traía el completo). */
+function _approvalSummaryHtml_(req, names, row) {
+  names = names || _approvalNamesMap_();
+  var dateOf = function(header, fallback) {
+    var i = row ? H(header) : -1;
+    return _approvalDmy_((i > -1 && _psDateKey_(row[i])) || fallback);
+  };
+  var requester = String(req.requesterEmail || '').toLowerCase().trim();
+  var hotelOnly = req.requestMode === 'HOTEL_ONLY';
+  var rows = [
+    ['Solicitante', names[requester] || requester],
+    ['Viajeros', (req.passengers || []).map(function(p) { return String(p.name || '').trim(); }).filter(Boolean).join(', ')],
+    [hotelOnly ? 'Hospedaje en' : 'Viaje', hotelOnly ? String(req.destination || '') : String(req.origin || '') + ' → ' + String(req.destination || '')],
+    ['Fechas', dateOf('FECHA IDA', req.departureDate) + (req.returnDate ? ' al ' + dateOf('FECHA VUELTA', req.returnDate) : '')],
+    ['Empresa y unidad', [req.company, req.businessUnit].filter(Boolean).join(' · ')],
+    ['Valor cotizado', req.totalCost ? _pesosText_(req.totalCost) : '']
+  ].filter(function(r) { return String(r[1] || '').trim(); });
+  return '<p style="margin:20px 0 6px; font-size:12px; font-weight:bold; color:#6b7280; text-transform:uppercase;">La solicitud</p>' +
+    '<table style="width:100%; border-collapse:collapse; font-size:12px; color:#374151;">' +
+    rows.map(function(r) {
+      return '<tr><td style="padding:4px 8px; color:#6b7280; white-space:nowrap; vertical-align:top;">' + escapeHtml_(r[0]) + '</td><td style="padding:4px 8px;">' + escapeHtml_(r[1]) + '</td></tr>';
+    }).join('') + '</table>';
+}
+
+/** Qué se decidió, quién y cuándo (outcome: APROBADO | SALTADA | DENEGADO | ANULADO). */
+function _approvalOutcomeHtml_(outcome, row, steps, names) {
+  names = names || _approvalNamesMap_();
+  var cell = function(h) { var i = H(h); return (i > -1 && i < row.length) ? row[i] : ''; };
+  var id = '<strong>' + escapeHtml_(String(cell('ID RESPUESTA') || '')) + '</strong>';
+  var obs = String(cell('OBSERVACIONES') || '');
+  if (outcome === 'SALTADA') {
+    var sk = _approvalSkipInfo_(obs);
+    return 'La solicitud ' + id + ' quedó <strong>APROBADA</strong> sin esperar más votos: <strong>' +
+      escapeHtml_(sk ? _approvalWho_(sk.email, names) : 'un administrador') + '</strong> saltó la etapa de aprobación' +
+      (sk && sk.at ? ' el ' + escapeHtml_(sk.at) : '') + '.' + (sk && sk.reason ? '<br/>Motivo: «' + escapeHtml_(sk.reason) + '»' : '');
+  }
+  if (outcome === 'DENEGADO') {
+    var den = (steps || []).filter(function(s) { return s.state === 'denied' || s.state === 'expired'; })[0];
+    var reason = _approvalLastNote_(obs, /\[DENEGACIÓN - [^\]]*\]:\s*([^\n]*)/g);
+    var by = den ? (den.state === 'expired' ? ': venció sin respuesta' : (den.who ? ': la denegó <strong>' + escapeHtml_(den.who) + '</strong>' + (den.at ? ' el ' + escapeHtml_(den.at) : '') : '')) : '';
+    return 'La solicitud ' + id + ' quedó <strong>DENEGADA</strong>' + by + '.' + (reason ? '<br/>Motivo: «' + escapeHtml_(reason) + '»' : '');
+  }
+  if (outcome === 'ANULADO') {
+    var byUser = /\[ANULACIÓN POR USUARIO\]/.test(obs);
+    var why = _approvalLastNote_(obs, /\[ANULACIÓN (?:POR USUARIO|MANUAL)\]:\s*([^\n]*)/g);
+    return 'La solicitud ' + id + ' fue <strong>ANULADA</strong> ' + (byUser ? 'por el solicitante' : 'por el área de compras') + '.' +
+      (why ? '<br/>Motivo: «' + escapeHtml_(why) + '»' : '');
+  }
+  return 'La solicitud ' + id + ' completó sus aprobaciones y quedó <strong>APROBADA</strong>.';
+}
+
+/** Página del enlace cuando la casilla de este rol ya tiene una decisión (antes: «Usted ya había…», «Fecha: Desconocida»). */
+function _approvalPreviousDecisionHtml_(row, role, vote, actor) {
+  var names = _approvalNamesMap_();
+  var actorLower = String(actor || '').toLowerCase().trim();
+  var status = String(row[H('STATUS')] || '').trim();
+  var when = vote.at ? ' el <strong>' + escapeHtml_(vote.at) + '</strong>' : '';
+  var lines = [];
+  if (vote.decision === 'skipped') {
+    var sk = _approvalSkipInfo_(row[H('OBSERVACIONES')]);
+    lines.push('<strong>' + escapeHtml_(_approvalWho_(vote.email, names) || 'Un administrador') + '</strong> saltó la etapa de aprobación' +
+      (sk && sk.at ? ' el <strong>' + escapeHtml_(sk.at) + '</strong>' : when) + ', así que la solicitud siguió sin esperar este voto.');
+    if (sk && sk.reason) lines.push('Motivo: «' + escapeHtml_(sk.reason) + '»');
+    lines.push('Ya no se necesita su aprobación.');
+  } else {
+    var verb = vote.decision === 'denied' ? 'denegó' : vote.decision === 'approved' ? 'aprobó' : 'registró una decisión sobre';
+    var who = (actorLower && vote.email === actorLower) ? 'Usted'
+      : '<strong>' + escapeHtml_(_approvalWho_(vote.email, names) || 'Otro aprobador') + '</strong>';
+    lines.push(who + ' ya ' + verb + ' esta solicitud' + when + ' como ' + escapeHtml_(_approverRoleLabel_(role)) + '.');
+  }
+  lines.push('Estado actual: <strong>' + escapeHtml_(_approvalStatusText_(status)) + '</strong>.');
+  lines.push('No se hizo ningún cambio.');
+  return lines.join('<br/>');
+}
+
+/** Página del enlace cuando la solicitud ya está denegada o anulada: el voto no se guarda. */
+function _approvalNoLongerNeededHtml_(row) {
+  var names = _approvalNamesMap_();
+  var req = mapRowToRequest(row, true);
+  var status = String(req.status || '').trim();
+  return _approvalOutcomeHtml_(status === 'ANULADO' ? 'ANULADO' : 'DENEGADO', row, _approvalTrail_(row, req, names), names) +
+    '<br/>Ya no necesita su aprobación y no se registró ningún cambio.';
+}
+
+function _approvalReadRow_(id) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = sheet ? _getRowByRequestId_(id) : -1;
+  if (!sheet || rowNumber === -1) return null;
+  return { sheet: sheet, rowNumber: rowNumber, row: sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0] };
+}
+
+/** «Gerencia General (NOMBRE); Aprobador de Presupuesto (NOMBRE)»: los votos que faltan. */
+function _approvalMissingText_(id) {
+  try {
+    var r = _approvalReadRow_(id);
+    if (!r) return '';
+    return _approvalTrail_(r.row, mapRowToRequest(r.row, true)).filter(function(s) { return s.state === 'pending'; })
+      .map(function(s) { return s.label + (s.who ? ' (' + s.who + ')' : ''); }).join('; ');
+  } catch (e) { return ''; }
+}
+
+/** Después de un voto: confirmación a quien votó y, con decisión final, aviso a los demás aprobadores. Nunca lanza. */
+function _approvalAfterVote_(id, role, toEmail, decision, finalStatus) {
+  try {
+    if (toEmail) _sendApprovalConfirmation_(id, role, toEmail, decision);
+  } catch (e) {
+    console.error('Confirmación de la decisión de ' + id + ' a ' + toEmail + ': ' + e);
+  }
+  if (finalStatus) _notifyApproversClosed_(id, finalStatus, toEmail);
+}
+
+/** Correo a quien votó: qué quedó registrado, qué falta y cómo va cada aprobación (mismo hilo del pedido). */
+function _sendApprovalConfirmation_(id, role, toEmail, decision) {
+  var r = _approvalReadRow_(id);
+  if (!r) return;
+  var names = _approvalNamesMap_();
+  var req = mapRowToRequest(r.row, true);
+  var steps = _approvalTrail_(r.row, req, names);
+  var status = String(req.status || '').trim();
+  var approved = decision === 'approved';
+  var when = Utilities.formatDate(new Date(), 'America/Bogota', 'd/M/yyyy H:mm');
+  var missing = steps.filter(function(s) { return s.state === 'pending'; }).map(function(s) { return s.label + (s.who ? ' (' + s.who + ')' : ''); });
+  var next = !approved ? 'La solicitud quedó <strong>denegada</strong> y se le avisó al solicitante.'
+    : status === 'APROBADO' ? 'Con su voto la solicitud completó sus aprobaciones: el área de compras ya puede comprar.'
+    : missing.length ? 'Falta: ' + escapeHtml_(missing.join('; ')) + '. Cuando la solicitud tenga su decisión final, le avisaremos.'
+    : 'La solicitud sigue su proceso.';
+  var content =
+    '<p style="font-size:15px; color:#111827;">Registramos su decisión sobre la solicitud <strong>' + escapeHtml_(id) + '</strong> como ' +
+      escapeHtml_(_approverRoleLabel_(role)) + ', el ' + escapeHtml_(when) + ': <strong>' + (approved ? 'APROBADA' : 'DENEGADA') + '</strong>.</p>' +
+    '<p style="font-size:14px; color:#374151;">' + next + '</p>' +
+    '<p style="font-size:12px; color:#6b7280;">No recibirá más recordatorios de esta solicitud. Si abre el enlace de un correo anterior, la página le mostrará esta decisión.</p>' +
+    _approvalTrailHtml_(steps) + _approvalSummaryHtml_(req, names, r.row);
+  var html = HtmlTemplates.layout(id, content, approved ? '#059669' : '#D71920', approved ? 'APROBACIÓN REGISTRADA' : 'DENEGACIÓN REGISTRADA');
+  sendEmailRich(toEmail, getStandardSubject(req) + ' - APROBACIÓN REQUERIDA', html, null);
+}
+
+/**
+ * Decisión final de la solicitud (outcome: APROBADO | SALTADA | DENEGADO | ANULADO): un correo a
+ * cada aprobador al que se le pidió el voto, menos a quien la tomó y al solicitante (que tiene su
+ * propio aviso). Una sola vez por pedido de aprobación (EVENTOS_JSON.approvalClosedNotice). A
+ * quién se le pidió: EVENTOS_JSON.approvalRequested (desde #A118); en solicitudes anteriores, la
+ * regla de hoy, salvo que «Confirmar costos» saltara la aprobación sin pedírsela a nadie.
+ * Devuelve los correos a los que avisó. Nunca lanza.
+ */
+function _notifyApproversClosed_(id, outcome, actorEmail) {
+  try {
+    var r = _approvalReadRow_(id);
+    if (!r) return [];
+    var evIdx = H(EVENTOS_JSON_HEADER);
+    var events = {};
+    if (evIdx > -1 && r.row[evIdx]) { try { events = JSON.parse(r.row[evIdx]) || {}; } catch (e) { events = {}; } }
+    if (events.approvalClosedNotice) return [];
+    var req = mapRowToRequest(r.row, true);
+    var obs = String(r.row[H('OBSERVACIONES')] || '');
+    var asked = (events.approvalRequested && Array.isArray(events.approvalRequested.to)) ? events.approvalRequested.to
+      : obs.indexOf(APPROVAL_SKIP_AT_CONFIRM_NOTE) !== -1 ? []
+      : _approvalAskedFor_(req);
+    var requester = String(req.requesterEmail || '').toLowerCase().trim();
+    var actor = String(actorEmail || '').toLowerCase().trim();
+    var names = _approvalNamesMap_();
+    var steps = _approvalTrail_(r.row, req, names);
+    var headline = _approvalOutcomeHtml_(outcome, r.row, steps, names);
+    var color = (outcome === 'DENEGADO' || outcome === 'ANULADO') ? '#D71920' : '#059669';
+    var subject = getStandardSubject(req) + ' - APROBACIÓN REQUERIDA';
+    var sent = [];
+    asked.forEach(function(a) {
+      var email = String(a && a.email || '').trim();
+      var lower = email.toLowerCase();
+      if (!/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(email) || lower === requester || lower === actor || sent.indexOf(lower) !== -1) return;
+      var content =
+        '<p style="font-size:15px; color:#111827;">' + headline + '</p>' +
+        '<p style="font-size:14px; color:#374151;">Usted no tiene nada pendiente con esta solicitud: no recibirá más recordatorios. Si abre el enlace de un correo anterior, la página le mostrará esta decisión.</p>' +
+        _approvalTrailHtml_(steps) + _approvalSummaryHtml_(req, names, r.row);
+      sendEmailRich(email, subject, HtmlTemplates.layout(id, content, color, 'DECISIÓN FINAL DE LA SOLICITUD'), null);
+      sent.push(lower);
+    });
+    if (evIdx > -1) {
+      events.approvalClosedNotice = { at: new Date().toISOString(), outcome: outcome, to: sent };
+      r.sheet.getRange(r.rowNumber, evIdx + 1).setValue(JSON.stringify(events));
+    }
+    return sent;
+  } catch (e) {
+    console.error('_notifyApproversClosed_ ' + id + ': ' + e);
+    return [];
+  }
+}
+
+// =====================================================================
+// «MIS APROBACIONES» EN LA APP (#A119)
+// =====================================================================
+// Propuesta de David (29-oct) a partir del pedido de Alejandro («una vista con todas
+// las solicitudes y su estado: aprobadas, denegadas y pendientes de mi respuesta»):
+// un botón en la barra de arriba para quien aprueba, con lo pendiente (y aprobar o
+// denegar ahí mismo), el historial y cómo va cada aprobación. Mismas reglas que el
+// enlace del correo (_applyApprovalDecision_ / _applyPolicyDecision_); el servidor
+// decide con qué rol vota cada persona, nunca la app.
+// =====================================================================
+
+/** ¿Esta persona aprueba algo? (bootstrap: la app solo muestra el botón a quien sí). */
+function _isApproverEmail_(email, integrantes) {
+  var me = String(email || '').toLowerCase().trim();
+  if (!me) return false;
+  var hasMe = function(list) { return String(list || '').toLowerCase().split(',').map(function(e) { return e.trim(); }).indexOf(me) !== -1; };
+  if (me === String(CEO_EMAIL).toLowerCase().trim() || me === String(DIRECTOR_EMAIL).toLowerCase().trim()) return true;
+  var cfg = _policyApprovalConfig_();
+  if (cfg.emailLower && me === cfg.emailLower) return true;
+  if ((integrantes || []).some(function(i) { return i && hasMe(i.approverEmail); })) return true;
+  // Coaprobadores (REGLAS_COAPROBADOR) y aprobadores de solicitudes anteriores: una sola columna.
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var col = H('CORREO DE QUIEN APRUEBA (AUTOMÁTICO)');
+  if (!sheet || col < 0 || sheet.getLastRow() < 2) return false;
+  return sheet.getRange(2, col + 1, sheet.getLastRow() - 1, 1).getValues().some(function(r) { return hasMe(r[0]); });
+}
+
+/** Imágenes de las opciones para quien tiene que aprobar (solo direcciones https). */
+function _approvalOptions_(raw) {
+  var list = [];
+  try { list = JSON.parse(String(raw || '[]')); } catch (e) { list = []; }
+  if (!Array.isArray(list)) return [];
+  return list.filter(function(o) { return o && /^https:\/\//.test(String(o.url || '')); }).map(function(o) {
+    return { id: String(o.id || ''), type: String(o.type || ''), direction: String(o.direction || ''), url: String(o.url) };
+  });
+}
+
+function _myApprovalItem_(row, req, steps, mine, pendingKind, myVote, names, isPolicyApprover) {
+  var cell = function(h) { var i = H(h); return (i > -1 && i < row.length) ? row[i] : ''; };
+  var requester = String(req.requesterEmail || '').toLowerCase().trim();
+  var obs = String(req.comments || '');
+  var role = pendingKind === 'policy' ? 'POLICY_EXCEPTION' : mine ? mine.role : myVote ? myVote.role : '';
+  var policyCell = String(cell(POLICY_DECISION_HEADER) || '');
+  var why = [];
+  if (pendingKind === 'policy' || policyCell) why.push('Se pidió con menos anticipación de la que pide la política');
+  if (req.isInternational) why.push('Viaje internacional');
+  else if ((Number(req.cdsCostBase) || 0) > 1200000) why.push('Cuesta más de $1.200.000');
+  if (req.budgetExceeded) why.push('Excede el presupuesto de la unidad');
+  if (req.requiresFareApproval) why.push('Tarifa superior a la del manual');
+  var policy = null;
+  if (isPolicyApprover && (pendingKind === 'policy' || policyCell)) {
+    var held = _policyHeldItem_(row, names);
+    policy = { leadDays: held.leadDays, minDays: held.minDays, justification: held.justification, expiryKey: pendingKind === 'policy' ? held.expiryKey : '' };
+  }
+  var outcome = '';
+  var status = String(req.status || '').trim();
+  if (steps.some(function(s) { return s.state === 'skipped'; })) outcome = 'SALTADA';
+  else if (status === 'DENEGADO') outcome = 'DENEGADO';
+  else if (status === 'ANULADO') outcome = 'ANULADO';
+  return {
+    id: String(req.requestId),
+    seq: Number(String(req.requestId).replace(/\D/g, '')) || 0,
+    status: status,
+    statusText: _approvalStatusText_(status),
+    pending: !!pendingKind,
+    kind: pendingKind,
+    role: role,
+    roleText: role ? _approverRoleLabel_(role) : '',
+    requesterName: names[requester] || '',
+    requesterEmail: requester,
+    travelers: (req.passengers || []).map(function(p) { return String(p.name || '').trim(); }).filter(Boolean),
+    company: String(req.company || ''),
+    unit: String(req.businessUnit || ''),
+    costCenter: [req.costCenter, req.costCenterName].map(function(x) { return String(x || '').trim(); }).filter(Boolean).join(' · '),
+    hotelOnly: req.requestMode === 'HOTEL_ONLY',
+    requiresHotel: !!req.requiresHotel,
+    hotelName: String(req.hotelName || ''),
+    origin: String(req.origin || ''),
+    destination: String(req.destination || ''),
+    depDate: _psDateKey_(cell('FECHA IDA')) || String(req.departureDate || ''),
+    retDate: _psDateKey_(cell('FECHA VUELTA')) || String(req.returnDate || ''),
+    depTime: _approvalClock_(cell('HORA LLEGADA VUELO IDA')),
+    retTime: _approvalClock_(cell('HORA LLEGADA VUELO VUELTA')),
+    international: !!req.isInternational,
+    totalCost: Number(req.totalCost) || 0,
+    ticketsCost: Number(req.finalCostTickets) || 0,
+    hotelCost: Number(req.finalCostHotel) || 0,
+    why: why,
+    budgetNote: _approvalLastNote_(obs, /\[PRESUPUESTO\]:\s*([^\n]*)/g),
+    // El motivo del viaje y la selección solo hacen falta para decidir (el historial va más liviano).
+    notes: pendingKind ? obs.split('\n').filter(function(l) { return l.trim() && l.trim().charAt(0) !== '['; }).join('\n').substring(0, 600) : '',
+    selection: pendingKind ? String(cell('SELECCION_TEXTO') || '').substring(0, 1000) : '',
+    fare: req.fareType ? 'TIPO ' + req.fareType + (req.fareName ? ' · ' + req.fareName : '') : '',
+    // El motivo de una tarifa superior es interno (#A95): solo para quien vota por ella (el CFO).
+    fareReason: (req.requiresFareApproval && role === 'BUDGET_OVERRUN') ? String(req.fareJustification || '') : '',
+    policy: policy,
+    options: pendingKind === 'approval' ? _approvalOptions_(cell('OPCIONES (JSON)')) : [],
+    trail: steps.map(function(s) { return { role: s.role, label: s.label, state: s.state, who: s.who, at: s.at }; }),
+    myVote: myVote ? { decision: myVote.decision, at: myVote.at, roleText: _approverRoleLabel_(myVote.role) } : null,
+    outcome: outcome ? _approvalPlainText_(_approvalOutcomeHtml_(outcome, row, steps, names)) : ''
+  };
+}
+
+/**
+ * Lo que la persona tiene por aprobar y su historial (las MY_APPROVALS_HISTORY_MAX más recientes).
+ * Una sola lectura de la hoja. Solo filas donde es o fue aprobadora; sin cédulas, fechas de
+ * nacimiento ni celulares.
+ */
+function getMyApprovals(currentUserEmail) {
+  var me = String(currentUserEmail || '').toLowerCase().trim();
+  var out = { pending: [], history: [], historyTotal: 0, historyMax: MY_APPROVALS_HISTORY_MAX, policyApprover: false };
+  if (!me) return out;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2) return out;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var col = { status: H('STATUS'), approver: H('CORREO DE QUIEN APRUEBA (AUTOMÁTICO)'), policy: H(POLICY_DECISION_HEADER), events: H(EVENTOS_JSON_HEADER) };
+  var voteCols = ['APROBADO POR ÁREA? (AUTOMÁTICO)', 'APROBADO CEO', 'APROBADO CDS', 'APROBADO PRESUPUESTO'].map(function(h) { return H(h); });
+  var cell = function(row, i) { return (i > -1 && i < row.length) ? row[i] : ''; };
+  var pcfg = _policyApprovalConfig_();
+  var isPolicyApprover = pcfg.enabled && me === pcfg.emailLower;
+  var isExecutive = me === String(CEO_EMAIL).toLowerCase().trim() || me === String(DIRECTOR_EMAIL).toLowerCase().trim() ||
+    (!!pcfg.emailLower && me === pcfg.emailLower);
+  var names = _approvalNamesMap_();
+  var history = [];
+  out.policyApprover = isPolicyApprover;
+
+  data.forEach(function(row) {
+    var status = String(cell(row, col.status) || '').trim();
+    var votesText = voteCols.map(function(i) { return String(cell(row, i) || ''); }).join(' ').toLowerCase();
+    var policyCell = String(cell(row, col.policy) || '').trim();
+    var policyRow = isPolicyApprover && (status === POLICY_HOLD_STATUS || !!policyCell);
+    var named = String(cell(row, col.approver) || '').toLowerCase().split(',').map(function(e) { return e.trim(); }).indexOf(me) !== -1;
+    if (!policyRow && !named && !isExecutive && votesText.indexOf(me) === -1) return;
+    // Solo lo que ya llegó a aprobación: antes de confirmar costos nadie ha pedido el voto.
+    var started = policyRow || status === 'PENDIENTE_APROBACION' || votesText.trim() !== '' ||
+      String(cell(row, col.events) || '').indexOf('"costConfirmed"') !== -1;
+    if (!started) return;
+
+    var req = mapRowToRequest(row, true);
+    var mine = _approvalAskedFor_(req).filter(function(a) { return String(a.email || '').toLowerCase().trim() === me; })[0] || null;
+    var steps = _approvalTrail_(row, req, names);
+    var mineStep = steps.filter(function(s) { return s.email === me && (s.state === 'approved' || s.state === 'denied'); })[0];
+    var myVote = mineStep ? { decision: mineStep.state, at: mineStep.at, role: mineStep.role } : null;
+    if (!mine && !myVote && !policyRow) return;
+
+    var pendingKind = (status === POLICY_HOLD_STATUS && isPolicyApprover) ? 'policy'
+      : (mine && _approvalRolePending_(mine.role, req)) ? 'approval' : '';
+    var item = _myApprovalItem_(row, req, steps, mine, pendingKind, myVote, names, isPolicyApprover);
+    if (pendingKind) out.pending.push(item); else history.push(item);
+  });
+
+  // Lo que sale primero, primero; el historial, de la más reciente a la más vieja.
+  out.pending.sort(function(a, b) { return String(a.depDate || '9999').localeCompare(String(b.depDate || '9999')) || a.seq - b.seq; });
+  history.sort(function(a, b) { return b.seq - a.seq; });
+  out.historyTotal = history.length;
+  out.history = history.slice(0, MY_APPROVALS_HISTORY_MAX);
+  return out;
+}
+
+/**
+ * Aprobar o denegar desde «Mis aprobaciones». El servidor busca con qué rol se le pidió el voto a
+ * la persona de la sesión (o si es quien aprueba las excepciones a la política) y aplica la misma
+ * función que el enlace del correo. Devuelve { kind, title, message } (message en texto).
+ */
+function decideMyApproval(requestId, decision, comment, currentUserEmail) {
+  var id = String(requestId || '').trim();
+  var me = String(currentUserEmail || '').toLowerCase().trim();
+  if (!id || !me) throw new Error('Faltan datos para registrar la decisión.');
+  if (decision !== 'approved' && decision !== 'denied') throw new Error('Decisión no válida.');
+  var text = String(comment || '').replace(/\r/g, '').trim().substring(0, 500);
+  var r = _approvalReadRow_(id);
+  if (!r) throw new Error('Solicitud no encontrada.');
+  var status = String(r.row[H('STATUS')] || '').trim();
+  var notYours = 'Usted no es aprobador de la solicitud ' + id + '.';
+  var res;
+  if (status === POLICY_HOLD_STATUS) {
+    var cfg = _policyApprovalConfig_();
+    if (!cfg.enabled || me !== cfg.emailLower) throw new Error(notYours);
+    res = _applyPolicyDecision_(id, decision, cfg, text.replace(/\s+/g, ' '));
+  } else {
+    var req = mapRowToRequest(r.row, true);
+    var mine = _approvalAskedFor_(req).filter(function(a) { return String(a.email || '').toLowerCase().trim() === me; })[0];
+    if (!mine) throw new Error(notYours);
+    res = _applyApprovalDecision_({
+      id: id, decision: decision, role: mine.role, actor: me,
+      comment: decision === 'approved' ? text : '',
+      reason: decision === 'denied' ? text : ''
+    });
+  }
+  // dispatch solo invalida el caché del dashboard en las acciones de escritura con candado; esta
+  // toma el candado adentro (como el enlace del correo), así que lo invalida ella.
+  try { _dashInvalidate_(); } catch (e) { console.warn('decideMyApproval: ' + e); }
+  return { kind: res.kind, title: res.title, message: _approvalPlainText_(res.html) };
 }
 
 // --- NEW RESERVATION FUNCTION ---
@@ -5711,6 +6370,12 @@ function bootstrap(integrantesHash, sessionEmail, sessionToken) {
     policyNotice: (function() { try { return _policyNoticeFor_(sessionEmail); } catch (e) { console.warn('bootstrap policyNotice: ' + e); return null; } })(),
     // #A103: que la clave llegue activa «Cambiar mi viaje» en la app (con un servidor anterior sigue el formulario de siempre).
     tripChange: _tripChangePublicInfo_(sessionEmail),
+    // #A119: que la clave llegue le dice a la app que este servidor tiene «Mis aprobaciones»;
+    // el botón sale solo a quien aprueba algo.
+    approvals: (function() {
+      try { return { isApprover: _isApproverEmail_(sessionEmail, integrantes) }; }
+      catch (e) { console.warn('bootstrap approvals: ' + e); return { isApprover: false }; }
+    })(),
     integrantesHash: currentHash,
     requestsLite: requestsLite
   };
@@ -7794,16 +8459,6 @@ function sendDecisionNotification(req, status) {
 }
 
 function sendApprovalRequestEmail(req) {
-    const requesterLower = String(req.requesterEmail || '').toLowerCase().trim();
-    const ceoLower = String(CEO_EMAIL).toLowerCase().trim();
-    const cdsLower = String(DIRECTOR_EMAIL).toLowerCase().trim();
-    const requesterIsCeo = requesterLower === ceoLower;
-    const requesterIsCds = requesterLower === cdsLower;
-
-    const totalCost = Number(req.totalCost) || 0;
-    // R10: CEO se excluye del flujo de alto costo nacional.
-    const requiresCeoApproval = req.isInternational;
-    const requiresCdsApproval = req.isInternational || (req.cdsCostBase !== undefined ? Number(req.cdsCostBase) || 0 : totalCost) > 1200000; // #A103
     const subject = getStandardSubject(req) + " - APROBACIÓN REQUERIDA";
 
     const sendOne = function(email, role) {
@@ -7816,67 +8471,21 @@ function sendApprovalRequestEmail(req) {
         sendEmailRich(email, subject, html, null);
     };
 
-    // Helper: envía también al aprobador de presupuesto SI la solicitud
-    // excedió ppto Y el actor del CASE no es el propio aprobador (evita
-    // duplicar correo cuando CEO/CDS = budget approver, caso improbable
-    // pero posible si se configura así).
-    const sendBudgetIfApplicable = function(actorEmailLower) {
-        if (!req.requiresBudgetOverrunApproval) return;
-        var budgetLower = String(req.budgetApproverEmail || '').toLowerCase().trim();
-        if (!budgetLower || budgetLower === actorEmailLower) return;
-        sendOne(req.budgetApproverEmail, 'BUDGET_OVERRUN');
-    };
-
-    // CASE 1: requester IS the CEO → only CEO needs to approve. Skip everyone else.
-    // EXCEPCIÓN: si la solicitud excedió presupuesto, también va al aprobador de ppto.
-    if (requesterIsCeo) {
-        sendOne(CEO_EMAIL, 'CEO');
-        sendBudgetIfApplicable(ceoLower);
-        return;
-    }
-    // CASE 2: requester IS the CDS → only CDS needs to approve. Skip everyone else.
-    // Misma excepción que CASE 1.
-    if (requesterIsCds) {
-        sendOne(DIRECTOR_EMAIL, 'CDS');
-        sendBudgetIfApplicable(cdsLower);
-        return;
-    }
-
-    // CASE 3: standard flow with deduplication.
-    // Build a plan: email_lower → { email, role } so each address only gets ONE email.
-    // Priority of role assignment: executive (CEO/CDS) outranks NORMAL — if a person is
-    // BOTH the area approver AND CEO/CDS, send them a single email with the executive
-    // role. The completion check (processApprovalFromEmail) recognizes that the executive
-    // approval implicitly satisfies the area requirement when the area approver IS that
-    // executive (effectiveAreaApproved logic).
-    //
-    // BUDGET_OVERRUN (2026-05-21): si la solicitud excedió el presupuesto
-    // del periodo, agregamos también al aprobador de presupuesto. Mismo
-    // patrón de dedup: si el aprobador de presupuesto coincide con CEO/CDS/área,
-    // recibe UN solo correo con el rol prioritario (ejecutivo > BUDGET_OVERRUN > NORMAL).
-    const planned = new Map();
-
-    if (requiresCeoApproval) planned.set(ceoLower, { email: CEO_EMAIL, role: 'CEO' });
-    if (requiresCdsApproval) planned.set(cdsLower, { email: DIRECTOR_EMAIL, role: 'CDS' });
-
-    // BUDGET_OVERRUN: solo si la fila tiene el flag y la config define un email válido.
-    if (req.requiresBudgetOverrunApproval && req.budgetApproverEmail) {
-        var budgetLower = String(req.budgetApproverEmail).toLowerCase().trim();
-        if (budgetLower && !planned.has(budgetLower)) {
-            planned.set(budgetLower, { email: req.budgetApproverEmail, role: 'BUDGET_OVERRUN' });
-        }
-    }
-
-    const approverEmails = String(req.approverEmail || '').split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
-    approverEmails.forEach(function(email) {
-        const lower = email.toLowerCase();
-        if (!planned.has(lower)) {
-            planned.set(lower, { email: email, role: 'NORMAL' });
-        }
-    });
-
-    planned.forEach(function(entry) {
+    // A quién y con qué rol (#A118: la regla vive en _approvalAskedFor_, que también usan los
+    // avisos de decisión final y «Mis aprobaciones»):
+    //   - CASE 1/2: el solicitante es el CEO o el director CDS → solo él (más el aprobador de
+    //     presupuesto si la solicitud lo excede y no es la misma persona).
+    //   - CASE 3: flujo estándar con dedup — un solo correo por persona, con el rol de mayor
+    //     prioridad (ejecutivo > BUDGET_OVERRUN > NORMAL). Si el aprobador de área ES el
+    //     CEO/CDS, su clic ejecutivo cubre también el área (effectiveAreaApproved en
+    //     processApprovalFromEmail).
+    const asked = _approvalAskedFor_(req);
+    asked.forEach(function(entry) {
         sendOne(entry.email, entry.role);
+    });
+    // #A118: a quién se le pidió el voto; _notifyApproversClosed_ les avisa la decisión final.
+    _recordEvent_(req.requestId, 'approvalRequested', {
+        to: asked.map(function(entry) { return { email: String(entry.email || '').toLowerCase().trim(), role: entry.role }; })
     });
 }
 
@@ -8984,9 +9593,6 @@ function sendPendingApprovalReminders() {
 
   // Indices
   const statusIdx = H("STATUS");
-  const areaApproveIdx = H("APROBADO POR ÁREA?");
-  const cdsApproveIdx = H("APROBADO CDS");
-  const ceoApproveIdx = H("APROBADO CEO");
   const idIdx = H("ID RESPUESTA");
   const eventsIdx = (function(){
     try {
@@ -9043,90 +9649,22 @@ function sendPendingApprovalReminders() {
           }
           continue; // ya no se envían recordatorios a aprobadores
         }
+        // #A118: el primer recordatorio, después de 2 horas laborales. El activador corre cada 2
+        // horas y antes podía recordar a los pocos minutos del correo de aprobación (SOL-000695).
+        if (workingMinPending !== null && workingMinPending < APPROVAL_FIRST_REMINDER_MIN) {
+          continue;
+        }
       }
 
-      const isAreaApproved = String(row[areaApproveIdx]).startsWith("Sí");
-      const totalCost = Number(request.totalCost) || 0;
-      // R10: CEO solo en internacional, CDS en internacional + alto costo.
-      const requiresCeoApproval = request.isInternational;
-      const requiresCdsApproval = request.isInternational || (request.cdsCostBase !== undefined ? Number(request.cdsCostBase) || 0 : totalCost) > 1200000; // #A103
-      const requiresExecutiveApproval = requiresCeoApproval || requiresCdsApproval;
-      const ceoLowerRem = String(CEO_EMAIL).toLowerCase().trim();
-      const cdsLowerRem = String(DIRECTOR_EMAIL).toLowerCase().trim();
-      const approverEmailsRaw = String(request.approverEmail || '')
-          .split(',').map(function(e) { return e.trim(); }).filter(function(e) { return e; });
-      const ceoIsAreaApproverRem = approverEmailsRaw.map(function(e) { return e.toLowerCase(); }).indexOf(ceoLowerRem) !== -1;
-      const cdsIsAreaApproverRem = approverEmailsRaw.map(function(e) { return e.toLowerCase(); }).indexOf(cdsLowerRem) !== -1;
-
-      // DEDUP: planeamos los recipients en un Map indexado por email lowercase,
-      // priorizando el rol ejecutivo (CEO/CDS) sobre NORMAL cuando una misma
-      // persona ocupa ambos roles. Sin esto, alguien como Yurani (aprobadora
-      // de área Y Director CDS) recibía DOS recordatorios y al clickear el
-      // de área no satisfacía el rol ejecutivo → solicitud quedaba en limbo.
-      //
-      // SATISFACCIÓN EFECTIVA: si el CEO/CDS ES el aprobador de área y el área
-      // ya está aprobada, su rol ejecutivo se considera implícitamente cubierto
-      // (mismo principio que processApprovalFromEmail).
-      const isCdsApproved = requiresExecutiveApproval ? String(row[cdsApproveIdx]).startsWith("Sí") : false;
-      const isCeoApproved = requiresExecutiveApproval ? String(row[ceoApproveIdx]).startsWith("Sí") : false;
-      const effectiveCdsApproved = isCdsApproved || (cdsIsAreaApproverRem && isAreaApproved);
-      const effectiveCeoApproved = isCeoApproved || (ceoIsAreaApproverRem && isAreaApproved);
-
-      // BUDGET_OVERRUN: si la solicitud requiere aprobación de presupuesto
-      // y el voto del aprobador aún no llegó, agregar al recordatorio.
-      // Misma simetría: si el budget approver es también área aprobador y
-      // ya aprobó como área, no se le envía recordatorio adicional.
-      const budgetColIdxRem = H('APROBADO PRESUPUESTO');
-      const reqApPptoIdxRem = H('REQUIERE APROB PPTO');
-      // OT-aware: solicitudes con OT válida no piden aprobación de presupuesto,
-      // así que tampoco se le recuerda al responsable de presupuesto.
-      const _woIdxRem = H('# ORDEN TRABAJO');
-      // #A100: el voto del CFO también lo pide una tarifa superior a la del manual.
-      const _fareFlagIdxRem = H(FARE_CFO_FLAG_HEADER);
-      const requiresBudgetOverrunRem = _requiresCfoVote_(
-          reqApPptoIdxRem >= 0 ? row[reqApPptoIdxRem] : '',
-          _woIdxRem >= 0 ? row[_woIdxRem] : '',
-          _fareFlagIdxRem >= 0 ? row[_fareFlagIdxRem] : '');
-      const isBudgetApproved = (requiresBudgetOverrunRem && budgetColIdxRem >= 0)
-          ? String(row[budgetColIdxRem]).startsWith("Sí")
-          : false;
-      var budgetApproverEmailRem = '';
-      try {
-          var _cfgRem = _csLoadConfig_();
-          budgetApproverEmailRem = String(_cfgRem.budgetApproverEmail || '').trim();
-      } catch (e) { budgetApproverEmailRem = ''; }
-      const budgetLowerRem = budgetApproverEmailRem.toLowerCase();
-      const budgetIsAreaApproverRem = budgetLowerRem &&
-          approverEmailsRaw.map(function(e) { return e.toLowerCase(); }).indexOf(budgetLowerRem) !== -1;
-      // Simetría completa: si el budget approver es CEO/CDS, su voto ejecutivo cubre BUDGET.
-      const budgetIsCeoRem = budgetLowerRem && budgetLowerRem === ceoLowerRem;
-      const budgetIsCdsRem = budgetLowerRem && budgetLowerRem === cdsLowerRem;
-      const effectiveBudgetApproved = isBudgetApproved
-          || (budgetIsAreaApproverRem && isAreaApproved)
-          || (budgetIsCeoRem && isCeoApproved)
-          || (budgetIsCdsRem && isCdsApproved);
-
-      const plannedRem = new Map();
-      if (requiresCeoApproval && !effectiveCeoApproved) {
-          plannedRem.set(ceoLowerRem, { email: CEO_EMAIL, role: 'CEO' });
-      }
-      if (requiresCdsApproval && !effectiveCdsApproved) {
-          plannedRem.set(cdsLowerRem, { email: DIRECTOR_EMAIL, role: 'CDS' });
-      }
-      if (requiresBudgetOverrunRem && !effectiveBudgetApproved && budgetApproverEmailRem) {
-          if (!plannedRem.has(budgetLowerRem)) {
-              plannedRem.set(budgetLowerRem, { email: budgetApproverEmailRem, role: 'BUDGET_OVERRUN' });
-          }
-      }
-      if (!isAreaApproved) {
-          approverEmailsRaw.forEach(function(email) {
-              const lower = email.toLowerCase();
-              if (!plannedRem.has(lower)) {
-                  plannedRem.set(lower, { email: email, role: 'NORMAL' });
-              }
-          });
-      }
-      const recipients = Array.from(plannedRem.values());
+      // #A118: se le recuerda a quien se le pidió el voto (_approvalAskedFor_, la regla de
+      // sendApprovalRequestEmail) y todavía hace falta (_approvalRolePending_, con el estado
+      // efectivo de computeEffectiveApprovalStatus_). Antes la lista se armaba aparte y no
+      // coincidía: en un viaje internacional se le seguía recordando al CEO (o a Cadena de
+      // Suministro) aunque el otro ya hubiera aprobado, y si el solicitante era el CEO o el
+      // director CDS se les recordaba a personas a las que nunca se les pidió. Se mantiene el
+      // dedup por correo (un recordatorio por persona) y la simetría: el voto de una persona
+      // en un rol cubre los otros roles que ocupa.
+      const recipients = _approvalAskedFor_(request).filter(function(a) { return _approvalRolePending_(a.role, request); });
 
       // Enviar correos a los identificados
       if (recipients.length > 0) {
@@ -9923,6 +10461,9 @@ function cancelOwnRequest(requestId, reason, currentUserEmail) {
   var note = '[ANULACIÓN POR USUARIO]: ' + reason.trim();
   sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + note);
 
+  // #A118: si esperaba aprobación, a los aprobadores se les avisa que ya no hace falta.
+  if (currentStatus === 'PENDIENTE_APROBACION') _notifyApproversClosed_(requestId, 'ANULADO', currentUserEmail);
+
   // #A100: si estaba en espera del CFO, el área de compras nunca la vio: no se le
   // avisa (y sale sola del resumen del CFO).
   var wasPolicyHold = currentStatus === POLICY_HOLD_STATUS;
@@ -10121,6 +10662,9 @@ function anularSolicitud(requestId, reason) {
   const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
   const newNote = `[ANULACIÓN MANUAL]: ${reason}`;
   sheet.getRange(rowNumber, obsIdx + 1).setValue((currentObs ? currentObs + "\n" : "") + safeSheetValue_(newNote));
+
+  // #A118: si esperaba aprobación, a los aprobadores se les avisa que ya no hace falta.
+  if (currentStatus === 'PENDIENTE_APROBACION') _notifyApproversClosed_(requestId, 'ANULADO', '');
   
   // Send notification to user
   const userEmail = sheet.getRange(rowNumber, emailIdx + 1).getValue();
@@ -10489,6 +11033,11 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   // su hija se aprobó con "Saltar aprobación").
   _cancelParentIfModificationApproved_(requestId, sheet);
 
+  // 4c. #A118: a los aprobadores a los que se les pidió el voto se les avisa que ya no hace
+  // falta, con quién saltó la etapa, cuándo y el motivo (caso SOL-000695: Alejandro no supo).
+  // Si «Confirmar costos» saltó la aprobación sin pedírsela a nadie, no se avisa a nadie.
+  _notifyApproversClosed_(requestId, 'SALTADA', actorEmail);
+
   // 5. Política (2026-05-07): NO se envía correo de "Solicitud Aprobada" al
   // solicitante cuando se salta la aprobación. Razones:
   //   - Los aprobadores nunca participaron formalmente — el correo automático
@@ -10499,7 +11048,7 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   //     el solicitante puede consultar el estado APROBADO en cualquier momento.
   //   - Cuando Wendy registre la reserva, el solicitante SÍ recibe el correo
   //     "Tiquetes Comprados" con el PNR — ahí es cuando aporta valor real.
-  // Aprobadores: no se les envía nada (igual que antes).
+  // Aprobadores: desde #A118 reciben el aviso de 4c (antes no se les enviaba nada).
 
   return { success: true, requestId: requestId, skippedBy: actorEmail };
 }
@@ -14619,6 +15168,11 @@ function _recordEvent_(requestId, eventKey, data) {
       if (!events.policyDecision) {
         events.policyDecision = { decision: (data && data.decision) || '', email: (data && data.email) || '', at: nowIso };
       }
+    } else if (eventKey === 'approvalRequested') {
+      // #A118: a quién se le pidió el voto la última vez ({ to: [{ email, role }] }). Un pedido
+      // nuevo (p. ej. costos confirmados otra vez) reabre el aviso de decisión final.
+      events.approvalRequested = { at: nowIso, to: (data && Array.isArray(data.to)) ? data.to : [] };
+      delete events.approvalClosedNotice;
     } else if (eventKey === 'costConfirmedBy') {
       // Quién confirmó los costos (#A86): la primera vez, igual que costConfirmed.
       if (!events.costConfirmedBy) {
@@ -19708,13 +20262,31 @@ function processPolicyDecision(e) {
   }
   // GAS ya decodifica e.parameter; tope defensivo de 500 caracteres.
   var comment = String(p.comment || '').replace(/\s+/g, ' ').trim().substring(0, 500);
+  var res = _applyPolicyDecision_(id, decision, cfg, comment);
+  return renderMessagePage(res.title, res.html, res.color);
+}
+
+/**
+ * Registra la decisión del CFO sobre una solicitud fuera de la política de anticipación (antes vivía
+ * dentro de processPolicyDecision). La usan el enlace firmado del resumen y «Mis aprobaciones» de la
+ * app (#A119); quien llama ya verificó que `cfg.email` es quien decide. Multidestino: la decisión
+ * cubre todos los tramos que esperan. Devuelve { kind, title, html, color }.
+ */
+function _applyPolicyDecision_(id, decision, cfg, comment) {
+  var result = function(kind, title, html, color) { return { kind: kind, title: title, html: html, color: color }; };
+  var notHeld = function(status) {
+    var txt = status === 'DENEGADO' ? 'ya está denegada' : status === 'ANULADO' ? 'fue anulada por el solicitante' : 'ya fue aprobada y sigue su proceso';
+    return result('closed', 'Sin cambios', 'La solicitud ' + escapeHtml_(id) + ' ' + txt + ' (estado: ' + escapeHtml_(status) + '). No se hizo ningún cambio.', '#374151');
+  };
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(LOCK_WAIT_MS)) {
-    return renderMessagePage('Sistema ocupado', 'No se pudo registrar la decisión. Intente de nuevo en unos segundos.', '#374151');
+    return result('busy', 'Sistema ocupado', 'No se pudo registrar la decisión. Intente de nuevo en unos segundos.', '#374151');
   }
   try {
     _clearRequestRowCache_();
-    rowNumber = _getRowByRequestId_(id);
+    var rowNumber = _getRowByRequestId_(id);
+    if (!sheet || rowNumber === -1) return result('error', 'Solicitud no encontrada', 'No se encontró la solicitud ' + escapeHtml_(id) + '.', '#374151');
     var st = String(sheet.getRange(rowNumber, H('STATUS') + 1).getValue() || '').trim();
     if (st !== POLICY_HOLD_STATUS) return notHeld(st);
     // Multidestino: la decisión aplica a todos los tramos del viaje que esperan.
@@ -19726,20 +20298,51 @@ function processPolicyDecision(e) {
       // no lo había denegado, aprobarlo metería al flujo un viaje que ya no existe.
       if (mates[0].depKey && _todayBogotaIso_() > mates[0].depKey) {
         mates.forEach(function(m, k) { _policyDeny_(sheet, m.rowNumber, m.id, 'sistema', POLICY_EXPIRED_REASON, '', true, k === 0, others(m)); });
-        return renderMessagePage('Fecha del viaje vencida', 'La fecha del viaje (' + idsTxt + ') ya pasó, así que no se puede aprobar: quedó denegado por vencimiento y se le avisó al solicitante.', '#374151');
+        return result('expired', 'Fecha del viaje vencida', 'La fecha del viaje (' + idsTxt + ') ya pasó, así que no se puede aprobar: quedó denegado por vencimiento y se le avisó al solicitante.', '#374151');
       }
       mates.forEach(function(m) { _policyApprove_(sheet, m.rowNumber, m.id, cfg.email, comment); });
-      return renderMessagePage('Excepción aprobada', (mates.length > 1 ? 'Las solicitudes <strong>' + idsTxt + '</strong> (todo el viaje multidestino) siguen' : 'La solicitud <strong>' + idsTxt + '</strong> sigue') +
+      _sendPolicyDecisionConfirmation_(sheet, mates, 'approved', cfg, comment); // #A118
+      return result('approved', 'Excepción aprobada', (mates.length > 1 ? 'Las solicitudes <strong>' + idsTxt + '</strong> (todo el viaje multidestino) siguen' : 'La solicitud <strong>' + idsTxt + '</strong> sigue') +
         ' su proceso normal. Se avisó al área de compras y al solicitante.', '#059669');
     }
     mates.forEach(function(m, k) { _policyDeny_(sheet, m.rowNumber, m.id, cfg.email, POLICY_DENIAL_REASON, comment, false, k === 0, others(m)); });
-    return renderMessagePage('Solicitud rechazada', (mates.length > 1 ? 'Las solicitudes <strong>' + idsTxt + '</strong> (todo el viaje multidestino) quedaron denegadas.' : 'La solicitud <strong>' + idsTxt + '</strong> quedó denegada.') +
+    _sendPolicyDecisionConfirmation_(sheet, mates, 'denied', cfg, comment); // #A118
+    return result('denied', 'Solicitud rechazada', (mates.length > 1 ? 'Las solicitudes <strong>' + idsTxt + '</strong> (todo el viaje multidestino) quedaron denegadas.' : 'La solicitud <strong>' + idsTxt + '</strong> quedó denegada.') +
       ' Se le avisó al solicitante.', '#D71920');
   } catch (err) {
     console.error('processPolicyDecision ' + id + ': ' + err);
-    return renderMessagePage('Error', 'No se pudo registrar la decisión: ' + escapeHtml_(String(err && err.message || err)), '#D71920');
+    return result('error', 'Error', 'No se pudo registrar la decisión: ' + escapeHtml_(String(err && err.message || err)), '#D71920');
   } finally {
     lock.releaseLock();
+  }
+}
+
+/**
+ * #A118: confirmación a quien aprueba las excepciones de su decisión (Alejandro: «que una vez tomada la
+ * decisión, el sistema envíe un correo de confirmación»). Desde el enlace del resumen o desde «Mis
+ * aprobaciones». Nunca lanza: la decisión ya quedó.
+ */
+function _sendPolicyDecisionConfirmation_(sheet, mates, decision, cfg, comment) {
+  try {
+    var first = mates[0];
+    var row = sheet.getRange(first.rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
+    var req = mapRowToRequest(row, true);
+    var approved = decision === 'approved';
+    var ids = mates.map(function(m) { return m.id; }).join(', ');
+    var when = Utilities.formatDate(new Date(), 'America/Bogota', 'd/M/yyyy H:mm');
+    var content =
+      '<p style="font-size:15px; color:#111827;">Registramos su decisión sobre la excepción a la política de anticipación de ' +
+        (mates.length > 1 ? 'las solicitudes <strong>' + escapeHtml_(ids) + '</strong> (todo el viaje multidestino)' : 'la solicitud <strong>' + escapeHtml_(ids) + '</strong>') +
+        ', el ' + escapeHtml_(when) + ': <strong>' + (approved ? 'APROBADA' : 'RECHAZADA') + '</strong>.</p>' +
+      '<p style="font-size:14px; color:#374151;">' + (approved
+        ? 'La solicitud sigue su proceso normal: el área de compras ya la puede gestionar. Se le avisó al solicitante.'
+        : 'La solicitud quedó denegada y se le avisó al solicitante.') + '</p>' +
+      (comment ? '<p style="font-size:13px; color:#374151;">Su comentario: «' + escapeHtml_(comment) + '»</p>' : '') +
+      _approvalSummaryHtml_(req, _approvalNamesMap_(), row);
+    var html = HtmlTemplates.layout(first.id, content, approved ? '#059669' : '#D71920', approved ? 'EXCEPCIÓN APROBADA' : 'EXCEPCIÓN RECHAZADA');
+    sendEmailRich(cfg.email, getStandardSubject(req) + ' - EXCEPCIÓN A LA POLÍTICA', html, null);
+  } catch (e) {
+    console.error('Confirmación de la excepción ' + (mates && mates[0] && mates[0].id) + ': ' + e);
   }
 }
 

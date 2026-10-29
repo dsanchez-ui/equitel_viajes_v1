@@ -279,7 +279,10 @@ function main() {
   eq('rechazar: denegada', cell(HELD2, 'STATUS'), 'DENEGADO');
   ok('rechazar: motivo automático + comentario en observaciones', /No se aprobó la excepción por incumplimiento de la política de anticipación\. Comentario: Debe planearse con tiempo\./.test(cell(HELD2, 'OBSERVACIONES')));
   ok('rechazar: decisión registrada', /^No_agdg@equitel\.com\.co_/.test(cell(HELD2, 'APROBACION CFO ANTICIPACION')));
-  ok('rechazar: correo solo al solicitante, con el motivo', log.mails.length === 1 && log.mails[0].to === 'ana@p.co' && /incumplimiento de la política/.test(log.mails[0].html) && !/compras\.equitel/.test(String(log.mails[0].cc)));
+  // #A118: además, el CFO recibe la confirmación de su decisión (no cuenta como aviso a terceros).
+  const denyMails = log.mails.filter((m) => m.to !== CFO);
+  ok('rechazar: correo solo al solicitante, con el motivo', denyMails.length === 1 && denyMails[0].to === 'ana@p.co' && /incumplimiento de la política/.test(denyMails[0].html) && !/compras\.equitel/.test(String(denyMails[0].cc)));
+  ok('rechazar: confirmación al CFO (#A118)', mailsTo(CFO).length === 1 && /EXCEPCIÓN RECHAZADA/.test(mailsTo(CFO)[0].html) && /Debe planearse con tiempo\./.test(mailsTo(CFO)[0].html));
 
   reset();
   const bad = Object.assign(linkFor(HELD3, 'approved'), { confirm: 'true' });
@@ -384,7 +387,9 @@ function main() {
   reset();
   page = ctx.processPolicyDecision({ parameter: Object.assign(gLinks.find((q) => q.id === G2[0] && q.decision === 'denied'), { confirm: 'true' }) });
   eq('multidestino: rechazar el viaje deniega todos los tramos', G2.map((id) => cell(id, 'STATUS')), ['DENEGADO', 'DENEGADO']);
-  ok('multidestino: un solo correo de rechazo, que nombra los demás tramos', log.mails.length === 1 && new RegExp(G2[1]).test(log.mails[0].html));
+  const groupDeny = log.mails.filter((m) => m.to !== CFO);
+  ok('multidestino: un solo correo de rechazo, que nombra los demás tramos', groupDeny.length === 1 && new RegExp(G2[1]).test(groupDeny[0].html));
+  ok('multidestino: una sola confirmación al CFO, con todos los tramos (#A118)', mailsTo(CFO).length === 1 && G2.every((id) => mailsTo(CFO)[0].html.includes(id)));
   // vencimiento conjunto: pasó la fecha del primer tramo
   const G3 = [create(leg('MD-viajetres3', 1, 2, 2)).data, create(leg('MD-viajetres3', 2, 2, 20, { origin: 'MEDELLIN, COLOMBIA', destination: 'BOGOTA, COLOMBIA' })).data];
   setCell(G3[0], 'FECHA IDA', '13-10-2026');

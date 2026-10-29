@@ -19,9 +19,13 @@ interface LayoutProps {
   // la tabla a hacer scroll horizontal aunque la pantalla tenga espacio de sobra,
   // y la barra de scroll queda al final de las 50 filas de la página.
   wide?: boolean;
+  // #A119: «Mis aprobaciones», solo para quien aprueba algo. count = pendientes (null = aún no se sabe).
+  onApprovals?: () => void;
+  approvalsCount?: number | null;
+  approvalsActive?: boolean;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, role, onLogout, onRefresh, canToggleView, viewAsRequester, onToggleView, wide }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, role, onLogout, onRefresh, canToggleView, viewAsRequester, onToggleView, wide, onApprovals, approvalsCount, approvalsActive }) => {
   // Header, main y footer comparten el mismo ancho para que el logo y el
   // contenido queden alineados en ambos modos.
   const containerWidth = wide ? 'max-w-[1800px]' : 'max-w-7xl';
@@ -55,6 +59,28 @@ export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, r
               </div>
               
               <div className="flex items-center gap-2">
+                {onApprovals && (
+                  <button
+                    onClick={onApprovals}
+                    className={`relative inline-flex items-center px-3 py-1.5 border shadow-sm text-xs font-medium rounded focus:outline-none transition-colors ${
+                      approvalsActive
+                        ? 'border-brand-red text-white bg-brand-red hover:bg-red-700'
+                        : 'border-gray-600 text-gray-300 bg-gray-900 hover:bg-gray-800 hover:text-white'
+                    }`}
+                    title={approvalsActive ? 'Volver a la lista' : 'Lo que tiene por aprobar y lo que ya decidió'}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                    <span className="hidden sm:inline whitespace-nowrap">MIS APROBACIONES</span>
+                    {!!approvalsCount && approvalsCount > 0 && (
+                      <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-400 text-black text-[10px] font-bold" aria-label={`${approvalsCount} por aprobar`}>
+                        {approvalsCount}
+                      </span>
+                    )}
+                  </button>
+                )}
+
                 {canToggleView && onToggleView && (
                   <button
                     onClick={onToggleView}
