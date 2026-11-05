@@ -3663,5 +3663,6 @@ solo cambiara documentación, hacía salir el aviso a todos sin que la app hubie
   cambia el marcador por el resultado y escribe `version.json`. Si no encuentra el marcador, la compilación falla.
 - **Verificado:** dos compilaciones del mismo código dan la misma versión (`24f98bfc…`); un cambio solo en `index.css` o solo en un
   componente da otra; al deshacerlo vuelve la primera. `npm run verify` en verde.
-- **Despliegue:** el push. El primer push con el ajuste sí muestra el aviso una vez (la versión pasa de la hora al hash); desde ahí, solo
-  cuando cambia la app.
+- **Desplegado el 5-nov:** frontend `f5e3cfb`, revisión `00229` de Cloud Run; `version.json` en producción `0da95c59…`, la misma que lleva
+  `index-hlB1Vjlr.js` (sin el marcador). Es distinta de la local porque el build de la imagen apunta al API de producción. Este push sí
+  mostró el aviso una vez (la versión pasó de la hora al hash); desde ahí, solo cuando cambia la app.
