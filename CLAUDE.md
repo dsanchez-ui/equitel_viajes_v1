@@ -749,10 +749,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-05)
 
-- **Pendiente de desplegar (5-nov): #A123 y #A124** (cuándo y quién en cada paso del semáforo y Métricas; aviso de versión nueva).
-  Orden: primero pegar **`Code.gs`** → versión nueva del web app; después el push del frontend. Con el frontend anterior los datos se guardan
-  y no se muestran; con el servidor anterior el semáforo se ve como hoy. Métricas recalcula todo la primera vez (caché versión 3). Las
-  pestañas abiertas antes de este push hay que recargarlas a mano una vez; desde ahí, el aviso sale solo.
+- **#A123 y #A124 desplegados (5-nov)** (cuándo y quién en cada paso del semáforo y Métricas; aviso de versión nueva). David pegó
+  `Code.gs` (versión nueva del web app) y el frontend `3ef72b7` es la revisión `00228` de Cloud Run (bundle `index-DwgyBinb.js`). Métricas
+  recalcula todo la primera vez (caché versión 3). Las pestañas abiertas antes de este push se recargan a mano una vez; desde ahí el aviso
+  sale solo. **Cada push cambia el `buildId`** (es la hora de la compilación): también un push solo de documentación hace salir el aviso.
 - **#A120, #A121 y #A122 desplegados (5-nov)** (cambio de viaje sin tiquete comprado, caso SOL-000714 de Laura; semáforo de
   cada solicitud y Métricas en horas reales, pedido de Yurani; librerías al día). David pegó `Code.gs` (versión nueva del web app) y el
   frontend `089205d` quedó en producción el 5-nov (bundle `index-CzobHggG.js`). La primera vez que se abra Métricas recalcula todo

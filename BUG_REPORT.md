@@ -3579,7 +3579,7 @@ etapas de Cotizador 2.0. · **Estado:** Desplegado (`Code.gs` pegado por David y
 
 ## **#A123 — Cada paso guarda cuándo y quién: la aceptación del cambio, la reserva por partes, el cierre y las anulaciones**
 **Fecha:** 2026-11-05 · **Pedido por:** David (*«no se registra cuándo se aceptó un cambio… garantiza que todos los pasos, así sea una
-solicitud de cambio o de solo hospedaje, estén bien medidos, y si se da info se almacena»*) · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+solicitud de cambio o de solo hospedaje, estén bien medidos, y si se da info se almacena»*) · **Estado:** Desplegado el 2026-11-05 (David pegó `Code.gs` y publicó la versión nueva del web app; frontend `3ef72b7`, revisión `00228` de Cloud Run, bundle `index-DwgyBinb.js`).
 
 **Síntoma:** en el semáforo de SOL-000707 (cambio de SOL-000705) el paso «Cambio aceptado» decía «sin hora registrada».
 
@@ -3630,7 +3630,7 @@ fecha del correo «CAMBIO EN ESTUDIO» en los enviados de la cuenta del web app 
 
 ## **#A124 — Aviso de versión nueva: la app pide recargar cuando se publica otra**
 **Fecha:** 2026-11-05 · **Pedido por:** David (Yurani no veía un cambio ya publicado porque no había recargado la página) ·
-**Estado:** Implementado; sale con el push.
+**Estado:** Desplegado el 2026-11-05 (frontend `3ef72b7`, revisión `00228`; `version.json` en producción con `buildId` `2026-11-05T22:20:04.832Z`, el mismo del bundle).
 
 **Síntoma:** después de cada push la app abierta sigue con la versión vieja hasta que la persona recarga, y nada se lo dice.
 
