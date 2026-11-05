@@ -3462,7 +3462,7 @@ afecte la rapidez, la seguridad ni traiga errores). · **Estado:** Desplegado (f
 ---
 
 ## **#A120 — «Cambiar mi viaje» sin tiquete comprado: se cambia todo el viaje (caso SOL-000714)**
-**Fecha:** 2026-11-05 · **Reportado por:** Laura Molina · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+**Fecha:** 2026-11-05 · **Reportado por:** Laura Molina · **Estado:** Desplegado (`Code.gs` pegado por David y frontend `089205d`, 5-nov).
 
 **Síntoma:** la SOL-000714 (Bogotá–Apartadó, ida el 5-nov, regreso el 14-nov) estaba APROBADA y el tiquete no se había comprado,
 porque el viajero iba a confirmar si había que mover las fechas. El 5-nov el solicitante quiso cambiarlas y la app le dijo «La ida ya
@@ -3506,7 +3506,7 @@ regla de #A109: RESERVADO, o APROBADO con la reserva guardada por partes).
 **Fecha:** 2026-11-05 · **Pedido por:** Yurani Prieto (caso SOL-000707: *«4 + 8 + 3 + 6 son 3 días… el cambio le vale más que comprar
 otro»*) y David (*«un pequeño semáforo arriba de cada solicitud… cuándo pasó por una etapa… a quién le correspondía… horas reales, no
 laborales… que todo el mundo pueda revisar en el detalle de su solicitud a qué corresponde la demora»*). Modelo: el semáforo de
-etapas de Cotizador 2.0. · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+etapas de Cotizador 2.0. · **Estado:** Desplegado (`Code.gs` pegado por David y frontend `089205d`, 5-nov).
 
 **Qué hace:**
 - **Detalle de cada solicitud** (solicitante y administradores), arriba:
@@ -3565,7 +3565,7 @@ etapas de Cotizador 2.0. · **Estado:** Implementado; pendiente pegar `Code.gs` 
 ---
 
 ## **#A122 — Librerías al día (fast-uri, vite, markdown-it)**
-**Fecha:** 2026-11-05 · **Pedido por:** David (revisión de cada proyecto, #A108) · **Estado:** Implementado; sale con el push.
+**Fecha:** 2026-11-05 · **Pedido por:** David (revisión de cada proyecto, #A108) · **Estado:** Desplegado (frontend `089205d`, 5-nov).
 
 - `fast-uri` 3.1.8 → **3.1.9** (`overrides`): cuatro avisos moderados; viene dentro de `serve`, el servidor de la imagen de producción.
   3.1.9 salió el 19-oct.

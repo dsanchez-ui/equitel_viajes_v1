@@ -738,10 +738,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-05)
 
-- **Pendiente de desplegar (5-nov): #A120, #A121 y #A122** (cambio de viaje sin tiquete comprado, caso SOL-000714 de Laura; semáforo de
-  cada solicitud y Métricas en horas reales, pedido de Yurani; librerías al día). Orden: primero pegar **`Code.gs`** → versión nueva del
-  web app; después el push del frontend. Con el frontend nuevo y el servidor anterior no sale el semáforo y el cambio sin comprar
-  responde «solo el regreso»: no cambia nada. La primera vez que se abra Métricas recalcula todo (caché versión 2).
+- **#A120, #A121 y #A122 desplegados (5-nov)** (cambio de viaje sin tiquete comprado, caso SOL-000714 de Laura; semáforo de
+  cada solicitud y Métricas en horas reales, pedido de Yurani; librerías al día). David pegó `Code.gs` (versión nueva del web app) y el
+  frontend `089205d` quedó en producción el 5-nov (bundle `index-CzobHggG.js`). La primera vez que se abra Métricas recalcula todo
+  (caché versión 2).
 - **#A118 y #A119 desplegados** (David confirmó el 5-nov que el `Code.gs` ya estaba pegado; frontend `fc73695`, revisión `00226`).
 - **Informe mensual de octubre (#A101):** llegó el martes 3-nov a Alejandro, Yurani y David.
 
