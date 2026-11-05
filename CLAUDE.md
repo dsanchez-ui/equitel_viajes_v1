@@ -477,7 +477,8 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
 - **Aviso de versión nueva** (#A124, David, 5-nov: Yurani no veía un cambio publicado porque no había recargado). Cada compilación lleva
   `__APP_BUILD_ID__` y publica el mismo en `version.json` (`vite.config.ts`). `UpdateBanner.tsx` lo compara cada 5 minutos y al volver a la
   pestaña; si cambió, pide «Actualizar ahora». **No recarga sola**: se perdería una solicitud a medio llenar. `npm run verify` revisa que
-  `version.json` coincida con la app.
+  `version.json` coincida con la app. **La versión sale del contenido de lo que se publica (JS y CSS), no de la hora**: un push que no cambia
+  la app (p. ej. solo documentación) no hace salir el aviso. Nunca volver a la hora de compilación.
 - **Las horas, siempre en 24 h** (#A112, Yurani, 27-oct: «hora militar y ya»): un viajero escribió «6.22» por las 18:22, sin «pm», y se
   cotizó un vuelo a las 6 a. m. Todo campo de hora es `TimeInput` (`HH:MM` de 24 h, con la hora **en palabras** debajo y un botón que abre
   una **lista propia de horas**, cada 15 minutos, también en 24 h; entra y sale `HH:MM`). **Nunca un `<input type="time">`**, ni siquiera
@@ -752,7 +753,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A123 y #A124 desplegados (5-nov)** (cuándo y quién en cada paso del semáforo y Métricas; aviso de versión nueva). David pegó
   `Code.gs` (versión nueva del web app) y el frontend `3ef72b7` es la revisión `00228` de Cloud Run (bundle `index-DwgyBinb.js`). Métricas
   recalcula todo la primera vez (caché versión 3). Las pestañas abiertas antes de este push se recargan a mano una vez; desde ahí el aviso
-  sale solo. **Cada push cambia el `buildId`** (es la hora de la compilación): también un push solo de documentación hace salir el aviso.
+  sale solo. Desde el ajuste del 5-nov la versión sale del contenido de la app: un push solo de documentación ya no hace salir el aviso
+  (el primer push con el ajuste sí lo muestra una vez, porque la versión cambia de formato).
 - **#A120, #A121 y #A122 desplegados (5-nov)** (cambio de viaje sin tiquete comprado, caso SOL-000714 de Laura; semáforo de
   cada solicitud y Métricas en horas reales, pedido de Yurani; librerías al día). David pegó `Code.gs` (versión nueva del web app) y el
   frontend `089205d` quedó en producción el 5-nov (bundle `index-CzobHggG.js`). La primera vez que se abra Métricas recalcula todo

@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
  * Aviso de versión nueva (#A124; David, 5-nov-2026: Yurani no veía un cambio ya publicado porque
  * no había recargado la página y nada se lo decía).
  *
- * Cada compilación lleva un identificador (__APP_BUILD_ID__) y publica el mismo en /version.json
+ * Cada compilación lleva un identificador (__APP_BUILD_ID__, sale del contenido de la app) y publica el mismo en /version.json
  * (vite.config.ts). La app lo pide cada 5 minutos y cada vez que la persona vuelve a la pestaña;
  * si el del servidor es otro, ya hay una versión nueva y sale este aviso. No recarga sola: quien
  * esté llenando una solicitud perdería lo escrito. «Más tarde» lo esconde 30 minutos.

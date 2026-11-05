@@ -3635,8 +3635,8 @@ fecha del correo «CAMBIO EN ESTUDIO» en los enviados de la cuenta del web app 
 **Síntoma:** después de cada push la app abierta sigue con la versión vieja hasta que la persona recarga, y nada se lo dice.
 
 **Fix:**
-- `vite.config.ts`: cada compilación lleva un identificador (`__APP_BUILD_ID__`, la hora de la compilación) y publica el mismo en
-  `dist/version.json`.
+- `vite.config.ts`: cada compilación lleva un identificador (`__APP_BUILD_ID__`; al principio la hora de la compilación, desde el ajuste de
+  abajo un hash del contenido) y publica el mismo en `dist/version.json`.
 - `components/UpdateBanner.tsx` (montado en `index.tsx`) pide `/version.json` sin caché cada 5 minutos y cada vez que la persona vuelve a
   la pestaña. Si el del servidor es otro, muestra abajo «Hay una versión nueva de la plataforma» con «Actualizar ahora» (recarga) y «Más
   tarde» (lo esconde 30 minutos).
@@ -3655,3 +3655,13 @@ fecha del correo «CAMBIO EN ESTUDIO» en los enviados de la cuenta del web app 
 
 **Despliegue:** el push. Las pestañas abiertas desde antes de este push no tienen el aviso: esta vez hay que recargarlas a mano. Desde
 la siguiente publicación, el aviso sale solo.
+
+**Ajuste del 5-nov (después de desplegar), pedido de David:** la versión era la hora de la compilación, así que cualquier push, aunque
+solo cambiara documentación, hacía salir el aviso a todos sin que la app hubiera cambiado.
+- Ahora la versión sale del contenido de lo que se publica: un hash SHA-256 (32 caracteres) del JavaScript y el CSS de `dist/`, sin el
+  HTML ni `version.json`. La app se compila con un marcador fijo del mismo largo; el plugin de `vite.config.ts` mide lo publicado y después
+  cambia el marcador por el resultado y escribe `version.json`. Si no encuentra el marcador, la compilación falla.
+- **Verificado:** dos compilaciones del mismo código dan la misma versión (`24f98bfc…`); un cambio solo en `index.css` o solo en un
+  componente da otra; al deshacerlo vuelve la primera. `npm run verify` en verde.
+- **Despliegue:** el push. El primer push con el ajuste sí muestra el aviso una vez (la versión pasa de la hora al hash); desde ahí, solo
+  cuando cambia la app.
