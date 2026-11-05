@@ -54,6 +54,14 @@ if (!fs.existsSync(assets)) {
   const main = js.filter((n) => /^index-[\w-]+\.js$/.test(n));
   if (main.length !== 1 || js.length !== 1) failures.push(`dist/assets debe tener un solo .js (index-*.js) y tiene: ${js.join(', ') || 'ninguno'}.`);
   legacy.forEach((n) => { if (!fs.existsSync(path.join(assets, n))) failures.push(`public/assets/${n} no llegó a dist/assets.`); });
+  // 3. Aviso de versión nueva (#A124): dist/version.json lleva el mismo identificador que la app.
+  const versionPath = path.join(ROOT, 'dist', 'version.json');
+  let buildId = '';
+  try { buildId = JSON.parse(fs.readFileSync(versionPath, 'utf8')).buildId || ''; } catch (e) { buildId = ''; }
+  if (!buildId) failures.push('dist/version.json no existe o no trae buildId: sin él la app no avisa que hay una versión nueva (vite.config.ts).');
+  else if (main.length === 1 && !fs.readFileSync(path.join(assets, main[0]), 'utf8').includes(JSON.stringify(buildId))) {
+    failures.push(`dist/version.json (${buildId}) no coincide con la versión que lleva ${main[0]}: la app avisaría siempre o nunca.`);
+  }
 }
 
 if (failures.length) {
@@ -61,4 +69,4 @@ if (failures.length) {
   failures.forEach((x) => console.error('  · ' + x));
   process.exit(1);
 }
-console.log(`Un solo archivo JavaScript: sin cargas bajo demanda en ${files.length} archivos; dist/assets con un index-*.js${legacy.length ? ` y ${legacy.length} copia(s) de versiones anteriores para pestañas abiertas` : ''}. OK`);
+console.log(`Un solo archivo JavaScript: sin cargas bajo demanda en ${files.length} archivos; dist/assets con un index-*.js y version.json con la misma versión${legacy.length ? ` y ${legacy.length} copia(s) de versiones anteriores para pestañas abiertas` : ''}. OK`);

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MetricsResponse, MetricsFilters, RequestMetrics } from '../types';
+import { MetricsResponse, MetricsFilters, RequestMetrics, StageInfo } from '../types';
 import { gasService } from '../services/gasService';
 import { PurchaseStatsPanel } from './PurchaseStatsPanel';
 import { ChangeControlPanel } from './ChangeControlPanel';
@@ -262,9 +262,12 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
           {!loading && data && (
             <>
               {/* Cards de agregados */}
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 mb-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2 mb-4">
                 <AggregateCard label="Total solicitudes" value={String(data.aggregates.count)} sub={`${data.aggregates.countWithCompleteData} con datos`} accent="gray" />
-                <AggregateCard label="Tiempo cotización" value={formatMinutes(data.aggregates.avgTimeToOptionsMinutes)} sub="Crear → opciones" accent="red" />
+                {/* #A123: lo que pasa antes de cotizar (solo en las que lo tienen). */}
+                <AggregateCard label="Excepción política" value={formatMinutes(data.aggregates.avgTimeToPolicyMinutes ?? null)} sub={`Pedido → aprobada por el CFO · ${data.aggregates.countPolicy ?? 0}`} accent="yellow" />
+                <AggregateCard label="Aceptar cambio" value={formatMinutes(data.aggregates.avgTimeToChangeReviewMinutes ?? null)} sub={`Pedido → aceptado · ${data.aggregates.countChangeReview ?? 0}`} accent="purple" />
+                <AggregateCard label="Tiempo cotización" value={formatMinutes(data.aggregates.avgTimeToOptionsMinutes)} sub="Lista para gestionar → opciones" accent="red" />
                 <AggregateCard label="Tiempo selección" value={formatMinutes(data.aggregates.avgTimeToSelectionMinutes)} sub="Opciones → selección" accent="yellow" />
                 <AggregateCard label="Confirmar costo" value={formatMinutes(data.aggregates.avgTimeToCostConfirmMinutes)} sub="Selección → costo" accent="purple" />
                 <AggregateCard label="Aprobación total" value={formatMinutes(data.aggregates.avgTimeToFullApprovalMinutes)} sub="Costo → aprobado" accent="green" />
@@ -281,7 +284,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
                   <div className="bg-gray-50 px-3 py-2 border-b border-gray-200">
                     <h4 className="text-xs font-bold text-gray-700 uppercase">Performance del analista de compras</h4>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3">
+                  <div className={`grid grid-cols-1 ${data.analystPerformance.length > 3 ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-3 p-3`}>
                     {data.analystPerformance.map(stage => (
                       <div key={stage.stage} className="border border-gray-200 rounded-lg p-3">
                         <div className="text-[10px] font-bold uppercase text-gray-500 mb-1">{stage.label}</div>
@@ -311,6 +314,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
                         <th className="px-2 py-2 text-left font-medium text-gray-500">Solicitante</th>
                         <th className="px-2 py-2 text-left font-medium text-gray-500">Destino</th>
                         <th className="px-2 py-2 text-left font-medium text-gray-500">Estado</th>
+                        <th className="px-2 py-2 text-right font-medium text-gray-500" title="Antes de cotizar: lo que tardó el área de compras en aceptar el cambio, o el CFO en aprobar la excepción a la política">Aceptar</th>
                         <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo del analista en cargar opciones">Cotizar</th>
                         <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo del usuario en describir su selección">Seleccionar</th>
                         <th className="px-2 py-2 text-right font-medium text-gray-500" title="Tiempo del analista en confirmar costos">Confirmar</th>
@@ -322,7 +326,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
                     <tbody className="divide-y divide-gray-100">
                       {data.perRequest.length === 0 && (
                         <tr>
-                          <td colSpan={10} className="text-center py-8 text-gray-400">Sin solicitudes en este filtro</td>
+                          <td colSpan={11} className="text-center py-8 text-gray-400">Sin solicitudes en este filtro</td>
                         </tr>
                       )}
                       {data.perRequest.map(r => (
@@ -409,6 +413,22 @@ const StageCell: React.FC<{ minutes: number | null; at?: string }> = ({ minutes,
   );
 };
 
+/** #A123: antes de cotizar, en las que lo tienen: aceptar el cambio (área de compras) o la excepción a la política (CFO). */
+const PreStageCell: React.FC<{ r: RequestMetrics; s: StageInfo | null }> = ({ r, s }) => {
+  const change = r.timeToChangeReviewMinutes ?? null;
+  const policy = r.timeToPolicyMinutes ?? null;
+  if (change === null && policy === null) {
+    const pending = s && ((s.isChange && !s.changeStudied) || (s.policy && s.policy.decision !== 'approved'));
+    return <td className="px-2 py-1.5 text-right text-gray-300 whitespace-nowrap" title={pending ? 'Sin hora registrada' : 'No aplica'}>{pending ? '—' : ''}</td>;
+  }
+  return (
+    <td className="px-2 py-1.5 text-right text-gray-700 whitespace-nowrap">
+      <span className="block">{formatMinutes(change !== null ? change : policy)}</span>
+      <span className="block text-[9px] text-gray-400">{change !== null ? 'cambio' : 'CFO'}</span>
+    </td>
+  );
+};
+
 const RequestMetricsRow: React.FC<{ r: RequestMetrics }> = ({ r }) => {
   const [open, setOpen] = useState(false);
   const noEvents = !r.hasEvents;
@@ -432,6 +452,7 @@ const RequestMetricsRow: React.FC<{ r: RequestMetrics }> = ({ r }) => {
         <td className="px-2 py-2 whitespace-nowrap">
           <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${statusColor(r.status)}`}>{statusLabel(r.status)}</span>
         </td>
+        <PreStageCell r={r} s={s} />
         <StageCell minutes={r.timeToOptionsMinutes} at={s?.options} />
         <StageCell minutes={r.timeToSelectionMinutes} at={s?.selection} />
         <StageCell minutes={r.timeToCostConfirmMinutes} at={s?.costs} />
@@ -441,7 +462,7 @@ const RequestMetricsRow: React.FC<{ r: RequestMetrics }> = ({ r }) => {
       </tr>
       {open && s && (
         <tr className="bg-white">
-          <td colSpan={10} className="px-3 py-3 border-b-2 border-red-100">
+          <td colSpan={11} className="px-3 py-3 border-b-2 border-red-100">
             <StageTimeline stages={s} status={r.status} embedded />
           </td>
         </tr>

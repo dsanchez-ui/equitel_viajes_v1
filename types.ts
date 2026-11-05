@@ -82,6 +82,20 @@ export interface StageInfo {
   options: string;
   selection: string;
   selectionSkippedBy: string;
+  // #A123 (opcionales: un servidor anterior no los manda). Nombre de quien hizo el paso; '' si no quedó.
+  changeStudiedBy?: string;
+  optionsBy?: string;
+  /** Quién registró la elección si no fue el solicitante (el área de compras, por trazabilidad). */
+  selectionBy?: string;
+  /** Las opciones se cargaron solo por trazabilidad: la compra se hizo por fuera. */
+  selectionTrace?: boolean;
+  purchaseBy?: string;
+  /** Reserva guardada por partes (#A109): lo comprado ya se pagó, falta confirmarla. */
+  draftSaved?: string;
+  draftBy?: string;
+  /** Cerrada (PROCESADO): facturas y soportes completos. */
+  closed?: string;
+  closedBy?: string;
   costs: string;
   costsBy: string;
   approvalAskedAt: string;
@@ -627,6 +641,10 @@ export interface RequestMetrics {
   status: string;
   created: string | null;
   timeToOptionsMinutes: number | null;
+  /** #A123: del pedido del cambio a que el área de compras lo aceptó (solo cambios). */
+  timeToChangeReviewMinutes?: number | null;
+  /** #A123: de la solicitud a que el CFO aprobó la excepción a la política (solo esas). */
+  timeToPolicyMinutes?: number | null;
   timeToSelectionMinutes: number | null;
   timeToCostConfirmMinutes: number | null;
   timeToFullApprovalMinutes: number | null;
@@ -649,6 +667,10 @@ export interface MetricsAggregates {
   count: number;
   countWithCompleteData: number;
   avgTimeToOptionsMinutes: number | null;
+  avgTimeToChangeReviewMinutes?: number | null;
+  countChangeReview?: number;
+  avgTimeToPolicyMinutes?: number | null;
+  countPolicy?: number;
   avgTimeToSelectionMinutes: number | null;
   avgTimeToCostConfirmMinutes: number | null;
   avgTimeToFullApprovalMinutes: number | null;

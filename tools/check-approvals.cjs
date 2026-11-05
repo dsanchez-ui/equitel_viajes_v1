@@ -127,6 +127,7 @@ function load() {
   ctx._resolveApproverForFirstPassenger_ = () => ({ email: 'jefe@p.co', name: 'JEFE UNO' });
   ctx._assertPassportsForInternational_ = () => {};
   ctx._dashInvalidate_ = () => {};
+  ctx.generateSupportReport = () => ''; // Drive simulado: el reporte del cierre no se genera aquí
   ctx.sendEmailRich = (to, subject, html, cc) => { log.mails.push({ to, subject, html, cc: cc === undefined ? '(admin)' : cc }); };
   ctx._sendMail_ = (o) => { log.mails.push({ to: o.to, subject: o.subject, html: o.htmlBody || o.body || '', cc: '' }); };
   return { ctx, req, log };
@@ -451,6 +452,76 @@ function main() {
     const ta = TL.buildTimeline(sa, 'ANULADO', Date.parse('2026-11-05T21:27:00Z'));
     eq('anulada: se cierra donde iba, con quién', [ta.steps[1].key, ta.steps[1].state, TL.fmtDuration(ta.steps[1].minutes), sa.end.who], ['opciones', 'cerrado', '7 h 30 min', 'PEREZ ANA']);
   }
+  // ---------------------------------------------------------------------------
+  // #A123: cada paso guarda cuándo y quién, también en los cambios, la trazabilidad, la reserva
+  // por partes, el cierre y las anulaciones (reloj fijo: 28-oct-2026 15:00 UTC).
+  const CLOCK = new Date(Date.parse(TODAY + 'T15:00:00Z')).toISOString();
+  const PARENT = addRow({ cells: { STATUS: 'PENDIENTE_SELECCION' } });
+  const CH = addRow({ cells: { STATUS: 'PENDIENTE_ANALISIS_CAMBIO', 'TIPO DE SOLICITUD': 'MODIFICACION', 'ID SOLICITUD PADRE': PARENT,
+    EVENTOS_JSON: JSON.stringify({ created: at(6) }) } });
+  r = app('processChangeDecision', YURANI, { childRequestId: CH, decision: 'study' });
+  ok('cambio: se acepta', r.success && cell(CH, 'STATUS') === 'PENDIENTE_OPCIONES');
+  eq('cambio: cuándo y quién lo aceptó', [events(CH).changeStudied, events(CH).changeStudiedBy && events(CH).changeStudiedBy.email], [CLOCK, YURANI]);
+  r = app('updateRequest', YURANI, { id: CH, status: 'PENDIENTE_SELECCION', payload: { analystOptions: [{ id: 'A', type: 'FLIGHT', url: 'https://drive.google.com/x' }] } });
+  ok('opciones: quién las cargó', r.success && events(CH).optionsUploadedBy && events(CH).optionsUploadedBy.email === YURANI);
+  r = app('updateRequest', 'ana@p.co', { id: CH, status: 'PENDIENTE_CONFIRMACION_COSTO', payload: { selectionDetails: 'Opción A, económica' } });
+  ok('elección: la registra el solicitante', r.success && events(CH).selectionMadeBy && events(CH).selectionMadeBy.email === 'ana@p.co');
+  const sc = app('getRequestById', 'ana@p.co', { requestId: CH }).data.stages;
+  eq('cambio: la línea de tiempo trae quién hizo cada paso', sc && [sc.changeStudied, sc.changeStudiedBy, sc.optionsBy, sc.selectionBy, sc.selectionTrace],
+    [CLOCK, 'PRIETO YURANI', 'PRIETO YURANI', '', false]);
+  if (TL && sc) {
+    const tc = TL.buildTimeline(sc, 'PENDIENTE_CONFIRMACION_COSTO', Date.parse('2026-10-28T16:00:00Z'));
+    eq('cambio: el paso de aceptarlo, con su tiempo y quién', [tc.steps[1].key, tc.steps[1].state, TL.fmtDuration(tc.steps[1].minutes), tc.steps[1].who, tc.steps[1].note],
+      ['cambio', 'hecho', '4 h', 'PRIETO YURANI', '']);
+  }
+  // Opciones solo por trazabilidad: el área de compras registra la elección (compra hecha por fuera).
+  const TR = addRow({ cells: { STATUS: 'PENDIENTE_OPCIONES', EVENTOS_JSON: JSON.stringify({ created: at(6) }) } });
+  app('updateRequest', YURANI, { id: TR, status: 'PENDIENTE_SELECCION', payload: { analystOptions: [{ id: 'A', type: 'FLIGHT', url: 'https://drive.google.com/x' }], skipNotification: true, skipJustification: 'Compra urgente del gerente' } });
+  app('updateRequest', YURANI, { id: TR, status: 'PENDIENTE_CONFIRMACION_COSTO', payload: { selectionDetails: '[OPCIONES CARGADAS SOLO POR TRAZABILIDAD — gestión fuera del sistema]: Compra urgente del gerente' } });
+  const st2 = app('getRequestById', 'ana@p.co', { requestId: TR }).data.stages;
+  eq('trazabilidad: quién registró la elección', st2 && [st2.selectionBy, st2.selectionTrace], ['PRIETO YURANI', true]);
+  if (TL && st2) eq('trazabilidad: dicho en la línea de tiempo', TL.buildTimeline(st2, 'PENDIENTE_CONFIRMACION_COSTO', Date.now()).steps[2].note, 'Solo trazabilidad: se compró por fuera');
+  // Cambio de antes del 5-nov: no quedó cuándo se aceptó, y se dice.
+  const OLD = addRow({ cells: { STATUS: 'PENDIENTE_SELECCION', 'TIPO DE SOLICITUD': 'MODIFICACION', 'ID SOLICITUD PADRE': PARENT,
+    EVENTOS_JSON: JSON.stringify({ created: '2026-11-03T11:43:00Z', optionsUploaded: '2026-11-03T17:03:00Z' }) } });
+  const so = app('getRequestById', 'ana@p.co', { requestId: OLD }).data.stages;
+  if (TL && so) {
+    const to = TL.buildTimeline(so, 'PENDIENTE_SELECCION', Date.parse('2026-11-05T21:27:00Z'));
+    eq('cambio de antes: sin hora, con la razón', [to.steps[1].state, to.steps[1].at, to.steps[1].note, to.steps[2].note, TL.fmtDuration(to.steps[2].minutes)],
+      ['hecho', '', 'Antes del 5-nov no se guardaba esta hora', 'Incluye la revisión del cambio', '5 h 20 min']);
+  }
+  // Reserva guardada por partes: lo comprado ya se pagó; la etapa de compra lo dice.
+  const DR = addRow({ cells: { STATUS: 'APROBADO', EVENTOS_JSON: JSON.stringify({ created: at(6), fullyApproved: at(8) }) } });
+  reset(); ctx._recordEvent_(DR, 'reservationDraftSaved'); reset(); ctx._recordEvent_(DR, 'reservationDraftSavedBy', { email: 'YPrieto@equitel.com.co' });
+  reset(); ctx._recordEvent_(DR, 'reservationDraftSavedBy', { email: 'otro@p.co' }); // la primera vez manda
+  eq('reserva por partes: cuándo y quién (la primera vez)', [events(DR).reservationDraftSaved, events(DR).reservationDraftSavedBy.email], [CLOCK, YURANI]);
+  const sdr = app('getRequestById', 'admin@p.co', { requestId: DR }).data.stages;
+  if (TL && sdr) {
+    const tdr = TL.buildTimeline(sdr, 'APROBADO', Date.parse('2026-10-28T18:00:00Z'));
+    eq('reserva por partes: dicho en la compra', [tdr.current && tdr.current.key, tdr.current && tdr.current.note], ['compra', 'Reserva guardada por partes el 28/10 10:00 (PRIETO YURANI)']);
+  }
+  // Cierre: cuándo y quién.
+  const CL = addRow({ cells: { STATUS: 'RESERVADO', EVENTOS_JSON: JSON.stringify({ created: at(6), reservationRegistered: at(9) }) } });
+  r = app('closeRequest', YURANI, { requestId: CL, options: {} });
+  ok('cierre: se cierra', r.success && cell(CL, 'STATUS') === 'PROCESADO');
+  const scl = app('getRequestById', 'admin@p.co', { requestId: CL }).data.stages;
+  eq('cierre: cuándo y quién', scl && [scl.closed, scl.closedBy], [CLOCK, 'PRIETO YURANI']);
+  if (TL && scl) { const tcl = TL.buildTimeline(scl, 'PROCESADO', Date.now()); eq('cierre: en la línea de tiempo', [tcl.done, tcl.closed, tcl.closedBy], [true, CLOCK, 'PRIETO YURANI']); }
+  // Anulaciones: la del área de compras (con quién), la del viajero desde el correo de consulta y la de un cambio aprobado.
+  const AN = addRow({ cells: { STATUS: 'PENDIENTE_OPCIONES', EVENTOS_JSON: JSON.stringify({ created: at(6) }) } });
+  r = app('anularSolicitud', YURANI, { requestId: AN, reason: 'Ya no viaja' });
+  const san = app('getRequestById', 'admin@p.co', { requestId: AN }).data.stages;
+  eq('anulada por el área de compras: cuándo y quién', san && san.end && [san.end.at, san.end.who], [CLOCK, 'PRIETO YURANI']);
+  const AU = addRow({ cells: { STATUS: 'PENDIENTE_OPCIONES', EVENTOS_JSON: JSON.stringify({ created: at(6) }) } });
+  reset(); ctx.anularSolicitud(AU, 'Anulada por decisión del solicitante tras consulta del área de compras.', { byRequester: true });
+  const sau = app('getRequestById', 'admin@p.co', { requestId: AU }).data.stages;
+  eq('anulada por el viajero desde el correo: cuenta como suya', sau && sau.end && [sau.end.at, sau.end.who, !!events(AU).cancelledByUser], [CLOCK, 'PEREZ ANA', true]);
+  const P2 = addRow({ cells: { STATUS: 'PENDIENTE_SELECCION', EVENTOS_JSON: JSON.stringify({ created: at(6) }) } });
+  const C2 = addRow({ cells: { STATUS: 'APROBADO', 'TIPO DE SOLICITUD': 'MODIFICACION', 'ID SOLICITUD PADRE': P2 } });
+  reset(); ctx._cancelParentIfModificationApproved_(C2, ctx.SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Nueva Base Solicitudes'));
+  const sp2 = app('getRequestById', 'admin@p.co', { requestId: P2 }).data.stages;
+  eq('reemplazada por un cambio aprobado: cuándo', sp2 && sp2.end && [cell(P2, 'STATUS'), sp2.end.at, sp2.end.who], ['ANULADO', CLOCK, 'La reemplazó el cambio ' + C2]);
+
   // Métricas: horas reales y la misma línea de tiempo.
   r = app('getMetrics', 'admin@p.co', { filters: { hideNoEvents: false } });
   const mt = r.success && r.data.perRequest.find((x) => x.requestId === T);
@@ -458,13 +529,20 @@ function main() {
   eq('métricas: horas reales (no laborales)', mt && [mt.timeToOptionsMinutes, mt.timeToSelectionMinutes, mt.timeToCostConfirmMinutes, mt.timeToFullApprovalMinutes],
     [50, 8, 9, 27]);
   ok('métricas: trae la línea de tiempo de cada solicitud', !!(mt && mt.stages && mt.stages.options === '2026-11-04T21:38:52.024Z'));
+  eq('métricas: la excepción a la política, en horas reales', mt && mt.timeToPolicyMinutes, 416);
+  const mc = r.success && r.data.perRequest.find((x) => x.requestId === CH);
+  eq('métricas: lo que tardó aceptar el cambio', mc && mc.timeToChangeReviewMinutes, 240);
+  ok('métricas: promedio de aceptar cambios y de excepciones', r.success && r.data.aggregates.countChangeReview >= 1 && r.data.aggregates.avgTimeToChangeReviewMinutes > 0 &&
+    r.data.aggregates.countPolicy >= 1 && r.data.aggregates.avgTimeToPolicyMinutes > 0);
+  eq('métricas: la revisión de cambios en el desempeño del área de compras', r.success && r.data.analystPerformance.map((x) => x.stage),
+    ['revisionCambio', 'cotizacion', 'confirmacion', 'compra']);
 
   if (failures.length) {
     console.error('✗ Avisos a los aprobadores y «Mis aprobaciones» (#A118, #A119):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('Avisos a los aprobadores y «Mis aprobaciones» (#A118, #A119): caso SOL-000695 (salto de etapa con aviso y enlace que dice quién, cuándo y por qué), confirmación a quien vota, aviso final una sola vez (aprobada, denegada, anulada; nunca al solicitante ni a quien decide; a nadie si no se pidió), coaprobadores, recordatorio después de 2 horas laborales, lista por persona sin cédulas y decisiones desde la app con el rol del servidor; línea de tiempo de cada solicitud en horas reales, en el detalle y en Métricas (#A121). OK');
+  console.log('Avisos a los aprobadores y «Mis aprobaciones» (#A118, #A119): caso SOL-000695 (salto de etapa con aviso y enlace que dice quién, cuándo y por qué), confirmación a quien vota, aviso final una sola vez (aprobada, denegada, anulada; nunca al solicitante ni a quien decide; a nadie si no se pidió), coaprobadores, recordatorio después de 2 horas laborales, lista por persona sin cédulas y decisiones desde la app con el rol del servidor; línea de tiempo de cada solicitud en horas reales, en el detalle y en Métricas (#A121); cuándo y quién en cada paso: cambios, trazabilidad, reserva por partes, cierre y anulaciones (#A123). OK');
 }
 
 main();

@@ -210,6 +210,12 @@ Arriba del detalle de cada solicitud hay un **semáforo** con una marca por etap
 
 En la etapa actual dice a quién le toca y cuánto lleva («lleva 1 d 4 h»). Abajo están los votos de cada aprobador, con lo que tardó cada uno, y **quién tuvo la solicitud más tiempo**. Así se sabe dónde estuvo la demora.
 
+En las etapas del área de compras (aceptar un cambio, cargar opciones, confirmar costos, comprar) aparece también el nombre de quien la hizo.
+
+### Si aparece «Hay una versión nueva de la plataforma»
+
+Cuando publicamos mejoras, la plataforma lo avisa abajo en la pantalla. Toque **Actualizar ahora** para verlas. Si está escribiendo una solicitud, envíela primero: al actualizar, la página se recarga.
+
 ### Quién aprueba y cuándo
 
 El correo de aprobación se envía **una sola vez**, justo después de que el área de compras confirma el costo final de tu solicitud. Los destinatarios del correo dependen del caso:

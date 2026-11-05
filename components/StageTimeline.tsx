@@ -78,6 +78,7 @@ export const StageTimeline: React.FC<StageTimelineProps> = ({ stages, status, em
           <p className="text-xs font-semibold uppercase tracking-wide text-green-700">Proceso completo</p>
           <p className="text-sm text-gray-800">
             De la solicitud a la {stages.hotelOnly ? 'reserva' : 'compra'}: <strong>{tl.totalMinutes !== null ? fmtDuration(tl.totalMinutes) : 'sin hora registrada'}</strong>
+            {tl.closed && <span className="text-gray-600"> · cerrada el {fmtStampText(tl.closed)}{tl.closedBy ? ` por ${tl.closedBy}` : ''}</span>}
           </p>
         </div>
       ) : cur ? (
@@ -107,6 +108,10 @@ export const StageTimeline: React.FC<StageTimelineProps> = ({ stages, status, em
                     {st.state === 'cerrado' ? (ended?.kind === 'DENEGADO' ? 'Denegada' : 'Anulada') : st.label}
                   </span>
                   <span className="text-[10px] text-gray-400 leading-tight">{st.responsible}</span>
+                  {/* #A123: quién lo hizo (el área de compras o el CFO); el solicitante y los aprobadores ya se ven arriba y abajo. */}
+                  {(st.state === 'hecho' || st.state === 'cerrado') && st.who && ['cambio', 'opciones', 'costos', 'compra', 'politica'].includes(st.key) && (
+                    <span className="text-[10px] text-gray-600 leading-tight break-words" data-stage-who>{st.who}</span>
+                  )}
                   {stamp && st.state !== 'pendiente' && (
                     <span className="text-[10px] text-gray-600 leading-tight">{stamp.day}<br />{stamp.time}</span>
                   )}

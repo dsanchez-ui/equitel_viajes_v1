@@ -31,7 +31,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + enlaces con dominio + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
    Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
    (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -50,7 +50,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + build + un solo .js  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + build + un solo .js y version.json  ← antes de cualquier push
 npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
@@ -468,6 +468,16 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   (`_stageInfo_`, de `EVENTOS_JSON` y los votos; sin cédulas) y la app las cuenta (`utils/stageTimeline.ts`, `StageTimeline.tsx`).
   **Métricas va en horas reales**; los recordatorios y el escalamiento siguen en horas laborales. Una etapa nueva = un evento en
   `_recordEvent_`, su hora en `_stageInfo_` y su paso en `buildTimeline`.
+  - **Cada paso guarda cuándo y quién** (#A123, David, 5-nov: *«si se da info se almacena»*). Todo evento `…By` guarda `{ email, at }` la
+    primera vez (`optionsUploadedBy`, `selectionMadeBy`, `changeStudiedBy`, `reservationRegisteredBy`, `closedBy`, `cancelledBy`…). También
+    quedan la reserva por partes (`reservationDraftSaved`), el cierre (`closed`) y la original anulada por su cambio (`cancelledByChange`). Un
+    paso nuevo lleva su hora **y** su `…By`. El semáforo muestra el nombre (de USUARIOS, nunca el correo).
+  - Los cambios aceptados antes del 5-nov no tienen esa hora y el semáforo lo dice; no se inventa.
+  - Métricas tiene «Aceptar» (lo que tardó aceptar el cambio o la excepción del CFO) y «Revisión de cambios» en el desempeño del área de compras.
+- **Aviso de versión nueva** (#A124, David, 5-nov: Yurani no veía un cambio publicado porque no había recargado). Cada compilación lleva
+  `__APP_BUILD_ID__` y publica el mismo en `version.json` (`vite.config.ts`). `UpdateBanner.tsx` lo compara cada 5 minutos y al volver a la
+  pestaña; si cambió, pide «Actualizar ahora». **No recarga sola**: se perdería una solicitud a medio llenar. `npm run verify` revisa que
+  `version.json` coincida con la app.
 - **Las horas, siempre en 24 h** (#A112, Yurani, 27-oct: «hora militar y ya»): un viajero escribió «6.22» por las 18:22, sin «pm», y se
   cotizó un vuelo a las 6 a. m. Todo campo de hora es `TimeInput` (`HH:MM` de 24 h, con la hora **en palabras** debajo y un botón que abre
   una **lista propia de horas**, cada 15 minutos, también en 24 h; entra y sale `HH:MM`). **Nunca un `<input type="time">`**, ni siquiera
@@ -645,6 +655,7 @@ components/
   DateInput.tsx            Campo de fecha DD/MM/AAAA con calendario; reemplaza a <input type="date"> (#A105)
   StageTimeline.tsx        Semáforo de la solicitud: etapas con fecha, lo que tardó cada una en horas reales y quién la tuvo (#A121)
   TimeInput.tsx            Campo de hora HH:MM de 24 h, con la hora en palabras y lista propia de horas; reemplaza a <input type="time"> (#A112)
+  UpdateBanner.tsx         Aviso «Hay una versión nueva de la plataforma» cuando version.json cambia (#A124)
   Layout.tsx, ConfirmationDialog.tsx
 services/gasService.ts     Cliente HTTP hacia GAS (timeout 30 s + AbortController)
 utils/dateUtils.ts         Parseo/formato de fechas (zona America/Bogota)
@@ -738,6 +749,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-05)
 
+- **Pendiente de desplegar (5-nov): #A123 y #A124** (cuándo y quién en cada paso del semáforo y Métricas; aviso de versión nueva).
+  Orden: primero pegar **`Code.gs`** → versión nueva del web app; después el push del frontend. Con el frontend anterior los datos se guardan
+  y no se muestran; con el servidor anterior el semáforo se ve como hoy. Métricas recalcula todo la primera vez (caché versión 3). Las
+  pestañas abiertas antes de este push hay que recargarlas a mano una vez; desde ahí, el aviso sale solo.
 - **#A120, #A121 y #A122 desplegados (5-nov)** (cambio de viaje sin tiquete comprado, caso SOL-000714 de Laura; semáforo de
   cada solicitud y Métricas en horas reales, pedido de Yurani; librerías al día). David pegó `Code.gs` (versión nueva del web app) y el
   frontend `089205d` quedó en producción el 5-nov (bundle `index-CzobHggG.js`). La primera vez que se abra Métricas recalcula todo

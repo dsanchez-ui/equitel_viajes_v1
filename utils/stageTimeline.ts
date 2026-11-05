@@ -47,7 +47,13 @@ export interface Timeline {
   byResponsible: { responsible: Responsible; minutes: number }[];
   /** La etapa que más tardó ('' si no hay tiempos). */
   longestKey: string;
+  /** Cuándo se cerró (PROCESADO) y quién; '' si no quedó (#A123). */
+  closed: string;
+  closedBy: string;
 }
+
+/** Desde este día se guarda cuándo se acepta un cambio (#A121). */
+export const CHANGE_STUDIED_SINCE = '2026-11-05';
 
 /** Estado → la etapa que está en curso. */
 const CURRENT_STEP: Record<string, string> = {
@@ -112,16 +118,18 @@ export const buildTimeline = (s: StageInfo, status: string, nowMs: number): Time
       'Espera que aprueben la excepción a la política de anticipación', 'CFO', s.policy.who,
       s.policy.decision === 'approved' ? s.policy.at : '');
   }
-  if (s.isChange) push('cambio', 'Cambio aceptado', 'El área de compras revisa el cambio', 'Área de compras', '', s.changeStudied);
+  if (s.isChange) push('cambio', 'Cambio aceptado', 'El área de compras revisa el cambio', 'Área de compras', s.changeStudiedBy || '', s.changeStudied);
   push('opciones', 'Opciones cargadas', hotel ? 'El área de compras busca y carga las opciones de hospedaje' : 'El área de compras busca y carga las opciones',
-    'Área de compras', '', s.options);
+    'Área de compras', s.optionsBy || '', s.options);
   push('seleccion', 'Opción elegida', 'El solicitante elige una de las opciones', 'Solicitante', s.requester, s.selection,
-    s.selectionSkippedBy ? `Etapa saltada por ${s.selectionSkippedBy}` : '');
+    s.selectionSkippedBy ? `Etapa saltada por ${s.selectionSkippedBy}`
+      : s.selectionTrace ? 'Solo trazabilidad: se compró por fuera'
+      : s.selectionBy ? `La registró ${s.selectionBy}` : '');
   push('costos', 'Costos confirmados', 'El área de compras confirma los costos', 'Área de compras', s.costsBy, s.costs);
   push('aprobacion', 'Aprobada', 'Los aprobadores revisan la solicitud', 'Aprobadores', approverNames, s.approved,
     s.approvalSkippedBy ? `Etapa saltada por ${s.approvalSkippedBy}` : '');
   push('compra', hotel ? 'Hospedaje reservado' : 'Tiquetes comprados', hotel ? 'El área de compras reserva el hospedaje' : 'El área de compras compra los tiquetes',
-    'Área de compras', '', s.purchase);
+    'Área de compras', s.purchaseBy || '', s.purchase);
 
   const idx = (k: string) => steps.findIndex((x) => x.key === k);
   const lastReached = () => { let i = 0; steps.forEach((x, n) => { if (x.at) i = n; }); return i; };
@@ -138,6 +146,17 @@ export const buildTimeline = (s: StageInfo, status: string, nowMs: number): Time
     let cur = idx(CURRENT_STEP[String(status || '').trim()] || '');
     if (cur < 1) cur = Math.min(lastReached() + 1, steps.length - 1);
     steps.forEach((x, i) => { x.state = i < cur ? 'hecho' : i === cur ? 'actual' : 'pendiente'; });
+  }
+
+  // Lo que no quedó guardado, dicho en palabras (#A123).
+  const change = steps[idx('cambio')];
+  if (change && change.state === 'hecho' && !change.at && String(s.created || '').slice(0, 10) < CHANGE_STUDIED_SINCE) {
+    change.note = 'Antes del 5-nov no se guardaba esta hora';
+  }
+  const buy = steps[idx('compra')];
+  const draft = s.draftSaved ? fmtStamp(s.draftSaved) : null;
+  if (buy && draft && buy.state !== 'hecho') {
+    buy.note = `Reserva guardada por partes el ${draft.short}${s.draftBy ? ` (${s.draftBy})` : ''}`;
   }
 
   // Lo que tomó cada etapa: desde el paso anterior (las etapas van una tras otra).
@@ -184,6 +203,8 @@ export const buildTimeline = (s: StageInfo, status: string, nowMs: number): Time
     done,
     totalMinutes: minutesBetween(s.created, endAt),
     byResponsible,
-    longestKey: longest > 0 ? longestKey : ''
+    longestKey: longest > 0 ? longestKey : '',
+    closed: s.closed || '',
+    closedBy: s.closedBy || ''
   };
 };

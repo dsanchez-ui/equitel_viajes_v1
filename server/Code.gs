@@ -784,9 +784,15 @@ function dispatch(action, payload) {
         // #A77: solo los cambios de estado que usa la app, por quien corresponde.
         var _upd = _authorizeStatusUpdate_(currentUserEmail, payload);
         result = updateRequestStatus(_upd.id, _upd.status, _upd.payload);
-        // #A86: quién confirmó los costos (lo muestra el comparador de precios). No crítico.
-        if (_upd.status === 'PENDIENTE_APROBACION' && _upd.payload && _upd.payload.finalCostTickets !== undefined) {
+        // #A86: quién confirmó los costos (lo muestra el comparador de precios). #A123: también quién
+        // cargó las opciones y quién registró la elección (el viajero, o el área de compras por trazabilidad).
+        if (_upd.status === 'PENDIENTE_APROBACION' && _upd.payload &&
+            (_upd.payload.finalCostTickets !== undefined || _upd.payload.finalCostHotel !== undefined || _upd.payload.totalCost !== undefined)) {
           _recordEvent_(_upd.id, 'costConfirmedBy', { email: currentUserEmail });
+        } else if (_upd.status === 'PENDIENTE_SELECCION') {
+          _recordEvent_(_upd.id, 'optionsUploadedBy', { email: currentUserEmail });
+        } else if (_upd.status === 'PENDIENTE_CONFIRMACION_COSTO') {
+          _recordEvent_(_upd.id, 'selectionMadeBy', { email: currentUserEmail });
         }
         break;
       }
@@ -804,7 +810,7 @@ function dispatch(action, payload) {
       
       // REFACTORED MODIFICATION LOGIC
       case 'requestModification': result = requestModification(payload.requestId, payload.modifiedRequest, payload.changeReason, payload.emailHtml, currentUserEmail); break;
-      case 'processChangeDecision': result = processChangeDecision(payload); break;
+      case 'processChangeDecision': result = processChangeDecision(payload, currentUserEmail); break;
       // #A103: «Cambiar mi viaje»: el navegador manda solo lo que cambia; el servidor arma la hija.
       case 'requestTripChange': result = requestTripChange(payload.requestId, payload.changes, payload.changeReason, currentUserEmail); break;
       // #A103: control de cambios (solo administradores, solo lectura).
@@ -849,8 +855,14 @@ function dispatch(action, payload) {
       case 'logout': result = logout(payload.email, payload.token); break;
 
       // NEW: RESERVATION LOGIC
-      case 'registerReservation': result = registerReservation(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard, payload.purchaseDate, payload.skipNotification); break;
-      case 'saveReservationDraft': result = saveReservationDraft(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard, payload.purchaseDate); break;
+      case 'registerReservation':
+        result = registerReservation(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard, payload.purchaseDate, payload.skipNotification);
+        _recordEvent_(payload.requestId, 'reservationRegisteredBy', { email: currentUserEmail }); // #A123
+        break;
+      case 'saveReservationDraft':
+        result = saveReservationDraft(payload.requestId, payload.reservationNumber, payload.files, payload.creditCard, payload.purchaseDate);
+        _recordEvent_(payload.requestId, 'reservationDraftSavedBy', { email: currentUserEmail }); // #A123
+        break;
       case 'amendReservation': result = amendReservation(payload); break;
 
       // NEW: DRIVE DELETION
@@ -862,7 +874,7 @@ function dispatch(action, payload) {
       case 'getMyApprovals': result = getMyApprovals(currentUserEmail); break;
       case 'decideMyApproval': result = decideMyApproval(payload.requestId, payload.decision, payload.comment, currentUserEmail); break;
 
-      case 'anularSolicitud': result = anularSolicitud(payload.requestId, payload.reason); break;
+      case 'anularSolicitud': result = anularSolicitud(payload.requestId, payload.reason, { actor: currentUserEmail }); break;
       case 'cancelOwnRequest': result = cancelOwnRequest(payload.requestId, payload.reason, currentUserEmail); break;
 
       // REPORT GENERATION (v2.6)
@@ -1920,7 +1932,7 @@ function requestModification(originalRequestId, modifiedRequestData, changeReaso
  * @param {string} [reason] Motivo (requerido para 'reject' desde la app)
  * @returns {{childId:string, req:Object}} Info de la hija procesada
  */
-function _applyChangeDecision_(childRequestId, decision, reason) {
+function _applyChangeDecision_(childRequestId, decision, reason, actorEmail) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const statusIdx = H("STATUS");
@@ -1947,6 +1959,7 @@ function _applyChangeDecision_(childRequestId, decision, reason) {
     sheet.getRange(rowNumber, statusIdx + 1).setValue('PENDIENTE_OPCIONES');
     SpreadsheetApp.flush();
     _recordEvent_(childRequestId, 'changeStudied'); // #A121: desde aquí corre la cotización del cambio
+    if (actorEmail) _recordEvent_(childRequestId, 'changeStudiedBy', { email: actorEmail }); // #A123
     sendEmailRich(
       requesterEmail,
       baseSubject + " [CAMBIO EN ESTUDIO]",
@@ -1956,6 +1969,7 @@ function _applyChangeDecision_(childRequestId, decision, reason) {
   } else if (decision === 'reject') {
     sheet.getRange(rowNumber, statusIdx + 1).setValue('DENEGADO');
     _recordEvent_(childRequestId, 'changeRejected'); // #A121: cuándo se rechazó (línea de tiempo)
+    if (actorEmail) _recordEvent_(childRequestId, 'changeRejectedBy', { email: actorEmail }); // #A123
     // Guardar el motivo en observaciones (si viene)
     if (reason) {
       const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
@@ -2039,7 +2053,7 @@ function processStudyDecision(e) {
  *
  * @param {Object} payload { childRequestId, decision, reason?, parentAction? }
  */
-function processChangeDecision(payload) {
+function processChangeDecision(payload, actorEmail) {
   if (!payload || !payload.childRequestId || !payload.decision) {
     throw new Error("Payload inválido: falta childRequestId o decision");
   }
@@ -2049,7 +2063,7 @@ function processChangeDecision(payload) {
   const parentAction = payload.parentAction || 'keep'; // solo aplica en 'deny'
 
   if (decision === 'study') {
-    _applyChangeDecision_(childRequestId, 'study', null);
+    _applyChangeDecision_(childRequestId, 'study', null, actorEmail);
     return { childId: childRequestId, action: 'study' };
   }
 
@@ -2057,13 +2071,13 @@ function processChangeDecision(payload) {
     if (!reason || !reason.trim()) {
       throw new Error("Debe indicar un motivo para denegar la solicitud de cambio.");
     }
-    const result = _applyChangeDecision_(childRequestId, 'reject', reason.trim());
+    const result = _applyChangeDecision_(childRequestId, 'reject', reason.trim(), actorEmail);
     const parentId = result.req && result.req.relatedRequestId;
 
     if (parentId && parentAction === 'anulate') {
       try {
         const parentReason = `Anulada a raíz de la denegación del cambio ${childRequestId}. ${reason.trim()}`;
-        anularSolicitud(parentId, parentReason);
+        anularSolicitud(parentId, parentReason, { actor: actorEmail });
       } catch (err) {
         console.error("Error anulando solicitud padre: " + err);
         throw new Error("Cambio denegado, pero falló la anulación de la solicitud original: " + err);
@@ -2285,7 +2299,7 @@ function processUserConsultResponse(e) {
 
     if (decision === 'anulate') {
       // Usa anularSolicitud que ya envía el correo al usuario
-      anularSolicitud(id, "Anulada por decisión del solicitante tras consulta del área de compras.");
+      anularSolicitud(id, "Anulada por decisión del solicitante tras consulta del área de compras.", { byRequester: true });
       return renderMessagePage(
         "Solicitud Anulada",
         "Su solicitud ha sido anulada. Gracias por confirmar.",
@@ -3132,6 +3146,8 @@ function _stageInfo_(row, req, events, names) {
   var status = String(req.status || '').trim();
   var obs = String(cell('OBSERVACIONES') || '');
   var requester = String(req.requesterEmail || '').toLowerCase().trim();
+  // #A123: quién hizo cada paso ({ email, at } en EVENTOS_JSON); '' si no quedó o no está en USUARIOS.
+  var by = function(ev) { return ev && typeof ev === 'object' ? who(ev.email) : ''; };
   var out = {
     v: 1,
     requester: who(requester) || requester,
@@ -3140,8 +3156,13 @@ function _stageInfo_(row, req, events, names) {
     created: _stageIso_(events.created) || _stageIso_(cell('FECHA SOLICITUD')),
     policy: null,
     changeStudied: _stageIso_(events.changeStudied),
+    changeStudiedBy: by(events.changeStudiedBy),
     options: _stageIso_(events.optionsUploaded),
+    optionsBy: by(events.optionsUploadedBy),
     selection: _stageIso_(events.selectionMade),
+    // Quién la registró, si no fue el solicitante (el área de compras, por trazabilidad).
+    selectionBy: events.selectionMadeBy && events.selectionMadeBy.email && String(events.selectionMadeBy.email).toLowerCase() !== requester ? (by(events.selectionMadeBy) || 'Área de compras') : '',
+    selectionTrace: /^\[OPCIONES CARGADAS SOLO POR TRAZABILIDAD/.test(String(cell('SELECCION_TEXTO') || '')),
     selectionSkippedBy: events.skippedBy ? (who(events.skippedBy) || String(events.skippedBy)) : '',
     costs: _stageIso_(events.costConfirmed),
     costsBy: events.costConfirmedBy && events.costConfirmedBy.email ? who(events.costConfirmedBy.email) : '',
@@ -3150,6 +3171,12 @@ function _stageInfo_(row, req, events, names) {
     approved: _stageIso_(events.fullyApproved),
     approvalSkippedBy: events.skippedApprovalBy ? (who(events.skippedApprovalBy) || String(events.skippedApprovalBy)) : '',
     purchase: _stageIso_(events.reservationRegistered),
+    purchaseBy: by(events.reservationRegisteredBy),
+    // Reserva guardada por partes (#A109): ya se compró, falta confirmarla.
+    draftSaved: _stageIso_(events.reservationDraftSaved),
+    draftBy: by(events.reservationDraftSavedBy),
+    closed: _stageIso_(events.closed),
+    closedBy: by(events.closedBy),
     end: null
   };
 
@@ -3182,15 +3209,15 @@ function _stageInfo_(row, req, events, names) {
     else if (out.policy && (out.policy.decision === 'denied' || out.policy.decision === 'expired')) {
       out.end = { kind: 'DENEGADO', at: out.policy.at, who: out.policy.decision === 'expired' ? 'Venció sin respuesta' : out.policy.who, step: 'politica' };
     } else if (events.changeRejected || (out.isChange && !out.changeStudied)) {
-      out.end = { kind: 'DENEGADO', at: _stageIso_(events.changeRejected), who: 'Área de compras', step: 'cambio' };
+      out.end = { kind: 'DENEGADO', at: _stageIso_(events.changeRejected), who: by(events.changeRejectedBy) || 'Área de compras', step: 'cambio' };
     } else out.end = { kind: 'DENEGADO', at: '', who: '', step: '' };
   } else if (status === 'ANULADO') {
     var byUser = !!events.cancelledByUser || /\[ANULACIÓN POR USUARIO\]/.test(obs);
     var replaced = /Anulada automáticamente por aprobación del cambio (SOL-\d+)/.exec(obs);
     out.end = {
       kind: 'ANULADO',
-      at: _stageIso_(events.cancelledByUser) || _stageIso_(events.cancelledByAdmin),
-      who: byUser ? (out.requester || 'El solicitante') : replaced ? 'La reemplazó el cambio ' + replaced[1] : 'Área de compras',
+      at: _stageIso_(events.cancelledByUser) || _stageIso_(events.cancelledByAdmin) || _stageIso_(events.cancelledByChange),
+      who: byUser ? (out.requester || 'El solicitante') : replaced ? 'La reemplazó el cambio ' + replaced[1] : (by(events.cancelledBy) || 'Área de compras'),
       step: ''
     };
   }
@@ -3949,6 +3976,8 @@ function saveReservationDraft(requestId, reservationNumber, files, creditCard, p
     }
 
     var totalReservationFiles = supportData.files.filter(function(f) { return f && f.isReservation; }).length;
+    // #A123: la primera vez que se guarda la reserva por partes, lo comprado ya se pagó (#A109).
+    _recordEvent_(requestId, 'reservationDraftSaved');
     return { success: true, requestId: requestId, savedFiles: uploadedFiles.length, totalReservationFiles: totalReservationFiles };
 }
 
@@ -4039,6 +4068,8 @@ function closeRequestWithChecks(requestId, actorEmail, options) {
 
   // Cerrar.
   updateRequestStatus(requestId, 'PROCESADO');
+  _recordEvent_(requestId, 'closed'); // #A123: cuándo se cerró y quién
+  if (actorEmail) _recordEvent_(requestId, 'closedBy', { email: actorEmail });
 
   // Nota de auditoría si se cerró a pesar del faltante.
   if (hasMismatch && options.ackInvoiceMismatch === true) {
@@ -10679,6 +10710,7 @@ function _cancelParentIfModificationApproved_(childId, sheet) {
       var note = '[SISTEMA]: Anulada automáticamente por aprobación del cambio ' + childId + '.';
       sheet.getRange(parentRow, obsIdx + 1).setValue((pObs ? pObs + '\n' : '') + note);
     }
+    _recordEvent_(parentId, 'cancelledByChange'); // #A123: cuándo quedó reemplazada
   } catch (e) {
     console.error('_cancelParentIfModificationApproved_ error: ' + e);
   }
@@ -10754,7 +10786,12 @@ function _parentHasActiveChild_(sheet, parentId) {
   return false;
 }
 
-function anularSolicitud(requestId, reason) {
+/**
+ * opts (#A123, opcional): { actor: correo de quien anula, byRequester: true si la anuló el
+ * solicitante (desde el correo de consulta) }. Solo cambia lo que queda en EVENTOS_JSON.
+ */
+function anularSolicitud(requestId, reason, opts) {
+  opts = opts || {};
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const statusIdx = H("STATUS");
@@ -10811,7 +10848,8 @@ function anularSolicitud(requestId, reason) {
   }
 
   // #A42: registrar evento para métricas de ciclo de vida
-  _recordEvent_(requestId, 'cancelledByAdmin');
+  _recordEvent_(requestId, opts.byRequester ? 'cancelledByUser' : 'cancelledByAdmin');
+  if (opts.actor) _recordEvent_(requestId, 'cancelledBy', { email: opts.actor }); // #A123
 
   return true;
 }
@@ -11019,6 +11057,7 @@ function revertToSelectionStage(requestId, reason, notifyUser, currentUserEmail)
       // que en realidad no ocurrió. Conservamos la traza en revertedFromCost.
       if (events.selectionMade) {
         events.selectionMadeReverted = events.selectionMade;
+        delete events.selectionMadeBy; // #A123: la próxima elección registra quién la hizo
         delete events.selectionMade;
       }
       events.revertedFromCostBy = actorEmail;
@@ -15296,10 +15335,12 @@ function _recordEvent_(requestId, eventKey, data) {
       // nuevo (p. ej. costos confirmados otra vez) reabre el aviso de decisión final.
       events.approvalRequested = { at: nowIso, to: (data && Array.isArray(data.to)) ? data.to : [] };
       delete events.approvalClosedNotice;
-    } else if (eventKey === 'costConfirmedBy') {
-      // Quién confirmó los costos (#A86): la primera vez, igual que costConfirmed.
-      if (!events.costConfirmedBy) {
-        events.costConfirmedBy = { email: (data && data.email) || '', at: nowIso };
+    } else if (/By$/.test(eventKey)) {
+      // Quién hizo un paso: { email, at }, la primera vez, igual que el paso (#A86: costConfirmedBy;
+      // #A123: optionsUploadedBy, selectionMadeBy, changeStudiedBy, changeRejectedBy,
+      // reservationDraftSavedBy, reservationRegisteredBy, closedBy, cancelledBy).
+      if (!events[eventKey]) {
+        events[eventKey] = { email: String((data && data.email) || '').toLowerCase().trim(), at: nowIso };
       }
     } else {
       // Solo registra la primera vez que se dispara el evento.
@@ -15323,7 +15364,7 @@ function _recordEvent_(requestId, eventKey, data) {
 
 // #A121: versión 2 = tiempos en horas reales (antes laborales) y etapas con fecha. Cambiarla
 // recalcula todas las solicitudes la próxima vez que se abra Métricas.
-var METRICS_CACHE_VERSION = 2;
+var METRICS_CACHE_VERSION = 3; // #A123: revisión del cambio, excepción a la política y quién hizo cada paso
 
 function _getMetricsCacheFile_() {
   var folder = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
@@ -15939,6 +15980,9 @@ function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, com
     // desde que la aprobó (policyApproved), no desde que se creó. #A121: en un cambio,
     // desde que el área de compras lo aceptó (changeStudied, si quedó registrado).
     timeToOptionsMinutes: minutesBetween(events.changeStudied || events.policyApproved || events.created, events.optionsUploaded),
+    // #A123: lo que tardó el área de compras en aceptar un cambio, y el CFO en aprobar una excepción a la política.
+    timeToChangeReviewMinutes: minutesBetween(events.created, events.changeStudied),
+    timeToPolicyMinutes: minutesBetween(events.created, events.policyApproved),
     timeToSelectionMinutes: minutesBetween(events.optionsUploaded, events.selectionMade),
     timeToCostConfirmMinutes: minutesBetween(events.selectionMade, events.costConfirmed),
     timeToFullApprovalMinutes: minutesBetween(events.costConfirmed, events.fullyApproved),
@@ -15986,6 +16030,10 @@ function _aggregateMetrics_(metrics) {
     count: metrics.length,
     countWithCompleteData: countWithEvents,
     avgTimeToOptionsMinutes: avg(metrics.map(function(m) { return m.timeToOptionsMinutes; })),
+    avgTimeToChangeReviewMinutes: avg(metrics.map(function(m) { return m.timeToChangeReviewMinutes; })),
+    countChangeReview: metrics.filter(function(m) { return m.timeToChangeReviewMinutes !== null && m.timeToChangeReviewMinutes !== undefined; }).length,
+    avgTimeToPolicyMinutes: avg(metrics.map(function(m) { return m.timeToPolicyMinutes; })),
+    countPolicy: metrics.filter(function(m) { return m.timeToPolicyMinutes !== null && m.timeToPolicyMinutes !== undefined; }).length,
     avgTimeToSelectionMinutes: avg(metrics.map(function(m) { return m.timeToSelectionMinutes; })),
     avgTimeToCostConfirmMinutes: avg(metrics.map(function(m) { return m.timeToCostConfirmMinutes; })),
     avgTimeToFullApprovalMinutes: avg(metrics.map(function(m) { return m.timeToFullApprovalMinutes; })),
@@ -16001,12 +16049,18 @@ function _aggregateMetrics_(metrics) {
  */
 function _buildAnalystPerformance_(metrics) {
   var stages = {
+    revisionCambio: { label: 'Revisión de cambios (Pedido → Aceptado)', count: 0, total: 0, values: [] },
     cotizacion: { label: 'Cotización (Crear → Opciones)', count: 0, total: 0, values: [] },
     confirmacion: { label: 'Confirmación costos (Selección → Costo)', count: 0, total: 0, values: [] },
     compra: { label: 'Compra tiquetes (Aprobado → Reserva)', count: 0, total: 0, values: [] }
   };
 
   metrics.forEach(function(m) {
+    if (m.timeToChangeReviewMinutes !== null && m.timeToChangeReviewMinutes !== undefined && !isNaN(m.timeToChangeReviewMinutes)) {
+      stages.revisionCambio.count++;
+      stages.revisionCambio.total += m.timeToChangeReviewMinutes;
+      stages.revisionCambio.values.push(m.timeToChangeReviewMinutes);
+    }
     if (m.timeToOptionsMinutes !== null && m.timeToOptionsMinutes !== undefined && !isNaN(m.timeToOptionsMinutes)) {
       stages.cotizacion.count++;
       stages.cotizacion.total += m.timeToOptionsMinutes;
@@ -16025,7 +16079,7 @@ function _buildAnalystPerformance_(metrics) {
   });
 
   var result = [];
-  ['cotizacion', 'confirmacion', 'compra'].forEach(function(key) {
+  ['revisionCambio', 'cotizacion', 'confirmacion', 'compra'].forEach(function(key) {
     var s = stages[key];
     result.push({
       stage: key,
@@ -16045,12 +16099,14 @@ function _emptyAggregates_() {
     avgTimeToOptionsMinutes: null, avgTimeToSelectionMinutes: null,
     avgTimeToCostConfirmMinutes: null, avgTimeToFullApprovalMinutes: null,
     avgTimeToReservationMinutes: null, avgTotalCycleMinutes: null,
+    avgTimeToChangeReviewMinutes: null, countChangeReview: 0, avgTimeToPolicyMinutes: null, countPolicy: 0,
     approverPerformance: []
   };
 }
 
 function _emptyAnalystPerformance_() {
   return [
+    { stage: 'revisionCambio', label: 'Revisión de cambios (Pedido → Aceptado)', count: 0, avgMinutes: null, minMinutes: null, maxMinutes: null },
     { stage: 'cotizacion', label: 'Cotización (Crear → Opciones)', count: 0, avgMinutes: null, minMinutes: null, maxMinutes: null },
     { stage: 'confirmacion', label: 'Confirmación costos (Selección → Costo)', count: 0, avgMinutes: null, minMinutes: null, maxMinutes: null },
     { stage: 'compra', label: 'Compra tiquetes (Aprobado → Reserva)', count: 0, avgMinutes: null, minMinutes: null, maxMinutes: null }

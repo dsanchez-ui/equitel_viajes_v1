@@ -3576,3 +3576,82 @@ etapas de Cotizador 2.0. · **Estado:** Desplegado (`Code.gs` pegado por David y
 **Verificado:** `npm audit` y `npm audit --omit=dev`: 0 vulnerabilidades. `npm run verify` en verde.
 
 **Despliegue:** el push. Cloud Build construye la imagen con el lockfile (`npm ci --omit=dev`).
+
+## **#A123 — Cada paso guarda cuándo y quién: la aceptación del cambio, la reserva por partes, el cierre y las anulaciones**
+**Fecha:** 2026-11-05 · **Pedido por:** David (*«no se registra cuándo se aceptó un cambio… garantiza que todos los pasos, así sea una
+solicitud de cambio o de solo hospedaje, estén bien medidos, y si se da info se almacena»*) · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+
+**Síntoma:** en el semáforo de SOL-000707 (cambio de SOL-000705) el paso «Cambio aceptado» decía «sin hora registrada».
+
+**Causa raíz:** la hora en que el área de compras acepta un cambio (`changeStudied`) se empezó a guardar con #A121, hoy. Los cambios
+aceptados antes no la tienen: el sistema solo cambiaba el estado y enviaba el correo. Revisando todos los caminos, tampoco quedaban:
+- la hora de la anulación automática de la original cuando se aprueba su cambio;
+- la reserva guardada por partes (#A109);
+- el cierre (PROCESADO).
+
+Tampoco se sabía quién hizo cada paso (solo quién confirmó los costos, #A86). Y la anulación que pide el viajero desde el correo de
+consulta quedaba como si la hubiera hecho el área de compras.
+
+**Fix (`server/Code.gs`):**
+- `_recordEvent_`: todo evento `…By` guarda `{ email, at }` la primera vez (como `costConfirmedBy`).
+- Quién: `optionsUploadedBy`, `selectionMadeBy` (el viajero, o el área de compras por trazabilidad), `changeStudiedBy`, `changeRejectedBy`,
+  `reservationDraftSavedBy`, `reservationRegisteredBy`, `closedBy` y `cancelledBy`. `costConfirmedBy` ahora también si solo llega el hotel.
+- Cuándo: `reservationDraftSaved` (al guardar por partes), `closed` (al cerrar) y `cancelledByChange` (original anulada por su cambio
+  aprobado). La anulación desde el correo de consulta guarda `cancelledByUser` (`anularSolicitud(…, { byRequester: true })`).
+- Al revertir a selección se borra `selectionMadeBy` con `selectionMade`.
+- `_stageInfo_` entrega `changeStudiedBy`, `optionsBy`, `selectionBy`, `selectionTrace`, `purchaseBy`, `draftSaved`, `draftBy`, `closed` y
+  `closedBy` (solo nombres de USUARIOS, sin correos ni cédulas); la anulación dice quién la hizo y cuándo.
+- Métricas (caché versión 3): `timeToChangeReviewMinutes` (pedido → aceptado) y `timeToPolicyMinutes` (pedido → aprobada por el CFO),
+  sus promedios, y «Revisión de cambios» en el desempeño del área de compras.
+
+**Fix (app):**
+- El semáforo (`utils/stageTimeline.ts`, `StageTimeline.tsx`):
+  - dice quién hizo cada paso del área de compras y del CFO;
+  - en un cambio de antes del 5-nov, que esa hora no se guardaba;
+  - en la compra, si la reserva se guardó por partes y cuándo;
+  - en la elección, si fue solo trazabilidad o la registró otra persona;
+  - al final, cuándo se cerró y quién.
+- Métricas: columna «Aceptar» (cambio o CFO) y tarjetas «Excepción política» y «Aceptar cambio».
+
+**Los cambios de antes del 5-nov no se pueden reconstruir con la hoja:** esa hora no quedó en ninguna columna. La única fuente sería la
+fecha del correo «CAMBIO EN ESTUDIO» en los enviados de la cuenta del web app (no se hizo: es leer el correo y lo decide David).
+
+**Verificado:**
+- `tools/check-approvals.cjs` (dentro de `npm run verify`) recorre los caminos reales por `dispatch`: aceptar un cambio, cargar opciones,
+  la elección del viajero, la trazabilidad, la reserva por partes, el cierre, la anulación por el área de compras, desde el correo y por un
+  cambio aprobado, y Métricas (240 y 416 min).
+- Entorno local con la base del 5-nov: SOL-000707 explica la hora que falta; un cambio pedido por Mateo y aceptado por Laura muestra
+  «MOLINA ORTIZ LAURA CRISTINA» y su hora. Sin errores en la página.
+
+**Despliegue (orden):** primero pegar `Code.gs` → versión nueva del web app; después el push del frontend.
+- Con el frontend anterior, los datos nuevos se guardan y no se muestran.
+- Con el servidor anterior, el semáforo se ve como hoy.
+- La primera vez que se abra Métricas recalcula todo.
+
+## **#A124 — Aviso de versión nueva: la app pide recargar cuando se publica otra**
+**Fecha:** 2026-11-05 · **Pedido por:** David (Yurani no veía un cambio ya publicado porque no había recargado la página) ·
+**Estado:** Implementado; sale con el push.
+
+**Síntoma:** después de cada push la app abierta sigue con la versión vieja hasta que la persona recarga, y nada se lo dice.
+
+**Fix:**
+- `vite.config.ts`: cada compilación lleva un identificador (`__APP_BUILD_ID__`, la hora de la compilación) y publica el mismo en
+  `dist/version.json`.
+- `components/UpdateBanner.tsx` (montado en `index.tsx`) pide `/version.json` sin caché cada 5 minutos y cada vez que la persona vuelve a
+  la pestaña. Si el del servidor es otro, muestra abajo «Hay una versión nueva de la plataforma» con «Actualizar ahora» (recarga) y «Más
+  tarde» (lo esconde 30 minutos).
+- No recarga sola: quien esté llenando una solicitud perdería lo escrito. Solo en producción (`npm run dev` no tiene `version.json`).
+- La app sigue siendo un solo archivo JavaScript (#A96): `version.json` es un archivo fijo que se pide con `fetch`.
+- `tools/check-single-bundle.cjs` falla si falta `version.json` o si no coincide con la versión que lleva la app.
+
+**Verificado:** entorno local, en el navegador:
+- con la misma versión no aparece;
+- después de recompilar en el mismo directorio, aparece al volver a la pestaña;
+- «Más tarde» lo esconde;
+- al recargar no vuelve;
+- sin errores en la página.
+
+`npm run verify` en verde.
+
+**Despliegue:** el push. Las pestañas abiertas desde antes de este push no tienen el aviso: esta vez hay que recargarlas a mano. Desde
+la siguiente publicación, el aviso sale solo.

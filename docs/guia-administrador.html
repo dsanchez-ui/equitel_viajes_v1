@@ -242,7 +242,7 @@
 </tr>
 <tr>
 <td><code>EVENTOS_JSON</code></td>
-<td>Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por el semáforo del detalle de cada solicitud (#A121). Desde el 5-nov también guarda cuándo se aceptó o rechazó un cambio (<code>changeStudied</code>, <code>changeRejected</code>).</td>
+<td>Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por el semáforo del detalle de cada solicitud (#A121). Desde el 5-nov también guarda cuándo se aceptó o rechazó un cambio (<code>changeStudied</code>, <code>changeRejected</code>), la reserva guardada por partes (<code>reservationDraftSaved</code>), el cierre (<code>closed</code>), la original anulada por su cambio (<code>cancelledByChange</code>) y <strong>quién hizo cada paso</strong> (<code>…By</code>: <code>{ email, at }</code>), #A123.</td>
 </tr>
 <tr>
 <td><code>OBSERVACIONES</code></td>
@@ -686,7 +686,9 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <ul>
 <li>Tiempos promedio por etapa, en <strong>horas reales, de calendario</strong> (incluyen noches y fines de semana; antes eran horas laborales):
 <ul>
-<li>Cotización (creación → opciones cargadas)</li>
+<li>Excepción a la política (pedido → aprobada por el CFO), solo en las que la necesitaron (#A123)</li>
+<li>Aceptar cambio (pedido → aceptado por el área de compras), solo en cambios (#A123)</li>
+<li>Cotización (desde que se puede gestionar → opciones cargadas)</li>
 <li>Selección (opciones → usuario describe)</li>
 <li>Confirmación costos (selección → costos finales)</li>
 <li>Aprobación completa (costos → todas las aprobaciones)</li>
@@ -694,7 +696,8 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <li>Ciclo total (creación → reserva, con la espera de la excepción a la política si la hubo)</li>
 </ul>
 </li>
-<li>Performance del analista en 3 etapas que le corresponden (cotización, confirmación costos, compra).</li>
+<li>Performance del analista en las etapas que le corresponden (revisión de cambios, cotización, confirmación costos, compra).</li>
+<li>En la tabla, la columna <strong>Aceptar</strong> dice lo que tardó, antes de cotizar, aceptar el cambio («cambio») o aprobar la excepción («CFO»).</li>
 <li>Performance de cada aprobador (cuánto tarda en aprobar).</li>
 <li>Debajo de cada tiempo, cuándo terminó esa etapa (día/mes y hora). <strong>Al tocar una solicitud</strong> se abre el mismo semáforo del detalle: cuándo pasó por cada etapa, a quién le tocaba, lo que tardó cada voto y quién tuvo la solicitud más tiempo. El solicitante ve ese semáforo en el detalle de su solicitud.</li>
 </ul>
@@ -708,6 +711,7 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <ul>
 <li>Usa un cache JSON en Drive (<code>metricas_cache.json</code>) — recalcula solo las solicitudes cuyos eventos cambiaron desde la última carga.</li>
 <li>Solicitudes creadas antes del deploy de métricas no tienen <code>EVENTOS_JSON</code> y aparecen como “sin datos”.</li>
+<li>Los cambios aceptados antes del 5-nov-2026 no tienen la hora en que se aceptaron: el semáforo dice «Antes del 5-nov no se guardaba esta hora» y la cotización incluye esa revisión.</li>
 <li>Los tiempos son de calendario (hora de Colombia). Los recordatorios y el escalamiento sí siguen contando horas laborales (L-V 07:00–17:00, Sáb 08:00–12:00).</li>
 <li>En los cambios pedidos antes del 5-nov no quedó cuándo se aceptaron: su cotización se mide desde la solicitud («Incluye la revisión del cambio»).</li>
 </ul>

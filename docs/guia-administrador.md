@@ -82,7 +82,7 @@ No es necesario memorizar las 75, pero estas son las más relevantes día a día
 | `No RESERVA` | PNR / número de confirmación. |
 | `SOPORTES (JSON)` | Array de archivos (factura reserva, etc.) con sus URLs de Drive. |
 | `APROBADO POR ÁREA? (AUTOMÁTICO)`, `APROBADO CDS`, `APROBADO CEO` | Log de quién aprobó y cuándo. Si una etapa se saltó, queda marcada como `Sí (ETAPA SALTADA por correo@…)`. |
-| `EVENTOS_JSON` | Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por el semáforo del detalle de cada solicitud (#A121). Desde el 5-nov también guarda cuándo se aceptó o rechazó un cambio (`changeStudied`, `changeRejected`). |
+| `EVENTOS_JSON` | Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por el semáforo del detalle de cada solicitud (#A121). Desde el 5-nov también guarda cuándo se aceptó o rechazó un cambio (`changeStudied`, `changeRejected`), la reserva guardada por partes (`reservationDraftSaved`), el cierre (`closed`), la original anulada por su cambio (`cancelledByChange`) y **quién hizo cada paso** (`…By`: `{ email, at }`), #A123. |
 | `OBSERVACIONES` | Texto libre. Puede tener marcadores internos como `[CONSULTA_USUARIO_PENDIENTE]`, `[ETAPA SALTADA por …]` o `[RESERVA]: Registrada sin notificación al usuario`. |
 
 ---
@@ -481,13 +481,16 @@ Panel accesible desde el dashboard admin → botón **Métricas**. Tiene dos pes
 
 **Qué muestra (desde el 5-nov-2026, #A121, en horas reales):**
 - Tiempos promedio por etapa, en **horas reales, de calendario** (incluyen noches y fines de semana; antes eran horas laborales):
-  - Cotización (creación → opciones cargadas)
+  - Excepción a la política (pedido → aprobada por el CFO), solo en las que la necesitaron (#A123)
+  - Aceptar cambio (pedido → aceptado por el área de compras), solo en cambios (#A123)
+  - Cotización (desde que se puede gestionar → opciones cargadas)
   - Selección (opciones → usuario describe)
   - Confirmación costos (selección → costos finales)
   - Aprobación completa (costos → todas las aprobaciones)
   - Reserva (aprobación → PNR registrado)
   - Ciclo total (creación → reserva, con la espera de la excepción a la política si la hubo)
-- Performance del analista en 3 etapas que le corresponden (cotización, confirmación costos, compra).
+- Performance del analista en las etapas que le corresponden (revisión de cambios, cotización, confirmación costos, compra).
+- En la tabla, la columna **Aceptar** dice lo que tardó, antes de cotizar, aceptar el cambio («cambio») o aprobar la excepción («CFO»).
 - Performance de cada aprobador (cuánto tarda en aprobar).
 - Debajo de cada tiempo, cuándo terminó esa etapa (día/mes y hora). **Al tocar una solicitud** se abre el mismo semáforo del detalle: cuándo pasó por cada etapa, a quién le tocaba, lo que tardó cada voto y quién tuvo la solicitud más tiempo. El solicitante ve ese semáforo en el detalle de su solicitud.
 
@@ -499,6 +502,7 @@ Panel accesible desde el dashboard admin → botón **Métricas**. Tiene dos pes
 **Notas:**
 - Usa un cache JSON en Drive (`metricas_cache.json`) — recalcula solo las solicitudes cuyos eventos cambiaron desde la última carga.
 - Solicitudes creadas antes del deploy de métricas no tienen `EVENTOS_JSON` y aparecen como "sin datos".
+- Los cambios aceptados antes del 5-nov-2026 no tienen la hora en que se aceptaron: el semáforo dice «Antes del 5-nov no se guardaba esta hora» y la cotización incluye esa revisión.
 - Los tiempos son de calendario (hora de Colombia). Los recordatorios y el escalamiento sí siguen contando horas laborales (L-V 07:00–17:00, Sáb 08:00–12:00).
 - En los cambios pedidos antes del 5-nov no quedó cuándo se aceptaron: su cotización se mide desde la solicitud («Incluye la revisión del cambio»).
 
