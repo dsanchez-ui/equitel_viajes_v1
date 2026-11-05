@@ -1946,6 +1946,7 @@ function _applyChangeDecision_(childRequestId, decision, reason) {
     _tripChangeBeforeStudy_(sheet, rowNumber, req); // #A109: la reserva por partes de la original se confirma antes
     sheet.getRange(rowNumber, statusIdx + 1).setValue('PENDIENTE_OPCIONES');
     SpreadsheetApp.flush();
+    _recordEvent_(childRequestId, 'changeStudied'); // #A121: desde aquí corre la cotización del cambio
     sendEmailRich(
       requesterEmail,
       baseSubject + " [CAMBIO EN ESTUDIO]",
@@ -1954,6 +1955,7 @@ function _applyChangeDecision_(childRequestId, decision, reason) {
     );
   } else if (decision === 'reject') {
     sheet.getRange(rowNumber, statusIdx + 1).setValue('DENEGADO');
+    _recordEvent_(childRequestId, 'changeRejected'); // #A121: cuándo se rechazó (línea de tiempo)
     // Guardar el motivo en observaciones (si viene)
     if (reason) {
       const currentObs = sheet.getRange(rowNumber, obsIdx + 1).getValue();
@@ -3092,6 +3094,117 @@ function _approvalTrail_(row, req, names) {
   add('CEO', req.effectiveApprovalCeo, 'APROBADO CEO', CEO_EMAIL, req.effectiveApprovalCds !== 'APPROVED');
   add('BUDGET_OVERRUN', req.effectiveApprovalBudgetOverrun, 'APROBADO PRESUPUESTO', req.budgetApproverEmail, true);
   return steps;
+}
+
+// =====================================================================
+// LÍNEA DE TIEMPO DE CADA SOLICITUD (#A121)
+// =====================================================================
+// Yurani y David (5-nov-2026, caso SOL-000707: «4 + 8 + 3 + 6 son 3 días… y el cambio le
+// vale más que comprar otro»): en el detalle de cada solicitud y en Métricas, cuándo pasó
+// por cada etapa, cuánto tomó en horas reales (no laborales) y a quién le tocaba, para
+// saber quién se demoró. Sale de EVENTOS_JSON (las horas que el sistema registra en cada
+// paso) y de las casillas de los votos. Solo lee; la app arma el semáforo
+// (utils/stageTimeline.ts). Sin cédulas, fechas de nacimiento ni celulares.
+// =====================================================================
+
+/** Un instante a ISO: Date, ISO o el texto 'd/M/yyyy H:mm' de los votos (hora de Bogotá). '' si no se reconoce. */
+function _stageIso_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Date]') return isNaN(v.getTime()) ? '' : v.toISOString();
+  var s = String(v).trim();
+  var m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})/.exec(s);
+  if (m) return new Date(Date.UTC(+m[3], +m[2] - 1, +m[1], +m[4] + 5, +m[5])).toISOString();
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(s)) return '';
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
+
+/**
+ * Las horas de cada etapa de una solicitud, con quién tenía que actuar. `row` = fila de la hoja,
+ * `req` = mapRowToRequest(row), `events` = EVENTOS_JSON ya leído. Los nombres salen de USUARIOS
+ * ('' si la persona no está: la app dice «Área de compras» o el rol).
+ */
+function _stageInfo_(row, req, events, names) {
+  names = names || _approvalNamesMap_();
+  events = events || {};
+  var cell = function(h) { var i = H(h); return (i > -1 && i < row.length) ? row[i] : ''; };
+  var who = function(email) { var e = String(email || '').toLowerCase().trim(); return e ? (names[e] || '') : ''; };
+  var status = String(req.status || '').trim();
+  var obs = String(cell('OBSERVACIONES') || '');
+  var requester = String(req.requesterEmail || '').toLowerCase().trim();
+  var out = {
+    v: 1,
+    requester: who(requester) || requester,
+    isChange: String(req.requestType || '').trim().toUpperCase() === 'MODIFICACION',
+    hotelOnly: req.requestMode === 'HOTEL_ONLY',
+    created: _stageIso_(events.created) || _stageIso_(cell('FECHA SOLICITUD')),
+    policy: null,
+    changeStudied: _stageIso_(events.changeStudied),
+    options: _stageIso_(events.optionsUploaded),
+    selection: _stageIso_(events.selectionMade),
+    selectionSkippedBy: events.skippedBy ? (who(events.skippedBy) || String(events.skippedBy)) : '',
+    costs: _stageIso_(events.costConfirmed),
+    costsBy: events.costConfirmedBy && events.costConfirmedBy.email ? who(events.costConfirmedBy.email) : '',
+    approvalAskedAt: _stageIso_(events.approvalRequested && events.approvalRequested.at) || _stageIso_(events.costConfirmed),
+    approvals: [],
+    approved: _stageIso_(events.fullyApproved),
+    approvalSkippedBy: events.skippedApprovalBy ? (who(events.skippedApprovalBy) || String(events.skippedApprovalBy)) : '',
+    purchase: _stageIso_(events.reservationRegistered),
+    end: null
+  };
+
+  // Excepción a la política de anticipación (#A100).
+  var policyCell = String(cell(POLICY_DECISION_HEADER) || '').trim();
+  var pd = events.policyDecision && typeof events.policyDecision === 'object' ? events.policyDecision : null;
+  if (events.policyHold || status === POLICY_HOLD_STATUS || policyCell || pd) {
+    var pv = _approvalVoteParse_(policyCell, '');
+    var decision = pd && pd.decision ? String(pd.decision) : (pv && ['approved', 'denied', 'expired'].indexOf(pv.decision) !== -1 ? pv.decision : '');
+    var decidedBy = pd && pd.email ? pd.email : (pv && pv.email !== 'sistema' ? pv.email : '');
+    out.policy = {
+      decision: decision,
+      at: decision === 'approved' ? (_stageIso_(events.policyApproved) || _stageIso_(pd && pd.at) || (pv ? _stageIso_(pv.at) : ''))
+        : decision ? (_stageIso_(pd && pd.at) || (pv ? _stageIso_(pv.at) : '')) : '',
+      who: decision === 'expired' ? '' : (who(decidedBy) || _policyApprovalConfig_().name || '')
+    };
+  }
+
+  // Los votos: la misma regla de «Mis aprobaciones» (#A119), con la hora exacta de EVENTOS_JSON si la hay.
+  var evA = events.approvals && typeof events.approvals === 'object' ? events.approvals : {};
+  out.approvals = _approvalTrail_(row, req, names).filter(function(st) { return st.role !== 'POLICY_EXCEPTION'; }).map(function(st) {
+    var at = (st.state === 'approved' && evA[st.role] && evA[st.role].at) ? _stageIso_(evA[st.role].at) : '';
+    if (!at && st.at) at = _stageIso_(st.at);
+    return { role: st.role, label: st.label, state: st.state, who: st.who || '', at: at };
+  });
+
+  if (status === 'DENEGADO') {
+    var den = out.approvals.filter(function(a) { return a.state === 'denied'; })[0];
+    if (den) out.end = { kind: 'DENEGADO', at: den.at, who: den.who, step: 'aprobacion' };
+    else if (out.policy && (out.policy.decision === 'denied' || out.policy.decision === 'expired')) {
+      out.end = { kind: 'DENEGADO', at: out.policy.at, who: out.policy.decision === 'expired' ? 'Venció sin respuesta' : out.policy.who, step: 'politica' };
+    } else if (events.changeRejected || (out.isChange && !out.changeStudied)) {
+      out.end = { kind: 'DENEGADO', at: _stageIso_(events.changeRejected), who: 'Área de compras', step: 'cambio' };
+    } else out.end = { kind: 'DENEGADO', at: '', who: '', step: '' };
+  } else if (status === 'ANULADO') {
+    var byUser = !!events.cancelledByUser || /\[ANULACIÓN POR USUARIO\]/.test(obs);
+    var replaced = /Anulada automáticamente por aprobación del cambio (SOL-\d+)/.exec(obs);
+    out.end = {
+      kind: 'ANULADO',
+      at: _stageIso_(events.cancelledByUser) || _stageIso_(events.cancelledByAdmin),
+      who: byUser ? (out.requester || 'El solicitante') : replaced ? 'La reemplazó el cambio ' + replaced[1] : 'Área de compras',
+      step: ''
+    };
+  }
+  return out;
+}
+
+/** _stageInfo_ desde la fila y EVENTOS_JSON; null si algo falla (la línea de tiempo nunca rompe otra cosa). */
+function _stageInfoSafe_(row, events, names) {
+  try {
+    return _stageInfo_(row, mapRowToRequest(row, true), events, names);
+  } catch (e) {
+    console.warn('_stageInfoSafe_: ' + e);
+    return null;
+  }
 }
 
 function _approvalTrailHtml_(steps) {
@@ -6276,6 +6389,16 @@ function getRequestById(requestId, withPassengerAdminInfo) {
   if (rowNumber === -1) return null;
   const row = sheet.getRange(rowNumber, 1, 1, sheet.getLastColumn()).getValues()[0];
   const result = mapRowToRequest(row, false);
+  // #A121: cuándo pasó por cada etapa y a quién le tocaba (semáforo del detalle). Lo ven el
+  // solicitante y los administradores. Si falla, el detalle abre igual, sin la línea de tiempo.
+  try {
+    var _evIdx = H(EVENTOS_JSON_HEADER);
+    var _events = {};
+    if (_evIdx > -1 && row[_evIdx]) { try { _events = JSON.parse(row[_evIdx]) || {}; } catch (_e) { _events = {}; } }
+    result.stages = _stageInfo_(row, result, _events);
+  } catch (e) {
+    console.warn('getRequestById: sin línea de tiempo para ' + requestId + ': ' + e);
+  }
   // SOLO ADMINISTRADORES (lo decide dispatch): fecha de nacimiento y celular por
   // pasajero en la misma respuesta (#A74). Si falla, el detalle abre igual: sin
   // el campo, el frontend los consulta aparte con getPassengerBirthdates.
@@ -15198,12 +15321,16 @@ function _recordEvent_(requestId, eventKey, data) {
 // METRICS CACHE — Drive JSON file for precomputed metrics
 // =====================================================================
 
+// #A121: versión 2 = tiempos en horas reales (antes laborales) y etapas con fecha. Cambiarla
+// recalcula todas las solicitudes la próxima vez que se abra Métricas.
+var METRICS_CACHE_VERSION = 2;
+
 function _getMetricsCacheFile_() {
   var folder = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);
   var files = folder.getFilesByName('metricas_cache.json');
   if (files.hasNext()) return files.next();
   return folder.createFile('metricas_cache.json', JSON.stringify({
-    version: 1, lastBuild: new Date().toISOString(), entries: {}
+    version: METRICS_CACHE_VERSION, lastBuild: new Date().toISOString(), entries: {}
   }), 'application/json');
 }
 
@@ -15212,13 +15339,13 @@ function _loadMetricsCache_() {
     var file = _getMetricsCacheFile_();
     var content = file.getBlob().getDataAsString();
     var cache = JSON.parse(content);
-    if (!cache || !cache.entries || cache.version !== 1) {
-      return { version: 1, lastBuild: new Date().toISOString(), entries: {} };
+    if (!cache || !cache.entries || cache.version !== METRICS_CACHE_VERSION) {
+      return { version: METRICS_CACHE_VERSION, lastBuild: new Date().toISOString(), entries: {} };
     }
     return cache;
   } catch (e) {
     console.warn('METRICS CACHE: failed to load, starting fresh: ' + e);
-    return { version: 1, lastBuild: new Date().toISOString(), entries: {} };
+    return { version: METRICS_CACHE_VERSION, lastBuild: new Date().toISOString(), entries: {} };
   }
 }
 
@@ -15764,29 +15891,14 @@ function _workingMinutesBetween_(fromIso, toIso) {
 }
 
 /**
- * Cuenta cuántos días hábiles separan dos timestamps (zona Bogotá).
- * Retorna 0 si mismo día calendario, 1 si día siguiente hábil, etc.
+ * Minutos reales (de calendario: incluye noches, fines de semana y festivos) entre dos instantes
+ * ISO (#A121). null si falta alguno; 0 si el segundo es anterior.
  */
-function _businessDaysBetween_(fromIso, toIso) {
+function _realMinutesBetween_(fromIso, toIso) {
   if (!fromIso || !toIso) return null;
-  var BOG_OFFSET_MS = -5 * 60 * 60 * 1000;
-  var toBogDate = function(iso) {
-    var d = new Date(new Date(iso).getTime() + BOG_OFFSET_MS);
-    return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-  };
-  var fromDate = toBogDate(fromIso);
-  var toDate = toBogDate(toIso);
-  if (fromDate.getTime() === toDate.getTime()) return 0;
-
-  var count = 0;
-  var cursor = new Date(fromDate);
-  cursor.setDate(cursor.getDate() + 1);
-  while (cursor <= toDate) {
-    var dow = cursor.getDay();
-    if (dow >= 1 && dow <= 6) count++; // Mon-Sat
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return count;
+  var a = new Date(fromIso).getTime(), b = new Date(toIso).getTime();
+  if (isNaN(a) || isNaN(b)) return null;
+  return b <= a ? 0 : Math.round((b - a) / 60000);
 }
 
 // =====================================================================
@@ -15794,8 +15906,8 @@ function _businessDaysBetween_(fromIso, toIso) {
 // =====================================================================
 
 function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, companyIdx, statusIdx, events) {
-  var minutesBetween = _workingMinutesBetween_;
-  var daysBetween = _businessDaysBetween_;
+  // #A121 (David, 5-nov): horas reales, no laborales: «que diga 14 horas porque pasó de un día a otro».
+  var minutesBetween = _realMinutesBetween_;
 
   var approvals = [];
   if (events.approvals) {
@@ -15824,23 +15936,19 @@ function _buildRequestMetrics_(requestId, row, requesterIdx, destinationIdx, com
     status: String(row[statusIdx] || ''),
     created: events.created || null,
     // #A100: si esperó la aprobación del CFO, el área de compras empieza a contar
-    // desde que la aprobó (policyApproved), no desde que se creó.
-    timeToOptionsMinutes: minutesBetween(events.policyApproved || events.created, events.optionsUploaded),
+    // desde que la aprobó (policyApproved), no desde que se creó. #A121: en un cambio,
+    // desde que el área de compras lo aceptó (changeStudied, si quedó registrado).
+    timeToOptionsMinutes: minutesBetween(events.changeStudied || events.policyApproved || events.created, events.optionsUploaded),
     timeToSelectionMinutes: minutesBetween(events.optionsUploaded, events.selectionMade),
     timeToCostConfirmMinutes: minutesBetween(events.selectionMade, events.costConfirmed),
     timeToFullApprovalMinutes: minutesBetween(events.costConfirmed, events.fullyApproved),
     timeToReservationMinutes: minutesBetween(events.fullyApproved, events.reservationRegistered),
-    totalCycleMinutes: minutesBetween(events.policyApproved || events.created, events.reservationRegistered),
+    // #A121: el ciclo completo, desde que se pidió (incluye la espera de la excepción a la política).
+    totalCycleMinutes: minutesBetween(events.created, events.reservationRegistered),
     approvals: approvals,
     hasEvents: hasEvents,
-    crossDays: {
-      toOptions: daysBetween(events.policyApproved || events.created, events.optionsUploaded),
-      toSelection: daysBetween(events.optionsUploaded, events.selectionMade),
-      toCostConfirm: daysBetween(events.selectionMade, events.costConfirmed),
-      toFullApproval: daysBetween(events.costConfirmed, events.fullyApproved),
-      toReservation: daysBetween(events.fullyApproved, events.reservationRegistered),
-      totalCycle: daysBetween(events.policyApproved || events.created, events.reservationRegistered)
-    }
+    // #A121: cuándo pasó por cada etapa y a quién le tocaba (Métricas abre la misma línea de tiempo del detalle).
+    stages: _stageInfoSafe_(row, events)
   };
 }
 
@@ -21188,10 +21296,22 @@ function _bogotaKeyFromMs_(ms) {
  * reason: '' (abierto), 'deadline' (venció el plazo) o 'ended' (el viaje terminó).
  * Un administrador (ignoreDeadline) puede registrar el cambio sin plazo, incluso el
  * mismo día del vuelo.
+ * #A120 (caso SOL-000714, 5-nov): sin tiquete comprado (bought === false) nadie ha volado.
+ * Se cambia todo el viaje mientras no haya terminado (como se pidió); si la fecha de ida
+ * ya no da tiempo, newDeparture = true: el cambio tiene que traer una ida nueva que sí
+ * dé tiempo (el administrador, una de hoy en adelante). bought sin pasar = comprado.
  */
-function _tripChangeWindow_(depKey, retKey, nowMs, ignoreDeadline) {
+function _tripChangeWindow_(depKey, retKey, nowMs, ignoreDeadline, bought) {
   var today = _bogotaKeyFromMs_(nowMs);
   var dep = String(depKey || ''), ret = String(retKey || '');
+  if (bought === false && dep) {
+    if ((ret || dep) < today) {
+      return { open: false, mode: null, target: '', reason: 'ended', deadlineKey: '', deadlineHour: 0, deadlineMs: 0, newDeparture: false };
+    }
+    var dlDep = _changeDeadline_(dep);
+    var late = ignoreDeadline ? dep < today : Number(nowMs) >= dlDep.ms;
+    return { open: true, mode: 'full', target: dep, reason: '', deadlineKey: dlDep.dayKey, deadlineHour: dlDep.hour, deadlineMs: dlDep.ms, newDeparture: late };
+  }
   var mode = null;
   if (dep && (ignoreDeadline ? dep >= today : dep > today)) mode = 'full';
   else if (dep && ret && (ignoreDeadline ? ret >= today : ret > today)) mode = 'return';
@@ -21199,12 +21319,12 @@ function _tripChangeWindow_(depKey, retKey, nowMs, ignoreDeadline) {
     var sameDay = dep === today || ret === today;
     var dlToday = sameDay ? _changeDeadline_(today) : null;
     return { open: false, mode: null, target: sameDay ? today : '', reason: sameDay ? 'deadline' : 'ended',
-      deadlineKey: dlToday ? dlToday.dayKey : '', deadlineHour: dlToday ? dlToday.hour : 0, deadlineMs: dlToday ? dlToday.ms : 0 };
+      deadlineKey: dlToday ? dlToday.dayKey : '', deadlineHour: dlToday ? dlToday.hour : 0, deadlineMs: dlToday ? dlToday.ms : 0, newDeparture: false };
   }
   var target = mode === 'full' ? dep : ret;
   var dl = _changeDeadline_(target);
   var open = !!ignoreDeadline || Number(nowMs) < dl.ms;
-  return { open: open, mode: mode, target: target, reason: open ? '' : 'deadline', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms };
+  return { open: open, mode: mode, target: target, reason: open ? '' : 'deadline', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms, newDeparture: false };
 }
 
 /** 'miércoles 21 de octubre a las 5:00 p. m.' */
@@ -21442,7 +21562,11 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
     hotel: String(p.hotelName || '').replace(/\s+/g, ' ').trim().toUpperCase(), requiresHotel: p.requiresHotel === true
   };
   var nowMs = Date.now();
-  var win = _tripChangeWindow_(parentVals.dep, parentVals.ret, nowMs, isAdmin);
+  // #A109: la reserva guardada por partes (APROBADO con el PNR y sus archivos) también es tiquete comprado.
+  var parcial = _tripChangeHasSavedReservation_(p);
+  var comprado = st === 'RESERVADO' || parcial;
+  // #A120: sin tiquete comprado nadie ha volado: se puede cambiar todo el viaje.
+  var win = _tripChangeWindow_(parentVals.dep, parentVals.ret, nowMs, isAdmin, comprado);
   if (!win.open) {
     throw new Error(win.reason === 'ended'
       ? 'El viaje ya terminó: no hay nada que cambiar.'
@@ -21451,6 +21575,14 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
   }
   var norm = _normalizeTripChanges_(parentVals, changes, win.mode, isHotelOnly);
   var next = norm.next;
+  // #A120: sin comprar y con la ida que ya no da tiempo, el cambio trae una ida nueva.
+  if (win.newDeparture && !norm.campos.departureDate) {
+    throw new Error('El tiquete todavía no se ha comprado y la fecha de ' + (isHotelOnly ? 'entrada' : 'ida') + ' (' + _policyFmtDayLong_(parentVals.dep) +
+      ') ya no da tiempo. Elija una fecha de ' + (isHotelOnly ? 'entrada' : 'ida') + ' nueva.');
+  }
+  if (isAdmin && win.newDeparture && next.dep < _bogotaKeyFromMs_(nowMs)) {
+    throw new Error('La fecha de ' + (isHotelOnly ? 'entrada' : 'ida') + ' nueva (' + _policyFmtDayLong_(next.dep) + ') ya pasó.');
+  }
   // La fecha nueva también tiene que dar tiempo (decisión de Yurani, 19-oct).
   var newTarget = win.mode === 'full' ? next.dep : next.ret;
   if (!isAdmin && newTarget !== win.target) {
@@ -21470,9 +21602,6 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
     intl = (isHotelOnly ? false : (oc && oc !== 'COLOMBIA')) || (dc && dc !== 'COLOMBIA') ? true : false;
   }
 
-  // #A109: la reserva guardada por partes (APROBADO con el PNR y sus archivos) también es tiquete comprado.
-  var parcial = _tripChangeHasSavedReservation_(p);
-  var comprado = st === 'RESERVADO' || parcial;
   var cost = _tripChangeOriginalCost_(p);
   var info = {
     v: 1, padre: p.requestId, estadoPadre: st, comprado: comprado, modo: win.mode, tipos: norm.tipos, campos: norm.campos,

@@ -207,6 +207,9 @@ function main() {
           for (const adm of [false, true]) {
             const g = ctx._tripChangeWindow_(dep, ret, now, adm), t = TS.tripChangeWindow(dep, ret, now, adm);
             if (J(g) !== J(t) && diffs++ < 6) failures.push(`ventana distinta (${dep}/${ret}, ${today}${hm}, admin ${adm}): Code.gs ${J(g)} / app ${J(t)}`);
+            // #A120: sin tiquete comprado
+            const g2 = ctx._tripChangeWindow_(dep, ret, now, adm, false), t2 = TS.tripChangeWindow(dep, ret, now, adm, false);
+            if (J(g2) !== J(t2) && diffs++ < 6) failures.push(`ventana sin comprar distinta (${dep}/${ret}, ${today}${hm}, admin ${adm}): Code.gs ${J(g2)} / app ${J(t2)}`);
           }
         }
       }
@@ -230,6 +233,19 @@ function main() {
   eq('ventana: viaje terminado', [w4.open, w4.reason], [false, 'ended']);
   const w5 = TS.tripChangeWindow('2026-10-15', '', Date.parse(NOW)), w5a = TS.tripChangeWindow('2026-10-15', '', Date.parse(NOW), true);
   eq('ventana: vuelo hoy → el viajero no, el área de compras sí', [w5.open, w5.reason, w5a.open, w5a.mode], [false, 'deadline', true, 'full']);
+  // #A120 (caso SOL-000714): sin tiquete comprado nadie ha volado.
+  const n1 = TS.tripChangeWindow('2026-10-15', '2026-10-24', Date.parse(NOW), false, false);
+  eq('sin comprar, ida hoy: se cambia todo el viaje con una ida nueva', [n1.open, n1.mode, n1.newDeparture], [true, 'full', true]);
+  const n2 = TS.tripChangeWindow('2026-10-20', '2026-10-24', Date.parse(NOW), false, false);
+  eq('sin comprar, ida con tiempo: igual que siempre', [n2.open, n2.mode, n2.newDeparture, n2.deadlineKey], [true, 'full', false, '2026-10-19']);
+  const n3 = TS.tripChangeWindow('2026-10-16', '2026-10-18', Date.parse('2026-10-15T22:30:00Z'), false, false);
+  eq('sin comprar, venció el plazo de la ida: abierta, con ida nueva', [n3.open, n3.newDeparture], [true, true]);
+  const n4 = TS.tripChangeWindow('2026-10-10', '2026-10-13', Date.parse(NOW), true, false);
+  eq('sin comprar, viaje que ya terminó: ni el área de compras (es una solicitud nueva)', [n4.open, n4.reason], [false, 'ended']);
+  const n5 = TS.tripChangeWindow('2026-10-14', '2026-10-19', Date.parse(NOW), true, false);
+  eq('sin comprar, ida ayer: el área de compras con ida nueva', [n5.open, n5.mode, n5.newDeparture], [true, 'full', true]);
+  const n6 = TS.tripChangeWindow('2026-10-15', '2026-10-24', Date.parse(NOW), true, false);
+  eq('sin comprar, ida hoy: el área de compras sin cambiar la ida', [n6.open, n6.newDeparture], [true, false]);
   eq('fechas de la solicitud a AAAA-MM-DD', [TS.toDateKey('16-10-2026'), TS.toDateKey('2026-10-16T05:00:00.000Z'), TS.toDateKey('6/1/2027'), TS.toDateKey('x')], ['2026-10-16', '2026-10-16', '2027-01-06', '']);
 
   // ───────────── 2. Pedir un cambio (viaje sin comprar) ─────────────
@@ -322,6 +338,40 @@ function main() {
   ok('vuelo de hoy: el área de compras sí', r.success);
   r = change(P6, { returnDate: '2026-10-20' }, 'Quiere agregar el regreso al viaje.', 'admin@p.co');
   ok('solo ida: no se agrega un regreso con un cambio', !r.success && /(solo de ida|cambio en curso)/.test(r.error));
+  // #A120 (caso SOL-000714, 5-nov): aprobada, sin comprar, ida hoy. Antes decía «la ida ya voló».
+  const unbought = (dep, ret) => {
+    at('2026-10-01T15:00:00Z');
+    const id = create(base({ departureDate: dep, returnDate: ret })).data;
+    setCell(id, 'STATUS', 'APROBADO');
+    return id;
+  };
+  const U8 = unbought('15-10-2026', '24-10-2026');
+  at(NOW);
+  r = change(U8, { returnDate: '2026-10-26' });
+  ok('sin comprar, ida hoy: sin ida nueva, error que lo dice', !r.success && /no se ha comprado/.test(r.error) && /Elija una fecha de ida nueva/.test(r.error));
+  r = change(U8, { departureDate: '2026-10-16', returnDate: '2026-10-26' }, 'El cliente movió la visita técnica.');
+  ok('sin comprar, ida hoy: el viajero cambia todo el viaje', r.success && r.data.comprado === false && info(r.data.id).modo === 'full' &&
+    key(cell(r.data.id, 'FECHA IDA')) === '2026-10-16' && key(cell(r.data.id, 'FECHA VUELTA')) === '2026-10-26');
+  const U9 = unbought('16-10-2026', '20-10-2026');
+  at('2026-10-15T22:30:00Z'); // jueves 5:30 p. m.: venció el plazo del viernes, pero no hay tiquete
+  r = change(U9, { departureDate: '2026-10-16', departureTimePreference: '18:00' });
+  ok('sin comprar, venció el plazo: la misma ida no sirve', !r.success && /no se ha comprado/.test(r.error));
+  r = change(U9, { departureDate: '2026-10-15' });
+  ok('sin comprar: la ida nueva tiene que dar tiempo', !r.success && /ya no da tiempo/.test(r.error));
+  r = change(U9, { departureDate: '2026-10-22', returnDate: '2026-10-24' }, 'Se aplazó la visita una semana.');
+  ok('sin comprar, venció el plazo: con una ida que da tiempo, sí', r.success && info(r.data.id).modo === 'full');
+  const U10 = unbought('13-10-2026', '20-10-2026');
+  at(NOW);
+  r = change(U10, { returnDate: '2026-10-22' }, 'El viajero sale después, pide moverlo.', 'admin@p.co');
+  ok('sin comprar, ida ayer: el área de compras también pone ida nueva', !r.success && /no se ha comprado/.test(r.error));
+  r = change(U10, { departureDate: '2026-10-14' }, 'El viajero sale después, pide moverlo.', 'admin@p.co');
+  ok('sin comprar: la ida nueva no puede ser del pasado', !r.success && /ya pasó/.test(r.error));
+  r = change(U10, { departureDate: '2026-10-15' }, 'El viajero sale hoy en la tarde.', 'admin@p.co');
+  ok('sin comprar: el área de compras pone la ida hoy', r.success);
+  const U11 = unbought('10-10-2026', '13-10-2026');
+  at(NOW);
+  r = change(U11, { departureDate: '2026-10-22', returnDate: '2026-10-24' }, 'Lo vamos a hacer la otra semana.');
+  ok('sin comprar, viaje que ya terminó: error', !r.success && /ya terminó/.test(r.error));
   // Destino internacional
   at('2026-10-05T15:00:00Z');
   const P7 = create(base({ departureDate: '20-11-2026', returnDate: '23-11-2026' })).data;

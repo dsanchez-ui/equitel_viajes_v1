@@ -57,6 +57,41 @@ export interface PolicyHeldResponse {
  */
 export type ApprovalStepState = 'approved' | 'covered' | 'denied' | 'skipped' | 'expired' | 'pending' | 'waiting' | 'not_needed' | 'other';
 
+/** #A121: un voto en la línea de tiempo de la solicitud. */
+export interface StageApproval {
+  role: string;
+  label: string;
+  state: ApprovalStepState;
+  who: string;
+  /** ISO; '' si no quedó la hora. */
+  at: string;
+}
+
+/**
+ * #A121: cuándo pasó la solicitud por cada etapa (ISO; '' = no pasó o no quedó la hora) y quién
+ * actuó. Lo arma el servidor (`_stageInfo_`); la app dibuja el semáforo con utils/stageTimeline.ts.
+ */
+export interface StageInfo {
+  v: number;
+  requester: string;
+  isChange: boolean;
+  hotelOnly: boolean;
+  created: string;
+  policy: { decision: '' | 'approved' | 'denied' | 'expired'; at: string; who: string } | null;
+  changeStudied: string;
+  options: string;
+  selection: string;
+  selectionSkippedBy: string;
+  costs: string;
+  costsBy: string;
+  approvalAskedAt: string;
+  approvals: StageApproval[];
+  approved: string;
+  approvalSkippedBy: string;
+  purchase: string;
+  end: { kind: 'DENEGADO' | 'ANULADO'; at: string; who: string; step: string } | null;
+}
+
 export interface ApprovalStep {
   role: string;
   label: string;
@@ -404,6 +439,8 @@ export interface TravelRequest {
   // Llega dentro de getRequestById cuando quien consulta es administrador; no
   // viene para el solicitante, en las filas lite ni con un backend anterior.
   passengerAdminInfo?: PassengerAdminInfo[];
+  /** #A121: cuándo pasó por cada etapa (solo en getRequestById; el detalle dibuja el semáforo). */
+  stages?: StageInfo | null;
 
   // CAMBIAR MI VIAJE (#A103). tripChange: lo que pidió cambiar el viajero (solo en las
   // solicitudes de cambio nuevas; null en las demás). replacedBy: en la original, la
@@ -597,14 +634,8 @@ export interface RequestMetrics {
   totalCycleMinutes: number | null;
   approvals: ApprovalMetric[];
   hasEvents: boolean;
-  crossDays?: {
-    toOptions: number | null;
-    toSelection: number | null;
-    toCostConfirm: number | null;
-    toFullApproval: number | null;
-    toReservation: number | null;
-    totalCycle: number | null;
-  };
+  /** #A121: la misma línea de tiempo del detalle (null con un servidor anterior o si falló). */
+  stages?: StageInfo | null;
 }
 
 export interface ApproverPerformance {

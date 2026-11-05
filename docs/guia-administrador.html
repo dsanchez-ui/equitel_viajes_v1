@@ -242,7 +242,7 @@
 </tr>
 <tr>
 <td><code>EVENTOS_JSON</code></td>
-<td>Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por los badges de cruce de día.</td>
+<td>Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por el semáforo del detalle de cada solicitud (#A121). Desde el 5-nov también guarda cuándo se aceptó o rechazó un cambio (<code>changeStudied</code>, <code>changeRejected</code>).</td>
 </tr>
 <tr>
 <td><code>OBSERVACIONES</code></td>
@@ -412,7 +412,7 @@
 </ul>
 <p>Las listas se consultan al abrir el panel y con <strong>↻ Actualizar</strong>. No envían correos ni cambian nada en la hoja.</p>
 <h3>5.6 Gestionar solicitudes de cambio («Cambiar mi viaje», #A103)</h3>
-<p>Desde el 19-oct los viajeros piden los cambios con el botón <strong>😕 ¿Necesita cambiar su viaje?</strong>: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las <strong>5:00 p. m. del día hábil anterior al vuelo</strong> (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Después del plazo, y solo si es urgente, el portal les dice a quién llamar y en qué orden (tabla de MISC, <strong>menú 16</strong>; ver abajo).</p>
+<p>Desde el 19-oct los viajeros piden los cambios con el botón <strong>😕 ¿Necesita cambiar su viaje?</strong>: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las <strong>5:00 p. m. del día hábil anterior al vuelo</strong> (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Si el tiquete <strong>no se ha comprado</strong>, nadie ha volado: el viajero cambia todo el viaje con una fecha de ida nueva que dé tiempo, aunque la de la solicitud ya haya llegado (#A120, caso SOL-000714). Después del plazo, y solo si es urgente, el portal les dice a quién llamar y en qué orden (tabla de MISC, <strong>menú 16</strong>; ver abajo).</p>
 <p>Se crea una solicitud “hija” en <code>PENDIENTE_ANALISIS_CAMBIO</code>, ligada a la original, con lo de antes y lo de ahora. Te llega el correo <strong>CAMBIO DE VIAJE</strong>.</p>
 <ol>
 <li>En el panel, la fila del cambio tiene <strong>🔄 Revisar Cambio</strong>. La ventana muestra:
@@ -682,21 +682,21 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <h2>8. Métricas</h2>
 <p>Panel accesible desde el dashboard admin → botón <strong>Métricas</strong>. Tiene dos pestañas: <strong>Tiempos del flujo</strong> y <strong>Compras y costos</strong>.</p>
 <h3>8.1 Tiempos del flujo</h3>
-<p><strong>Qué muestra:</strong></p>
+<p><strong>Qué muestra (desde el 5-nov-2026, #A121, en horas reales):</strong></p>
 <ul>
-<li>Tiempos promedio por etapa (en minutos hábiles):
+<li>Tiempos promedio por etapa, en <strong>horas reales, de calendario</strong> (incluyen noches y fines de semana; antes eran horas laborales):
 <ul>
 <li>Cotización (creación → opciones cargadas)</li>
 <li>Selección (opciones → usuario describe)</li>
 <li>Confirmación costos (selección → costos finales)</li>
 <li>Aprobación completa (costos → todas las aprobaciones)</li>
 <li>Reserva (aprobación → PNR registrado)</li>
-<li>Ciclo total (creación → reserva)</li>
+<li>Ciclo total (creación → reserva, con la espera de la excepción a la política si la hubo)</li>
 </ul>
 </li>
 <li>Performance del analista en 3 etapas que le corresponden (cotización, confirmación costos, compra).</li>
 <li>Performance de cada aprobador (cuánto tarda en aprobar).</li>
-<li>Badges de cruce de día (ej. <code>+1d</code> si la etapa cruzó a día siguiente hábil).</li>
+<li>Debajo de cada tiempo, cuándo terminó esa etapa (día/mes y hora). <strong>Al tocar una solicitud</strong> se abre el mismo semáforo del detalle: cuándo pasó por cada etapa, a quién le tocaba, lo que tardó cada voto y quién tuvo la solicitud más tiempo. El solicitante ve ese semáforo en el detalle de su solicitud.</li>
 </ul>
 <p><strong>Filtros:</strong></p>
 <ul>
@@ -708,7 +708,8 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <ul>
 <li>Usa un cache JSON en Drive (<code>metricas_cache.json</code>) — recalcula solo las solicitudes cuyos eventos cambiaron desde la última carga.</li>
 <li>Solicitudes creadas antes del deploy de métricas no tienen <code>EVENTOS_JSON</code> y aparecen como “sin datos”.</li>
-<li>Horario hábil: L-V 07:00–17:00, Sáb 08:00–12:00. Fuera de horario se excluye.</li>
+<li>Los tiempos son de calendario (hora de Colombia). Los recordatorios y el escalamiento sí siguen contando horas laborales (L-V 07:00–17:00, Sáb 08:00–12:00).</li>
+<li>En los cambios pedidos antes del 5-nov no quedó cuándo se aceptaron: su cotización se mide desde la solicitud («Incluye la revisión del cambio»).</li>
 </ul>
 <h3>8.2 Compras y costos</h3>
 <p>Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta anticipación (#A80). Sirve para comparar precios con otra agencia sin armar un Excel a mano. Solo la ven los administradores.</p>
@@ -1073,7 +1074,7 @@ setScriptProperty('MAIL_TECH_SUPPORT_EMAIL', 'dsanchez@equitel.com.co');
 <hr>
 <h2>14. Contacto y mantenimiento</h2>
 <ul>
-<li><strong>Código en:</strong> github.com/dsanchez-ui/equitel_viajes_v1</li>
+<li><strong>Código en:</strong> <a href="http://github.com/dsanchez-ui/equitel_viajes_v1">github.com/dsanchez-ui/equitel_viajes_v1</a></li>
 <li><strong>Deploy frontend:</strong> Cloud Run <code>sistematiquetesequitel-302740316698.us-west1.run.app</code></li>
 <li><strong>Deploy backend:</strong> Apps Script Web App, URL en <code>WEB_APP_URL</code></li>
 <li><strong>Modelo de deploy:</strong>

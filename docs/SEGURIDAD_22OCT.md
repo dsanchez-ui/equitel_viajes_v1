@@ -46,7 +46,7 @@ Las dos cosas quedaron corregidas en el repositorio y probadas, y `npm audit` pa
 | PostgreSQL | No hay (Google Sheets) | CVE-2026-6473 (según la lista recibida) | No | No aplica |
 | Python del PC | 3.14.4 | CVE-2026-15308 (HTMLParser). Además, [3.14.9](https://www.python.org/downloads/release/python-3149/) (21-oct) actualiza los certificados por el caso eMudhra | Solo el PC. El script del proyecto no usa HTMLParser | **Resuelto:** Ubuntu lo parchó en `3.14.4-1ubuntu0.2` (20-ago) sin cambiar el número de versión; ya está instalado |
 | openpyxl | 3.1.5 | Ninguno en OSV | — | Sin cambios |
-| markdown-it (generador de PDF de `docs/`) | Se instala al vuelo, sin versión fija | GHSA-gfr2-rv44-r23c, GHSA-vfgh-jcmw-g37q (corregidos en 14.3.3, publicada el 16-oct) | Bajo: solo procesa documentos propios en el PC | **Pendiente:** fijar 14.3.3 cuando cumpla dos semanas (30-oct) |
+| markdown-it (generador de PDF de `docs/`) | Se instala al vuelo, sin versión fija | GHSA-gfr2-rv44-r23c, GHSA-vfgh-jcmw-g37q (corregidos en 14.3.3, publicada el 16-oct) | Bajo: solo procesa documentos propios en el PC | **Hecho el 5-nov (#A122):** 14.3.3 fija como dependencia de desarrollo |
 | Apps Script principal | — | No tiene versiones que parchear. 0 llamadas a internet (`UrlFetchApp`), sin librerías de terceros en el código | — | Revisado. Su manifiesto no está en el repo: **David revisa los permisos** (§5) |
 | Apps Script del rastreo | — | Permisos: `spreadsheets`, `script.external_request` y `script.scriptapp`. La llave de SerpApi está en las propiedades del proyecto | Son los que necesita | Revisado |
 | Llaves y secretos | — | Ninguna llave escrita en archivos del repositorio. `.serpapi-key` e `.ignav-key` están en `.gitignore` y no se versionan | — | Revisado |
@@ -110,7 +110,7 @@ Los avisos marcados «según la lista recibida» no se verificaron contra la fue
 4. ~~Python del PC a 3.14.9~~ **Resuelto:** Ubuntu ya trae el arreglo de HTMLParser en `3.14.4-1ubuntu0.2`
    (`apt-get changelog python3.14`). Quedan 26 paquetes del sistema por actualizar (`sudo apt update && sudo apt upgrade`).
 5. **Permisos del proyecto principal de Apps Script** (David). En el editor: *Configuración del proyecto* → *Mostrar el archivo de manifiesto «appsscript.json»*. Confirmar que no tenga `script.external_request` (#A62) ni librerías que nadie reconozca.
-6. **markdown-it 14.3.3 fija como dependencia de desarrollo** desde el 30-oct, cuando cumpla dos semanas publicada. Lo hace Claude en una próxima sesión.
+6. **markdown-it 14.3.3 fija como dependencia de desarrollo**: hecho el 5-nov (#A122), junto con fast-uri 3.1.9 y vite 6.4.5. `npm audit`: 0 vulnerabilidades.
 
 ## 6. Fuentes
 

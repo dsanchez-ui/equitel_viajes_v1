@@ -200,6 +200,16 @@ PROCESADO (ya viajaste y cerraste el ciclo)
 
 El resto del tiempo, **no tienes que hacer nada activamente**. Los correos te notifican cuando toca tu turno.
 
+### Cuánto ha tomado cada etapa
+
+Arriba del detalle de cada solicitud hay un **semáforo** con una marca por etapa: verde ✓ si ya pasó, roja con su número si es la etapa actual, gris si falta. Debajo de cada una ves:
+
+- **cuándo pasó** por esa etapa (fecha y hora de Colombia);
+- **a quién le tocaba**: tú, el área de compras, los aprobadores o quien aprueba las excepciones a la política;
+- **cuánto tardó** desde el paso anterior, en **horas reales** (cuentan noches y fines de semana: si pasó de un día a otro, dice «14 h», no «8 horas laborales»).
+
+En la etapa actual dice a quién le toca y cuánto lleva («lleva 1 d 4 h»). Abajo están los votos de cada aprobador, con lo que tardó cada uno, y **quién tuvo la solicitud más tiempo**. Así se sabe dónde estuvo la demora.
+
 ### Quién aprueba y cuándo
 
 El correo de aprobación se envía **una sola vez**, justo después de que el área de compras confirma el costo final de tu solicitud. Los destinatarios del correo dependen del caso:
@@ -328,6 +338,7 @@ Puedes elegir varias cosas a la vez. Para algo distinto (por ejemplo, quitar el 
 - Hasta las **5:00 p. m. del día hábil anterior al vuelo**. Si ese día es sábado, hasta las **12:00 m.** Domingos y festivos no cuentan. Antes de ese límite lo puedes pedir a cualquier hora.
 - La **fecha nueva también tiene que dar tiempo**: no se puede mover el viaje a un día cuyo plazo ya pasó.
 - Si el viaje **ya empezó** (la ida ya voló), solo se cambia el **regreso**: fecha, hora o equipaje.
+- Si el tiquete **todavía no se compró**, nadie ha volado: puedes cambiar **todo el viaje** aunque la fecha de ida ya haya llegado o ya no dé tiempo. Solo tienes que elegir una **fecha de ida nueva** que sí dé tiempo.
 - Después del plazo, el portal no deja pedir el cambio. **Solo si es urgente**, te muestra a quién llamar y en qué orden: primero el área de compras y, si no responde, el director de compras, con sus celulares. El área de compras lo registra a tu nombre.
 
 La ventana te dice, viaje por viaje, hasta cuándo puedes pedir el cambio.

@@ -95,7 +95,8 @@ export const tripChangeEligibility = (r: TravelRequest, all: TravelRequest[], no
   if (r.replacedBy) return { ok: false, win: null, why: `Ya se cambió: el viaje vigente es ${r.replacedBy}.`, hidden: true };
   const live = all.find(x => x.relatedRequestId === r.requestId && x.requestId !== r.requestId && !TERMINAL.includes(x.status));
   if (live) return { ok: false, win: null, why: `Ya tiene un cambio en curso (${live.requestId}). El área de compras lo está gestionando.`, hidden: false };
-  const win = tripChangeWindow(toDateKey(r.departureDate), toDateKey(r.returnDate), nowMs, isAdmin);
+  // #A120: sin tiquete comprado nadie ha volado: se cambia todo el viaje (con una ida que dé tiempo).
+  const win = tripChangeWindow(toDateKey(r.departureDate), toDateKey(r.returnDate), nowMs, isAdmin, isTripBought(r));
   if (!win.open) {
     if (win.reason === 'ended') return { ok: false, win, why: 'El viaje ya terminó.', hidden: true };
     return { ok: false, win, why: `El plazo para cambiarlo por la plataforma venció el ${fmtDayLong(win.deadlineKey)} a las ${fmtHourLabel(win.deadlineHour)}`, hidden: false }; // la hora ya termina en punto
@@ -174,10 +175,13 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requests, isAdmin]);
 
+  const todayKey = new Date(nowMs - 5 * 3600000).toISOString().slice(0, 10);
   const elig = req ? tripChangeEligibility(req, requests, nowMs, isAdmin) : null;
   // #A106: el plazo del viajero, para que el área de compras sepa si todavía puede pedirlo él mismo.
-  const travelerWin = req && isAdmin ? tripChangeWindow(toDateKey(req.departureDate), toDateKey(req.returnDate), nowMs, false) : null;
+  const travelerWin = req && isAdmin ? tripChangeWindow(toDateKey(req.departureDate), toDateKey(req.returnDate), nowMs, false, isTripBought(req)) : null;
   const mode = elig?.win?.mode || 'full';
+  // #A120: sin comprar y con la ida que ya no da tiempo: el cambio trae una ida nueva.
+  const newDeparture = !!elig?.win?.newDeparture;
   const hotelOnly = req?.requestMode === 'HOTEL_ONLY';
   // #A111: se puede cambiar el hospedaje siempre que la solicitud ya lo incluya
   // (solo hospedaje, o vuelo + hotel). Agregarlo donde no lo había es solicitud nueva.
@@ -224,6 +228,12 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
 
   const problems: string[] = [];
   if (req && form && base) {
+    if (newDeparture && form.tried && (!form.t.fechas || !form.dep || form.dep === base.dep)) {
+      problems.push(`Elija una fecha de ${hotelOnly ? 'entrada' : 'ida'} nueva: la de la solicitud (${fmtDayLong(base.dep)}) ya no da tiempo.`);
+    }
+    if (newDeparture && isAdmin && form.t.fechas && form.dep && form.dep !== base.dep && form.dep < todayKey) {
+      problems.push(`La fecha de ${hotelOnly ? 'entrada' : 'ida'} nueva (${fmtDayLong(form.dep)}) ya pasó.`);
+    }
     if (form.t.fechas) {
       if (form.ret && form.dep && form.ret < form.dep) problems.push('El regreso no puede ser antes de la ida.');
       if (hotelOnly && form.ret && form.ret === form.dep) problems.push('La salida del hotel tiene que ser después de la entrada.');
@@ -307,7 +317,6 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   );
 
   const inputCls = 'mt-1 block w-full bg-white rounded-md border border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm p-2 text-gray-900';
-  const todayKey = new Date(nowMs - 5 * 3600000).toISOString().slice(0, 10);
 
   return (
     <div className="fixed inset-0 z-[8000] flex items-center justify-center p-3 sm:p-4 bg-black/60" role="dialog" aria-modal="true" aria-labelledby="trip-change-title">
@@ -356,7 +365,9 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                       </p>
                       <p className={`text-xs font-semibold mt-1 ${e.ok ? (e.win && e.win.deadlineKey === todayKey ? 'text-amber-700' : 'text-green-700') : 'text-red-700'}`}>
                         {e.ok && e.win
-                          ? (isAdmin ? 'Usted puede registrarlo sin plazo.' : (e.win.mode === 'return' ? 'La ida ya voló. Puede cambiar el regreso ' : 'Puede pedir el cambio ') + withDot(untilText(e.win, nowMs)))
+                          ? (e.win.newDeparture
+                            ? `${r.requestMode === 'HOTEL_ONLY' ? 'El hospedaje aún no se reservó' : 'El tiquete aún no se compró'}: puede cambiar todo el viaje con una fecha de ${r.requestMode === 'HOTEL_ONLY' ? 'entrada' : 'ida'} nueva.`
+                            : isAdmin ? 'Usted puede registrarlo sin plazo.' : (e.win.mode === 'return' ? 'La ida ya voló. Puede cambiar el regreso ' : 'Puede pedir el cambio ') + withDot(untilText(e.win, nowMs)))
                           : e.why}
                       </p>
                     </div>
@@ -403,6 +414,13 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
               ) : (
                 <div className="bg-blue-50 border-l-4 border-blue-400 rounded-md p-3 text-blue-950">
                   <strong>{hotelOnly ? 'El hospedaje aún no se ha reservado.' : 'El tiquete aún no se ha comprado.'}</strong> El área de compras cotiza de nuevo con los cambios. No hay penalidad.
+                </div>
+              )}
+              {newDeparture && (
+                <div className="bg-amber-50 border-l-4 border-amber-500 rounded-md p-3 text-amber-950" data-change-new-departure>
+                  <strong>La fecha de {hotelOnly ? 'entrada' : 'ida'} ({fmtDayLong(base.dep)}) ya no da tiempo.</strong>{' '}
+                  Como {hotelOnly ? 'el hospedaje no se ha reservado' : 'el tiquete no se ha comprado'}, puede cambiar todo el viaje: elija una fecha de {hotelOnly ? 'entrada' : 'ida'} nueva
+                  {isAdmin ? ' (de hoy en adelante)' : ' que dé tiempo: hasta las 5:00 p. m. del día hábil anterior (12:00 m. si es sábado)'} y, si hace falta, la de {hotelOnly ? 'salida' : 'regreso'}.
                 </div>
               )}
               {mode === 'return' && (

@@ -31,7 +31,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores y «Mis aprobaciones» + enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + enlaces con dominio + build + un solo archivo JavaScript). Debe salir en verde.
    Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
    (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -50,7 +50,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones + build + un solo .js  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + build + un solo .js  ← antes de cualquier push
 npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
@@ -433,6 +433,9 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   - **Plazo:** hasta las **5:00 p. m. del día hábil anterior al vuelo** (sábado 12:00 m.; domingos y festivos no cuentan); la fecha
     nueva también debe dar tiempo; con el viaje en curso, **solo el regreso**. El área de compras registra a nombre del viajero **sin
     plazo**. Gemelo `utils/changeWindow.ts` ↔ `_changeDeadline_` / `_tripChangeWindow_`.
+  - **Sin tiquete comprado nadie ha volado** (#A120, Laura, 5-nov, caso SOL-000714): se cambia todo el viaje mientras no haya terminado;
+    si la ida ya no da tiempo (`newDeparture`), el cambio trae una ida nueva que sí lo dé (el área de compras, de hoy en adelante).
+    «Comprado» = la regla de #A109. Nunca volver a tomar «la fecha de ida ya llegó» como «ya voló» sin mirar si se compró.
   - El navegador manda solo lo que cambia (`requestTripChange`); el servidor arma la hija con `requestModification`. La hija lleva
     `CAMBIO PEDIDO (JSON)`, que **solo escribe el servidor** (nunca confiar en un `tripChange` del cliente).
   - **Tiquete comprado:** la hija lleva **solo el costo del cambio** (penalidad en `PENALIDAD CAMBIO` + diferencia de tarifa + hotel); la
@@ -458,6 +461,13 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     en vuelo + hotel** (también con el viaje en curso: es cuando más se necesita). Agregar hospedaje donde no lo había sigue siendo una
     solicitud nueva. En solo hospedaje, **nada habla de vuelos**: ni los botones, ni los avisos, ni el correo al aprobador («El hospedaje
     ya está reservado… penalidad del hotel», con el hotel y su canal, nunca el PNR ni «diferencia de tarifa»).
+- **Semáforo de cada solicitud** (#A121; Yurani y David, 5-nov, caso SOL-000707: *«quién se demoró… horas reales, no laborales»*).
+  Arriba del detalle (solicitante y administradores) y en cada fila de **Métricas → Tiempos del flujo**: una marca por etapa con la
+  fecha y la hora en que pasó, **cuánto tardó en horas reales** (de calendario: noches y fines de semana cuentan), a quién le tocaba,
+  la etapa actual con «lleva X», los votos con su tiempo y **quién tuvo la solicitud más tiempo**. El servidor arma las horas
+  (`_stageInfo_`, de `EVENTOS_JSON` y los votos; sin cédulas) y la app las cuenta (`utils/stageTimeline.ts`, `StageTimeline.tsx`).
+  **Métricas va en horas reales**; los recordatorios y el escalamiento siguen en horas laborales. Una etapa nueva = un evento en
+  `_recordEvent_`, su hora en `_stageInfo_` y su paso en `buildTimeline`.
 - **Las horas, siempre en 24 h** (#A112, Yurani, 27-oct: «hora militar y ya»): un viajero escribió «6.22» por las 18:22, sin «pm», y se
   cotizó un vuelo a las 6 a. m. Todo campo de hora es `TimeInput` (`HH:MM` de 24 h, con la hora **en palabras** debajo y un botón que abre
   una **lista propia de horas**, cada 15 minutos, también en 24 h; entra y sale `HH:MM`). **Nunca un `<input type="time">`**, ni siquiera
@@ -633,6 +643,7 @@ components/
   CancellationModal.tsx    Anulaciones
   CityCombobox.tsx         Autocompletado de ciudades (custom, reemplazó datalist)
   DateInput.tsx            Campo de fecha DD/MM/AAAA con calendario; reemplaza a <input type="date"> (#A105)
+  StageTimeline.tsx        Semáforo de la solicitud: etapas con fecha, lo que tardó cada una en horas reales y quién la tuvo (#A121)
   TimeInput.tsx            Campo de hora HH:MM de 24 h, con la hora en palabras y lista propia de horas; reemplaza a <input type="time"> (#A112)
   Layout.tsx, ConfirmationDialog.tsx
 services/gasService.ts     Cliente HTTP hacia GAS (timeout 30 s + AbortController)
@@ -644,7 +655,8 @@ utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #
 utils/money.ts             Costos en pesos: formato, mínimo y valor pagado (gemelo de Code.gs, #A79, #A102)
 utils/purchase.ts          Aerolínea, canal de compra y hotel reservado (gemelo de Code.gs, #A82, #A94)
 utils/fare.ts              Tarifa del tiquete por noches y su justificación (gemelo de Code.gs, #A95)
-utils/changeWindow.ts      Plazo para pedir un cambio de viaje (gemelo de Code.gs, #A103)
+utils/changeWindow.ts      Plazo para pedir un cambio de viaje (gemelo de Code.gs, #A103; sin tiquete comprado, #A120)
+utils/stageTimeline.ts     Etapas de la solicitud con su hora, lo que tardó cada una y quién la tuvo (#A121)
 server/
   Code.gs                  Backend completo (~14.400 líneas)
   AdminSidebar.html        Sidebar de administración del Sheets
@@ -667,7 +679,7 @@ tools/check-single-bundle.cjs        La app es un solo archivo JavaScript, sin c
 tools/check-policy-approval.cjs      Aprobación del CFO por la política: espera, resumen, decisiones, vencimiento, tarifa y aviso (#A100)
 tools/check-monthly-report.cjs       Informe mensual de la política: primer día hábil, cifras, cuadros, CSV, envío una sola vez y prueba (#A101)
 tools/check-trip-change.cjs          Cambios de viaje: plazo igual en los dos lados, cambio con y sin compra, costo, aprobación, «Cambiada» (#A103)
-tools/check-approvals.cjs            Avisos a los aprobadores (caso SOL-000695), recordatorios y «Mis aprobaciones» (#A118, #A119)
+tools/check-approvals.cjs            Avisos a los aprobadores (caso SOL-000695), recordatorios, «Mis aprobaciones» (#A118, #A119) y la línea de tiempo (#A121)
 tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.gs real sobre una copia de la base; correos a una bandeja local (#A103)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
@@ -724,7 +736,14 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-10-29)
+### Para retomar (estado al 2026-11-05)
+
+- **Pendiente de desplegar (5-nov): #A120, #A121 y #A122** (cambio de viaje sin tiquete comprado, caso SOL-000714 de Laura; semáforo de
+  cada solicitud y Métricas en horas reales, pedido de Yurani; librerías al día). Orden: primero pegar **`Code.gs`** → versión nueva del
+  web app; después el push del frontend. Con el frontend nuevo y el servidor anterior no sale el semáforo y el cambio sin comprar
+  responde «solo el regreso»: no cambia nada. La primera vez que se abra Métricas recalcula todo (caché versión 2).
+- **#A118 y #A119 desplegados** (David confirmó el 5-nov que el `Code.gs` ya estaba pegado; frontend `fc73695`, revisión `00226`).
+- **Informe mensual de octubre (#A101):** llegó el martes 3-nov a Alejandro, Yurani y David.
 
 - **En el Mac, antes de nada: [MIGRACION.md §0](MIGRACION.md)** (Node 24, revisión del equipo y el recordatorio para todos sus
   proyectos). En el PC Linux ya está hecho.
@@ -733,10 +752,6 @@ autorización) y verificar antes de crear una versión nueva del web app.
   revisó la fila `COMPLETO` de Juan Camilo en MISC. Con el plan gratis de SerpApi (250 al mes) el rastreo continuo gasta ~280: se
   detiene solo en la reserva hasta que David suba al plan de 1.000. Las filas del historial en «Mes a mes» se llenan con las búsquedas
   desde el 29-oct.
-- **Pendiente de desplegar (29-oct): #A118 y #A119** (avisos a los aprobadores tras el caso SOL-000695 de Alejandro, y «Mis
-  aprobaciones»). Orden: primero pegar **`Code.gs`** → versión nueva del web app (#A118 funciona ya con la app de hoy); después el push
-  del frontend (#A119; con el servidor anterior el botón no aparece). David le responde a Alejandro: la SOL-000695 está comprada
-  (Avianca, JJQNSS) y no pasó por su voto porque Yurani saltó la etapa para comprar los tramos nacionales.
 - **«Summary of failures» de los activadores (29-oct):** a veces en la mañana, p. ej. `sendPendingSelectionReminders` el 28-oct a las
   8:02 (4 min y *«We're sorry, a server error occurred»*). David revisó Ejecuciones: todas las fallas de los últimos días son errores
   del servidor de Google o tiempo agotado, sin línea del código. **No hay nada que corregir**: el recordatorio solo lee y envía, y la
@@ -754,9 +769,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **Fechas que vienen (sin código):**
   - **21-oct:** terminó el estudio de precios (#A84). Desde #A115 el rastreo sigue sin fecha de fin. Pendiente: revisar la
     proyección con Yurani antes de mostrársela a Alejandro: sin 15 comparaciones exactas no da cifra al año (#A99).
-  - **Martes 3-nov:** primer informe mensual automático (octubre) para Alejandro, con copia a Yurani y David.
-    Revisar que llegó y que `INFORMES ENVIADOS` tiene su fila. Octubre trae poca tarifa (se registra desde el
-    8-oct); desde noviembre sale completa.
+  - **3-nov:** llegó el primer informe mensual (octubre). Octubre trae poca tarifa (se registra desde el 8-oct); desde
+    noviembre sale completa.
 - **Estudio de precios:** activo del 7 al 21-oct-2026 (124 consultas en 2 semanas); desde #A115, seguimiento continuo (~280
   consultas al mes: plan de 1.000 cuando David lo suba).
 - **Decisiones abiertas:** mostrarle el comparador a Laura: **en pausa**, no se ha decidido si se le muestra
@@ -790,7 +804,7 @@ autorización) y verificar antes de crear una versión nueva del web app.
   `node:24.22.1-alpine` (0 vulnerabilidades) y es la revisión `00218` de Cloud Run. El PC Linux ya tiene Node 24.22.1 (`~/.local`).
   Queda: Node 24 en el Mac ([MIGRACION.md §0](MIGRACION.md)); en el PC, 26 paquetes del sistema sin actualizar (`sudo apt update &&
   sudo apt upgrade`; Python ya trae los parches de octubre en `3.14.4-1ubuntu0.2`); revisar el manifiesto de Apps Script
-  ([docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md) §5, punto 5); el 30-oct fijar markdown-it 14.3.3 (lo hace Claude).
+  ([docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md) §5, punto 5). markdown-it 14.3.3 quedó fija el 5-nov (#A122).
 - **#A109 (reserva por partes = tiquete comprado en los cambios; «No se reservó hotel» = $0 en el dashboard) y #A110 («Excluir del
   ahorro» en el comparador y la respuesta en una frase): DESPLEGADOS el 22-oct.** David pegó `Code.gs` y `CostsDashboard.html` y publicó
   la versión nueva; el frontend `0d71592` es la revisión `00220` de Cloud Run. **SOL-000659** (compra guardada por partes) y su cambio

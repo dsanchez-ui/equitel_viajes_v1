@@ -4,6 +4,8 @@ import { gasService } from '../services/gasService';
 import { PurchaseStatsPanel } from './PurchaseStatsPanel';
 import { ChangeControlPanel } from './ChangeControlPanel';
 import { DateInput } from './DateInput';
+import { StageTimeline } from './StageTimeline';
+import { fmtStamp } from '../utils/stageTimeline';
 
 interface MetricsPanelProps {
   onClose: () => void;
@@ -11,15 +13,16 @@ interface MetricsPanelProps {
 
 type DatePreset = 'today' | 'last7' | 'last30' | 'custom' | 'all';
 
+// #A121: horas reales (de calendario), igual que la línea de tiempo del detalle.
 const formatMinutes = (m: number | null | undefined): string => {
   if (m === null || m === undefined) return '—';
   if (m < 60) return `${m} min`;
   const hours = Math.floor(m / 60);
   const mins = m % 60;
-  if (hours < 24) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  if (hours < 24) return mins > 0 ? `${hours} h ${mins} min` : `${hours} h`;
   const days = Math.floor(hours / 24);
   const remHours = hours % 24;
-  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+  return remHours > 0 ? `${days} d ${remHours} h` : `${days} d`;
 };
 
 const presetToRange = (preset: DatePreset): { dateFrom?: string; dateTo?: string } => {
@@ -157,7 +160,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
           </div>
           <p className="text-xs text-gray-500 mb-4">
             {tab === 'times'
-              ? 'Diagnóstico de cuánto tiempo toma cada etapa del flujo. Tiempos calculados en horario laboral (L-V 7-17, Sáb 8-12).'
+              ? 'Diagnóstico de cuánto tiempo toma cada etapa del flujo. Tiempos en horas reales, de calendario (incluyen noches y fines de semana). Toque una solicitud para ver cuándo pasó por cada etapa.'
               : tab === 'changes'
               ? 'Cada cambio de viaje con lo que costó el viaje y lo que sumó el cambio, para ver dónde se paga de más.'
               : 'Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta anticipación. Base para comparar precios con otras agencias.'}
@@ -395,46 +398,54 @@ const AggregateCard: React.FC<AggregateCardProps> = ({ label, value, sub, accent
   </div>
 );
 
-const CrossDayBadge: React.FC<{ days: number | null | undefined; isAnalystStage: boolean }> = ({ days, isAnalystStage }) => {
-  if (!days || days === 0) return null;
-  const color = isAnalystStage ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700';
+/** Duración de la etapa y, debajo, cuándo terminó (día/mes y hora de Colombia). */
+const StageCell: React.FC<{ minutes: number | null; at?: string }> = ({ minutes, at }) => {
+  const st = at ? fmtStamp(at) : null;
   return (
-    <span className={`ml-1 inline-flex items-center px-1 py-0.5 rounded text-[8px] font-bold ${color}`} title={`Cruzó ${days} día(s) hábil(es) — ${isAnalystStage ? 'etapa del analista' : 'etapa del usuario/aprobador'}`}>
-      +{days}d
-    </span>
+    <td className="px-2 py-1.5 text-right text-gray-700 whitespace-nowrap">
+      <span className="block">{formatMinutes(minutes)}</span>
+      {st && <span className="block text-[9px] text-gray-400">{st.short}</span>}
+    </td>
   );
 };
 
 const RequestMetricsRow: React.FC<{ r: RequestMetrics }> = ({ r }) => {
+  const [open, setOpen] = useState(false);
   const noEvents = !r.hasEvents;
-  const cd = r.crossDays;
+  const s = r.stages || null;
   return (
-    <tr className={noEvents ? 'bg-gray-50' : ''}>
-      <td className="px-2 py-2 font-medium text-gray-900 whitespace-nowrap">
-        {r.requestId}
-        {noEvents && <span className="ml-1 text-[9px] text-gray-400">(sin datos)</span>}
-      </td>
-      <td className="px-2 py-2 text-gray-600 truncate max-w-[140px]" title={r.requesterEmail}>{r.requesterEmail}</td>
-      <td className="px-2 py-2 text-gray-600 whitespace-nowrap">{r.destination}</td>
-      <td className="px-2 py-2 whitespace-nowrap">
-        <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${statusColor(r.status)}`}>{statusLabel(r.status)}</span>
-      </td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
-        {formatMinutes(r.timeToOptionsMinutes)}<CrossDayBadge days={cd?.toOptions} isAnalystStage={true} />
-      </td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
-        {formatMinutes(r.timeToSelectionMinutes)}<CrossDayBadge days={cd?.toSelection} isAnalystStage={false} />
-      </td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
-        {formatMinutes(r.timeToCostConfirmMinutes)}<CrossDayBadge days={cd?.toCostConfirm} isAnalystStage={true} />
-      </td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
-        {formatMinutes(r.timeToFullApprovalMinutes)}<CrossDayBadge days={cd?.toFullApproval} isAnalystStage={false} />
-      </td>
-      <td className="px-2 py-2 text-right text-gray-700 whitespace-nowrap">
-        {formatMinutes(r.timeToReservationMinutes)}<CrossDayBadge days={cd?.toReservation} isAnalystStage={true} />
-      </td>
-      <td className="px-2 py-2 text-right text-gray-900 font-bold whitespace-nowrap">{formatMinutes(r.totalCycleMinutes)}</td>
-    </tr>
+    <>
+      <tr
+        className={`${noEvents ? 'bg-gray-50' : ''} ${s ? 'cursor-pointer hover:bg-red-50/40' : ''} ${open ? 'bg-red-50/60' : ''}`}
+        onClick={() => { if (s) setOpen(o => !o); }}
+        title={s ? (open ? 'Ocultar las etapas' : 'Ver cuándo pasó por cada etapa') : undefined}
+        aria-expanded={s ? open : undefined}
+        data-metrics-row={r.requestId}
+      >
+        <td className="px-2 py-2 font-medium text-gray-900 whitespace-nowrap">
+          {s && <span className="inline-block w-3 text-gray-400" aria-hidden="true">{open ? '▾' : '▸'}</span>}
+          {r.requestId}
+          {noEvents && <span className="ml-1 text-[9px] text-gray-400">(sin datos)</span>}
+        </td>
+        <td className="px-2 py-2 text-gray-600 truncate max-w-[140px]" title={r.requesterEmail}>{r.requesterEmail}</td>
+        <td className="px-2 py-2 text-gray-600 whitespace-nowrap">{r.destination}</td>
+        <td className="px-2 py-2 whitespace-nowrap">
+          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${statusColor(r.status)}`}>{statusLabel(r.status)}</span>
+        </td>
+        <StageCell minutes={r.timeToOptionsMinutes} at={s?.options} />
+        <StageCell minutes={r.timeToSelectionMinutes} at={s?.selection} />
+        <StageCell minutes={r.timeToCostConfirmMinutes} at={s?.costs} />
+        <StageCell minutes={r.timeToFullApprovalMinutes} at={s?.approved} />
+        <StageCell minutes={r.timeToReservationMinutes} at={s?.purchase} />
+        <td className="px-2 py-2 text-right text-gray-900 font-bold whitespace-nowrap">{formatMinutes(r.totalCycleMinutes)}</td>
+      </tr>
+      {open && s && (
+        <tr className="bg-white">
+          <td colSpan={10} className="px-3 py-3 border-b-2 border-red-100">
+            <StageTimeline stages={s} status={r.status} embedded />
+          </td>
+        </tr>
+      )}
+    </>
   );
 };

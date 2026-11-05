@@ -3353,7 +3353,7 @@ botones del encabezado se salían por la derecha.
 ## **#A118 — Avisos a los aprobadores: confirmación, decisión final y quién decidió (caso SOL-000695)**
 **Fecha:** 2026-10-29 · **Reportado por:** Alejandro Gómez (correo a David, 29-oct: *«ya estaba aprobada, pero seguían llegando los
 recordatorios… el sistema solo dice "Decisión Previa Detectada", sin indicar si quedó aprobada o denegada»*) y David (*«es una regla
-básica de la aplicación… trabajen eso urgentemente»*). · **Estado:** Implementado; pendiente pegar `Code.gs`.
+básica de la aplicación… trabajen eso urgentemente»*). · **Estado:** Desplegado (`Code.gs` pegado por David; confirmado el 5-nov).
 
 **Qué pasó con la SOL-000695** (Simón García, Medellín → Bogotá, 15 al 19-nov; base del 29-oct):
 - 1:55 p. m. del 28-oct: el área de compras confirma costos ($528.868). La unidad ya había pasado el presupuesto de octubre: se le pide
@@ -3412,7 +3412,7 @@ y si el solicitante era el CEO o el director CDS se les recordaba a personas a l
 **Fecha:** 2026-10-29 · **Pedido por:** Alejandro Gómez (*«una vista o un Sheet con todas las solicitudes y su estado: aprobadas,
 denegadas y pendientes de mi respuesta»*) y David (29-oct: *«un botón en la barra superior… mis aprobaciones… todo lo que tienen
 pendiente de aprobar y el historial… quién ya aprobó y a qué horas… que las pudieran aprobar desde ese mismo lugar»*, siempre que no
-afecte la rapidez, la seguridad ni traiga errores). · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+afecte la rapidez, la seguridad ni traiga errores). · **Estado:** Desplegado (frontend `fc73695`, revisión `00226` de Cloud Run, 29-oct; `Code.gs` confirmado el 5-nov).
 
 **Qué hace:**
 - **Botón MIS APROBACIONES** en la barra de arriba, solo para quien aprueba algo (aparece en el directorio como aprobador, es Gerencia
@@ -3458,3 +3458,121 @@ afecte la rapidez, la seguridad ni traiga errores). · **Estado:** Implementado;
 - Servidor nuevo con el frontend anterior: la clave sobra y todo sigue igual.
 
 **Rollback:** frontend = revert del commit; servidor = versión anterior del web app.
+
+---
+
+## **#A120 — «Cambiar mi viaje» sin tiquete comprado: se cambia todo el viaje (caso SOL-000714)**
+**Fecha:** 2026-11-05 · **Reportado por:** Laura Molina · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+
+**Síntoma:** la SOL-000714 (Bogotá–Apartadó, ida el 5-nov, regreso el 14-nov) estaba APROBADA y el tiquete no se había comprado,
+porque el viajero iba a confirmar si había que mover las fechas. El 5-nov el solicitante quiso cambiarlas y la app le dijo «La ida ya
+voló. Puede cambiar el regreso»: no lo dejó mover la ida.
+
+**Causa raíz:** la regla del plazo (#A103) tomaba «la fecha de ida ya llegó» como «la ida ya voló» y pasaba a «solo el regreso». Eso
+vale con el tiquete comprado. Sin tiquete nadie ha volado, y la regla no lo distinguía.
+
+**Fix:** `_tripChangeWindow_` (Code.gs) y su gemelo `tripChangeWindow` (`utils/changeWindow.ts`) reciben si el tiquete está comprado (la
+regla de #A109: RESERVADO, o APROBADO con la reserva guardada por partes).
+- **Sin comprar:** se cambia todo el viaje mientras no haya terminado (como se pidió). Si la fecha de ida ya no da tiempo (pasó su
+  plazo, o es hoy o antes), el cambio tiene que traer una **ida nueva** que sí dé tiempo; el área de compras, una de hoy en adelante. El
+  servidor lo exige (`newDeparture`) y el formulario lo explica antes de enviarlo.
+- **Comprado:** todo igual que antes (#A103).
+- Un viaje sin comprar que ya terminó sigue sin poderse cambiar: es una solicitud nueva.
+
+**Verificado:**
+- `npm run verify` en verde. `tools/check-trip-change.cjs` compara las dos reglas, comprado y sin comprar, del 25-sep-2026 al 10-ene-2027.
+  También prueba el caso del 5-nov:
+  - sin ida nueva, error;
+  - con ida que da tiempo, se crea;
+  - la ida nueva sin tiempo, error;
+  - el área de compras con la ida del pasado, error, y con la de hoy, sí;
+  - viaje terminado, error.
+- Entorno local con la exportación del 5-nov:
+  - Mateo (solicitante de la 714) ve «El tiquete aún no se compró: puede cambiar todo el viaje con una fecha de ida nueva» y el
+    formulario le deja cambiar la ida;
+  - el servidor rechaza el cambio sin ida nueva y acepta la ida del viernes 6 (antes de las 5:00 p. m. del jueves).
+
+**Despliegue (orden):** primero pegar `Code.gs` → versión nueva del web app; después el push del frontend.
+- Frontend nuevo con el servidor anterior: el formulario deja elegir la ida, pero el servidor responde «solo se puede cambiar el
+  regreso». No cambia nada.
+- Servidor nuevo con el frontend anterior: todo como antes.
+- El mismo día, el área de compras puede registrar el cambio a nombre del viajero sin plazo, aun sin esta corrección.
+
+**Rollback:** frontend = revert del commit; servidor = versión anterior del web app.
+
+---
+
+## **#A121 — Semáforo de cada solicitud: cuándo pasó por cada etapa, cuánto tomó en horas reales y a quién le tocaba**
+**Fecha:** 2026-11-05 · **Pedido por:** Yurani Prieto (caso SOL-000707: *«4 + 8 + 3 + 6 son 3 días… el cambio le vale más que comprar
+otro»*) y David (*«un pequeño semáforo arriba de cada solicitud… cuándo pasó por una etapa… a quién le correspondía… horas reales, no
+laborales… que todo el mundo pueda revisar en el detalle de su solicitud a qué corresponde la demora»*). Modelo: el semáforo de
+etapas de Cotizador 2.0. · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+
+**Qué hace:**
+- **Detalle de cada solicitud** (solicitante y administradores), arriba:
+  - la **etapa actual**: qué está pasando, a quién le toca, desde cuándo y cuánto **lleva**;
+  - el semáforo con una marca por etapa: verde ✓, roja con su número (la actual), gris (falta), ✕ donde se denegó o se anuló;
+  - debajo de cada etapa: a quién le tocaba, la fecha y la hora en que pasó y **cuánto tardó** desde la anterior;
+  - los votos, con lo que tardó cada aprobador desde que se le pidió;
+  - **quién tuvo la solicitud más tiempo**: solicitante, área de compras, aprobadores y CFO, con su %.
+- **Etapas:** solicitud creada → excepción a la política (si la hubo) → cambio aceptado (en un cambio) → opciones cargadas → opción
+  elegida → costos confirmados → aprobada → tiquetes comprados (o hospedaje reservado).
+- **Horas reales, de calendario** (noches y fines de semana cuentan), en hora de Colombia, fecha día/mes/año y 24 h (#A105, #A112).
+- **Métricas → Tiempos del flujo:**
+  - promedios y tiempos por solicitud en horas reales (antes laborales);
+  - debajo de cada tiempo, cuándo terminó la etapa;
+  - al tocar una fila se abre el mismo semáforo;
+  - el ciclo total cuenta desde que se pidió (incluye la espera de la excepción);
+  - en un cambio, la cotización cuenta desde que se aceptó;
+  - se quitaron los avisos «+1d».
+- Los recordatorios y el escalamiento siguen en horas laborales.
+
+**Cómo:**
+- El servidor arma las horas de cada etapa (`_stageInfo_`) y las manda en `getRequestById` (el detalle) y en `getMetrics`. Salen de
+  `EVENTOS_JSON` y de las casillas de los votos (la misma regla de «Mis aprobaciones», `_approvalTrail_`).
+- Los nombres salen de USUARIOS. Sin cédulas, fechas de nacimiento ni celulares.
+- La app ordena y cuenta con `utils/stageTimeline.ts` (componente `StageTimeline`).
+- Eventos nuevos: `changeStudied` y `changeRejected` (cuándo el área de compras aceptó o rechazó un cambio). En los cambios de antes no
+  quedó esa hora: su cotización se mide desde la solicitud, con la nota «Incluye la revisión del cambio».
+- El caché de Métricas pasa a la versión 2 (`METRICS_CACHE_VERSION`): la primera vez que se abra recalcula todas las solicitudes. Se
+  quitó `_businessDaysBetween_`, que ya no usaba nadie.
+
+**Verificado:**
+- `npm run verify` en verde. `tools/check-approvals.cjs` usa las horas reales de la SOL-000714 (exportación del 5-nov):
+  - etapas y estados;
+  - lo que tomó cada una (6 h 56 min la excepción, 50 min las opciones, 8 min la elección, 9 min los costos, 27 min la aprobación);
+  - «lleva» en la compra;
+  - quién la tuvo más tiempo;
+  - el voto con su tiempo.
+
+  Además prueba una denegada (se cierra en la aprobación, con quién y cuándo), una anulada por el solicitante, el formato de horas y
+  fechas, y que Métricas trae horas reales y la línea de tiempo.
+- Entorno local con la exportación del 5-nov:
+  - el detalle de la 714 como Laura;
+  - Métricas con la 707 abierta: el solicitante tardó 22 h 18 min en elegir y la aprobación 20 h 51 min;
+  - el detalle como Mateo en celular (390 px): sin desborde y abre mostrando la etapa actual;
+  - sin errores de JavaScript.
+- El entorno de prueba (`tools/entorno-prueba/servidor.cjs`) pasa las fechas de la copia al contexto de `Code.gs`. Antes, las fechas de
+  jueves y martes se leían vacías, solo en el entorno.
+
+**Despliegue (orden):** primero pegar `Code.gs` → versión nueva del web app; después el push del frontend.
+- Frontend nuevo con el servidor anterior: el detalle no trae las etapas y el semáforo no sale. Métricas sigue en horas laborales hasta
+  pegar el `Code.gs`.
+- Servidor nuevo con el frontend anterior: las claves sobran y todo sigue igual, salvo que Métricas ya muestra horas reales.
+
+**Rollback:** frontend = revert del commit; servidor = versión anterior del web app.
+
+---
+
+## **#A122 — Librerías al día (fast-uri, vite, markdown-it)**
+**Fecha:** 2026-11-05 · **Pedido por:** David (revisión de cada proyecto, #A108) · **Estado:** Implementado; sale con el push.
+
+- `fast-uri` 3.1.8 → **3.1.9** (`overrides`): cuatro avisos moderados; viene dentro de `serve`, el servidor de la imagen de producción.
+  3.1.9 salió el 19-oct.
+- `vite` 6.4.4 → **6.4.5**: el aviso (`server.fs.deny`) solo afecta el servidor de desarrollo. Salió el 21-oct.
+- `markdown-it` **14.3.3** fija como dependencia de desarrollo (pendiente desde el 30-oct, [docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md)):
+  la usa `npm run build:guia` y antes se instalaba al vuelo sin versión. Salió el 16-oct. Sus dependencias tienen más de dos semanas.
+
+**Verificado:** `npm audit` y `npm audit --omit=dev`: 0 vulnerabilidades. `npm run verify` en verde.
+
+**Despliegue:** el push. Cloud Build construye la imagen con el lockfile (`npm ci --omit=dev`).

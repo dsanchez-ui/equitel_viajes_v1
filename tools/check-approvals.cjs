@@ -390,12 +390,81 @@ function main() {
   ok('app: el CFO aprueba la excepción', r.success && r.data.kind === 'approved' && cell(P, 'STATUS') === 'PENDIENTE_OPCIONES');
   ok('app: confirmación al CFO de la excepción', mailsTo(CFO).some((m) => /EXCEPCIÓN APROBADA/.test(m.html) && m.html.includes(P)));
 
+  // ---------------------------------------------------------------------------
+  // #A121: línea de tiempo de la solicitud (horas reales, quién la tenía). Las horas son las de
+  // la SOL-000714 en la exportación del 5-nov (excepción a la política, aprobada, sin comprar).
+  let TL;
+  try {
+    const esbuild = require(path.join(ROOT, 'node_modules', 'esbuild'));
+    const out = esbuild.buildSync({ entryPoints: [path.join(ROOT, 'utils', 'stageTimeline.ts')], bundle: true, format: 'cjs', platform: 'node', write: false, logLevel: 'error' });
+    const m = { exports: {} };
+    new Function('module', 'exports', 'require', out.outputFiles[0].text)(m, m.exports, require);
+    TL = m.exports;
+  } catch (e) { failures.push('no se pudo compilar utils/stageTimeline.ts: ' + e.message); }
+  const T = addRow({ cells: { STATUS: 'APROBADO', 'APROBADO POR ÁREA? (AUTOMÁTICO)': 'Sí_jefe@p.co', 'FECHA/HORA (AUTOMÁTICO)': '2026-11-04 17:23',
+    'APROBACION CFO ANTICIPACION': 'Sí_agdg@equitel.com.co_4/11/2026 15:48', 'SELECCION_TEXTO': 'opción b',
+    EVENTOS_JSON: JSON.stringify({ created: '2026-11-04T13:53:00.115Z', policyHold: '2026-11-04T13:53:00.971Z', policyApproved: '2026-11-04T20:49:00.367Z',
+      policyDecision: { decision: 'approved', email: CFO, at: '2026-11-04T20:49:01.844Z' }, optionsUploaded: '2026-11-04T21:38:52.024Z',
+      selectionMade: '2026-11-04T21:46:52.871Z', costConfirmed: '2026-11-04T21:56:11.183Z',
+      approvalRequested: { at: '2026-11-04T21:56:19.527Z', to: [{ email: 'jefe@p.co', role: 'NORMAL' }] },
+      costConfirmedBy: { email: 'jefe@p.co', at: '2026-11-04T21:56:20.308Z' }, approvals: { NORMAL: { email: 'jefe@p.co', at: '2026-11-04T22:23:08.261Z' } },
+      fullyApproved: '2026-11-04T22:23:09.436Z' }) } });
+  r = app('getRequestById', 'ana@p.co', { requestId: T });
+  const st = r.success && r.data && r.data.stages;
+  ok('línea de tiempo: el solicitante la recibe en el detalle', !!st && st.v === 1);
+  ok('línea de tiempo: sin cédulas', !!st && !/71787933/.test(JSON.stringify(st)));
+  eq('línea de tiempo: horas de cada etapa (ISO)', st && [st.created, st.policy && st.policy.decision, st.policy && st.policy.at, st.options, st.selection, st.costs, st.approved, st.purchase],
+    ['2026-11-04T13:53:00.115Z', 'approved', '2026-11-04T20:49:00.367Z', '2026-11-04T21:38:52.024Z', '2026-11-04T21:46:52.871Z', '2026-11-04T21:56:11.183Z', '2026-11-04T22:23:09.436Z', '']);
+  ok('línea de tiempo: quién aprobó la excepción y quién votó, con su hora', !!st && /Alejandro|ALEJANDRO/.test(st.policy.who) && st.requester === 'PEREZ ANA' &&
+    st.approvals.length && st.approvals[0].who === 'JEFE UNO' && st.approvals[0].state === 'approved' && st.approvals[0].at === '2026-11-04T22:23:08.261Z');
+  if (TL && st) {
+    const NOW5 = Date.parse('2026-11-05T21:27:00Z'); // jueves 5-nov, 4:27 p. m. de Bogotá
+    const tl = TL.buildTimeline(st, 'APROBADO', NOW5);
+    eq('línea de tiempo: etapas y estados', tl.steps.map((x) => x.key + ':' + x.state),
+      ['creada:hecho', 'politica:hecho', 'opciones:hecho', 'seleccion:hecho', 'costos:hecho', 'aprobacion:hecho', 'compra:actual']);
+    eq('línea de tiempo: lo que tomó cada etapa en horas reales', tl.steps.map((x) => TL.fmtDuration(x.minutes)),
+      ['—', '6 h 56 min', '50 min', '8 min', '9 min', '27 min', '23 h 4 min']);
+    eq('línea de tiempo: la compra lleva desde la aprobación', [tl.current && tl.current.key, tl.current && TL.fmtStampText(tl.current.since)], ['compra', '04/11/2026 17:23']);
+    eq('línea de tiempo: quién la tuvo más tiempo', tl.byResponsible.map((x) => x.responsible + ' ' + TL.fmtDuration(x.minutes)),
+      ['Área de compras 1 d', 'CFO 6 h 56 min', 'Aprobadores 27 min', 'Solicitante 8 min']);
+    eq('línea de tiempo: la etapa más larga', tl.longestKey, 'compra');
+    eq('línea de tiempo: el voto, desde que se le pidió', tl.steps[5].approvals.map((a) => a.label + ' ' + TL.fmtDuration(a.minutes)), ['Aprobador de Área 27 min']);
+    eq('formato: duración en horas reales', [0, 59, 60, 61, 840, 1440, 1860, 2880].map(TL.fmtDuration), ['0 min', '59 min', '1 h', '1 h 1 min', '14 h', '1 d', '1 d 7 h', '2 d']);
+    eq('formato: fecha y hora de Colombia, día/mes/año y 24 h', TL.fmtStampText('2026-11-05T02:30:00Z'), '04/11/2026 21:30');
+  }
+  // Denegada por el aprobador: se cierra en la aprobación.
+  const D2 = addRow({ cells: { STATUS: 'DENEGADO', 'APROBADO POR ÁREA? (AUTOMÁTICO)': 'No_jefe@p.co', 'FECHA/HORA (AUTOMÁTICO)': '29/10/2026 9:15',
+    EVENTOS_JSON: JSON.stringify({ created: '2026-10-27T13:00:00Z', optionsUploaded: '2026-10-27T15:00:00Z', selectionMade: '2026-10-27T18:00:00Z', costConfirmed: '2026-10-28T13:00:00Z' }) } });
+  const sd = app('getRequestById', 'admin@p.co', { requestId: D2 }).data.stages;
+  ok('denegada: quién y cuándo', sd && sd.end && sd.end.kind === 'DENEGADO' && sd.end.who === 'JEFE UNO' && sd.end.at === '2026-10-29T14:15:00.000Z' && sd.end.step === 'aprobacion');
+  if (TL && sd) {
+    const td = TL.buildTimeline(sd, 'DENEGADO', Date.parse('2026-11-05T21:27:00Z'));
+    eq('denegada: la aprobación cerrada, sin compra', td.steps.map((x) => x.key + ':' + x.state + ':' + TL.fmtDuration(x.minutes)),
+      ['creada:hecho:—', 'opciones:hecho:2 h', 'seleccion:hecho:3 h', 'costos:hecho:19 h', 'aprobacion:cerrado:1 d 1 h', 'compra:omitido:—']);
+    ok('denegada: sin etapa actual', td.current === null && td.done === false);
+  }
+  // Anulada por el solicitante mientras el área de compras buscaba opciones.
+  const A2 = addRow({ cells: { STATUS: 'ANULADO', OBSERVACIONES: '[ANULACIÓN POR USUARIO]: ya no viajo',
+    EVENTOS_JSON: JSON.stringify({ created: '2026-10-27T13:00:00Z', cancelledByUser: '2026-10-27T20:30:00Z' }) } });
+  const sa = app('getRequestById', 'ana@p.co', { requestId: A2 }).data.stages;
+  if (TL && sa) {
+    const ta = TL.buildTimeline(sa, 'ANULADO', Date.parse('2026-11-05T21:27:00Z'));
+    eq('anulada: se cierra donde iba, con quién', [ta.steps[1].key, ta.steps[1].state, TL.fmtDuration(ta.steps[1].minutes), sa.end.who], ['opciones', 'cerrado', '7 h 30 min', 'PEREZ ANA']);
+  }
+  // Métricas: horas reales y la misma línea de tiempo.
+  r = app('getMetrics', 'admin@p.co', { filters: { hideNoEvents: false } });
+  const mt = r.success && r.data.perRequest.find((x) => x.requestId === T);
+  ok('métricas: responde', r.success);
+  eq('métricas: horas reales (no laborales)', mt && [mt.timeToOptionsMinutes, mt.timeToSelectionMinutes, mt.timeToCostConfirmMinutes, mt.timeToFullApprovalMinutes],
+    [50, 8, 9, 27]);
+  ok('métricas: trae la línea de tiempo de cada solicitud', !!(mt && mt.stages && mt.stages.options === '2026-11-04T21:38:52.024Z'));
+
   if (failures.length) {
     console.error('✗ Avisos a los aprobadores y «Mis aprobaciones» (#A118, #A119):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('Avisos a los aprobadores y «Mis aprobaciones» (#A118, #A119): caso SOL-000695 (salto de etapa con aviso y enlace que dice quién, cuándo y por qué), confirmación a quien vota, aviso final una sola vez (aprobada, denegada, anulada; nunca al solicitante ni a quien decide; a nadie si no se pidió), coaprobadores, recordatorio después de 2 horas laborales, lista por persona sin cédulas y decisiones desde la app con el rol del servidor. OK');
+  console.log('Avisos a los aprobadores y «Mis aprobaciones» (#A118, #A119): caso SOL-000695 (salto de etapa con aviso y enlace que dice quién, cuándo y por qué), confirmación a quien vota, aviso final una sola vez (aprobada, denegada, anulada; nunca al solicitante ni a quien decide; a nadie si no se pidió), coaprobadores, recordatorio después de 2 horas laborales, lista por persona sin cédulas y decisiones desde la app con el rol del servidor; línea de tiempo de cada solicitud en horas reales, en el detalle y en Métricas (#A121). OK');
 }
 
 main();

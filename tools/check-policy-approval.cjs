@@ -427,9 +427,9 @@ function main() {
   const t0 = '2026-10-13T14:00:00.000Z', t1 = '2026-10-14T14:00:00.000Z', t2 = '2026-10-14T16:00:00.000Z';
   const fake = ['SOL-X', 'a@p.co', 'CALI', 'Equitel', 'PENDIENTE_SELECCION'];
   const m1 = ctx._buildRequestMetrics_('SOL-X', fake, 1, 2, 3, 4, { created: t0, policyApproved: t1, optionsUploaded: t2 });
-  eq('métricas: tiempo a opciones desde la aprobación del CFO', m1.timeToOptionsMinutes, ctx._workingMinutesBetween_(t1, t2));
+  eq('métricas: tiempo a opciones desde la aprobación del CFO', m1.timeToOptionsMinutes, ctx._realMinutesBetween_(t1, t2));
   const m2 = ctx._buildRequestMetrics_('SOL-X', fake, 1, 2, 3, 4, { created: t0, optionsUploaded: t2 });
-  eq('métricas: sin espera, desde la creación (igual que antes)', m2.timeToOptionsMinutes, ctx._workingMinutesBetween_(t0, t2));
+  eq('métricas: sin espera, desde la creación (horas reales, #A121)', m2.timeToOptionsMinutes, ctx._realMinutesBetween_(t0, t2));
 
   // 9. Tarifa superior a la del manual
   eq('tarifa superior: solo si sube y es excepción', [ctx._fareIsAboveManual_('TIPO 2', 'TIPO 1', 'Lleva herramienta'), ctx._fareIsAboveManual_('TIPO 3', 'TIPO 2', ''),

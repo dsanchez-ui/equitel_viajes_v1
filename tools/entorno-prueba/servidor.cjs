@@ -688,6 +688,21 @@ function mailPage(m) {
   return '<!doctype html><meta charset="utf-8">' + head + rewriteDrive(m.html || '<pre style="white-space:pre-wrap;font:13px system-ui;padding:14px">' + esc(m.text) + '</pre>');
 }
 
+/**
+ * Las fechas de la copia se crean fuera del contexto de Code.gs: ahí `v instanceof Date` da false
+ * y una fecha de jueves o martes se leía vacía («Thu…».split('T')). En Apps Script siempre son del
+ * mismo contexto: se pasan al de Code.gs para que la app se vea igual que en producción.
+ */
+function sameRealmDates(ctx, ss) {
+  const CtxDate = vm.runInContext('Date', ctx);
+  Object.values(ss._sheets).forEach((sh) => (sh._t || []).forEach((row) => {
+    for (let i = 0; i < row.length; i++) {
+      const v = row[i];
+      if (v && typeof v === 'object' && !(v instanceof CtxDate) && Object.prototype.toString.call(v) === '[object Date]') row[i] = new CtxDate(v.getTime());
+    }
+  }));
+}
+
 // ---------------------------------------------------------------------------
 // 7. Arranque
 // ---------------------------------------------------------------------------
@@ -700,6 +715,7 @@ let BASE_LABEL = '';
   const ss = makeSpreadsheet(base);
   const ctx = loadPlatform(ss);
   const trips = seed(ctx, ss);
+  sameRealmDates(ctx, ss);
   const dir = buildApp();
   startApi(ctx, ss, trips);
   startApp(dir);

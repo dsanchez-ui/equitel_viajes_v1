@@ -82,7 +82,7 @@ No es necesario memorizar las 75, pero estas son las más relevantes día a día
 | `No RESERVA` | PNR / número de confirmación. |
 | `SOPORTES (JSON)` | Array de archivos (factura reserva, etc.) con sus URLs de Drive. |
 | `APROBADO POR ÁREA? (AUTOMÁTICO)`, `APROBADO CDS`, `APROBADO CEO` | Log de quién aprobó y cuándo. Si una etapa se saltó, queda marcada como `Sí (ETAPA SALTADA por correo@…)`. |
-| `EVENTOS_JSON` | Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por los badges de cruce de día. |
+| `EVENTOS_JSON` | Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por el semáforo del detalle de cada solicitud (#A121). Desde el 5-nov también guarda cuándo se aceptó o rechazó un cambio (`changeStudied`, `changeRejected`). |
 | `OBSERVACIONES` | Texto libre. Puede tener marcadores internos como `[CONSULTA_USUARIO_PENDIENTE]`, `[ETAPA SALTADA por …]` o `[RESERVA]: Registrada sin notificación al usuario`. |
 
 ---
@@ -214,7 +214,7 @@ Las listas se consultan al abrir el panel y con **↻ Actualizar**. No envían c
 
 ### 5.6 Gestionar solicitudes de cambio («Cambiar mi viaje», #A103)
 
-Desde el 19-oct los viajeros piden los cambios con el botón **😕 ¿Necesita cambiar su viaje?**: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las **5:00 p. m. del día hábil anterior al vuelo** (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Después del plazo, y solo si es urgente, el portal les dice a quién llamar y en qué orden (tabla de MISC, **menú 16**; ver abajo).
+Desde el 19-oct los viajeros piden los cambios con el botón **😕 ¿Necesita cambiar su viaje?**: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las **5:00 p. m. del día hábil anterior al vuelo** (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Si el tiquete **no se ha comprado**, nadie ha volado: el viajero cambia todo el viaje con una fecha de ida nueva que dé tiempo, aunque la de la solicitud ya haya llegado (#A120, caso SOL-000714). Después del plazo, y solo si es urgente, el portal les dice a quién llamar y en qué orden (tabla de MISC, **menú 16**; ver abajo).
 
 Se crea una solicitud "hija" en `PENDIENTE_ANALISIS_CAMBIO`, ligada a la original, con lo de antes y lo de ahora. Te llega el correo **CAMBIO DE VIAJE**.
 
@@ -479,17 +479,17 @@ Panel accesible desde el dashboard admin → botón **Métricas**. Tiene dos pes
 
 ### 8.1 Tiempos del flujo
 
-**Qué muestra:**
-- Tiempos promedio por etapa (en minutos hábiles):
+**Qué muestra (desde el 5-nov-2026, #A121, en horas reales):**
+- Tiempos promedio por etapa, en **horas reales, de calendario** (incluyen noches y fines de semana; antes eran horas laborales):
   - Cotización (creación → opciones cargadas)
   - Selección (opciones → usuario describe)
   - Confirmación costos (selección → costos finales)
   - Aprobación completa (costos → todas las aprobaciones)
   - Reserva (aprobación → PNR registrado)
-  - Ciclo total (creación → reserva)
+  - Ciclo total (creación → reserva, con la espera de la excepción a la política si la hubo)
 - Performance del analista en 3 etapas que le corresponden (cotización, confirmación costos, compra).
 - Performance de cada aprobador (cuánto tarda en aprobar).
-- Badges de cruce de día (ej. `+1d` si la etapa cruzó a día siguiente hábil).
+- Debajo de cada tiempo, cuándo terminó esa etapa (día/mes y hora). **Al tocar una solicitud** se abre el mismo semáforo del detalle: cuándo pasó por cada etapa, a quién le tocaba, lo que tardó cada voto y quién tuvo la solicitud más tiempo. El solicitante ve ese semáforo en el detalle de su solicitud.
 
 **Filtros:**
 - Rango de fechas (últimos 30d, 90d, todo, personalizado)
@@ -499,7 +499,8 @@ Panel accesible desde el dashboard admin → botón **Métricas**. Tiene dos pes
 **Notas:**
 - Usa un cache JSON en Drive (`metricas_cache.json`) — recalcula solo las solicitudes cuyos eventos cambiaron desde la última carga.
 - Solicitudes creadas antes del deploy de métricas no tienen `EVENTOS_JSON` y aparecen como "sin datos".
-- Horario hábil: L-V 07:00–17:00, Sáb 08:00–12:00. Fuera de horario se excluye.
+- Los tiempos son de calendario (hora de Colombia). Los recordatorios y el escalamiento sí siguen contando horas laborales (L-V 07:00–17:00, Sáb 08:00–12:00).
+- En los cambios pedidos antes del 5-nov no quedó cuándo se aceptaron: su cotización se mide desde la solicitud («Incluye la revisión del cambio»).
 
 ### 8.2 Compras y costos
 

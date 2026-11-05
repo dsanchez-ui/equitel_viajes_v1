@@ -11,6 +11,7 @@ import {
 } from './RequestInfoSections';
 import { hotelPurchaseLabel, purchaseAirlineLabel, purchaseChannelLabel } from '../utils/purchase';
 import { fareBaggageLabel, fareShort } from '../utils/fare';
+import { StageTimeline } from './StageTimeline';
 
 interface RequestDetailProps {
     request: TravelRequest;
@@ -635,6 +636,9 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                             </div>
 
                             <div className="space-y-6 max-h-[70vh] overflow-y-auto pr-2">
+
+                                {/* #A121: semáforo de la solicitud: cuándo pasó por cada etapa, cuánto tomó y a quién le tocaba */}
+                                {request.stages && <StageTimeline stages={request.stages} status={request.status} />}
 
                                 {/* #A103: «Cambiar mi viaje»: la original cambiada y el detalle del cambio */}
                                 <ReplacedBanner request={request} />

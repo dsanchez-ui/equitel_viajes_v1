@@ -7,6 +7,7 @@
 // 12:00 m. Domingos y festivos de Colombia no cuentan. Antes del límite se puede
 // pedir a cualquier hora. Con el viaje en curso (la ida ya voló) solo se cambia el
 // regreso. El área de compras registra cambios a nombre del viajero sin plazo.
+// Sin tiquete comprado nadie ha volado: se cambia todo el viaje, con una ida que dé tiempo (#A120).
 // Todas las cuentas van en hora de Bogotá (UTC−5, sin horario de verano).
 
 const DAY_MS = 86400000;
@@ -86,12 +87,29 @@ export interface ChangeWindow {
   deadlineKey: string;
   deadlineHour: number;
   deadlineMs: number;
+  /**
+   * #A120: el tiquete no se ha comprado y la fecha de ida ya no da tiempo: el cambio tiene que
+   * traer una ida nueva que sí dé tiempo (el administrador, una de hoy en adelante).
+   */
+  newDeparture: boolean;
 }
 
-/** Qué se puede cambiar de un viaje en este momento. `ignoreDeadline` = administrador, sin plazo. */
-export const tripChangeWindow = (depKey: string, retKey: string, nowMs: number, ignoreDeadline = false): ChangeWindow => {
+/**
+ * Qué se puede cambiar de un viaje en este momento. `ignoreDeadline` = administrador, sin plazo.
+ * #A120 (caso SOL-000714, 5-nov): sin tiquete comprado (`bought` = false) nadie ha volado: se cambia
+ * todo el viaje mientras no haya terminado (como se pidió). `bought` sin pasar = comprado.
+ */
+export const tripChangeWindow = (depKey: string, retKey: string, nowMs: number, ignoreDeadline = false, bought = true): ChangeWindow => {
   const today = bogotaKeyFromMs(nowMs);
   const dep = String(depKey || ''), ret = String(retKey || '');
+  if (!bought && dep) {
+    if ((ret || dep) < today) {
+      return { open: false, mode: null, target: '', reason: 'ended', deadlineKey: '', deadlineHour: 0, deadlineMs: 0, newDeparture: false };
+    }
+    const dlDep = changeDeadline(dep)!;
+    const late = ignoreDeadline ? dep < today : nowMs >= dlDep.ms;
+    return { open: true, mode: 'full', target: dep, reason: '', deadlineKey: dlDep.dayKey, deadlineHour: dlDep.hour, deadlineMs: dlDep.ms, newDeparture: late };
+  }
   let mode: ChangeMode | null = null;
   if (dep && (ignoreDeadline ? dep >= today : dep > today)) mode = 'full';
   else if (dep && ret && (ignoreDeadline ? ret >= today : ret > today)) mode = 'return';
@@ -100,13 +118,13 @@ export const tripChangeWindow = (depKey: string, retKey: string, nowMs: number, 
     const dlToday = sameDay ? changeDeadline(today) : null;
     return {
       open: false, mode: null, target: sameDay ? today : '', reason: sameDay ? 'deadline' : 'ended',
-      deadlineKey: dlToday ? dlToday.dayKey : '', deadlineHour: dlToday ? dlToday.hour : 0, deadlineMs: dlToday ? dlToday.ms : 0
+      deadlineKey: dlToday ? dlToday.dayKey : '', deadlineHour: dlToday ? dlToday.hour : 0, deadlineMs: dlToday ? dlToday.ms : 0, newDeparture: false
     };
   }
   const target = mode === 'full' ? dep : ret;
   const dl = changeDeadline(target)!;
   const open = ignoreDeadline || nowMs < dl.ms;
-  return { open, mode, target, reason: open ? '' : 'deadline', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms };
+  return { open, mode, target, reason: open ? '' : 'deadline', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms, newDeparture: false };
 };
 
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
