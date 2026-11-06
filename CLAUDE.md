@@ -757,9 +757,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-06)
 
-- **Pendiente de desplegar (6-nov): #A125** (Métricas → Aprobaciones, con el motivo de cada denegación). Cualquier orden; recomendado: pegar
-  **`Code.gs`** → versión nueva del web app → push. Sin el servidor nuevo la pestaña funciona sin el motivo ni los comentarios. Métricas recalcula
-  todo la primera vez (caché versión 4). Caso que lo pidió: SOL-000731 a 734, denegadas por Alejandro el 6-nov.
+- **#A125 desplegado (6-nov)** (Métricas → Aprobaciones, con el motivo de cada denegación). David pegó `Code.gs` (versión nueva del web
+  app) y el frontend `f948924` quedó en producción (bundle `index-D4Ap0G2E.js`). Métricas recalcula todo la primera vez (caché versión 4).
+  Caso que lo pidió: SOL-000731 a 734, denegadas por Alejandro el 6-nov.
 - **#A123 y #A124 desplegados (5-nov)** (cuándo y quién en cada paso del semáforo y Métricas; aviso de versión nueva). David pegó
   `Code.gs` (versión nueva del web app) y el frontend `3ef72b7` es la revisión `00228` de Cloud Run (bundle `index-DwgyBinb.js`). Métricas
   recalcula todo la primera vez (caché versión 3). Las pestañas abiertas antes de este push se recargan a mano una vez; desde ahí el aviso

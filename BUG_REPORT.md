@@ -3670,7 +3670,7 @@ solo cambiara documentación, hacía salir el aviso a todos sin que la app hubie
 ## **#A125 — Métricas → Aprobaciones: qué se decidió en cada solicitud, quién aprobó, quién denegó y por qué**
 **Fecha:** 2026-11-06 · **Pedido por:** Yurani (*«¿yo puedo ver en algún lado lo que Alejandro niega?… vi 4 tiquetes que tenían pendiente
 aprobado por Alejo a Querétaro pero no los veo que hayan pasado»*) y David (*«solicitud por solicitud quién la aprobó y quién la denegó y cuál
-fue el resultado… y cuando le doy clic, me muestra los tiempos»*) · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+fue el resultado… y cuando le doy clic, me muestra los tiempos»*) · **Estado:** Desplegado el 2026-11-06 (David pegó `Code.gs` y publicó la versión nueva del web app; frontend `f948924`, bundle `index-D4Ap0G2E.js`, `version.json` `36452dc7…`, el mismo del bundle).
 
 **Síntoma:** Alejandro denegó el 6-nov entre las 9:23 y las 9:25 las excepciones a la política de SOL-000731, 732, 733 y 734 (dos a Querétaro,
 dos a Bogotá; viaje internacional pedido con 7 días). Quedaron en DENEGADO, pero Yurani no las encontraba:
