@@ -72,6 +72,7 @@ export const StageTimeline: React.FC<StageTimelineProps> = ({ stages, status, em
             {ended.at && <> · {fmtStampText(ended.at)}</>}
             {tl.totalMinutes !== null && <> · {fmtDuration(tl.totalMinutes)} después de pedirla</>}
           </p>
+          {ended.reason && <p className="text-xs text-red-900 mt-0.5" data-stage-reason>Motivo: <em>«{ended.reason}»</em></p>}
         </div>
       ) : tl.done ? (
         <div>
@@ -155,6 +156,7 @@ export const StageTimeline: React.FC<StageTimelineProps> = ({ stages, status, em
                   {a.minutes !== null && (a.state === 'pending'
                     ? <span className="font-semibold text-brand-red">· lleva {fmtDuration(a.minutes)}</span>
                     : <span className="text-gray-600">· tardó {fmtDuration(a.minutes)} desde que se le pidió</span>)}
+                  {a.comment && <span className="basis-full text-gray-600 italic">«{a.comment}»</span>}
                 </li>
               ))}
             </ul>

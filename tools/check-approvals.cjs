@@ -537,12 +537,79 @@ function main() {
   eq('métricas: la revisión de cambios en el desempeño del área de compras', r.success && r.data.analystPerformance.map((x) => x.stage),
     ['revisionCambio', 'cotizacion', 'confirmacion', 'compra']);
 
+  // ---------------------------------------------------------------------------
+  // #A125: el motivo de cada denegación o anulación y el comentario de quien aprueba, en la línea
+  // de tiempo; y Métricas → Aprobaciones (utils/approvalLog.ts) arma las filas con quién decidió.
+  const DN = addRow({ cells: {} });
+  r = app('decideMyApproval', 'jefe@p.co', { requestId: DN, decision: 'denied', comment: 'Presupuesto agotado este mes' });
+  ok('motivo: el aprobador deniega desde la app', r.success && cell(DN, 'STATUS') === 'DENEGADO');
+  const sdn = app('getRequestById', 'admin@p.co', { requestId: DN }).data.stages;
+  eq('motivo: la denegación del aprobador trae su motivo', sdn && sdn.end && [sdn.end.step, sdn.end.who, sdn.end.reason], ['aprobacion', 'JEFE UNO', 'Presupuesto agotado este mes']);
+  const AC = addRow({ cells: {} });
+  r = app('decideMyApproval', 'jefe@p.co', { requestId: AC, decision: 'approved', comment: 'Solo el tiquete, sin hotel' });
+  const sac = app('getRequestById', 'ana@p.co', { requestId: AC }).data.stages;
+  eq('comentario: el de quien aprueba, en su voto', sac && [cell(AC, 'STATUS'), sac.approvals[0].state, sac.approvals[0].comment], ['APROBADO', 'approved', 'Solo el tiquete, sin hotel']);
+  // Una excepción a la política que el CFO aprueba con un comentario (fila propia: el número de P lo
+  // reutiliza addRow más arriba).
+  const PH = addRow({ cells: { STATUS: 'PENDIENTE_APROBACION_POLITICA', 'FECHA SOLICITUD': TODAY, 'FECHA IDA': '2026-12-20', 'FECHA VUELTA': '2026-12-22',
+    EVENTOS_JSON: JSON.stringify({ created: at(6), policyHold: at(6) }) } });
+  r = app('decideMyApproval', CFO, { requestId: PH, decision: 'approved', comment: 'Que viaje, es urgente' });
+  const sp = app('getRequestById', 'admin@p.co', { requestId: PH }).data.stages;
+  eq('comentario: el del CFO al aprobar la excepción', sp && sp.policy && [cell(PH, 'STATUS'), sp.policy.decision, sp.policy.comment], ['PENDIENTE_OPCIONES', 'approved', 'Que viaje, es urgente']);
+  // La excepción a la política denegada por el CFO (caso SOL-000732 del 6-nov), con su comentario.
+  const PD = addRow({ cells: { STATUS: 'DENEGADO', 'APROBACION CFO ANTICIPACION': 'No_agdg@equitel.com.co_6/11/2026 9:24',
+    OBSERVACIONES: 'Visita a la planta\n[DENEGACIÓN - agdg@equitel.com.co]: No se aprobó la excepción por incumplimiento de la política de anticipación. Comentario: Hablar con Simón',
+    EVENTOS_JSON: JSON.stringify({ created: '2026-11-05T20:50:00Z', policyHold: '2026-11-05T20:50:01Z', policyDecision: { decision: 'denied', email: CFO, at: '2026-11-06T14:24:10Z' } }) } });
+  const spd = app('getRequestById', 'admin@p.co', { requestId: PD }).data.stages;
+  ok('motivo: la excepción denegada por el CFO, con quién y su comentario', !!(spd && spd.end && spd.end.step === 'politica' && /Alejandro|ALEJANDRO/.test(spd.end.who) &&
+    /^No se aprobó la excepción.*Comentario: Hablar con Simón$/.test(spd.end.reason)));
+  // Un cambio que el área de compras no aceptó, y una anulación manual.
+  const PA3 = addRow({ cells: { STATUS: 'RESERVADO' } });
+  const CH3 = addRow({ cells: { STATUS: 'PENDIENTE_ANALISIS_CAMBIO', 'TIPO DE SOLICITUD': 'MODIFICACION', 'ID SOLICITUD PADRE': PA3, EVENTOS_JSON: JSON.stringify({ created: at(6) }) } });
+  r = app('processChangeDecision', YURANI, { childRequestId: CH3, decision: 'deny', reason: 'El vuelo nuevo cuesta el doble', parentAction: 'keep' });
+  const sch = app('getRequestById', 'admin@p.co', { requestId: CH3 }).data.stages;
+  eq('motivo: el cambio no aceptado', sch && sch.end && [sch.end.step, sch.end.who, sch.end.reason], ['cambio', 'PRIETO YURANI', 'El vuelo nuevo cuesta el doble']);
+  eq('motivo: la anulación manual', san && san.end && san.end.reason, 'Ya no viaja');
+  ok('motivo: no sale si no se escribió', !!(sd && sd.end && !sd.end.reason));
+
+  let AL;
+  try {
+    const esbuild = require(path.join(ROOT, 'node_modules', 'esbuild'));
+    const out = esbuild.buildSync({ entryPoints: [path.join(ROOT, 'utils', 'approvalLog.ts')], bundle: true, format: 'cjs', platform: 'node', write: false, logLevel: 'error' });
+    const m = { exports: {} };
+    new Function('module', 'exports', 'require', out.outputFiles[0].text)(m, m.exports, require);
+    AL = m.exports;
+  } catch (e) { failures.push('no se pudo compilar utils/approvalLog.ts: ' + e.message); }
+  r = app('getMetrics', 'admin@p.co', { filters: { hideNoEvents: false } });
+  if (AL && r.success) {
+    const log2 = AL.buildApprovalLog(r.data.perRequest);
+    const row = (id) => log2.find((x) => x.id === id);
+    const brief = (x) => x && [x.result, x.approved.map((d) => d.kind + ':' + d.who + ':' + d.what), x.denied.map((d) => d.kind + ':' + d.who + ':' + d.what), x.waiting, x.reason];
+    eq('aprobaciones: aprobada, con la excepción del CFO y el voto del área', brief(row(T)) && [brief(row(T))[0], brief(row(T))[1].map((t) => t.replace(/Alejandro[^:]*|ALEJANDRO[^:]*/, 'CFO'))],
+      ['aprobada', ['approved:CFO:Excepción a la política de anticipación', 'approved:JEFE UNO:Aprobador de Área']]);
+    eq('aprobaciones: denegada por el aprobador, con su motivo', brief(row(DN)), ['denegada', [], ['denied:JEFE UNO:Aprobador de Área'], [], 'Presupuesto agotado este mes']);
+    ok('aprobaciones: denegada por el CFO (excepción a la política)', !!row(PD) && row(PD).result === 'denegada' && row(PD).denied.length === 1 &&
+      row(PD).denied[0].what === 'Excepción a la política de anticipación' && /Hablar con Simón/.test(row(PD).reason) && row(PD).decidedAt === '2026-11-06T14:24:10.000Z');
+    eq('aprobaciones: el cambio no aceptado cuenta como denegado', brief(row(CH3)), ['denegada', [], ['denied:PRIETO YURANI:Cambio no aceptado'], [], 'El vuelo nuevo cuesta el doble']);
+    ok('aprobaciones: la excepción aprobada y el viaje todavía en trámite', !!row(PH) && row(PH).result === 'tramite' && row(PH).approved.length === 1 &&
+      row(PH).approved[0].comment === 'Que viaje, es urgente' && row(PH).decidedAt === '');
+    eq('aprobaciones: el comentario de quien aprueba', row(AC) && row(AC).approved.map((d) => d.comment), ['Solo el tiquete, sin hotel']);
+    ok('aprobaciones: lo que no pasó por aprobación no sale', !row(AN) && !row(TR));
+    const W = log2.find((x) => x.result === 'esperando');
+    ok('aprobaciones: las que esperan votos dicen a quién le falta', !!W && W.waiting.length > 0 && W.decidedAt === '');
+    const who = AL.deciderSummary(log2);
+    const jefe = who.find((d) => d.who === 'JEFE UNO');
+    ok('aprobaciones: cuántas aprobó y denegó cada persona', !!jefe && jefe.approved >= 2 && jefe.denied >= 2 && who.some((d) => /Alejandro|ALEJANDRO/.test(d.who) && d.denied >= 1 && d.approved >= 1));
+    ok('aprobaciones: filtrar por persona', log2.filter((x) => AL.rowHasDecider(x, 'JEFE UNO')).every((x) => x.approved.concat(x.denied).some((d) => d.who === 'JEFE UNO')));
+    ok('aprobaciones: de la decisión más reciente a la más vieja', log2.every((x, i) => i === 0 || (log2[i - 1].decidedAt || log2[i - 1].created) >= (x.decidedAt || x.created)));
+  }
+
   if (failures.length) {
     console.error('✗ Avisos a los aprobadores y «Mis aprobaciones» (#A118, #A119):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('Avisos a los aprobadores y «Mis aprobaciones» (#A118, #A119): caso SOL-000695 (salto de etapa con aviso y enlace que dice quién, cuándo y por qué), confirmación a quien vota, aviso final una sola vez (aprobada, denegada, anulada; nunca al solicitante ni a quien decide; a nadie si no se pidió), coaprobadores, recordatorio después de 2 horas laborales, lista por persona sin cédulas y decisiones desde la app con el rol del servidor; línea de tiempo de cada solicitud en horas reales, en el detalle y en Métricas (#A121); cuándo y quién en cada paso: cambios, trazabilidad, reserva por partes, cierre y anulaciones (#A123). OK');
+  console.log('Avisos a los aprobadores y «Mis aprobaciones» (#A118, #A119): caso SOL-000695 (salto de etapa con aviso y enlace que dice quién, cuándo y por qué), confirmación a quien vota, aviso final una sola vez (aprobada, denegada, anulada; nunca al solicitante ni a quien decide; a nadie si no se pidió), coaprobadores, recordatorio después de 2 horas laborales, lista por persona sin cédulas y decisiones desde la app con el rol del servidor; línea de tiempo de cada solicitud en horas reales, en el detalle y en Métricas (#A121); cuándo y quién en cada paso: cambios, trazabilidad, reserva por partes, cierre y anulaciones (#A123); motivo de cada denegación, comentario de quien aprueba y Métricas → Aprobaciones (#A125). OK');
 }
 
 main();

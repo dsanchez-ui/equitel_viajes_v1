@@ -3197,10 +3197,18 @@ function _stageInfo_(row, req, events, names) {
 
   // Los votos: la misma regla de «Mis aprobaciones» (#A119), con la hora exacta de EVENTOS_JSON si la hay.
   var evA = events.approvals && typeof events.approvals === 'object' ? events.approvals : {};
+  // #A125: el comentario opcional que dejó cada aprobador al aprobar (COMENTARIOS APROBADORES), por rol.
+  var comments = {};
+  (Array.isArray(req.approverComments) ? req.approverComments : []).forEach(function(c) {
+    if (c && c.role && c.comment && !comments[c.role]) comments[c.role] = String(c.comment).substring(0, 500);
+  });
+  if (out.policy && comments.POLICY_EXCEPTION) out.policy.comment = comments.POLICY_EXCEPTION;
   out.approvals = _approvalTrail_(row, req, names).filter(function(st) { return st.role !== 'POLICY_EXCEPTION'; }).map(function(st) {
     var at = (st.state === 'approved' && evA[st.role] && evA[st.role].at) ? _stageIso_(evA[st.role].at) : '';
     if (!at && st.at) at = _stageIso_(st.at);
-    return { role: st.role, label: st.label, state: st.state, who: st.who || '', at: at };
+    var a = { role: st.role, label: st.label, state: st.state, who: st.who || '', at: at };
+    if (st.state === 'approved' && comments[st.role]) a.comment = comments[st.role];
+    return a;
   });
 
   if (status === 'DENEGADO') {
@@ -3220,6 +3228,13 @@ function _stageInfo_(row, req, events, names) {
       who: byUser ? (out.requester || 'El solicitante') : replaced ? 'La reemplazó el cambio ' + replaced[1] : (by(events.cancelledBy) || 'Área de compras'),
       step: ''
     };
+  }
+  // #A125: el motivo, el mismo que le llegó al solicitante por correo (la última nota de OBSERVACIONES).
+  if (out.end) {
+    var reason = out.end.kind === 'DENEGADO'
+      ? (out.end.step === 'cambio' ? _approvalLastNote_(obs, /\[CAMBIO DENEGADO\]:\s*([^\n]*)/g) : _approvalLastNote_(obs, /\[DENEGACIÓN - [^\]]*\]:\s*([^\n]*)/g))
+      : _approvalLastNote_(obs, /\[ANULACIÓN (?:POR USUARIO|MANUAL)\]:\s*([^\n]*)/g);
+    if (reason) out.end.reason = reason.substring(0, 500);
   }
   return out;
 }
@@ -15364,7 +15379,7 @@ function _recordEvent_(requestId, eventKey, data) {
 
 // #A121: versión 2 = tiempos en horas reales (antes laborales) y etapas con fecha. Cambiarla
 // recalcula todas las solicitudes la próxima vez que se abra Métricas.
-var METRICS_CACHE_VERSION = 3; // #A123: revisión del cambio, excepción a la política y quién hizo cada paso
+var METRICS_CACHE_VERSION = 4; // #A123: quién hizo cada paso; #A125: motivo de la denegación y comentarios de los aprobadores
 
 function _getMetricsCacheFile_() {
   var folder = DriveApp.getFolderById(ROOT_DRIVE_FOLDER_ID);

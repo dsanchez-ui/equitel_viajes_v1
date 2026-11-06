@@ -474,6 +474,10 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     paso nuevo lleva su hora **y** su `…By`. El semáforo muestra el nombre (de USUARIOS, nunca el correo).
   - Los cambios aceptados antes del 5-nov no tienen esa hora y el semáforo lo dice; no se inventa.
   - Métricas tiene «Aceptar» (lo que tardó aceptar el cambio o la excepción del CFO) y «Revisión de cambios» en el desempeño del área de compras.
+  - **Métricas → Aprobaciones** (#A125; Yurani y David, 6-nov: *«¿dónde puedo ver lo que Alejandro niega?»*): una fila por solicitud con
+    resultado, quién aprobó, quién denegó o a quién le falta, y el motivo (`end.reason` y los comentarios de `_stageInfo_`); cuántas aprobó y
+    denegó cada persona; al tocar una fila, el semáforo. Sale de la misma línea de tiempo (`utils/approvalLog.ts`): no armar otra regla de
+    «quién votó». No excluye denegadas ni anuladas; lo que espera la excepción del CFO sigue solo en «En espera de preaprobación».
 - **Aviso de versión nueva** (#A124, David, 5-nov: Yurani no veía un cambio publicado porque no había recargado). Cada compilación lleva
   `__APP_BUILD_ID__` y publica el mismo en `version.json` (`vite.config.ts`). `UpdateBanner.tsx` lo compara cada 5 minutos y al volver a la
   pestaña; si cambió, pide «Actualizar ahora». **No recarga sola**: se perdería una solicitud a medio llenar. `npm run verify` revisa que
@@ -647,7 +651,8 @@ components/
   SupportUploadModal.tsx   Soportes post-aprobación
   PassportUploadModal.tsx  Pasaportes (viajes internacionales)
   ChangeRequestModal.tsx   Decisión sobre solicitudes de cambio
-  MetricsPanel.tsx         Panel de métricas (admin): tiempos del flujo y compras y costos
+  MetricsPanel.tsx         Panel de métricas (admin): tiempos del flujo, aprobaciones, compras y costos y cambios
+  ApprovalsLogPanel.tsx    Métricas → Aprobaciones: resultado de cada solicitud, quién aprobó y quién denegó, y el motivo (#A125)
   PurchaseStatsPanel.tsx   Pestaña «Compras y costos»: tiquetes, noches, costos, CSV (#A80)
   BudgetUsageBar.tsx       Barra de presupuesto en el formulario
   PinEntryModal.tsx        Login por PIN
@@ -669,6 +674,8 @@ utils/purchase.ts          Aerolínea, canal de compra y hotel reservado (gemelo
 utils/fare.ts              Tarifa del tiquete por noches y su justificación (gemelo de Code.gs, #A95)
 utils/changeWindow.ts      Plazo para pedir un cambio de viaje (gemelo de Code.gs, #A103; sin tiquete comprado, #A120)
 utils/stageTimeline.ts     Etapas de la solicitud con su hora, lo que tardó cada una y quién la tuvo (#A121)
+utils/approvalLog.ts       Filas de Métricas → Aprobaciones a partir de la línea de tiempo (#A125)
+utils/datePresets.ts       Rangos de fecha de Métricas (Hoy, Últimos 7 y 30 días, Todo, Personalizado)
 server/
   Code.gs                  Backend completo (~14.400 líneas)
   AdminSidebar.html        Sidebar de administración del Sheets
@@ -691,7 +698,7 @@ tools/check-single-bundle.cjs        La app es un solo archivo JavaScript, sin c
 tools/check-policy-approval.cjs      Aprobación del CFO por la política: espera, resumen, decisiones, vencimiento, tarifa y aviso (#A100)
 tools/check-monthly-report.cjs       Informe mensual de la política: primer día hábil, cifras, cuadros, CSV, envío una sola vez y prueba (#A101)
 tools/check-trip-change.cjs          Cambios de viaje: plazo igual en los dos lados, cambio con y sin compra, costo, aprobación, «Cambiada» (#A103)
-tools/check-approvals.cjs            Avisos a los aprobadores (caso SOL-000695), recordatorios, «Mis aprobaciones» (#A118, #A119) y la línea de tiempo (#A121)
+tools/check-approvals.cjs            Avisos a los aprobadores (caso SOL-000695), recordatorios, «Mis aprobaciones» (#A118, #A119), la línea de tiempo (#A121) y Métricas → Aprobaciones (#A125)
 tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.gs real sobre una copia de la base; correos a una bandeja local (#A103)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
@@ -748,8 +755,11 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-05)
+### Para retomar (estado al 2026-11-06)
 
+- **Pendiente de desplegar (6-nov): #A125** (Métricas → Aprobaciones, con el motivo de cada denegación). Cualquier orden; recomendado: pegar
+  **`Code.gs`** → versión nueva del web app → push. Sin el servidor nuevo la pestaña funciona sin el motivo ni los comentarios. Métricas recalcula
+  todo la primera vez (caché versión 4). Caso que lo pidió: SOL-000731 a 734, denegadas por Alejandro el 6-nov.
 - **#A123 y #A124 desplegados (5-nov)** (cuándo y quién en cada paso del semáforo y Métricas; aviso de versión nueva). David pegó
   `Code.gs` (versión nueva del web app) y el frontend `3ef72b7` es la revisión `00228` de Cloud Run (bundle `index-DwgyBinb.js`). Métricas
   recalcula todo la primera vez (caché versión 3). Las pestañas abiertas antes de este push se recargan a mano una vez; desde ahí el aviso

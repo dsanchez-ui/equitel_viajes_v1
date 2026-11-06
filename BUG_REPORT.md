@@ -3666,3 +3666,54 @@ solo cambiara documentación, hacía salir el aviso a todos sin que la app hubie
 - **Desplegado el 5-nov:** frontend `f5e3cfb`, revisión `00229` de Cloud Run; `version.json` en producción `0da95c59…`, la misma que lleva
   `index-hlB1Vjlr.js` (sin el marcador). Es distinta de la local porque el build de la imagen apunta al API de producción. Este push sí
   mostró el aviso una vez (la versión pasó de la hora al hash); desde ahí, solo cuando cambia la app.
+
+## **#A125 — Métricas → Aprobaciones: qué se decidió en cada solicitud, quién aprobó, quién denegó y por qué**
+**Fecha:** 2026-11-06 · **Pedido por:** Yurani (*«¿yo puedo ver en algún lado lo que Alejandro niega?… vi 4 tiquetes que tenían pendiente
+aprobado por Alejo a Querétaro pero no los veo que hayan pasado»*) y David (*«solicitud por solicitud quién la aprobó y quién la denegó y cuál
+fue el resultado… y cuando le doy clic, me muestra los tiempos»*) · **Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+
+**Síntoma:** Alejandro denegó el 6-nov entre las 9:23 y las 9:25 las excepciones a la política de SOL-000731, 732, 733 y 734 (dos a Querétaro,
+dos a Bogotá; viaje internacional pedido con 7 días). Quedaron en DENEGADO, pero Yurani no las encontraba:
+- En Métricas la casilla «Excluir Denegadas» viene marcada, así que no salían.
+- En el panel principal solo aparecen con el filtro **Denegado**.
+- En ningún lugar se veían juntas las decisiones de una persona ni el motivo.
+
+**Causa raíz:** no había una vista de decisiones. El semáforo (#A121) ya traía quién votó y cuándo, pero no el motivo ni el comentario de quien
+aprobó, y solo se veía abriendo cada solicitud.
+
+**Fix:**
+- `Code.gs` (`_stageInfo_`):
+  - `end.reason`: el motivo de la denegación o de la anulación, el mismo que le llegó al solicitante. Sale de la última nota de
+    OBSERVACIONES: `[DENEGACIÓN - …]` (aprobador o CFO, con su comentario), `[CAMBIO DENEGADO]` o `[ANULACIÓN …]`.
+  - `approvals[].comment` y `policy.comment`: el comentario opcional de quien aprobó (COMENTARIOS APROBADORES).
+  - `METRICS_CACHE_VERSION = 4`: Métricas recalcula todo la primera vez.
+- `utils/approvalLog.ts` arma una fila por solicitud con alguna decisión de aprobación o votos pendientes: resultado (aprobada, denegada,
+  esperando votos, en trámite, anulada), quién aprobó, quién denegó o a quién le falta, el motivo y la hora. Sale de la misma línea de tiempo:
+  no hay otra regla de «quién votó» (#A118). También cuenta cuántas aprobó y denegó cada persona.
+- `components/ApprovalsLogPanel.tsx`: pestaña **✅ Aprobaciones** en Métricas.
+  - Tarjetas por resultado que filtran, «Quién decidió» con un botón por persona (las 8 con más decisiones y «Ver todas»), y búsqueda.
+  - La tabla: solicitud, resultado, aprobó, denegó o falta, motivo o comentario. Al tocar una fila se abre el semáforo con los tiempos.
+  - Pide `getMetrics` sin excluir nada (ni denegadas, ni anuladas, ni las de antes de los eventos).
+  - Las que esperan la excepción del CFO siguen solo en «En espera de preaprobación» (#A100).
+- El semáforo del detalle también muestra el motivo debajo de «Denegada»/«Anulada» y el comentario de cada voto y del CFO.
+- `utils/datePresets.ts`: los rangos de fecha de Métricas, compartidos por las dos pestañas.
+
+**Verificado:**
+- `tools/check-approvals.cjs`, sobre la hoja simulada:
+  - motivo de la denegación desde la app, de la excepción denegada por el CFO (caso SOL-000732, con su comentario), del cambio no aceptado y
+    de la anulación manual; sin motivo cuando no se escribió;
+  - comentario del aprobador y del CFO;
+  - filas de Aprobaciones: aprobada, denegada, cambio no aceptado, en trámite, esperando votos; lo que no pasó por aprobación no sale;
+    conteo y filtro por persona; orden por fecha de decisión.
+- Entorno local con la exportación del 6-nov (744 solicitudes), últimos 30 días:
+  - 92 solicitudes: 79 aprobadas, 12 denegadas y 1 anulada;
+  - Alejandro: 28 aprobadas y 7 denegadas;
+  - con «Alejandro» y «Denegada» salen SOL-000738, 734, 732, 733, 731, 649 y 644, cada una con su motivo;
+  - al tocar SOL-000732 se abre el semáforo («La denegó: Alejandro Gómez de Greiff · 06/11/2026 09:24 · 17 h 35 min después de pedirla»);
+  - sin errores en la página.
+- `npm run verify` en verde.
+
+**Despliegue:** se puede en cualquier orden.
+- Con el frontend nuevo y el servidor anterior, la pestaña funciona igual, pero sin el motivo ni los comentarios.
+- Con el servidor nuevo y el frontend anterior, no se ve nada distinto.
+- Orden recomendado: pegar `Code.gs` → versión nueva del web app → push del frontend. La primera vez que se abra Métricas recalcula todo.

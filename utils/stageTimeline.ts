@@ -116,7 +116,8 @@ export const buildTimeline = (s: StageInfo, status: string, nowMs: number): Time
   if (s.policy) {
     push('politica', s.policy.decision === 'approved' ? 'Excepción aprobada' : 'Excepción a la política',
       'Espera que aprueben la excepción a la política de anticipación', 'CFO', s.policy.who,
-      s.policy.decision === 'approved' ? s.policy.at : '');
+      s.policy.decision === 'approved' ? s.policy.at : '',
+      s.policy.decision === 'approved' && s.policy.comment ? `«${s.policy.comment}»` : '');
   }
   if (s.isChange) push('cambio', 'Cambio aceptado', 'El área de compras revisa el cambio', 'Área de compras', s.changeStudiedBy || '', s.changeStudied);
   push('opciones', 'Opciones cargadas', hotel ? 'El área de compras busca y carga las opciones de hospedaje' : 'El área de compras busca y carga las opciones',

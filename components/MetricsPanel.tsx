@@ -6,12 +6,14 @@ import { ChangeControlPanel } from './ChangeControlPanel';
 import { DateInput } from './DateInput';
 import { StageTimeline } from './StageTimeline';
 import { fmtStamp } from '../utils/stageTimeline';
+import { DATE_PRESETS, DatePreset, presetToRange } from '../utils/datePresets';
+import { ApprovalsLogPanel } from './ApprovalsLogPanel';
+
+type MetricsTab = 'times' | 'approvals' | 'purchases' | 'changes';
 
 interface MetricsPanelProps {
   onClose: () => void;
 }
-
-type DatePreset = 'today' | 'last7' | 'last30' | 'custom' | 'all';
 
 // #A121: horas reales (de calendario), igual que la línea de tiempo del detalle.
 const formatMinutes = (m: number | null | undefined): string => {
@@ -23,26 +25,6 @@ const formatMinutes = (m: number | null | undefined): string => {
   const days = Math.floor(hours / 24);
   const remHours = hours % 24;
   return remHours > 0 ? `${days} d ${remHours} h` : `${days} d`;
-};
-
-const presetToRange = (preset: DatePreset): { dateFrom?: string; dateTo?: string } => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (preset === 'all') return {};
-  if (preset === 'today') {
-    return { dateFrom: today.toISOString().split('T')[0], dateTo: today.toISOString().split('T')[0] };
-  }
-  if (preset === 'last7') {
-    const from = new Date(today);
-    from.setDate(from.getDate() - 6);
-    return { dateFrom: from.toISOString().split('T')[0], dateTo: today.toISOString().split('T')[0] };
-  }
-  if (preset === 'last30') {
-    const from = new Date(today);
-    from.setDate(from.getDate() - 29);
-    return { dateFrom: from.toISOString().split('T')[0], dateTo: today.toISOString().split('T')[0] };
-  }
-  return {};
 };
 
 const statusLabel = (s: string): string => {
@@ -82,14 +64,17 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
   const [hideNoEvents, setHideNoEvents] = useState(true);
   // Pestañas: tiempos del flujo (original) y compras y costos (#A80). La de
   // compras se monta al abrirla por primera vez y luego se conserva.
-  const [tab, setTab] = useState<'times' | 'purchases' | 'changes'>('times');
+  const [tab, setTab] = useState<MetricsTab>('times');
   const [purchasesOpened, setPurchasesOpened] = useState(false);
   // #A103: control de cambios (se monta al abrirlo por primera vez).
   const [changesOpened, setChangesOpened] = useState(false);
-  const openTab = (next: 'times' | 'purchases' | 'changes') => {
+  // #A125: aprobaciones, solicitud por solicitud (se monta al abrirla por primera vez).
+  const [approvalsOpened, setApprovalsOpened] = useState(false);
+  const openTab = (next: MetricsTab) => {
     setTab(next);
     if (next === 'purchases') setPurchasesOpened(true);
     if (next === 'changes') setChangesOpened(true);
+    if (next === 'approvals') setApprovalsOpened(true);
   };
 
   const fetchMetrics = async () => {
@@ -143,9 +128,10 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
           <div className="flex gap-1 border-b border-gray-200 mb-3" role="tablist">
             {([
               { v: 'times', l: '⏱️ Tiempos del flujo' },
+              { v: 'approvals', l: '✅ Aprobaciones' },
               { v: 'purchases', l: '💰 Compras y costos' },
               { v: 'changes', l: '🔄 Cambios' },
-            ] as { v: 'times' | 'purchases' | 'changes'; l: string }[]).map(t => (
+            ] as { v: MetricsTab; l: string }[]).map(t => (
               <button
                 key={t.v}
                 role="tab"
@@ -161,6 +147,8 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
           <p className="text-xs text-gray-500 mb-4">
             {tab === 'times'
               ? 'Diagnóstico de cuánto tiempo toma cada etapa del flujo. Tiempos en horas reales, de calendario (incluyen noches y fines de semana). Toque una solicitud para ver cuándo pasó por cada etapa.'
+              : tab === 'approvals'
+              ? 'Cada solicitud que pasó por aprobación: si se aprobó o se denegó, quién lo hizo y el motivo. Toque una para ver los tiempos de cada etapa.'
               : tab === 'changes'
               ? 'Cada cambio de viaje con lo que costó el viaje y lo que sumó el cambio, para ver dónde se paga de más.'
               : 'Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta anticipación. Base para comparar precios con otras agencias.'}
@@ -176,6 +164,11 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
               <ChangeControlPanel />
             </div>
           )}
+          {approvalsOpened && (
+            <div hidden={tab !== 'approvals'}>
+              <ApprovalsLogPanel />
+            </div>
+          )}
 
           {tab === 'times' && (<>
           {/* Filtros */}
@@ -184,13 +177,7 @@ export const MetricsPanel: React.FC<MetricsPanelProps> = ({ onClose }) => {
               <div>
                 <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Rango de fecha</label>
                 <div className="flex gap-1 flex-wrap">
-                  {([
-                    { v: 'today', l: 'Hoy' },
-                    { v: 'last7', l: 'Últimos 7 días' },
-                    { v: 'last30', l: 'Últimos 30 días' },
-                    { v: 'all', l: 'Todo' },
-                    { v: 'custom', l: 'Personalizado' },
-                  ] as { v: DatePreset; l: string }[]).map(p => (
+                  {DATE_PRESETS.map(p => (
                     <button
                       key={p.v}
                       onClick={() => setPreset(p.v)}

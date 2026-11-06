@@ -65,6 +65,8 @@ export interface StageApproval {
   who: string;
   /** ISO; '' si no quedó la hora. */
   at: string;
+  /** #A125: el comentario que dejó al aprobar (opcional; un servidor anterior no lo manda). */
+  comment?: string;
 }
 
 /**
@@ -77,7 +79,7 @@ export interface StageInfo {
   isChange: boolean;
   hotelOnly: boolean;
   created: string;
-  policy: { decision: '' | 'approved' | 'denied' | 'expired'; at: string; who: string } | null;
+  policy: { decision: '' | 'approved' | 'denied' | 'expired'; at: string; who: string; comment?: string } | null;
   changeStudied: string;
   options: string;
   selection: string;
@@ -103,7 +105,8 @@ export interface StageInfo {
   approved: string;
   approvalSkippedBy: string;
   purchase: string;
-  end: { kind: 'DENEGADO' | 'ANULADO'; at: string; who: string; step: string } | null;
+  /** reason (#A125): el motivo que le llegó al solicitante; opcional. */
+  end: { kind: 'DENEGADO' | 'ANULADO'; at: string; who: string; step: string; reason?: string } | null;
 }
 
 export interface ApprovalStep {

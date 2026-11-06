@@ -475,7 +475,7 @@ El único caso donde hay serialización es cuando **dos admins crean usuarios si
 
 ## 8. Métricas
 
-Panel accesible desde el dashboard admin → botón **Métricas**. Tiene dos pestañas: **Tiempos del flujo** y **Compras y costos**.
+Panel accesible desde el dashboard admin → botón **Métricas**. Tiene cuatro pestañas: **Tiempos del flujo**, **Aprobaciones**, **Compras y costos** y **Cambios**.
 
 ### 8.1 Tiempos del flujo
 
@@ -505,6 +505,25 @@ Panel accesible desde el dashboard admin → botón **Métricas**. Tiene dos pes
 - Los cambios aceptados antes del 5-nov-2026 no tienen la hora en que se aceptaron: el semáforo dice «Antes del 5-nov no se guardaba esta hora» y la cotización incluye esa revisión.
 - Los tiempos son de calendario (hora de Colombia). Los recordatorios y el escalamiento sí siguen contando horas laborales (L-V 07:00–17:00, Sáb 08:00–12:00).
 - En los cambios pedidos antes del 5-nov no quedó cuándo se aceptaron: su cotización se mide desde la solicitud («Incluye la revisión del cambio»).
+
+### 8.1.1 Aprobaciones (#A125)
+
+Pestaña **✅ Aprobaciones**: cada solicitud que pasó por aprobación, con **qué se decidió, quién aprobó, quién denegó y el motivo**.
+Responde preguntas como «¿qué le ha negado Alejandro?» sin buscar solicitud por solicitud.
+
+- **Resultado** (tocar una tarjeta filtra la lista):
+  - **Aprobada:** tiene todas sus aprobaciones.
+  - **Denegada:** la denegó un aprobador, el CFO (excepción a la política de anticipación) o el área de compras (un cambio que no se aceptó).
+  - **Esperando votos:** ya se pidió el voto y alguien todavía no decide; dice a quién le falta.
+  - **En trámite:** se aprobó la excepción a la política y el viaje aún no llega a la aprobación.
+  - **Anulada:** se anuló después de alguna decisión.
+- **Quién decidió:** cuántas aprobó y cuántas denegó cada persona. Tocar una persona deja solo sus decisiones. Por ejemplo, tocar
+  «Alejandro Gómez de Greiff» y después **Denegada** muestra todo lo que él negó.
+- **Solicitud por solicitud:** quién aprobó (con su rol y la hora), quién denegó o a quién le falta, y el motivo de la denegación o el
+  comentario que dejó quien aprobó. **Al tocar una fila** se abre el semáforo con los tiempos de cada etapa.
+- Aquí no se excluyen las denegadas ni las anuladas. Cuenta la fecha en que se pidió la solicitud (Últimos 30 días, Todo, etc.).
+- Las que todavía esperan que se apruebe la excepción a la política no salen aquí: están en **En espera de preaprobación** del panel
+  principal. Cuando el CFO decide, pasan a esta pestaña (y las denegadas, al filtro **Denegado** del panel principal).
 
 ### 8.2 Compras y costos
 

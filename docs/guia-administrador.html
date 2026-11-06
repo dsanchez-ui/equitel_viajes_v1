@@ -680,7 +680,7 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <p>El único caso donde hay serialización es cuando <strong>dos admins crean usuarios simultáneamente</strong> (uno desde el sidebar y otro desde el móvil): el segundo espera máximo 2-3 segundos al primero. Esto es intencional para evitar que ambos escriban en la misma fila.</p>
 <hr>
 <h2>8. Métricas</h2>
-<p>Panel accesible desde el dashboard admin → botón <strong>Métricas</strong>. Tiene dos pestañas: <strong>Tiempos del flujo</strong> y <strong>Compras y costos</strong>.</p>
+<p>Panel accesible desde el dashboard admin → botón <strong>Métricas</strong>. Tiene cuatro pestañas: <strong>Tiempos del flujo</strong>, <strong>Aprobaciones</strong>, <strong>Compras y costos</strong> y <strong>Cambios</strong>.</p>
 <h3>8.1 Tiempos del flujo</h3>
 <p><strong>Qué muestra (desde el 5-nov-2026, #A121, en horas reales):</strong></p>
 <ul>
@@ -714,6 +714,27 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <li>Los cambios aceptados antes del 5-nov-2026 no tienen la hora en que se aceptaron: el semáforo dice «Antes del 5-nov no se guardaba esta hora» y la cotización incluye esa revisión.</li>
 <li>Los tiempos son de calendario (hora de Colombia). Los recordatorios y el escalamiento sí siguen contando horas laborales (L-V 07:00–17:00, Sáb 08:00–12:00).</li>
 <li>En los cambios pedidos antes del 5-nov no quedó cuándo se aceptaron: su cotización se mide desde la solicitud («Incluye la revisión del cambio»).</li>
+</ul>
+<h3>8.1.1 Aprobaciones (#A125)</h3>
+<p>Pestaña <strong>✅ Aprobaciones</strong>: cada solicitud que pasó por aprobación, con <strong>qué se decidió, quién aprobó, quién denegó y el motivo</strong>.
+Responde preguntas como «¿qué le ha negado Alejandro?» sin buscar solicitud por solicitud.</p>
+<ul>
+<li><strong>Resultado</strong> (tocar una tarjeta filtra la lista):
+<ul>
+<li><strong>Aprobada:</strong> tiene todas sus aprobaciones.</li>
+<li><strong>Denegada:</strong> la denegó un aprobador, el CFO (excepción a la política de anticipación) o el área de compras (un cambio que no se aceptó).</li>
+<li><strong>Esperando votos:</strong> ya se pidió el voto y alguien todavía no decide; dice a quién le falta.</li>
+<li><strong>En trámite:</strong> se aprobó la excepción a la política y el viaje aún no llega a la aprobación.</li>
+<li><strong>Anulada:</strong> se anuló después de alguna decisión.</li>
+</ul>
+</li>
+<li><strong>Quién decidió:</strong> cuántas aprobó y cuántas denegó cada persona. Tocar una persona deja solo sus decisiones. Por ejemplo, tocar
+«Alejandro Gómez de Greiff» y después <strong>Denegada</strong> muestra todo lo que él negó.</li>
+<li><strong>Solicitud por solicitud:</strong> quién aprobó (con su rol y la hora), quién denegó o a quién le falta, y el motivo de la denegación o el
+comentario que dejó quien aprobó. <strong>Al tocar una fila</strong> se abre el semáforo con los tiempos de cada etapa.</li>
+<li>Aquí no se excluyen las denegadas ni las anuladas. Cuenta la fecha en que se pidió la solicitud (Últimos 30 días, Todo, etc.).</li>
+<li>Las que todavía esperan que se apruebe la excepción a la política no salen aquí: están en <strong>En espera de preaprobación</strong> del panel
+principal. Cuando el CFO decide, pasan a esta pestaña (y las denegadas, al filtro <strong>Denegado</strong> del panel principal).</li>
 </ul>
 <h3>8.2 Compras y costos</h3>
 <p>Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta anticipación (#A80). Sirve para comparar precios con otra agencia sin armar un Excel a mano. Solo la ven los administradores.</p>
