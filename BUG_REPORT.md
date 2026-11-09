@@ -3766,7 +3766,7 @@ la acepta en «Revisar Cambio».
 
 ## **#A127 — El área de compras registra una ida que ya pasó; al viajero se le dice que la fecha ya pasó**
 **Fecha:** 2026-11-09 · **Pedido por:** Laura y David (*«no permite solicitar el cambio… mira lo que sale, corrige urgente»*, caso SOL-000714) ·
-**Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+**Estado:** Desplegado el 2026-11-09 (David pegó `Code.gs` y publicó la versión nueva del web app; frontend `e9c4c97`, bundle `index-DHHp0z2b.js`, `version.json` `fa3b259e…`, el mismo del bundle).
 
 **Síntoma:**
 - Mateo pidió el cambio de SOL-000714 con ida el **domingo 8-nov** (motivo: «no había tiquete disponible para la fecha de ida inicial») el lunes 9-nov.

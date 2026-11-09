@@ -761,7 +761,7 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-09)
 
-- **Pendiente de desplegar (9-nov, urgente): #A127.** Primero pegar **`Code.gs`** → versión nueva del web app; después el push. Luego Laura registra
+- **#A127 desplegado (9-nov):** David pegó `Code.gs` (versión nueva del web app) y el frontend `e9c4c97` quedó en producción. Laura registra
   SOL-000714 con ida el 8-nov desde «Solicitar Cambio» y lo acepta en «Revisar Cambio».
 - **#A126 desplegado (9-nov, solo frontend, `ec02c20`):** la ida vencida sin tiquete comprado sale como «IDA VENCIDA · SE PUEDE CAMBIAR». SOL-000714 (Mateo) se puede cambiar
   desde #A120: Laura lo registra con «Solicitar Cambio» en el detalle (ida de hoy en adelante).
