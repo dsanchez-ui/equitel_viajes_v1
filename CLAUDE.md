@@ -759,7 +759,7 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-09)
 
-- **#A126 (9-nov, solo frontend):** la ida vencida sin tiquete comprado sale como «IDA VENCIDA · SE PUEDE CAMBIAR». SOL-000714 (Mateo) se puede cambiar
+- **#A126 desplegado (9-nov, solo frontend, `ec02c20`):** la ida vencida sin tiquete comprado sale como «IDA VENCIDA · SE PUEDE CAMBIAR». SOL-000714 (Mateo) se puede cambiar
   desde #A120: Laura lo registra con «Solicitar Cambio» en el detalle (ida de hoy en adelante).
 - **#A125 desplegado (6-nov)** (Métricas → Aprobaciones, con el motivo de cada denegación). David pegó `Code.gs` (versión nueva del web
   app) y el frontend `f948924` quedó en producción (bundle `index-D4Ap0G2E.js`). Métricas recalcula todo la primera vez (caché versión 4).

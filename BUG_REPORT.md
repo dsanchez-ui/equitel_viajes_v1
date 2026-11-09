@@ -3720,7 +3720,7 @@ aprobó, y solo se veía abriendo cada solicitud.
 
 ## **#A126 — La ida vencida sin tiquete comprado ya no sale como «ABANDONADA»: se puede cambiar**
 **Fecha:** 2026-11-09 · **Pedido por:** Laura (*«¿hay posibilidad de que actives en la plataforma este viaje?… el sábado Mateo intentó solicitar
-el cambio pero no lo dejó»*, caso SOL-000714) y David · **Estado:** Implementado; sale con el push (solo frontend).
+el cambio pero no lo dejó»*, caso SOL-000714) y David · **Estado:** Desplegado el 2026-11-09 (frontend `ec02c20`, bundle `index-CDbX_v6C.js`, `version.json` `32e48215…`, el mismo del bundle).
 
 **Síntoma:**
 - SOL-000714 (Mateo Rodríguez, Bogotá–Apartadó) está APROBADO, con ida el 5-nov y regreso el 14-nov, y sin tiquete comprado.
