@@ -345,6 +345,7 @@ Puedes elegir varias cosas a la vez. Para algo distinto (por ejemplo, quitar el 
 - La **fecha nueva también tiene que dar tiempo**: no se puede mover el viaje a un día cuyo plazo ya pasó.
 - Si el viaje **ya empezó** (la ida ya voló), solo se cambia el **regreso**: fecha, hora o equipaje.
 - Si el tiquete **todavía no se compró**, nadie ha volado: puedes cambiar **todo el viaje** aunque la fecha de ida ya haya llegado o ya no dé tiempo. Solo tienes que elegir una **fecha de ida nueva** que sí dé tiempo.
+  En tu panel ese viaje dice **IDA VENCIDA · SE PUEDE CAMBIAR** (no «abandonada»), mientras la fecha de regreso no haya pasado.
 - Después del plazo, el portal no deja pedir el cambio. **Solo si es urgente**, te muestra a quién llamar y en qué orden: primero el área de compras y, si no responde, el director de compras, con sus celulares. El área de compras lo registra a tu nombre.
 
 La ventana te dice, viaje por viaje, hasta cuándo puedes pedir el cambio.

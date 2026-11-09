@@ -104,6 +104,19 @@ export const tripChangeEligibility = (r: TravelRequest, all: TravelRequest[], no
   return { ok: true, win, why: '', hidden: false };
 };
 
+/**
+ * #A126 (Laura y David, 9-nov-2026, caso SOL-000714): la fecha de ida ya pasó, pero el viaje sigue vivo. Sin tiquete comprado
+ * se puede cambiar todo el viaje (#A120): «changeable». Con un cambio en curso: «changing». En los demás casos, null (de verdad
+ * abandonada, o no aplica). Misma regla que el botón «Pedir un cambio»: la etiqueta nunca promete lo que el formulario no deja.
+ */
+export type PastDepartureState = 'changeable' | 'changing' | null;
+export const pastDepartureState = (r: TravelRequest, all: TravelRequest[], nowMs: number): PastDepartureState => {
+  if (TERMINAL.includes(r.status) || r.replacedBy || isTripBought(r)) return null;
+  const live = all.find(x => x.relatedRequestId === r.requestId && x.requestId !== r.requestId && !TERMINAL.includes(x.status));
+  if (live) return 'changing';
+  return tripChangeEligibility(r, all, nowMs, false).ok ? 'changeable' : null;
+};
+
 interface FormState {
   t: Record<Toggle, boolean>;
   dep: string;

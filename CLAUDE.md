@@ -436,6 +436,8 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   - **Sin tiquete comprado nadie ha volado** (#A120, Laura, 5-nov, caso SOL-000714): se cambia todo el viaje mientras no haya terminado;
     si la ida ya no da tiempo (`newDeparture`), el cambio trae una ida nueva que sí lo dé (el área de compras, de hoy en adelante).
     «Comprado» = la regla de #A109. Nunca volver a tomar «la fecha de ida ya llegó» como «ya voló» sin mirar si se compró.
+    En los paneles, esa solicitud dice **IDA VENCIDA · SE PUEDE CAMBIAR** (o **CAMBIO EN CURSO**), no «ABANDONADA» (#A126, caso SOL-000714 del 9-nov):
+    `pastDepartureState`, la misma regla del botón. Un viaje que ya terminó del todo no se cambia: es un viaje nuevo (anticipación y CFO).
   - El navegador manda solo lo que cambia (`requestTripChange`); el servidor arma la hija con `requestModification`. La hija lleva
     `CAMBIO PEDIDO (JSON)`, que **solo escribe el servidor** (nunca confiar en un `tripChange` del cliente).
   - **Tiquete comprado:** la hija lleva **solo el costo del cambio** (penalidad en `PENALIDAD CAMBIO` + diferencia de tarifa + hotel); la
@@ -755,8 +757,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-06)
+### Para retomar (estado al 2026-11-09)
 
+- **#A126 (9-nov, solo frontend):** la ida vencida sin tiquete comprado sale como «IDA VENCIDA · SE PUEDE CAMBIAR». SOL-000714 (Mateo) se puede cambiar
+  desde #A120: Laura lo registra con «Solicitar Cambio» en el detalle (ida de hoy en adelante).
 - **#A125 desplegado (6-nov)** (Métricas → Aprobaciones, con el motivo de cada denegación). David pegó `Code.gs` (versión nueva del web
   app) y el frontend `f948924` quedó en producción (bundle `index-D4Ap0G2E.js`). Métricas recalcula todo la primera vez (caché versión 4).
   Caso que lo pidió: SOL-000731 a 734, denegadas por Alejandro el 6-nov.

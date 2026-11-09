@@ -715,12 +715,39 @@ function main() {
     hash('', '', '') !== hash(720000, '', '') && hash(720000, '', '') !== hash(720000, 0, '') && hash(720000, '', '') !== hash(720000, '', 'No se reservó') &&
     hash(720000, '', '') === hash(720000, '', ''));
 
+  // #A126 (caso SOL-000714, 9-nov): la ida ya pasó sin tiquete comprado y el viaje no ha terminado: no está
+  // abandonada, se le cambian las fechas. La etiqueta usa la misma regla que el botón «Pedir un cambio».
+  try {
+    const esbuild = require(path.join(ROOT, 'node_modules', 'esbuild'));
+    const out = esbuild.buildSync({ entryPoints: [path.join(ROOT, 'components', 'TripChangeModal.tsx')], bundle: true, format: 'cjs', platform: 'node',
+      write: false, logLevel: 'error', external: ['react', 'react-dom'], define: { 'import.meta.env': '{"PROD":false}', __APP_BUILD_ID__: '"x"' } });
+    const mod = { exports: {} };
+    new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, (id) => require(require.resolve(id, { paths: [ROOT] })));
+    const PD = mod.exports.pastDepartureState;
+    const NOW9 = Date.parse('2026-11-09T15:00:00Z'); // lunes 9-nov, 10:00 a. m. de Bogotá
+    const trip = (o) => Object.assign({ requestId: 'SOL-000714', status: 'APROBADO', departureDate: '2026-11-05', returnDate: '2026-11-14', requestMode: 'FLIGHT', supportData: null }, o || {});
+    const reserved = { folderId: 'f', files: [{ id: 'a', isReservation: true }] };
+    eq('#A126: la ida vencida sin comprar, según el caso', [
+      PD(trip(), [trip()], NOW9),                                                                   // SOL-000714
+      PD(trip({ status: 'PENDIENTE_SELECCION' }), [], NOW9),                                        // todavía eligiendo
+      PD(trip({ requestMode: 'HOTEL_ONLY' }), [], NOW9),                                            // solo hospedaje
+      PD(trip({ supportData: reserved }), [], NOW9),                                                // reserva por partes = comprado
+      PD(trip({ status: 'RESERVADO' }), [], NOW9),                                                  // comprado
+      PD(trip({ returnDate: '2026-11-08' }), [], NOW9),                                             // el viaje ya terminó
+      PD(trip({ returnDate: '' }), [], NOW9),                                                       // solo ida, ya pasó
+      PD(trip({ replacedBy: 'SOL-000760' }), [], NOW9),                                             // ya se cambió
+      PD(trip({ status: 'PENDIENTE_APROBACION_POLITICA' }), [], NOW9),                              // espera al CFO
+      PD(trip(), [trip(), { requestId: 'SOL-000754', relatedRequestId: 'SOL-000714', status: 'PENDIENTE_ANALISIS_CAMBIO' }], NOW9), // cambio en curso
+      PD(trip(), [trip(), { requestId: 'SOL-000754', relatedRequestId: 'SOL-000714', status: 'DENEGADO' }], NOW9)                    // cambio denegado
+    ], ['changeable', 'changeable', 'changeable', null, null, null, null, null, null, 'changing', 'changeable']);
+  } catch (e) { failures.push('#A126: no se pudo probar la etiqueta de ida vencida: ' + e.message); }
+
   if (failures.length) {
     console.error('✗ Cambios de viaje (#A103): ' + failures.length + ' problema(s):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard), cambiar el hospedaje en solo hospedaje y en vuelo + hotel (#A111) y la hora en 24 h (#A112).');
+  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard), cambiar el hospedaje en solo hospedaje y en vuelo + hotel (#A111) y la hora en 24 h (#A112); la ida vencida sin comprar se puede cambiar y no sale como abandonada (#A126).');
 }
 
 main();

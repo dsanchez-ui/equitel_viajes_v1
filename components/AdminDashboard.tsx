@@ -47,6 +47,7 @@ const ChangeNewsBanner: React.FC<{ pending: number }> = ({ pending }) => {
 import { ChangeRequestModal } from './ChangeRequestModal';
 import { gasService } from '../services/gasService';
 import { getDaysDiff, formatToDDMMYYYY, formatShortDateTime } from '../utils/dateUtils';
+import { pastDepartureState } from './TripChangeModal';
 
 interface AdminDashboardProps {
   requests: TravelRequest[];
@@ -626,7 +627,10 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
                         const isHighCost = totalCost > 1200000;
                         const anticipationDays = getDaysDiff(req.timestamp, req.departureDate);
                         const remainingDays = getDaysDiff(new Date(), req.departureDate);
-                        const isAbandoned = remainingDays < 0 && !['RESERVADO', 'PROCESADO', 'PENDIENTE_ANALISIS_CAMBIO'].includes(req.status);
+                        const pastDeparture = remainingDays < 0 && !['RESERVADO', 'PROCESADO', 'PENDIENTE_ANALISIS_CAMBIO'].includes(req.status);
+                        // #A126: sin tiquete comprado y con el viaje sin terminar, no está abandonada: se le cambian las fechas.
+                        const stillAlive = pastDeparture ? pastDepartureState(req, requests, Date.now()) : null;
+                        const isAbandoned = pastDeparture && !stillAlive;
                         const isPriority = priorityMap.get(req.requestId) || false;
                         const isTerminal = TERMINAL_STATUSES.includes(req.status);
 
@@ -655,6 +659,18 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
                                 {isAbandoned && !['ANULADO', 'DENEGADO'].includes(req.status) && (
                                   <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-200 text-gray-800" title="Fecha de vuelo pasada sin reserva">
                                     ABANDONADA
+                                  </span>
+                                )}
+                                {stillAlive === 'changeable' && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900" data-past-departure="changeable"
+                                    title={`La fecha de ${req.requestMode === 'HOTEL_ONLY' ? 'entrada' : 'ida'} ya pasó y no se ha comprado: se puede cambiar todo el viaje. El viajero lo pide con «Pedir un cambio», o regístrelo usted con «Solicitar Cambio» en el detalle.`}>
+                                    {req.requestMode === 'HOTEL_ONLY' ? 'ENTRADA VENCIDA' : 'IDA VENCIDA'} · SE PUEDE CAMBIAR
+                                  </span>
+                                )}
+                                {stillAlive === 'changing' && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800" data-past-departure="changing"
+                                    title="Tiene un cambio en curso: revíselo en la solicitud de cambio.">
+                                    CAMBIO EN CURSO
                                   </span>
                                 )}
                                 {req.requestMode === 'HOTEL_ONLY' && (

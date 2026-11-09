@@ -3717,3 +3717,49 @@ aprobó, y solo se veía abriendo cada solicitud.
 - Con el frontend nuevo y el servidor anterior, la pestaña funciona igual, pero sin el motivo ni los comentarios.
 - Con el servidor nuevo y el frontend anterior, no se ve nada distinto.
 - Orden recomendado: pegar `Code.gs` → versión nueva del web app → push del frontend. La primera vez que se abra Métricas recalcula todo.
+
+## **#A126 — La ida vencida sin tiquete comprado ya no sale como «ABANDONADA»: se puede cambiar**
+**Fecha:** 2026-11-09 · **Pedido por:** Laura (*«¿hay posibilidad de que actives en la plataforma este viaje?… el sábado Mateo intentó solicitar
+el cambio pero no lo dejó»*, caso SOL-000714) y David · **Estado:** Implementado; sale con el push (solo frontend).
+
+**Síntoma:**
+- SOL-000714 (Mateo Rodríguez, Bogotá–Apartadó) está APROBADO, con ida el 5-nov y regreso el 14-nov, y sin tiquete comprado.
+- En los dos paneles salía gris y con la etiqueta «ABANDONADA», que hace pensar que ya no sirve.
+- Laura pidió «activarlo» para cambiar las fechas.
+
+**Causa raíz:** el viaje sí se podía cambiar desde #A120. Sin tiquete comprado nadie ha volado, y se cambia todo el viaje con una ida nueva mientras el
+regreso no haya pasado. Lo comprobé con la exportación del 9-nov en el entorno local:
+- Como Mateo: el formulario explica que la ida ya no da tiempo, y con ida el 12-nov el cambio se crea.
+- Como Laura: lo registra a su nombre sin plazo.
+- Lo que no se podía era la etiqueta: «ABANDONADA» se calculaba solo con «la fecha de ida ya pasó y no está reservada», sin mirar si el viaje seguía
+  vivo.
+- Por qué no lo dejó el sábado no queda en la hoja (un intento rechazado no se guarda). Lo más probable es una de dos: cambió solo el regreso y dejó la
+  ida del 5-nov, o eligió una ida para el lunes después de las 12:00 m. del sábado. En los dos casos la app dice el motivo.
+
+**Fix:**
+- `pastDepartureState` (en `TripChangeModal.tsx`, junto a `tripChangeEligibility`) usa la misma regla que el botón «Pedir un cambio»:
+  - `changeable`: sin tiquete comprado (#A109), sin cambio en curso y con el cambio permitido.
+  - `changing`: ya tiene un cambio en curso.
+  - null: de verdad abandonada, o no aplica.
+- `UserDashboard` y `AdminDashboard`:
+  - con `changeable` muestran **IDA VENCIDA · SE PUEDE CAMBIAR** (ENTRADA en solo hospedaje), sin el gris;
+  - con `changing`, **CAMBIO EN CURSO**;
+  - si no, «ABANDONADA» como antes.
+- El texto al pasar el mouse dice cómo pedirlo: el viajero con «Pedir un cambio»; el área de compras con «Solicitar Cambio» en el detalle.
+- No cambia la regla de qué se puede cambiar. Un viaje que ya terminó del todo sigue sin poderse cambiar: es un viaje nuevo, con su anticipación y, si
+  hace falta, la aprobación del CFO (#A100).
+
+**Verificado:**
+- `tools/check-trip-change.cjs`, 11 casos:
+  - se puede cambiar: SOL-000714, todavía eligiendo opción y solo hospedaje;
+  - no: reserva por partes, comprado, viaje terminado, solo ida vencida, ya cambiado y esperando al CFO;
+  - cambio en curso: con un cambio por revisar; con el cambio denegado, se puede pedir otro.
+- Entorno local con la exportación del 9-nov:
+  - Mateo ve SOL-000714 en color con «IDA VENCIDA · SE PUEDE CAMBIAR»;
+  - en el panel del área de compras (filtro APROBADO), igual;
+  - de las 753 solicitudes, es la única con la ida vencida sin cerrar;
+  - sin errores en la página.
+- `npm run verify` en verde.
+
+**Despliegue:** el push (solo frontend). Para SOL-000714: Laura abre la solicitud → «Solicitar Cambio» → fechas nuevas (ida de hoy en adelante) →
+la acepta en «Revisar Cambio».
