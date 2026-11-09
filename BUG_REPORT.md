@@ -3763,3 +3763,41 @@ regreso no haya pasado. Lo comprobé con la exportación del 9-nov en el entorno
 
 **Despliegue:** el push (solo frontend). Para SOL-000714: Laura abre la solicitud → «Solicitar Cambio» → fechas nuevas (ida de hoy en adelante) →
 la acepta en «Revisar Cambio».
+
+## **#A127 — El área de compras registra una ida que ya pasó; al viajero se le dice que la fecha ya pasó**
+**Fecha:** 2026-11-09 · **Pedido por:** Laura y David (*«no permite solicitar el cambio… mira lo que sale, corrige urgente»*, caso SOL-000714) ·
+**Estado:** Implementado; pendiente pegar `Code.gs` y push del frontend.
+
+**Síntoma:**
+- Mateo pidió el cambio de SOL-000714 con ida el **domingo 8-nov** (motivo: «no había tiquete disponible para la fecha de ida inicial») el lunes 9-nov.
+- La app respondió «La fecha nueva (domingo 8 de noviembre) ya no da tiempo: para ese vuelo el plazo era el sábado 7 de noviembre a las 12:00 m.».
+- Laura tampoco podía registrarlo: para el área de compras la ida nueva tenía que ser de hoy en adelante (#A120).
+
+**Causa raíz:**
+- La regla funcionó, pero el mensaje confundía y no había salida.
+- El plazo de un vuelo del domingo es el sábado a las 12:00 m. (día hábil anterior). Por eso el sábado en la tarde ya no lo dejó, y hoy la fecha ya
+  pasó.
+- La salida prevista (#A106) es que el área de compras lo registre a nombre del viajero, sin plazo. Pero #A120 le exigía una ida de hoy en adelante,
+  así que tampoco podía registrar el viaje que de verdad se hizo (el viajero salió el 8-nov).
+
+**Fix:**
+- `Code.gs` (`requestTripChange`) y `TripChangeModal.tsx`:
+  - El área de compras puede poner una ida que ya pasó si el viaje no ha terminado (el regreso es de hoy en adelante). Si con esas fechas el viaje ya
+    terminó, el mensaje dice que es una solicitud nueva. Solo ida y ya pasada: no.
+  - Al viajero, una fecha que ya pasó se le dice así: «ya pasó: elija una de hoy en adelante que dé tiempo. Si ya viajó ese día, el área de compras
+    lo registra a su nombre». En la app sale debajo el recuadro de a quién llamar (Laura y, si no responde, Diego).
+  - Cuando vence el plazo, el mensaje del servidor también dice a quién llamar.
+- El viajero sigue sin poder pedir una fecha cuyo plazo ya pasó: eso lo registra el área de compras (#A106).
+
+**Verificado:**
+- `tools/check-trip-change.cjs`: viajero con una ida que ya pasó (el mensaje nuevo y a quién llamar); área de compras con la ida de ayer (se crea,
+  sin comprar, registrada por el administrador); con un viaje que ya terminó (no, y lo dice); la ida de hoy, como antes; el plazo vencido dice a quién
+  llamar.
+- Entorno local con la exportación del 9-nov, SOL-000714 con ida el 8-nov:
+  - Mateo ve el mensaje nuevo y el recuadro con Laura (313 325 1690) y Diego (323 295 8507);
+  - Laura lo registra y queda SOL-000754 en PENDIENTE_ANALISIS_CAMBIO, del 08-11-2026 al 14-11-2026.
+- `npm run verify` en verde.
+
+**Despliegue:** primero pegar `Code.gs` → versión nueva del web app (sin eso Laura no puede registrar la ida del 8-nov); después el push del frontend
+(el mensaje nuevo a Mateo y el formulario de Laura sin el error). Con el frontend nuevo y el servidor anterior, Laura ve el formulario sin error, pero
+el servidor responde «ya pasó».

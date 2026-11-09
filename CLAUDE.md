@@ -438,6 +438,8 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     «Comprado» = la regla de #A109. Nunca volver a tomar «la fecha de ida ya llegó» como «ya voló» sin mirar si se compró.
     En los paneles, esa solicitud dice **IDA VENCIDA · SE PUEDE CAMBIAR** (o **CAMBIO EN CURSO**), no «ABANDONADA» (#A126, caso SOL-000714 del 9-nov):
     `pastDepartureState`, la misma regla del botón. Un viaje que ya terminó del todo no se cambia: es un viaje nuevo (anticipación y CFO).
+    **El área de compras puede registrar una ida que ya pasó** (el viajero ya voló) si el viaje no ha terminado: regreso de hoy en adelante (#A127,
+    SOL-000714). Al viajero, una fecha pasada se le dice «ya pasó» con a quién llamar; él no puede pedir fechas cuyo plazo venció.
   - El navegador manda solo lo que cambia (`requestTripChange`); el servidor arma la hija con `requestModification`. La hija lleva
     `CAMBIO PEDIDO (JSON)`, que **solo escribe el servidor** (nunca confiar en un `tripChange` del cliente).
   - **Tiquete comprado:** la hija lleva **solo el costo del cambio** (penalidad en `PENALIDAD CAMBIO` + diferencia de tarifa + hotel); la
@@ -759,6 +761,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-09)
 
+- **Pendiente de desplegar (9-nov, urgente): #A127.** Primero pegar **`Code.gs`** → versión nueva del web app; después el push. Luego Laura registra
+  SOL-000714 con ida el 8-nov desde «Solicitar Cambio» y lo acepta en «Revisar Cambio».
 - **#A126 desplegado (9-nov, solo frontend, `ec02c20`):** la ida vencida sin tiquete comprado sale como «IDA VENCIDA · SE PUEDE CAMBIAR». SOL-000714 (Mateo) se puede cambiar
   desde #A120: Laura lo registra con «Solicitar Cambio» en el detalle (ida de hoy en adelante).
 - **#A125 desplegado (6-nov)** (Métricas → Aprobaciones, con el motivo de cada denegación). David pegó `Code.gs` (versión nueva del web

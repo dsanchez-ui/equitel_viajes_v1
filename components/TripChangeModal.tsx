@@ -240,19 +240,27 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   }
 
   const problems: string[] = [];
+  let pastTarget = false;
   if (req && form && base) {
     if (newDeparture && form.tried && (!form.t.fechas || !form.dep || form.dep === base.dep)) {
       problems.push(`Elija una fecha de ${hotelOnly ? 'entrada' : 'ida'} nueva: la de la solicitud (${fmtDayLong(base.dep)}) ya no da tiempo.`);
     }
-    if (newDeparture && isAdmin && form.t.fechas && form.dep && form.dep !== base.dep && form.dep < todayKey) {
-      problems.push(`La fecha de ${hotelOnly ? 'entrada' : 'ida'} nueva (${fmtDayLong(form.dep)}) ya pasó.`);
+    // #A127: el área de compras puede registrar una ida que ya pasó (el viajero ya voló) si el viaje no ha terminado.
+    if (newDeparture && isAdmin && form.t.fechas && form.dep && form.dep !== base.dep && (form.ret || form.dep) < todayKey) {
+      problems.push(form.ret
+        ? `Con esas fechas el viaje ya terminó (${hotelOnly ? 'salida' : 'regreso'} el ${fmtDayLong(form.ret)}). Para un viaje que ya terminó, cree una solicitud nueva.`
+        : `La fecha de ${hotelOnly ? 'entrada' : 'ida'} nueva (${fmtDayLong(form.dep)}) ya pasó y el viaje es solo de ida.`);
     }
     if (form.t.fechas) {
       if (form.ret && form.dep && form.ret < form.dep) problems.push('El regreso no puede ser antes de la ida.');
       if (hotelOnly && form.ret && form.ret === form.dep) problems.push('La salida del hotel tiene que ser después de la entrada.');
       const target = mode === 'full' ? form.dep : form.ret;
       const baseTarget = mode === 'full' ? base.dep : base.ret;
-      if (!isAdmin && target && target !== baseTarget) {
+      if (!isAdmin && target && target !== baseTarget && target < todayKey) {
+        // #A127: una fecha que ya pasó, dicha así (antes salía «ya no da tiempo… el plazo era…», que confundía).
+        pastTarget = true;
+        problems.push(`La fecha nueva (${fmtDayLong(target)}) ya pasó: elija una de hoy en adelante que dé tiempo. Si ya viajó ese día, el área de compras lo registra a su nombre (abajo, a quién llamar).`);
+      } else if (!isAdmin && target && target !== baseTarget) {
         const dl = changeDeadline(target);
         if (!dl || nowMs >= dl.ms) {
           problems.push(`La fecha nueva (${fmtDayLong(target)}) ya no da tiempo: para ese vuelo el plazo era el ${dl ? fmtDayLong(dl.dayKey) + ' a las ' + fmtHourLabel(dl.hour) : '—.'}`);
@@ -589,6 +597,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   {problems.map(pr => <li key={pr}>{pr}</li>)}
                 </ul>
               )}
+              {pastTarget && <TripChangeContactsBox config={config} title="Si ya viajó en esa fecha, llame al área de compras: lo registra a su nombre" />}
               {sendError && <div className="bg-red-50 border border-red-200 text-red-800 rounded-md p-3" role="alert" data-change-error>{sendError}</div>}
             </>
           )}

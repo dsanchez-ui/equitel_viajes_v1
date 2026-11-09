@@ -21651,17 +21651,26 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
     throw new Error('El tiquete todavía no se ha comprado y la fecha de ' + (isHotelOnly ? 'entrada' : 'ida') + ' (' + _policyFmtDayLong_(parentVals.dep) +
       ') ya no da tiempo. Elija una fecha de ' + (isHotelOnly ? 'entrada' : 'ida') + ' nueva.');
   }
-  if (isAdmin && win.newDeparture && next.dep < _bogotaKeyFromMs_(nowMs)) {
-    throw new Error('La fecha de ' + (isHotelOnly ? 'entrada' : 'ida') + ' nueva (' + _policyFmtDayLong_(next.dep) + ') ya pasó.');
+  // #A127 (caso SOL-000714, 9-nov): el área de compras puede registrar una ida que ya pasó (el viajero ya voló, p. ej. porque
+  // no había tiquete el día pedido), siempre que el viaje no haya terminado: el regreso es de hoy en adelante.
+  var todayKey = _bogotaKeyFromMs_(nowMs);
+  if (isAdmin && win.newDeparture && (next.ret || next.dep) < todayKey) {
+    throw new Error(next.ret
+      ? 'Con esas fechas el viaje ya terminó (' + (isHotelOnly ? 'salida' : 'regreso') + ' el ' + _policyFmtDayLong_(next.ret) + '). Para un viaje que ya terminó, cree una solicitud nueva.'
+      : 'La fecha de ' + (isHotelOnly ? 'entrada' : 'ida') + ' nueva (' + _policyFmtDayLong_(next.dep) + ') ya pasó y el viaje es solo de ida.');
   }
   // La fecha nueva también tiene que dar tiempo (decisión de Yurani, 19-oct).
   var newTarget = win.mode === 'full' ? next.dep : next.ret;
   if (!isAdmin && newTarget !== win.target) {
+    if (newTarget < todayKey) {
+      throw new Error('La fecha nueva (' + _policyFmtDayLong_(newTarget) + ') ya pasó: elija una de hoy en adelante que dé tiempo. ' +
+        'Si ya viajó ese día, el área de compras lo registra a su nombre: ' + _tripContactsText_(_tripContacts_()) + '.');
+    }
     var dlNew = _changeDeadline_(newTarget);
     if (!dlNew || nowMs >= dlNew.ms) {
       throw new Error('La fecha nueva (' + _policyFmtDayLong_(newTarget) + ') ya no da tiempo: para ' +
         (isHotelOnly ? 'ese hospedaje' : 'ese vuelo') + ' el plazo era el ' +
-        _changeDeadlineText_(dlNew.dayKey, dlNew.hour));
+        _changeDeadlineText_(dlNew.dayKey, dlNew.hour) + '. Si es urgente, ' + _tripContactsText_(_tripContacts_()) + '.');
     }
   }
   // El destino nuevo tiene que estar en la lista de ciudades (define si el viaje es internacional).

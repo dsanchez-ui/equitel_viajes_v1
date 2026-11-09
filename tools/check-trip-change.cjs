@@ -357,16 +357,26 @@ function main() {
   r = change(U9, { departureDate: '2026-10-16', departureTimePreference: '18:00' });
   ok('sin comprar, venció el plazo: la misma ida no sirve', !r.success && /no se ha comprado/.test(r.error));
   r = change(U9, { departureDate: '2026-10-15' });
-  ok('sin comprar: la ida nueva tiene que dar tiempo', !r.success && /ya no da tiempo/.test(r.error));
+  ok('sin comprar: la ida nueva tiene que dar tiempo', !r.success && /ya no da tiempo/.test(r.error) && /Si es urgente, /.test(r.error));
+  // #A127 (caso SOL-000714, 9-nov): el viajero escribió una ida que ya pasó; antes decía «ya no da tiempo… el plazo era…».
+  r = change(U9, { departureDate: '2026-10-14' });
+  ok('#A127: el viajero con una ida que ya pasó: lo dice y le dice a quién llamar', !r.success && /ya pasó: elija una de hoy en adelante/.test(r.error) &&
+    /el área de compras lo registra a su nombre/.test(r.error));
   r = change(U9, { departureDate: '2026-10-22', returnDate: '2026-10-24' }, 'Se aplazó la visita una semana.');
   ok('sin comprar, venció el plazo: con una ida que da tiempo, sí', r.success && info(r.data.id).modo === 'full');
   const U10 = unbought('13-10-2026', '20-10-2026');
   at(NOW);
   r = change(U10, { returnDate: '2026-10-22' }, 'El viajero sale después, pide moverlo.', 'admin@p.co');
   ok('sin comprar, ida ayer: el área de compras también pone ida nueva', !r.success && /no se ha comprado/.test(r.error));
-  r = change(U10, { departureDate: '2026-10-14' }, 'El viajero sale después, pide moverlo.', 'admin@p.co');
-  ok('sin comprar: la ida nueva no puede ser del pasado', !r.success && /ya pasó/.test(r.error));
-  r = change(U10, { departureDate: '2026-10-15' }, 'El viajero sale hoy en la tarde.', 'admin@p.co');
+  // #A127: el área de compras registra una ida que ya pasó (el viajero ya voló) si el viaje no ha terminado.
+  r = change(U10, { departureDate: '2026-10-11', returnDate: '2026-10-13' }, 'Viajó antes y ya volvió.', 'admin@p.co');
+  ok('#A127: el área de compras no registra un viaje que ya terminó', !r.success && /el viaje ya terminó/.test(r.error) && /solicitud nueva/.test(r.error));
+  r = change(U10, { departureDate: '2026-10-14' }, 'No había tiquete el día pedido; voló ayer.', 'admin@p.co');
+  ok('#A127: el área de compras registra la ida de ayer (el viajero ya voló)', r.success && r.data.comprado === false &&
+    key(cell(r.data.id, 'FECHA IDA')) === '2026-10-14' && key(cell(r.data.id, 'FECHA VUELTA')) === '2026-10-20' && info(r.data.id).rol === 'administrador');
+  const U10b = unbought('13-10-2026', '20-10-2026');
+  at(NOW);
+  r = change(U10b, { departureDate: '2026-10-15' }, 'El viajero sale hoy en la tarde.', 'admin@p.co');
   ok('sin comprar: el área de compras pone la ida hoy', r.success);
   const U11 = unbought('10-10-2026', '13-10-2026');
   at(NOW);
@@ -747,7 +757,7 @@ function main() {
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard), cambiar el hospedaje en solo hospedaje y en vuelo + hotel (#A111) y la hora en 24 h (#A112); la ida vencida sin comprar se puede cambiar y no sale como abandonada (#A126).');
+  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard), cambiar el hospedaje en solo hospedaje y en vuelo + hotel (#A111) y la hora en 24 h (#A112); la ida vencida sin comprar se puede cambiar y no sale como abandonada (#A126); el área de compras registra una ida que ya pasó si el viaje no ha terminado, y al viajero se le dice que la fecha ya pasó (#A127).');
 }
 
 main();
