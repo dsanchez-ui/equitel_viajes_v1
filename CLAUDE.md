@@ -495,7 +495,9 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   `__APP_BUILD_ID__` y publica el mismo en `version.json` (`vite.config.ts`). `UpdateBanner.tsx` lo compara cada 5 minutos y al volver a la
   pestaña; si cambió, pide «Actualizar ahora». **No recarga sola**: se perdería una solicitud a medio llenar. `npm run verify` revisa que
   `version.json` coincida con la app. **La versión sale del contenido de lo que se publica (JS y CSS), no de la hora**: un push que no cambia
-  la app (p. ej. solo documentación) no hace salir el aviso. Nunca volver a la hora de compilación.
+  la app (p. ej. solo documentación) no hace salir el aviso. Nunca volver a la hora de compilación. **El build local no sirve para
+  comparar con producción:** toma `.env.local` (el backend de prueba), que `.dockerignore` deja fuera de Cloud Build, y da otra versión.
+  Para saber si un push cambió la app, comparar el `version.json` de producción antes y después.
 - **Las horas, siempre en 24 h** (#A112, Yurani, 27-oct: «hora militar y ya»): un viajero escribió «6.22» por las 18:22, sin «pm», y se
   cotizó un vuelo a las 6 a. m. Todo campo de hora es `TimeInput` (`HH:MM` de 24 h, con la hora **en palabras** debajo y un botón que abre
   una **lista propia de horas**, cada 15 minutos, también en 24 h; entra y sale `HH:MM`). **Nunca un `<input type="time">`**, ni siquiera
