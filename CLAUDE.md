@@ -38,12 +38,21 @@ archivos; Gmail para notificaciones.
 4. Al cerrar un cambio relevante, **agregar su entrada `#Axx` a `BUG_REPORT.md`**
    siguiendo el formato existente (síntoma, causa raíz, fix, verificado, despliegue).
 5. Los commits van **en inglés** con prefijo conventional (`fix:`, `feat:`, `chore:`).
-   Todo el UI y la documentación van **en español**. **Las respuestas a David, también en
-   español.** Los commits van a nombre de David (el `git config` del repo es el correcto).
+   Todo el UI y la documentación van **en español**. **Las respuestas a David, siempre en
+   español**, también los avisos entre pasos y el reporte final (David, 9-nov: *«siempre repórtame en
+   español»*). Los commits van a nombre de David (el `git config` del repo es el correcto).
 6. **Sugerir y que una persona confirme.** Cuando algo cambiaría estados en producción
    (cerrar, aprobar, anular), David prefiere que el sistema lo muestre en una bandeja o aviso y
    que el área de compras lo confirme con el flujo de siempre (#A83: *"es más seguro"*). Si de
-   verdad conviene automatizar, preguntar antes de construirlo.
+   verdad conviene automatizar, preguntar antes de construirlo. **Un permiso de solo ver** se da en
+   una tabla de MISC (como `COMPLETO`, #A113), no en una lista fija del código; lo que cambia datos o da
+   poder (saltar aprobación, excluir del ahorro) sí va en listas fijas.
+7. **`git fetch` antes de elegir el siguiente `#Axx`, antes de un push y antes de pedirle a David que pegue
+   `Code.gs`.** David trabaja desde el Mac, el PC Linux y otras sesiones: el 28-oct dos sesiones usaron los
+   mismos números, y un `Code.gs` armado sin lo que subió la otra borraría eso en producción al pegarlo.
+8. **Subir lo verificado al menos cada 2 horas** (David, 9-oct), aunque sea solo documentación: así lo
+   último queda en la nube y no solo en un equipo. Nunca trabajo a medias a `main` (despliega); eso va en
+   una rama `wip/…` (ver [MIGRACION.md §3](MIGRACION.md)).
 
 ## Cómo se corre en local
 
@@ -759,7 +768,12 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-09)
+### Para retomar (estado al 2026-11-10)
+
+- **Retomar en el Mac (10-nov):** todo está en `main` y desplegado hasta #A127, y no queda nada por pegar en Apps Script. En el
+  Mac: primero [MIGRACION.md §0](MIGRACION.md) (Node 24 y el recordatorio para todos sus proyectos; sigue pendiente), luego
+  `git pull`, `rm -rf node_modules && npm ci` y `npm run verify`. Para `npm run prueba:local` hay que descargar de nuevo la
+  exportación de la hoja: la del PC Linux se queda allá (datos personales).
 
 - **#A127 desplegado (9-nov):** David pegó `Code.gs` (versión nueva del web app) y el frontend `e9c4c97` quedó en producción. Laura registra
   SOL-000714 con ida el 8-nov desde «Solicitar Cambio» y lo acepta en «Revisar Cambio».

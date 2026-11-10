@@ -42,6 +42,24 @@ Al arrancar se crean cinco viajes de PRUEBA1, con fechas relativas a hoy, para p
 - aprobado sin comprar;
 - solo hospedaje.
 
+## Capturas de pantalla (para el agente)
+
+Así se sacaron las capturas de #A103 a #A127, sin abrir una ventana:
+
+1. Chrome sin pantalla, con el puerto de depuración: `google-chrome --headless=new --remote-debugging-port=9334
+   --user-data-dir=<carpeta temporal> --window-size=1400,1000 about:blank` (en el Mac, el ejecutable es
+   `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`).
+2. Un script de Node (el `WebSocket` ya viene en Node 24) que se conecta por CDP, navega a <http://127.0.0.1:3100>,
+   hace clic con `Runtime.evaluate` y guarda `Page.captureScreenshot`.
+3. **Para entrar sin escribir el PIN:** `POST http://127.0.0.1:8787/exec` con
+   `{"action":"verifyUserPin","payload":{"email":…,"pin":"24682468","userEmail":…}}` (administrador:
+   `verifyAdminPin` con `{pin, email, userEmail}`). La respuesta trae `token`, `expiresAt` y `role`; se guardan en
+   `localStorage.equitel_session` como `{email, token, expiresAt, role}` y se recarga la página.
+
+Los scripts quedan en la carpeta temporal del agente, no en el repositorio. Para cerrar el entorno, matar el
+proceso que escucha en el puerto 8787 (`ss -ltnp | grep :8787` en Linux, `lsof -i :8787` en el Mac). **Nunca matar
+Chrome con `pkill -f` y un texto que también esté en el comando que lo ejecuta:** se mata la propia terminal.
+
 ## Qué no hace
 
 - No corre los activadores (recordatorios, resumen del CFO, informe mensual, copia de seguridad).

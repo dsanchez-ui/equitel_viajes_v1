@@ -29,7 +29,9 @@ dependencias, no.
    leen los agentes de **todos** los proyectos de ese equipo; el de este repo solo lo lee el de este proyecto.
 5. Si el `~/.claude/CLAUDE.md` del Mac no tiene la regla del correo de David (ningún agente envía correos,
    28-sep-2026), díselo: en el PC Linux esa regla tiene un candado (`~/.claude/hooks/bloquear-correo.py`)
-   que no viaja con git.
+   que no viaja con git. Desde el 4-nov hay **un solo candado para los dos equipos**: la versión unida quedó
+   en el bucket de documentos de EquiHub, carpeta `relevo-agente-4nov/unificado-4nov/`. Instalarlo lo decide
+   David; el agente no lo instala, no lo edita ni lo desactiva por su cuenta.
 
 ```markdown
 ## Equipo al día (todos los proyectos de este Mac; David, 22-oct-2026)
@@ -119,6 +121,11 @@ Hay un `.env.example` en el repo con el formato esperado.
 
 El rastreo automático (#A84) no necesita nada en la máquina: vive en su propio proyecto de
 Apps Script, con la clave en sus propiedades.
+
+**Entorno de prueba local (`npm run prueba:local`):** la exportación `.xlsx` de la hoja **no se copia**
+entre equipos (trae datos personales). En cada máquina se descarga de nuevo desde Sheets (Archivo →
+Descargar → Microsoft Excel). Además pide Python 3 con `openpyxl`. Ver
+[tools/entorno-prueba/README.md](tools/entorno-prueba/README.md).
 
 ### Lo que NO se copia entre máquinas (se regenera)
 
