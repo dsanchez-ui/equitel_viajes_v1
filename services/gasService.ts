@@ -428,6 +428,13 @@ class GasService {
     return response.data;
   }
 
+  /** #A128: sube un soporte del costo al confirmar costos (solo administradores). Devuelve su ID para la confirmación. */
+  async uploadCostEvidence(requestId: string, fileData: string, fileName: string, mimeType: string): Promise<{ id: string; name: string; mimeType: string }> {
+    const response = await this.runGas('uploadCostEvidence', { requestId, fileData, fileName, mimeType });
+    if (!response.success) throw new Error(response.error);
+    return response.data;
+  }
+
   // --- PASSPORT VALIDATION (solicitudes internacionales) ---
   // Si `requestId` se proporciona, el backend filtra el `fileUrl` a las cédulas
   // pertenecientes a esa solicitud (y solo si el actor tiene acceso a ella).

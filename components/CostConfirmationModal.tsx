@@ -12,6 +12,7 @@ import {
   BirthdatesLoadState, RequestTripCorporateInfo, RequestPassengersHotelInfo, RequestComments, RequestOptionsGallery,
 } from './RequestInfoSections';
 import { TripChangeBox, withParentPurchase } from './TripChangeInfo';
+import { CostEvidencePicker, PendingEvidence, evidenceMimeType, fileToBase64 } from './CostEvidence';
 
 interface CostConfirmationModalProps {
   request: TravelRequest;
@@ -119,6 +120,12 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
   const costHotel = hotelCheck.ok ? (hotelCheck.value || 0) : 0;
   const total = costTickets + costHotel;
 
+  // #A128: soporte del costo (opcional). Solo si el servidor ya lo recibe (manda la clave costEvidence).
+  // Los archivos se suben al confirmar; si Laura cancela, no queda nada en Drive.
+  const serverHasEvidence = request.costEvidence !== undefined || full.costEvidence !== undefined;
+  const [evidence, setEvidence] = useState<PendingEvidence[]>([]);
+  const [progress, setProgress] = useState<string>('');
+
   const handleSubmit = async () => {
       setTriedSubmit(true);
       const problems: string[] = [];
@@ -149,6 +156,11 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
       if (serverHasFare) {
           message += `Tarifa: ${fareShort(fareCheck.option, fareAirline, fareReturnAirline)}`
             + (fareCheck.exception ? ` — distinta de la recomendada (TIPO ${fareCheck.recommended}): "${fareCheck.justification}"` : ' (la recomendada)') + '\n\n';
+      }
+      if (serverHasEvidence) {
+          message += evidence.length
+            ? `Soporte del costo: ${evidence.length === 1 ? '1 archivo' : evidence.length + ' archivos'} (${evidence.map(p => p.file.name).join(', ')})\n\n`
+            : 'Soporte del costo: no se adjuntó.\n\n';
       }
 
       // Saltar aprobación requiere el permiso (#A77) y una justificación válida.
@@ -186,6 +198,28 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
       closeDialog();
       setLoading(true);
       try {
+          // #A128: primero los soportes (si uno falla, no se confirma nada). Los que ya subieron
+          // no se vuelven a subir si se reintenta.
+          const evidenceIds: string[] = [];
+          if (serverHasEvidence) {
+              const pending = [...evidence];
+              for (let i = 0; i < pending.length; i++) {
+                  const p = pending[i];
+                  if (!p.uploadedId) {
+                      setProgress(`Subiendo soporte ${i + 1} de ${pending.length}…`);
+                      let up: { id: string };
+                      try {
+                          up = await gasService.uploadCostEvidence(request.requestId, await fileToBase64(p.file), p.file.name, evidenceMimeType(p.file));
+                      } catch (eUp) {
+                          throw new Error(`No se pudo subir el soporte «${p.file.name}»: ${eUp instanceof Error ? eUp.message : eUp}. No se confirmó nada; intente de nuevo.`);
+                      }
+                      p.uploadedId = up.id;
+                      setEvidence(prev => prev.map(x => x.key === p.key ? { ...x, uploadedId: up.id } : x));
+                  }
+                  evidenceIds.push(p.uploadedId!);
+              }
+              setProgress('Confirmando…');
+          }
           await gasService.updateRequestStatus(request.requestId, RequestStatus.PENDING_APPROVAL, {
               finalCostTickets: costTickets,
               finalCostHotel: costHotel,
@@ -199,6 +233,8 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
               ...(serverHasFare ? { fareOption: String(fareCheck.option), fareJustification: fareCheck.justification } : {}),
               // #A103: de lo que costó el cambio, cuánto es penalidad (solo en un cambio de tiquete comprado).
               ...(changeMode ? { changePenalty: String(penalty) } : {}),
+              // #A128: los soportes ya subidos; el servidor revisa que sean de esta solicitud.
+              ...(serverHasEvidence ? { costEvidenceIds: evidenceIds } : {}),
               // Si vamos a saltar aprobación inmediatamente, le decimos al
               // backend que NO envíe correo a los aprobadores en este paso
               // intermedio — nunca van a actuar sobre la solicitud.
@@ -229,12 +265,13 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
           setDialog({
             isOpen: true,
             title: 'Error',
-            message: "Error: " + e,
+            message: e instanceof Error ? e.message : "Error: " + e,
             type: 'ALERT',
             onConfirm: closeDialog
           });
       } finally {
           setLoading(false);
+          setProgress('');
           submittingRef.current = false;
       }
   };
@@ -350,6 +387,10 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
                     </>
                   )}
 
+                  {serverHasEvidence && (
+                      <CostEvidencePicker value={evidence} onChange={setEvidence} disabled={loading} />
+                  )}
+
                   <PurchaseInfoFields
                       isHotelOnly={isHotelOnly}
                       canSplit={canSplitReturn}
@@ -411,7 +452,7 @@ export const CostConfirmationModal: React.FC<CostConfirmationModalProps> = ({ re
             <div className="mt-6 flex justify-end gap-3">
                 <button onClick={onClose} className="px-4 py-2 border rounded text-gray-700 bg-white hover:bg-gray-50">Cancelar</button>
                 <button onClick={handleSubmit} disabled={loading} className="px-4 py-2 bg-purple-700 text-white rounded font-bold hover:bg-purple-800 disabled:opacity-50">
-                    {loading ? 'Procesando...' : 'Confirmar y Enviar'}
+                    {loading ? (progress || 'Procesando...') : 'Confirmar y Enviar'}
                 </button>
             </div>
             </div>

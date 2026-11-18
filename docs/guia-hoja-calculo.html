@@ -416,12 +416,15 @@ corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53,
 <p><code>REEMPLAZADA POR</code> (#A103): en la solicitud original, el ID del cambio que la reemplazó («Cambiada»). La original comprada no se anula: su tiquete se pagó y su costo sigue contando.</p>
 </li>
 <li>
+<p><code>SOPORTE COSTO (JSON)</code> (#A128): cada confirmación de costos, con cuándo, quién, cuánto y los soportes que adjuntó el área de compras (los archivos <code>SoporteCosto_…</code> de la carpeta de la solicitud). La escribe el sistema: <strong>no editar</strong>. Si se confirmó más de una vez, la última es la que ven el aprobador y el viajero.</p>
+</li>
+<li>
 <p>Estado <code>PENDIENTE_APROBACION_POLITICA</code> (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de compras no la ve hasta que se apruebe.</p>
 </li>
 </ul>
 <p>Todas las crea el menú <em>12. Columnas de compra y resumen de facturas</em> (o el sistema, la primera vez que las necesita).</p>
 <h3>12. Columnas de compra y resumen de facturas</h3>
-<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code>, <code>VALOR COMPRA TIQUETES</code>, <code>VALOR COMPRA HOTEL</code>, <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code>, <code>REQUIERE APROB TARIFA</code>, <code>GRUPO MULTIDESTINO</code>, <code>CAMBIO PEDIDO (JSON)</code>, <code>PENALIDAD CAMBIO</code>, <code>REEMPLAZADA POR</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
+<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code>, <code>VALOR COMPRA TIQUETES</code>, <code>VALOR COMPRA HOTEL</code>, <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code>, <code>REQUIERE APROB TARIFA</code>, <code>GRUPO MULTIDESTINO</code>, <code>CAMBIO PEDIDO (JSON)</code>, <code>PENALIDAD CAMBIO</code>, <code>REEMPLAZADA POR</code>, <code>SOPORTE COSTO (JSON)</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
 <ul>
 <li><strong>listas para cerrar:</strong> viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita</li>
 <li><strong>facturas por revisar:</strong> les faltan facturas o PDF, a partir del día 7 después del viaje</li>

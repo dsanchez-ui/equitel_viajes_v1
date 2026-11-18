@@ -147,6 +147,8 @@ export interface MyApprovalItem {
   totalCost: number;
   ticketsCost: number;
   hotelCost: number;
+  /** #A128: cuándo se confirmó el costo y con qué soporte (undefined con un servidor anterior). */
+  costEvidence?: CostEvidence | null;
   why: string[];
   budgetNote: string;
   notes: string;
@@ -469,6 +471,33 @@ export interface TravelRequest {
   replacedBy?: string;
   changePenalty?: number | '';
   cdsCostBase?: number;
+  /** #A128: la última confirmación de costos con su soporte (null si no hay; undefined = el servidor aún no los recibe). */
+  costEvidence?: CostEvidence | null;
+}
+
+/** #A128: un soporte del costo (imagen o PDF en la carpeta de la solicitud, enlace de solo lectura). */
+export interface CostEvidenceFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  /** Página de Drive del archivo. */
+  url: string;
+  /** Miniatura (solo imágenes; '' en un PDF). */
+  thumb: string;
+}
+
+/** #A128: cuándo, quién y cuánto se confirmó, con los soportes que adjuntó el área de compras. */
+export interface CostEvidence {
+  /** ISO de cuando se confirmó. */
+  at: string;
+  /** Nombre de quien confirmó (de USUARIOS); '' = el área de compras. */
+  byName: string;
+  tickets: number;
+  hotel: number;
+  total: number;
+  files: CostEvidenceFile[];
+  /** Cuántas veces se han confirmado los costos de esta solicitud (esta es la última). */
+  count: number;
 }
 
 /** #A103: un campo de un cambio de viaje: el valor de antes y el nuevo. */

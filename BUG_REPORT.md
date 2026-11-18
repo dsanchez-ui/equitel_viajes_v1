@@ -3801,3 +3801,62 @@ la acepta en «Revisar Cambio».
 **Despliegue:** primero pegar `Code.gs` → versión nueva del web app (sin eso Laura no puede registrar la ida del 8-nov); después el push del frontend
 (el mensaje nuevo a Mateo y el formulario de Laura sin el error). Con el frontend nuevo y el servidor anterior, Laura ve el formulario sin error, pero
 el servidor responde «ya pasó».
+
+---
+
+## **#A128 — Soporte del costo al confirmar costos: quien aprueba ve cuándo se confirmó, cuánto y la evidencia**
+**Fecha:** 2026-11-18 · **Pedido por:** Yurani (vía David: *«que ella tenga la posibilidad de cargar un soporte cuando confirma ese costo… para que
+no haya dudas de por qué Laura registró un costo particular»*) ·
+**Estado:** En `main`; pendiente pegar `Code.gs` y publicar la versión nueva del web app.
+
+**Síntoma:**
+- Laura confirma el costo en un momento y la aprobación puede llegar días después, cuando el vuelo ya subió de precio.
+- Quien aprueba (o el viajero) ve un valor sin saber cuándo se cotizó ni de dónde salió, y queda la duda de por qué Laura puso ese valor.
+
+**Causa raíz:**
+- No era un error: la plataforma no guardaba la evidencia del precio en el momento de la confirmación.
+- La hora existía solo en `EVENTOS_JSON` (`costConfirmed`, para Métricas), sin la evidencia y fuera de la vista de quien aprueba.
+
+**Fix:**
+- **«Confirmar costos»** (`CostConfirmationModal.tsx`, `CostEvidence.tsx`): bloque *Soporte del costo (opcional)* debajo del total.
+  - Laura **pega el pantallazo con Ctrl+V** en cualquier parte de la ventana, lo arrastra o elige el archivo.
+  - Acepta imágenes o PDF, hasta 10 MB cada uno y máximo 5. Ve las miniaturas y puede quitarlas.
+  - Si pega texto en un campo de costo, se pega normal. Con el cursor en un campo y texto en el portapapeles gana el texto: las celdas
+    copiadas de Excel traen también una imagen y no deben volverse un soporte.
+  - Los archivos se suben **al confirmar** (si cancela, no queda nada en Drive). Si un archivo falla, no se confirma nada; al reintentar, no se
+    vuelve a subir lo que ya subió.
+- **Servidor** (`Code.gs`):
+  - `uploadCostEvidence`: solo administradores, solo imágenes o PDF y solo con la solicitud en PENDIENTE_CONFIRMACION_COSTO. Guarda en la carpeta
+    de la solicitud con el prefijo `SoporteCosto_<ID>_<hora>_` y enlace de solo lectura, como las imágenes de las opciones (#A18).
+  - Al confirmar, la app manda solo los IDs. `_normalizeCostEvidence_` revisa que existan, no estén en la papelera y sean de esta solicitud, y
+    descarta cualquier `costEvidence` que mande el cliente.
+  - Cada confirmación (con o sin soporte, también con una app anterior) queda en la columna nueva `SOPORTE COSTO (JSON)`: cuándo, quién, cuánto y los
+    archivos. Si se vuelve a confirmar (p. ej. después de revertir a selección), se agrega otra y se muestra la última.
+- **Dónde se ve** el recuadro: *«[Nombre] (área de compras) confirmó este costo el miércoles 18 de noviembre de 2026 a las 10:32 · hace 3 días. Las
+  tarifas cambian con los días: este es el valor de ese momento.»*, con las miniaturas y los enlaces.
+  - **Correo de aprobación y sus recordatorios** (misma plantilla), antes de APROBAR / DENEGAR.
+  - **«Mis aprobaciones»**: lo pendiente y el historial.
+  - **Detalle de la solicitud**: para el viajero y los administradores.
+- A la app llega el **nombre** de quien confirmó (de USUARIOS), nunca su correo (#A123). Sin nombre en USUARIOS dice «El área de compras».
+- El menú 12 también crea la columna; si no se corre, se crea sola en la primera confirmación.
+
+**Verificado:**
+- `tools/check-cost-evidence.cjs` (nuevo, dentro de `npm run verify`):
+  - subir: solo administradores, imágenes y PDF (no zip ni Excel), solo en confirmación de costos, en la carpeta de la solicitud con su prefijo;
+  - confirmar: cuándo, quién (Laura de USUARIOS, no lo que mande la app) y cuánto, archivos sin repetir;
+  - correo y recordatorio con la fecha en 24 h, la miniatura y los enlaces antes de los botones;
+  - la app sin el correo de quien confirmó, también en las filas lite, para el viajero y en «Mis aprobaciones»;
+  - rechaza IDs de otra solicitud, en la papelera, inválidos, que no vienen en lista o más de 5, sin cambiar nada;
+  - sin soportes y con una app anterior igual queda cuándo y quién; otros cambios de estado no registran nada;
+  - reconfirmar suma otra y muestra la última;
+  - textos de la app (fecha, «hace X», tipos de archivo).
+- Entorno local con la exportación del 9-nov, SOL-000746:
+  - Laura adjuntó un PDF con el selector y pegó un pantallazo con Ctrl+V; el diálogo dice «Soporte del costo: 2 archivos (…)»;
+  - la solicitud pasó a aprobación;
+  - el correo al aprobador, el detalle del viajero y «Mis aprobaciones» del aprobador muestran el recuadro.
+- `npm run verify` en verde.
+
+**Despliegue:** sirve en cualquier orden. Lo recomendado: pegar `Code.gs` → versión nueva del web app → push del frontend.
+- **Servidor nuevo + app anterior:** cada confirmación ya guarda cuándo y quién, y el correo dice «No se adjuntó soporte».
+- **App nueva + servidor anterior:** el bloque no aparece (la app lo muestra solo si el servidor manda `costEvidence`) y todo funciona como antes.
+- No hay que correr ningún menú.

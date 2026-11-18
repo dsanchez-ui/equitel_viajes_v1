@@ -604,7 +604,7 @@ function doPost(e) {
  * Main API Dispatcher
  */
 function dispatch(action, payload) {
-  const isWriteAction = ['ackPolicyNotice', 'createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport', 'setPurchaseInfo', 'dismissInvoiceAlert', 'requestTripChange', 'setSavingsExclusion'].includes(action);
+  const isWriteAction = ['ackPolicyNotice', 'createRequest', 'updateRequest', 'uploadSupportFile', 'uploadOptionImage', 'closeRequest', 'requestModification', 'updateAdminPin', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'deleteDriveFile', 'anularSolicitud', 'cancelOwnRequest', 'generateReport', 'createReportTemplate', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'uploadPassport', 'setPurchaseInfo', 'dismissInvoiceAlert', 'requestTripChange', 'setSavingsExclusion', 'uploadCostEvidence'].includes(action);
   const lock = LockService.getScriptLock();
 
   let currentUserEmail = '';
@@ -635,7 +635,7 @@ function dispatch(action, payload) {
     }
 
     // SECURITY: Admin-only actions require analyst role
-    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'getPolicyHeldRequests', 'dismissInvoiceAlert', 'getChangeControl', 'setSavingsExclusion'];
+    const adminOnlyActions = ['updateAdminPin', 'anularSolicitud', 'generateReport', 'createReportTemplate', 'closeRequest', 'deleteDriveFile', 'uploadOptionImage', 'registerReservation', 'saveReservationDraft', 'amendReservation', 'getMetrics', 'processChangeDecision', 'skipSelectionStage', 'skipApprovalStage', 'revertToSelectionStage', 'getPassengerBirthdates', 'getPurchaseStats', 'setPurchaseInfo', 'getInvoiceReview', 'getPolicyHeldRequests', 'dismissInvoiceAlert', 'getChangeControl', 'setSavingsExclusion', 'uploadCostEvidence'];
     if (adminOnlyActions.includes(action) && !isUserAnalyst(currentUserEmail)) {
       return { success: false, error: 'Esta acción requiere permisos de administrador.' };
     }
@@ -797,6 +797,8 @@ function dispatch(action, payload) {
         break;
       }
       case 'uploadSupportFile': result = uploadSupportFile(payload.requestId, payload.fileData, payload.fileName, payload.mimeType, payload.correctionNote); break;
+      // #A128: soporte del costo, al confirmar costos (solo administradores).
+      case 'uploadCostEvidence': result = uploadCostEvidence(payload.requestId, payload.fileData, payload.fileName, payload.mimeType); break;
       
       // NEW: UPLOAD OPTION IMAGE (UPDATED v2.7)
       case 'uploadOptionImage': result = uploadOptionImage(payload.requestId, payload.fileData, payload.fileName, payload.type, payload.optionLetter, payload.direction); break;
@@ -3536,6 +3538,8 @@ function _myApprovalItem_(row, req, steps, mine, pendingKind, myVote, names, isP
     totalCost: Number(req.totalCost) || 0,
     ticketsCost: Number(req.finalCostTickets) || 0,
     hotelCost: Number(req.finalCostHotel) || 0,
+    // #A128: cuándo se confirmó el costo y con qué soporte.
+    costEvidence: req.costEvidence || null,
     why: why,
     budgetNote: _approvalLastNote_(obs, /\[PRESUPUESTO\]:\s*([^\n]*)/g),
     // El motivo del viaje y la selección solo hacen falta para decidir (el historial va más liviano).
@@ -4751,6 +4755,8 @@ function _ensureA82A83Columns_() {
     { header: TRIP_CHANGE_HEADER, col: _ensureRequestColumn_(TRIP_CHANGE_HEADER, TRIP_CHANGE_NOTE) },
     { header: CHANGE_PENALTY_HEADER, col: _ensureRequestColumn_(CHANGE_PENALTY_HEADER, CHANGE_PENALTY_NOTE) },
     { header: REPLACED_BY_HEADER, col: _ensureRequestColumn_(REPLACED_BY_HEADER, REPLACED_BY_NOTE) },
+    // #A128: soporte del costo confirmado.
+    { header: COST_EVIDENCE_HEADER, col: _ensureRequestColumn_(COST_EVIDENCE_HEADER, COST_EVIDENCE_NOTE) },
     { header: INVOICE_ALERT_DISMISSED_HEADER, col: _ensureRequestColumn_(INVOICE_ALERT_DISMISSED_HEADER,
       'Aviso de facturas incompletas omitido por el área de compras (#A83): quién, cuándo y cuánto faltaba. Borrar el texto vuelve a mostrar el aviso.') }
   ];
@@ -5793,6 +5799,31 @@ const HtmlTemplates = {
     },
 
     // APPROVAL REQUEST EMAIL (Updated with Full Summary & Banners)
+    // #A128: cuándo se confirmó el costo, quién y con qué soporte (para el aprobador, que puede
+    // decidir días después, cuando el precio ya cambió).
+    _costEvidenceBlock: function(request) {
+        const ev = request && request.costEvidence;
+        if (!ev || !ev.at) return '';
+        const when = _costEvidenceWhen_(ev.at);
+        const who = ev.byName ? escapeHtml_(ev.byName) + ' (área de compras)' : 'El área de compras';
+        const files = Array.isArray(ev.files) ? ev.files : [];
+        const thumbs = files.filter(f => f.thumb).map(f =>
+            `<a href="${escapeHtml_(f.url)}" style="display:inline-block; margin:0 8px 8px 0; text-decoration:none;"><img src="${escapeHtml_(f.thumb)}" alt="${escapeHtml_(f.name)}" style="display:block; max-width:260px; max-height:200px; border:1px solid #c7d2fe; border-radius:4px;"></a>`
+        ).join('');
+        const links = files.map(f =>
+            `<a href="${escapeHtml_(f.url)}" style="color:#3730a3; font-weight:bold; text-decoration:underline;">📎 ${escapeHtml_(f.name)}</a>`
+        ).join('<br/>');
+        return `
+            <div style="background-color:#eef2ff; border:1px solid #c7d2fe; border-left:4px solid #4f46e5; border-radius:6px; padding:14px 16px; margin-bottom:25px; text-align:left; color:#1e1b4b; font-size:13px; line-height:1.55;">
+                <div style="font-size:11px; font-weight:bold; text-transform:uppercase; color:#3730a3; margin-bottom:6px;">Soporte del costo</div>
+                <div>${who} confirmó este costo el <strong>${escapeHtml_(when)}</strong>.</div>
+                <div style="font-size:12px; color:#4338ca; margin-top:2px;">Las tarifas cambian con los días: este es el valor de ese momento.</div>
+                ${files.length
+                    ? `<div style="margin-top:10px;">${thumbs}</div><div style="font-size:12px;">${links}</div>`
+                    : '<div style="font-size:12px; color:#6b7280; margin-top:6px;">No se adjuntó soporte.</div>'}
+            </div>`;
+    },
+
     approvalRequest: function(request, selectedOption, approveLink, rejectLink) {
         const isHotelOnlyAppr = request.requestMode === 'HOTEL_ONLY';
         const isPriorityAppr = _isPriorityRequester_(request);
@@ -5933,6 +5964,8 @@ const HtmlTemplates = {
                     </tr>
                 </table>
             </div>
+
+            ${this._costEvidenceBlock(request)}
 
             <table width="100%" cellpadding="0" cellspacing="0"><tr>
                 <td align="center"><a href="${approveLink}" style="background-color: #059669; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; margin-right: 10px; display: inline-block;">APROBAR</a></td>
@@ -8273,6 +8306,15 @@ function updateRequestStatus(id, status, payload) {
                console.error('updateRequestStatus: no se pudo guardar la tarifa de ' + id + ': ' + e);
            }
        }
+       // #A128: la confirmación de costos con su soporte (la arma _normalizeCostEvidence_). Antes del
+       // correo de aprobación, que la muestra.
+       if (payload.costEvidence && status === 'PENDIENTE_APROBACION') {
+           try {
+               _appendCostEvidence_(sheet, rowNumber, payload.costEvidence);
+           } catch (e) {
+               console.error('updateRequestStatus: no se pudo guardar el soporte del costo de ' + id + ': ' + e);
+           }
+       }
    }
 
    // EMAILS + METRICS
@@ -8444,6 +8486,164 @@ function updateRequestStatus(id, status, payload) {
    }
    
    return true;
+}
+
+// =====================================================================
+// SOPORTE DEL COSTO CONFIRMADO (#A128, pedido de Yurani, 18-nov-2026)
+// =====================================================================
+// El área de compras confirma el costo en un momento y la aprobación puede tardar días; mientras
+// tanto el precio sube a medida que se acerca el vuelo. Al confirmar los costos puede adjuntar el
+// soporte de ese precio (pantallazo de la cotización, PDF de la agencia), y el aprobador, el viajero
+// y los administradores ven cuándo se confirmó, cuánto y con qué soporte.
+// - Opcional («la posibilidad de cargar un soporte»): hasta COST_EVIDENCE_MAX_FILES imágenes o PDF.
+// - Los archivos se suben al confirmar (uploadCostEvidence: solo administradores y solo en
+//   PENDIENTE_CONFIRMACION_COSTO) a la carpeta de la solicitud, con enlace de solo lectura como las
+//   imágenes de las opciones. La confirmación manda solo sus IDs: el servidor revisa que sean de esta
+//   solicitud y arma el registro (_normalizeCostEvidence_); nunca confía en uno que mande el cliente.
+// - Cada confirmación (con o sin soporte) queda en SOPORTE COSTO (JSON): cuándo, quién, cuánto y los
+//   archivos. Si se vuelve a confirmar (p. ej. tras revertir a selección) se agrega otra; la app y el
+//   correo muestran la última.
+// =====================================================================
+var COST_EVIDENCE_HEADER = 'SOPORTE COSTO (JSON)';
+var COST_EVIDENCE_NOTE = 'Cada confirmación de costos (#A128): cuándo, quién, cuánto y los soportes que adjuntó el área de compras (archivos en la carpeta de la solicitud). La escribe el sistema: no editar.';
+var COST_EVIDENCE_MAX_FILES = 5;
+var COST_EVIDENCE_KEEP = 10;
+var COST_EVIDENCE_ID_RE = /^[A-Za-z0-9_-]{10,200}$/;
+
+function _costEvidenceFilePrefix_(requestId) {
+  return 'SoporteCosto_' + String(requestId || '').trim() + '_';
+}
+
+/** Nombre del archivo como lo subió el área de compras (sin el prefijo de la solicitud ni la hora). */
+function _costEvidenceDisplayName_(name, requestId) {
+  var s = String(name || '');
+  var p = _costEvidenceFilePrefix_(requestId);
+  if (s.indexOf(p) === 0) s = s.substring(p.length).replace(/^\d{8}-\d{6}_/, '');
+  return s.substring(0, 120) || 'soporte';
+}
+
+/** Sube un soporte del costo a la carpeta de la solicitud (solo administradores, al confirmar costos). */
+function uploadCostEvidence(requestId, fileData, fileName, mimeType) {
+  var safeName = validateFileUpload_(fileData, fileName, mimeType);
+  var mt = String(mimeType || '').toLowerCase();
+  if (mt !== 'application/pdf' && mt.indexOf('image/') !== 0) {
+    throw new Error('El soporte del costo debe ser una imagen o un PDF.');
+  }
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  var rowNumber = _getRowByRequestId_(requestId);
+  if (rowNumber === -1) throw new Error('Solicitud no encontrada');
+  var status = String(sheet.getRange(rowNumber, H('STATUS') + 1).getValue() || '').trim();
+  if (status !== 'PENDIENTE_CONFIRMACION_COSTO') {
+    throw new Error('El soporte del costo se adjunta al confirmar los costos (la solicitud está en ' + (status || 'otro estado') + ').');
+  }
+  var folder = getOrCreateRequestFolder_(requestId, rowNumber, sheet);
+  var stamp = Utilities.formatDate(new Date(), 'America/Bogota', 'yyyyMMdd-HHmmss');
+  var blob = Utilities.newBlob(Utilities.base64Decode(fileData), mt, _costEvidenceFilePrefix_(requestId) + stamp + '_' + safeName);
+  var file = _driveRetry_(function() { return folder.createFile(blob); }, 'createFile-costEvidence');
+  _driveRetry_(function() {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  }, 'setSharing-costEvidence');
+  return { id: file.getId(), name: _costEvidenceDisplayName_(file.getName(), requestId), mimeType: mt };
+}
+
+/**
+ * Al confirmar costos (PENDIENTE_APROBACION con costos), arma el registro de esa confirmación con los
+ * soportes cuyos IDs mandó la app (costEvidenceIds), después de revisar que existan y sean de esta
+ * solicitud. Siempre descarta un costEvidence que venga del cliente. Sin soportes, igual registra
+ * cuándo, quién y cuánto.
+ */
+function _normalizeCostEvidence_(requestId, status, inner, email) {
+  var src = inner || {};
+  var out = {};
+  Object.keys(src).forEach(function(k) { if (k !== 'costEvidence' && k !== 'costEvidenceIds') out[k] = src[k]; });
+  var hasCosts = out.finalCostTickets !== undefined || out.finalCostHotel !== undefined || out.totalCost !== undefined;
+  if (status !== 'PENDIENTE_APROBACION' || !hasCosts) return out;
+  var ids = src.costEvidenceIds;
+  if (ids === undefined || ids === null) ids = [];
+  if (!Array.isArray(ids)) throw new Error('Los soportes del costo no son válidos.');
+  if (ids.length > COST_EVIDENCE_MAX_FILES) throw new Error('Máximo ' + COST_EVIDENCE_MAX_FILES + ' soportes del costo.');
+  var prefix = _costEvidenceFilePrefix_(requestId);
+  var seen = {};
+  var files = [];
+  ids.forEach(function(raw) {
+    var fid = String(raw == null ? '' : raw).trim();
+    if (!COST_EVIDENCE_ID_RE.test(fid)) throw new Error('Los soportes del costo no son válidos.');
+    if (seen[fid]) return;
+    seen[fid] = true;
+    var f = null;
+    try { f = _driveRetry_(function() { return DriveApp.getFileById(fid); }, 'getFile-costEvidence'); } catch (e) { f = null; }
+    if (!f || f.isTrashed() || String(f.getName() || '').indexOf(prefix) !== 0) {
+      throw new Error('Uno de los soportes del costo no se encontró o no es de ' + requestId + '. Vuelva a adjuntarlo.');
+    }
+    files.push({ id: fid, name: _costEvidenceDisplayName_(f.getName(), requestId), mimeType: String(f.getMimeType() || '') });
+  });
+  var em = String(email || '').toLowerCase().trim();
+  var byName = '';
+  try { byName = _approvalNamesMap_()[em] || ''; } catch (e) { byName = ''; }
+  out.costEvidence = {
+    by: em, byName: byName,
+    tickets: Number(out.finalCostTickets) || 0, hotel: Number(out.finalCostHotel) || 0, total: Number(out.totalCost) || 0,
+    files: files
+  };
+  return out;
+}
+
+function _parseCostEvidenceList_(raw) {
+  if (raw === null || raw === undefined || raw === '') return [];
+  try {
+    var a = JSON.parse(String(raw));
+    return Array.isArray(a) ? a.filter(function(e) { return e && typeof e === 'object' && e.at; }) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+/** Agrega una confirmación a SOPORTE COSTO (JSON); guarda las últimas COST_EVIDENCE_KEEP. */
+function _appendCostEvidence_(sheet, rowNumber, entry) {
+  var col = _ensureRequestColumn_(COST_EVIDENCE_HEADER, COST_EVIDENCE_NOTE);
+  var cell = sheet.getRange(rowNumber, col);
+  var list = _parseCostEvidenceList_(cell.getValue());
+  list.push({
+    v: 1, at: new Date().toISOString(), by: String(entry.by || ''), byName: String(entry.byName || ''),
+    tickets: Number(entry.tickets) || 0, hotel: Number(entry.hotel) || 0, total: Number(entry.total) || 0,
+    files: (entry.files || []).map(function(f) { return { id: String(f.id), name: String(f.name || ''), mimeType: String(f.mimeType || '') }; })
+  });
+  if (list.length > COST_EVIDENCE_KEEP) list = list.slice(list.length - COST_EVIDENCE_KEEP);
+  cell.setValue(JSON.stringify(list));
+}
+
+/**
+ * La última confirmación de costos, como la ven la app y el correo (null si no hay). Sin el correo de
+ * quien confirmó: solo su nombre de USUARIOS (#A123).
+ */
+function _costEvidenceForApp_(raw) {
+  var list = _parseCostEvidenceList_(raw);
+  if (!list.length) return null;
+  var e = list[list.length - 1];
+  var files = (Array.isArray(e.files) ? e.files : []).filter(function(f) {
+    return f && COST_EVIDENCE_ID_RE.test(String(f.id || ''));
+  }).map(function(f) {
+    var id = String(f.id);
+    var mt = String(f.mimeType || '');
+    return {
+      id: id, name: String(f.name || 'soporte'), mimeType: mt,
+      url: 'https://drive.google.com/file/d/' + id + '/view',
+      thumb: mt.indexOf('image/') === 0 ? 'https://drive.google.com/thumbnail?id=' + id + '&sz=w1000' : ''
+    };
+  });
+  return {
+    at: String(e.at), byName: String(e.byName || ''),
+    tickets: Number(e.tickets) || 0, hotel: Number(e.hotel) || 0, total: Number(e.total) || 0,
+    files: files, count: list.length
+  };
+}
+
+/** «martes 18 de noviembre de 2026 a las 10:32» (hora de Bogotá, 24 h). */
+function _costEvidenceWhen_(iso) {
+  var d = new Date(String(iso || ''));
+  if (isNaN(d.getTime())) return '';
+  var key = Utilities.formatDate(d, 'America/Bogota', 'yyyy-MM-dd');
+  return _policyFmtDayLong_(key) + ' de ' + key.substring(0, 4) + ' a las ' + Utilities.formatDate(d, 'America/Bogota', 'HH:mm');
 }
 
 function uploadSupportFile(requestId, fileData, fileName, mimeType, correctionNote) {
@@ -8939,6 +9139,8 @@ function _authorizeStatusUpdate_(currentUserEmail, payload) {
     inner = _normalizeFarePayload_(id, inner);
     // #A103: penalidad de un cambio (la parte del costo del cambio que se pierde). Solo si la clave viene.
     if (inner.changePenalty !== undefined) inner = _normalizeChangePenalty_(inner);
+    // #A128: cuándo, quién, cuánto y los soportes de esta confirmación (los arma el servidor).
+    inner = _normalizeCostEvidence_(id, status, inner, currentUserEmail);
     return { id: id, status: status, payload: inner };
   }
   if (status !== 'PENDIENTE_CONFIRMACION_COSTO') {
@@ -9412,7 +9614,10 @@ function mapRowToRequest(row, lite) {
     // original, la solicitud que la reemplazó. Que las claves vengan le dice a la app que el servidor ya los maneja.
     tripChange: _parseTripChangeInfo_(get(TRIP_CHANGE_HEADER)),
     replacedBy: String(get(REPLACED_BY_HEADER) || '').trim(),
-    changePenalty: _paidCellValue_(get(CHANGE_PENALTY_HEADER))
+    changePenalty: _paidCellValue_(get(CHANGE_PENALTY_HEADER)),
+    // #A128: la última confirmación de costos con su soporte (null si no hay). Que la clave venga le
+    // dice a la app que este servidor ya recibe soportes.
+    costEvidence: _costEvidenceForApp_(get(COST_EVIDENCE_HEADER))
   };
   // #A103: en un cambio de tiquete comprado, Cadena de Suministro aprueba si el viaje CON el cambio supera el tope.
   result.cdsCostBase = _cdsCostBase_(result.totalCost, result.tripChange);

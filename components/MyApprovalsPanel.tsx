@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ApprovalStep, MyApprovalItem, MyApprovalsResponse } from '../types';
 import { gasService } from '../services/gasService';
 import { formatCop } from '../utils/money';
+import { CostEvidenceBox } from './CostEvidence';
 
 /** 'AAAA-MM-DD' → 'DD/MM/AAAA' (#A105). */
 const dmy = (v: string) => {
@@ -123,6 +124,8 @@ const PendingCard: React.FC<CardProps> = ({ it, onDecided }) => {
       )}
       {it.notes && <p className="text-xs text-gray-700 whitespace-pre-line"><strong>Motivo del viaje:</strong> {it.notes}</p>}
       {it.selection && <p className="text-xs text-gray-700 whitespace-pre-line"><strong>Lo que eligió el viajero:</strong> {it.selection}</p>}
+      {/* #A128: cuándo se confirmó el costo y con qué soporte. */}
+      {it.costEvidence && <CostEvidenceBox evidence={it.costEvidence} />}
       {it.options.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {it.options.map(o => (
@@ -199,6 +202,7 @@ const HistoryRow: React.FC<{ it: MyApprovalItem }> = ({ it }) => {
         <p className="text-[11px] text-gray-500">
           La pidió {it.requesterName || it.requesterEmail}{it.totalCost > 0 ? ` · ${pesos(it.totalCost)}` : ''}{it.unit ? ` · ${it.unit}` : ''}
         </p>
+        {it.costEvidence && <CostEvidenceBox evidence={it.costEvidence} />}
       </div>
     </details>
   );

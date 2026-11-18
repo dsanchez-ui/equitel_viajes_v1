@@ -12,6 +12,7 @@ import {
 import { hotelPurchaseLabel, purchaseAirlineLabel, purchaseChannelLabel } from '../utils/purchase';
 import { fareBaggageLabel, fareShort } from '../utils/fare';
 import { StageTimeline } from './StageTimeline';
+import { CostEvidenceBox } from './CostEvidence';
 
 interface RequestDetailProps {
     request: TravelRequest;
@@ -988,6 +989,11 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                             </div>
                                         )}
                                     </div>
+                                )}
+
+                                {/* #A128: cuándo se confirmó el costo y con qué soporte (viajero y administradores). */}
+                                {request.costEvidence && (
+                                    <CostEvidenceBox evidence={request.costEvidence} className="mt-3" />
                                 )}
 
                                 {/* APPROVAL STATUS SECTION (#A100: no aplica mientras espera al CFO por la política) */}

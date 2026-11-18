@@ -212,6 +212,10 @@ En la etapa actual dice a quién le toca y cuánto lleva («lleva 1 d 4 h»). Ab
 
 En las etapas del área de compras (aceptar un cambio, cargar opciones, confirmar costos, comprar) aparece también el nombre de quien la hizo.
 
+### Cuándo se confirmó el costo
+
+Cuando el área de compras confirma el costo, el detalle de la solicitud muestra un recuadro **Soporte del costo**: quién lo confirmó, el día y la hora, y el pantallazo o el PDF de la cotización si lo adjuntó. Los precios de los tiquetes cambian con los días: si la aprobación tarda, el valor de ese momento queda documentado.
+
 ### Si aparece «Hay una versión nueva de la plataforma»
 
 Cuando publicamos mejoras, la plataforma lo avisa abajo en la pantalla. Toque **Actualizar ahora** para verlas. Si está escribiendo una solicitud, envíela primero: al actualizar, la página se recarga.
@@ -238,7 +242,7 @@ Si alguna aprobación se demora más de 3 días hábiles, el sistema **escala au
 
 Si apruebas solicitudes de otras personas (eres jefe de alguien, o eres de Gerencia General, de Cadena de Suministro o quien aprueba el presupuesto), en la barra de arriba del portal tienes el botón **MIS APROBACIONES**, con el número de solicitudes que esperan tu voto.
 
-- **Por aprobar:** cada solicitud con el viaje, quién viaja, el costo, por qué necesita tu aprobación, lo que eligió el viajero y las opciones. Abajo, **cómo va cada aprobación** (quién ya aprobó y a qué hora, y a quién le falta). Puedes **Aprobar** o **Denegar** ahí mismo, con un comentario opcional; es lo mismo que hacerlo desde el correo.
+- **Por aprobar:** cada solicitud con el viaje, quién viaja, el costo, por qué necesita tu aprobación, lo que eligió el viajero y las opciones. También el **soporte del costo**: cuándo lo confirmó el área de compras y la cotización de ese momento (el mismo recuadro va en el correo). Si apruebas días después, el precio puede haber subido. Abajo, **cómo va cada aprobación** (quién ya aprobó y a qué hora, y a quién le falta). Puedes **Aprobar** o **Denegar** ahí mismo, con un comentario opcional; es lo mismo que hacerlo desde el correo.
 - **Historial:** lo que ya decidiste y cómo terminó cada solicitud (aprobada, denegada, anulada, o aprobada sin tu voto porque se saltó la etapa, con quién la saltó y por qué).
 
 Además, por correo:

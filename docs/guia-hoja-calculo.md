@@ -381,13 +381,14 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 - `CAMBIO PEDIDO (JSON)` (#A103): en una solicitud de cambio pedida con «Cambiar mi viaje», lo de antes y lo de ahora, si el tiquete ya estaba comprado, lo que costó el viaje original y la compra de la original. La escribe el sistema: **no editar**. Si está llena y dice `"comprado":true`, la solicitud lleva solo el costo del cambio.
 - `PENALIDAD CAMBIO` (#A103): de lo que costó un cambio, cuánto es penalidad y cargos (pesos). La escribe el área de compras al confirmar el costo del cambio.
 - `REEMPLAZADA POR` (#A103): en la solicitud original, el ID del cambio que la reemplazó («Cambiada»). La original comprada no se anula: su tiquete se pagó y su costo sigue contando.
+- `SOPORTE COSTO (JSON)` (#A128): cada confirmación de costos, con cuándo, quién, cuánto y los soportes que adjuntó el área de compras (los archivos `SoporteCosto_…` de la carpeta de la solicitud). La escribe el sistema: **no editar**. Si se confirmó más de una vez, la última es la que ven el aprobador y el viajero.
 - Estado `PENDIENTE_APROBACION_POLITICA` (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de compras no la ve hasta que se apruebe.
 
 Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
 
 ### 12. Columnas de compra y resumen de facturas
 
-Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION`, `MALETA DE BODEGA`, `VALOR COMPRA TIQUETES`, `VALOR COMPRA HOTEL`, `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA`, `GRUPO MULTIDESTINO`, `CAMBIO PEDIDO (JSON)`, `PENALIDAD CAMBIO`, `REEMPLAZADA POR` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
+Crea al final de la hoja las columnas `AEROLINEA`, `CANAL DE COMPRA`, `AEROLINEA REGRESO`, `HOTEL RESERVADO`, `CANAL DE COMPRA HOTEL`, `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION`, `MALETA DE BODEGA`, `VALOR COMPRA TIQUETES`, `VALOR COMPRA HOTEL`, `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA`, `GRUPO MULTIDESTINO`, `CAMBIO PEDIDO (JSON)`, `PENALIDAD CAMBIO`, `REEMPLAZADA POR`, `SOPORTE COSTO (JSON)` y `AVISO FACTURAS OMITIDO` si aún no existen, y muestra cuántas solicitudes `RESERVADO` hay en cada lista:
 - **listas para cerrar:** viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita
 - **facturas por revisar:** les faltan facturas o PDF, a partir del día 7 después del viaje
 - avisos omitidos y solicitudes en espera

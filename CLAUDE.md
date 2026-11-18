@@ -31,7 +31,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + enlaces con dominio + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + enlaces con dominio + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
    Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
    (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -59,7 +59,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + build + un solo .js y version.json  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + build + un solo .js y version.json  ← antes de cualquier push
 npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
@@ -220,6 +220,14 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   (`COST_MIN_PESOS`). El backend rechaza decimales y valores imposibles en `updateRequest`
   y recalcula el cotizado como tiquetes + hotel. **Nunca volver a un
   `<input type="number">` para dinero**: con él, `889.518` se guardaba como 889,518 pesos.
+- **Soporte del costo confirmado** (#A128, pedido de Yurani, 18-nov: *«que no haya dudas de por qué Laura registró un costo»*). En
+  *Confirmar costos* el área de compras puede adjuntar (**opcional**) el pantallazo o el PDF de la cotización: Ctrl+V en cualquier parte de la
+  ventana, arrastrar o elegir; imágenes o PDF, 10 MB, máximo 5. Se suben **al confirmar** (`uploadCostEvidence`: solo administradores y solo en
+  PENDIENTE_CONFIRMACION_COSTO, a la carpeta de la solicitud con el prefijo `SoporteCosto_<ID>_`, enlace de solo lectura como las opciones). La
+  app manda solo los IDs; `_normalizeCostEvidence_` revisa que sean de esa solicitud y **arma el registro en el servidor** (nunca confiar en un
+  `costEvidence` del cliente). Cada confirmación, con o sin soporte, queda en `SOPORTE COSTO (JSON)` (cuándo, quién, cuánto, archivos); se
+  muestra la última. Lo ven el aprobador (correo y recordatorios, «Mis aprobaciones»), el viajero y los administradores (detalle), con la
+  frase *«Las tarifas cambian con los días: este es el valor de ese momento»*. A la app llega el nombre de quien confirmó, nunca su correo.
 - **Fechas siempre día/mes/año** (#A105, David, 21-oct): nadie ve ni escribe una fecha en otro orden. En la app,
   todo campo de fecha es `DateInput` (`DD/MM/AAAA` con barras automáticas y el calendario del navegador detrás de
   un botón; entra y sale `AAAA-MM-DD`). **Nunca un `<input type="date">` a la vista**: con Chrome en inglés sale
@@ -588,7 +596,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, lo pagado al comprar; no son la factura 1), `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO` (#A100), y `CAMBIO PEDIDO (JSON)`, `PENALIDAD CAMBIO` y `REEMPLAZADA POR` (#A103) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, lo pagado al comprar; no son la factura 1), `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO` (#A100), `CAMBIO PEDIDO (JSON)`, `PENALIDAD CAMBIO` y `REEMPLAZADA POR` (#A103), y `SOPORTE COSTO (JSON)` (#A128, cada confirmación de costos con su soporte) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
 | **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
@@ -677,6 +685,7 @@ components/
   StageTimeline.tsx        Semáforo de la solicitud: etapas con fecha, lo que tardó cada una en horas reales y quién la tuvo (#A121)
   TimeInput.tsx            Campo de hora HH:MM de 24 h, con la hora en palabras y lista propia de horas; reemplaza a <input type="time"> (#A112)
   UpdateBanner.tsx         Aviso «Hay una versión nueva de la plataforma» cuando version.json cambia (#A124)
+  CostEvidence.tsx         Soporte del costo: selector de «Confirmar costos» (Ctrl+V, arrastrar, elegir) y recuadro de cuándo y con qué se confirmó (#A128)
   Layout.tsx, ConfirmationDialog.tsx
 services/gasService.ts     Cliente HTTP hacia GAS (timeout 30 s + AbortController)
 utils/dateUtils.ts         Parseo/formato de fechas (zona America/Bogota)
@@ -714,6 +723,7 @@ tools/check-policy-approval.cjs      Aprobación del CFO por la política: esper
 tools/check-monthly-report.cjs       Informe mensual de la política: primer día hábil, cifras, cuadros, CSV, envío una sola vez y prueba (#A101)
 tools/check-trip-change.cjs          Cambios de viaje: plazo igual en los dos lados, cambio con y sin compra, costo, aprobación, «Cambiada» (#A103)
 tools/check-approvals.cjs            Avisos a los aprobadores (caso SOL-000695), recordatorios, «Mis aprobaciones» (#A118, #A119), la línea de tiempo (#A121) y Métricas → Aprobaciones (#A125)
+tools/check-cost-evidence.cjs        Soporte del costo: subir, confirmar, correo, «Mis aprobaciones» y las validaciones del servidor (#A128)
 tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.gs real sobre una copia de la base; correos a una bandeja local (#A103)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
@@ -770,7 +780,11 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-10)
+### Para retomar (estado al 2026-11-18)
+
+- **#A128 (soporte del costo al confirmar costos, pedido de Yurani): en `main`, pendiente de desplegar.** Orden recomendado: pegar `Code.gs`
+  → versión nueva del web app → push del frontend (sirve en cualquier orden, ver BUG_REPORT). No hay menú que correr: la columna
+  `SOPORTE COSTO (JSON)` se crea sola en la primera confirmación. Después, avisarle a Laura (Ctrl+V en *Confirmar costos*).
 
 - **Retomar en el Mac (10-nov):** todo está en `main` y desplegado hasta #A127, y no queda nada por pegar en Apps Script. En el
   Mac: primero [MIGRACION.md §0](MIGRACION.md) (Node 24 y el recordatorio para todos sus proyectos; sigue pendiente), luego
