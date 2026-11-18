@@ -3807,7 +3807,8 @@ el servidor responde «ya pasó».
 ## **#A128 — Soporte del costo al confirmar costos: quien aprueba ve cuándo se confirmó, cuánto y la evidencia**
 **Fecha:** 2026-11-18 · **Pedido por:** Yurani (vía David: *«que ella tenga la posibilidad de cargar un soporte cuando confirma ese costo… para que
 no haya dudas de por qué Laura registró un costo particular»*) ·
-**Estado:** En `main`; pendiente pegar `Code.gs` y publicar la versión nueva del web app.
+**Estado:** Desplegado el 2026-11-18 (David pegó `Code.gs` y publicó la versión nueva del web app; frontend `5c5441a`, bundle `index-Bx3CpPRY.js`,
+`version.json` `d5080b75…`, el mismo del bundle).
 
 **Síntoma:**
 - Laura confirma el costo en un momento y la aprobación puede llegar días después, cuando el vuelo ya subió de precio.

@@ -782,9 +782,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-18)
 
-- **#A128 (soporte del costo al confirmar costos, pedido de Yurani): en `main`, pendiente de desplegar.** Orden recomendado: pegar `Code.gs`
-  → versión nueva del web app → push del frontend (sirve en cualquier orden, ver BUG_REPORT). No hay menú que correr: la columna
-  `SOPORTE COSTO (JSON)` se crea sola en la primera confirmación. Después, avisarle a Laura (Ctrl+V en *Confirmar costos*).
+- **#A128 desplegado (18-nov)** (soporte del costo al confirmar costos, pedido de Yurani): David pegó `Code.gs` (versión nueva del web app)
+  y el frontend `5c5441a` quedó en producción (bundle `index-Bx3CpPRY.js`). La columna `SOPORTE COSTO (JSON)` se crea sola en la primera
+  confirmación. Pendiente sin código: avisarle a Laura (Ctrl+V en *Confirmar costos*). Las confirmaciones de antes no tienen soporte.
 
 - **Retomar en el Mac (10-nov):** todo está en `main` y desplegado hasta #A127, y no queda nada por pegar en Apps Script. En el
   Mac: primero [MIGRACION.md §0](MIGRACION.md) (Node 24 y el recordatorio para todos sus proyectos; sigue pendiente), luego
