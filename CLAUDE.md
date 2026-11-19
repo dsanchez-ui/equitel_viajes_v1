@@ -457,6 +457,12 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     `pastDepartureState`, la misma regla del botón. Un viaje que ya terminó del todo no se cambia: es un viaje nuevo (anticipación y CFO).
     **El área de compras puede registrar una ida que ya pasó** (el viajero ya voló) si el viaje no ha terminado: regreso de hoy en adelante (#A127,
     SOL-000714). Al viajero, una fecha pasada se le dice «ya pasó» con a quién llamar; él no puede pedir fechas cuyo plazo venció.
+  - **Después del plazo, solo alargar el viaje, y lo aprueba también el CFO** (#A129; David y Yurani, 19-nov, casos SOL-000777 y SOL-000782:
+    los técnicos de Mateo tenían que quedarse un día más). Con el tiquete comprado y el regreso de hoy en adelante, el viajero puede pedir un
+    regreso más tarde (otra fecha u otra hora el mismo día) y, si hace falta, otro hospedaje; nada más (`late` en la ventana, `isLaterReturn`
+    ↔ `_tripChangeIsLaterReturn_`). El servidor marca `fueraDePlazo` en `CAMBIO PEDIDO (JSON)` y ese cambio pide el voto del CFO (mismo rol
+    y columna que presupuesto y tarifa, `_requiresCfoVote_`; lo apaga `policyApprovalEnabled`). Es la protección: el aprobador de área puede
+    ser el mismo que pide (Mateo). El área de compras sigue registrando sin plazo y sin esa marca.
   - El navegador manda solo lo que cambia (`requestTripChange`); el servidor arma la hija con `requestModification`. La hija lleva
     `CAMBIO PEDIDO (JSON)`, que **solo escribe el servidor** (nunca confiar en un `tripChange` del cliente).
   - **Tiquete comprado:** la hija lleva **solo el costo del cambio** (penalidad en `PENALIDAD CAMBIO` + diferencia de tarifa + hotel); la
@@ -780,7 +786,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-18)
+### Para retomar (estado al 2026-11-19)
+
+- **#A129 (después del plazo, alargar el viaje con el voto del CFO; casos SOL-000777 y SOL-000782 de Mateo): en `main`, pendiente de
+  desplegar.** Primero pegar `Code.gs` → versión nueva del web app; después el push. Sin menú.
 
 - **#A128 desplegado (18-nov)** (soporte del costo al confirmar costos, pedido de Yurani): David pegó `Code.gs` (versión nueva del web app)
   y el frontend `5c5441a` quedó en producción (bundle `index-Bx3CpPRY.js`). La columna `SOPORTE COSTO (JSON)` se crea sola en la primera

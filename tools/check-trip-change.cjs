@@ -226,7 +226,10 @@ function main() {
   const w1 = TS.tripChangeWindow('2026-10-16', '2026-10-18', Date.parse(NOW));
   eq('ventana: jueves 10:30, vuelo viernes → abierta, hoy hasta las 5', [w1.open, w1.mode, TS.untilText(w1, Date.parse(NOW))], [true, 'full', 'hoy hasta las 5:00 p. m.']);
   const w2 = TS.tripChangeWindow('2026-10-16', '2026-10-18', Date.parse('2026-10-15T22:30:00Z'));
-  eq('ventana: jueves 5:30 p. m., vuelo viernes → cerrada por plazo', [w2.open, w2.reason], [false, 'deadline']);
+  // #A129: después del plazo, con tiquete comprado y regreso, el viajero solo puede alargar el viaje (lo aprueba también el CFO).
+  eq('ventana: jueves 5:30 p. m., vuelo viernes → solo alargar el viaje', [w2.open, w2.mode, w2.late, w2.target, w2.deadlineKey], [true, 'return', true, '2026-10-18', '2026-10-15']);
+  const w2b = TS.tripChangeWindow('2026-10-16', '', Date.parse('2026-10-15T22:30:00Z'));
+  eq('ventana: jueves 5:30 p. m., vuelo viernes solo de ida → cerrada por plazo', [w2b.open, w2b.reason, w2b.late], [false, 'deadline', false]);
   const w3 = TS.tripChangeWindow('2026-10-14', '2026-10-19', Date.parse(NOW));
   eq('ventana: la ida ya voló → solo el regreso, hasta el sábado 12 m.', [w3.open, w3.mode, TS.untilText(w3, Date.parse(NOW))], [true, 'return', 'hasta el sábado 17 de octubre, 12:00 m.']);
   const w4 = TS.tripChangeWindow('2026-10-10', '2026-10-13', Date.parse(NOW));
@@ -752,12 +755,124 @@ function main() {
     ], ['changeable', 'changeable', 'changeable', null, null, null, null, null, null, 'changing', 'changeable']);
   } catch (e) { failures.push('#A126: no se pudo probar la etiqueta de ida vencida: ' + e.message); }
 
+  // ───────────── #A129: después del plazo, alargar el viaje con la aprobación del CFO (SOL-000777 y SOL-000782, 19-nov) ─────────────
+  // Mateo pide los viajes de sus técnicos y él mismo es su aprobador de área: el voto del CFO es la protección.
+  {
+    const N19 = Date.parse('2026-11-19T15:00:00Z'); // jueves 19-nov-2026, 10:00 a. m.
+    const wa = TS.tripChangeWindow('2026-11-17', '2026-11-19', N19);
+    eq('#A129 ventana: regreso hoy y comprado → solo alargar; venció ayer a las 5', [wa.open, wa.mode, wa.late, wa.target, wa.deadlineKey, wa.deadlineHour], [true, 'return', true, '2026-11-19', '2026-11-18', 17]);
+    const wb = TS.tripChangeWindow('2026-11-17', '2026-11-19', N19, true);
+    eq('#A129 ventana: el área de compras, sin plazo (no queda «fuera de plazo»)', [wb.open, wb.mode, wb.late], [true, 'return', false]);
+    const wc = TS.tripChangeWindow('2026-11-17', '2026-11-19', N19, false, false);
+    eq('#A129 ventana: sin comprar, como antes (#A120)', [wc.open, wc.mode, wc.late, wc.newDeparture], [true, 'full', false, true]);
+    const wd = TS.tripChangeWindow('2026-11-17', '2026-11-18', N19);
+    eq('#A129 ventana: el viaje terminó ayer → cerrado', [wd.open, wd.reason, wd.late], [false, 'ended', false]);
+    const we = TS.tripChangeWindow('2026-11-17', '2026-11-20', Date.parse('2026-11-19T22:30:00Z'));
+    eq('#A129 ventana: regreso mañana, después de las 5 p. m. → solo alargar', [we.open, we.late, we.deadlineKey], [true, true, '2026-11-19']);
+    const wf = TS.tripChangeWindow('2026-11-17', '2026-11-20', N19);
+    eq('#A129 ventana: regreso mañana, antes de las 5 p. m. → como siempre', [wf.open, wf.mode, wf.late], [true, 'return', false]);
+    const LR = [['2026-11-19', '17:00', '2026-11-20', '08:00'], ['2026-11-19', '17:00', '2026-11-19', '21:00'], ['2026-11-19', '17:00', '2026-11-19', '12:00'],
+      ['2026-11-19', '', '2026-11-19', '21:00'], ['2026-11-19', '17:00', '2026-11-18', '21:00'], ['2026-11-19', '17:00', '2026-11-19', '17:00'], ['', '', '2026-11-20', '']];
+    eq('#A129 regreso más tarde: la app y el servidor dicen lo mismo', LR.map((a) => [TS.isLaterReturn(...a), ctx._tripChangeIsLaterReturn_(...a)]),
+      [[true, true], [true, true], [false, false], [false, false], [false, false], [false, false], [false, false]]);
+
+    const quibdo = (hotel) => {
+      const id = bought(Object.assign({ origin: 'MEDELLIN, COLOMBIA', destination: 'QUIBDO, COLOMBIA', departureDate: '17-11-2026', returnDate: '19-11-2026' },
+        hotel ? { requiresHotel: true, hotelName: 'HOTEL CENTRAL', nights: 2 } : {}));
+      setCell(id, 'HORA LLEGADA VUELO VUELTA', '17:00');
+      return id;
+    };
+    const PL = quibdo();
+    at('2026-11-19T15:00:00Z');
+    let rl = change(PL, { departureTimePreference: '08:00' });
+    ok('#A129 después del plazo no se cambia la ida: dice cuándo venció y a quién llamar (' + rl.error + ')', !rl.success &&
+      /venció el miércoles 18 de noviembre a las 5:00 p\. m\.\): solo se puede alargar el viaje/.test(rl.error) && /Si es urgente, /.test(rl.error));
+    rl = change(PL, { checkedBaggage: true });
+    ok('#A129 después del plazo no se cambia el equipaje', !rl.success && /solo se puede alargar el viaje/.test(rl.error));
+    rl = change(PL, { returnTimePreference: '12:00' });
+    ok('#A129 un regreso más temprano no se puede (' + rl.error + ')', !rl.success && /El regreso actual es el jueves 19 de noviembre a las 17:00\./.test(rl.error));
+    rl = change(PL, { returnDate: '2026-11-18' });
+    ok('#A129 un regreso antes no se puede', !rl.success && /solo se puede alargar/.test(rl.error));
+    log.mails.length = 0;
+    rl = change(PL, { returnDate: '2026-11-20' }, 'No se terminó la reparación; hay que quedarse un día más.');
+    ok('#A129 el viajero alarga el viaje un día después del plazo (' + rl.error + ')', rl.success && rl.data.comprado === true);
+    const CL = rl.success && rl.data.id;
+    eq('#A129 el cambio queda «fuera de plazo» con el plazo que venció', CL && [info(CL).fueraDePlazo, info(CL).modo, info(CL).rol], [{ limite: '2026-11-18', hora: 17 }, 'return', 'viajero']);
+    const ml = log.mails.find((m) => /compras\.equitel/.test(m.to));
+    ok('#A129 el correo al área de compras dice que es urgente y que aprueba Alejandro', ml && /Pedido después del plazo/.test(ml.html) && /Alejandro Gómez de Greiff/.test(ml.html));
+    reset();
+    let ml2 = ctx.mapRowToRequest(rowOf(CL));
+    eq('#A129 la solicitud dice que vota el CFO', [ml2.lateChange, ml2.lateChangeNeedsCfo, ml2.requiresBudgetOverrunApproval, ml2.budgetExceeded, ml2.requiresFareApproval], [true, true, true, false, false]);
+    ok('#A129 se le pide el voto a Alejandro', ctx._approvalAskedFor_(ml2).some((x) => x.role === 'BUDGET_OVERRUN' && x.email === 'agdg@equitel.com.co'));
+    // Laura confirma el costo del cambio → el correo de aprobación le llega a Alejandro con el aviso
+    setCell(CL, 'STATUS', 'PENDIENTE_CONFIRMACION_COSTO');
+    log.mails.length = 0;
+    rl = confirm(CL, { finalCostTickets: 250000, finalCostHotel: 0, totalCost: 250000, changePenalty: '100.000' });
+    ok('#A129 confirmar el costo del cambio', rl.success && cell(CL, 'STATUS') === 'PENDIENTE_APROBACION');
+    const toCfo = log.mails.find((m) => m.to === 'agdg@equitel.com.co' && /APROBACI/.test(m.subject || m.html));
+    ok('#A129 el correo de aprobación le llega a Alejandro con el aviso de fuera de plazo', toCfo && /CAMBIO PEDIDO DESPUÉS DEL PLAZO/.test(toCfo.html) &&
+      /venció el miércoles 18 de noviembre a las 5:00 p\. m\./.test(toCfo.html) && !/p\. m\.\./.test(toCfo.html));
+    approve(CL);
+    eq('#A129 con el voto del área no basta: falta Alejandro', cell(CL, 'STATUS'), 'PENDIENTE_APROBACION');
+    const sgC = ctx._newApprovalLinkSig_('approve', CL, 'approved', 'BUDGET_OVERRUN', 'agdg@equitel.com.co');
+    reset();
+    ctx.processApprovalFromEmail({ parameter: { id: CL, decision: 'approved', role: 'BUDGET_OVERRUN', actor: 'agdg@equitel.com.co', t: sgC.t, sig: sgC.sig, confirm: 'true' } });
+    eq('#A129 con el voto de Alejandro queda aprobado', cell(CL, 'STATUS'), 'APROBADO');
+    reset();
+    const myCfo = ctx.getMyApprovals('agdg@equitel.com.co');
+    const itCfo = myCfo && (myCfo.history || []).concat(myCfo.pending || []).find((x) => x.id === CL);
+    ok('#A129 «Mis aprobaciones» le dice a Alejandro por qué vota', itCfo && itCfo.why.includes('Cambio pedido después del plazo'));
+
+    // El mismo día, una hora más tarde; y después de las 5 p. m. para mañana (antes «ya no da tiempo»)
+    const PL3 = quibdo();
+    at('2026-11-19T15:00:00Z');
+    rl = change(PL3, { returnTimePreference: '21:00' }, 'Se demora la prueba del equipo; salimos en el último vuelo.');
+    ok('#A129 el mismo día, un vuelo más tarde', rl.success && info(rl.data.id).fueraDePlazo);
+    const PL4 = quibdo(true);
+    at('2026-11-19T22:30:00Z'); // 5:30 p. m.
+    rl = change(PL4, { returnDate: '2026-11-20', hotelName: 'HOTEL QUIBDO REAL' }, 'No se terminó la reparación; hay que quedarse un día más.');
+    ok('#A129 después de las 5 p. m., regreso mañana y otro hotel (' + rl.error + ')', rl.success && info(rl.data.id).fueraDePlazo && info(rl.data.id).campos.hotelName);
+    // Solo cambiar el hotel no alarga el viaje
+    const PL5 = quibdo(true);
+    at('2026-11-19T15:00:00Z');
+    rl = change(PL5, { hotelName: 'OTRO HOTEL' });
+    ok('#A129 solo cambiar el hotel después del plazo no se puede', !rl.success && /solo se puede alargar/.test(rl.error));
+    // El área de compras lo registra sin plazo y sin marca de fuera de plazo (como siempre)
+    rl = change(PL5, { returnTimePreference: '12:00' }, 'Registro del cambio que pidió el viajero por teléfono.', 'admin@p.co');
+    ok('#A129 el área de compras: sin plazo (también un regreso más temprano) y sin «fuera de plazo» (' + rl.error + ')', rl.success && !info(rl.data.id).fueraDePlazo);
+    reset();
+    eq('#A129 ... y sin voto del CFO por eso', rl.success && ctx.mapRowToRequest(rowOf(rl.data.id)).lateChangeNeedsCfo, false);
+    // Con las reglas de la política apagadas, no vota el CFO
+    const realCfg = ctx._policyApprovalConfig_;
+    ctx._policyApprovalConfig_ = () => ({ enabled: false, email: '', emailLower: '', name: '' });
+    eq('#A129 con las reglas de la política apagadas, no vota el CFO', ctx._tripChangeLateNeedsCfo_(cell(CL, 'CAMBIO PEDIDO (JSON)')), false);
+    ctx._policyApprovalConfig_ = realCfg;
+    eq('#A129 un cambio sin la marca no pide al CFO', [ctx._tripChangeLateNeedsCfo_(cell(C2, 'CAMBIO PEDIDO (JSON)')), ctx._tripChangeLateNeedsCfo_('')], [false, false]);
+    at(NOW);
+  }
+  try {
+    const esbuild = require(path.join(ROOT, 'node_modules', 'esbuild'));
+    const out = esbuild.buildSync({ entryPoints: [path.join(ROOT, 'components', 'TripChangeModal.tsx')], bundle: true, format: 'cjs', platform: 'node',
+      write: false, logLevel: 'error', external: ['react', 'react-dom'], define: { 'import.meta.env': '{"PROD":false}', __APP_BUILD_ID__: '"x"' } });
+    const mod = { exports: {} };
+    new Function('module', 'exports', 'require', out.outputFiles[0].text)(mod, mod.exports, (id) => require(require.resolve(id, { paths: [ROOT] })));
+    const EL = mod.exports.tripChangeEligibility;
+    const N19 = Date.parse('2026-11-19T15:00:00Z');
+    const t19 = (o) => Object.assign({ requestId: 'SOL-000777', status: 'RESERVADO', departureDate: '2026-11-17', returnDate: '2026-11-19', requestMode: 'FLIGHT', supportData: null }, o || {});
+    const e1 = EL(t19(), [t19()], N19, false);
+    eq('#A129 app: SOL-000777 se puede alargar hoy', [e1.ok, e1.win && e1.win.late, e1.win && e1.win.mode], [true, true, 'return']);
+    const e2 = EL(t19({ departureDate: '2026-11-20', returnDate: '' }), [], Date.parse('2026-11-19T22:30:00Z'), false);
+    eq('#A129 app: solo de ida, venció el plazo → no (no hay regreso que alargar)', [e2.ok, e2.hidden], [false, false]);
+    const e3 = EL(t19(), [t19(), { requestId: 'SOL-000790', relatedRequestId: 'SOL-000777', status: 'PENDIENTE_ANALISIS_CAMBIO' }], N19, false);
+    eq('#A129 app: con un cambio en curso → no', e3.ok, false);
+  } catch (e) { failures.push('#A129: no se pudo probar la ventana en la app: ' + e.message); }
+
   if (failures.length) {
     console.error('✗ Cambios de viaje (#A103): ' + failures.length + ' problema(s):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard), cambiar el hospedaje en solo hospedaje y en vuelo + hotel (#A111) y la hora en 24 h (#A112); la ida vencida sin comprar se puede cambiar y no sale como abandonada (#A126); el área de compras registra una ida que ya pasó si el viaje no ha terminado, y al viajero se le dice que la fecha ya pasó (#A127).');
+  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard), cambiar el hospedaje en solo hospedaje y en vuelo + hotel (#A111) y la hora en 24 h (#A112); la ida vencida sin comprar se puede cambiar y no sale como abandonada (#A126); el área de compras registra una ida que ya pasó si el viaje no ha terminado, y al viajero se le dice que la fecha ya pasó (#A127); después del plazo, el viajero solo alarga el viaje y lo aprueba también el CFO (#A129).');
 }
 
 main();

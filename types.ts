@@ -423,6 +423,9 @@ export interface TravelRequest {
   // excedido y/o tarifa superior a la del manual. undefined = backend anterior.
   budgetExceeded?: boolean;
   requiresFareApproval?: boolean;
+  /** #A129: el cambio se pidió después del plazo (solo alarga el viaje) y, si las reglas de la política están activas, vota también el CFO. */
+  lateChange?: boolean;
+  lateChangeNeedsCfo?: boolean;
   // #A100: solicitud fuera de plazo: justificación del solicitante, decisión del
   // CFO ('Sí_…', 'No_…', 'Vencida_…' o '') y quién aprueba.
   policyJustification?: string;
@@ -533,6 +536,8 @@ export interface TripChangeInfo {
   registradoPor: string;
   rol: 'viajero' | 'administrador';
   at: string;
+  /** #A129: se pidió después del plazo (el que venció): solo alarga el viaje y lo aprueba también el CFO. */
+  fueraDePlazo?: { limite: string; hora: number };
   compra?: {
     pnr: string; aerolinea: string; aerolineaRegreso: string; canal: string; hotel: string; canalHotel: string;
     tarifa: string; tarifaNombre: string; maleta: boolean; tarjeta: string; fechaCompra: string;

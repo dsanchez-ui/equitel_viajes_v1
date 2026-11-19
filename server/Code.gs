@@ -2730,10 +2730,12 @@ function _applyApprovalDecision_(o) {
       const _workOrderApprVal = (_workOrderApprIdx >= 0) ? rowValues[_workOrderApprIdx] : '';
       // #A100: el mismo voto cubre la tarifa superior a la del manual.
       const _fareFlagApprIdx = H(FARE_CFO_FLAG_HEADER);
+      const _tripChangeApprIdx = H(TRIP_CHANGE_HEADER); // #A129: cambio pedido después del plazo
       const requiresBudgetOverrun = _requiresCfoVote_(
           requiereApPptoIdx >= 0 ? rowValues[requiereApPptoIdx] : '',
           _workOrderApprVal,
-          _fareFlagApprIdx >= 0 ? rowValues[_fareFlagApprIdx] : '');
+          _fareFlagApprIdx >= 0 ? rowValues[_fareFlagApprIdx] : '',
+          _tripChangeApprIdx >= 0 ? rowValues[_tripChangeApprIdx] : '');
 
       // Detect special cases: requester is CEO/CDS, or the assigned area approver
       // happens to be CEO/CDS (so a single click on the deduped email implicitly
@@ -3500,6 +3502,7 @@ function _myApprovalItem_(row, req, steps, mine, pendingKind, myVote, names, isP
   else if ((Number(req.cdsCostBase) || 0) > 1200000) why.push('Cuesta más de $1.200.000');
   if (req.budgetExceeded) why.push('Excede el presupuesto de la unidad');
   if (req.requiresFareApproval) why.push('Tarifa superior a la del manual');
+  if (req.lateChange) why.push('Cambio pedido después del plazo'); // #A129
   var policy = null;
   if (isPolicyApprover && (pendingKind === 'policy' || policyCell)) {
     var held = _policyHeldItem_(row, names);
@@ -5878,6 +5881,13 @@ const HtmlTemplates = {
         if (request.requiresFareApproval) {
             const fareCfoName = escapeHtml_(request.budgetApproverName || 'el CFO');
             alertHtml += `<div style="background-color: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🎫 TARIFA SUPERIOR A LA DEL MANUAL:</strong> Se confirmó la tarifa <strong>TIPO ${escapeHtml_(request.fareType || '')}${request.fareName ? ' (' + escapeHtml_(request.fareName) + ')' : ''}</strong> y el manual pide <strong>TIPO ${escapeHtml_(request.fareRecommended || '')}</strong> para este viaje. Requiere la aprobación de <strong>${fareCfoName}</strong> antes de comprar.${request.fareJustification ? '<br/><span style="font-style: italic;">Motivo del área de compras: "' + escapeHtml_(request.fareJustification) + '"</span>' : ''}</div>`;
+        }
+
+        // #A129: cambio pedido después del plazo (solo alarga el viaje): vota también el CFO.
+        if (request.lateChange) {
+            const lateTc = request.tripChange && request.tripChange.fueraDePlazo ? request.tripChange.fueraDePlazo : null;
+            const lateCfo = escapeHtml_(request.policyApproverName || request.budgetApproverName || 'el CFO');
+            alertHtml += `<div style="background-color: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>⏰ CAMBIO PEDIDO DESPUÉS DEL PLAZO:</strong> ${lateTc ? 'el plazo para cambiar ' + (isHotelOnlyAppr ? 'la salida del hotel' : 'el regreso') + ' venció el ' + escapeHtml_(_changeDeadlineText_(lateTc.limite, lateTc.hora)) + ' ' : ''}Después del plazo solo se puede alargar el viaje${request.lateChangeNeedsCfo ? `, y por eso también lo aprueba <strong>${lateCfo}</strong>` : ''}.</div>`;
         }
 
         // POLICY VIOLATION BANNER
@@ -9636,7 +9646,9 @@ function mapRowToRequest(row, lite) {
   // #A100: tarifa superior a la del manual → también pide el voto del CFO
   // (mismo rol y misma columna que el presupuesto excedido).
   const fareNeedsCfoRow = _fareCfoFlagSet_(get(FARE_CFO_FLAG_HEADER));
-  const requiereApPpto = budgetExceededRow || fareNeedsCfoRow;
+  // #A129: cambio pedido después del plazo (solo alarga el viaje) → también vota el CFO.
+  const lateChangeNeedsCfoRow = _tripChangeLateNeedsCfo_(get(TRIP_CHANGE_HEADER));
+  const requiereApPpto = budgetExceededRow || fareNeedsCfoRow || lateChangeNeedsCfoRow;
   const aprobadoPptoVal = String(get("APROBADO PRESUPUESTO"));
   // El email del aprobador de presupuesto vive en la config del dashboard.
   // Lo leemos aquí para que la simetría área↔budget funcione (si el aprobador
@@ -9681,6 +9693,9 @@ function mapRowToRequest(row, lite) {
   // #A100: por qué se pide el voto del CFO (los avisos los muestran por separado).
   result.budgetExceeded = budgetExceededRow;
   result.requiresFareApproval = fareNeedsCfoRow;
+  // #A129: el cambio se pidió después del plazo (lateChange) y por eso vota también el CFO (lateChangeNeedsCfo).
+  result.lateChange = !!(result.tripChange && result.tripChange.fueraDePlazo);
+  result.lateChangeNeedsCfo = lateChangeNeedsCfoRow;
   // #A100: solicitud fuera de plazo que esperó (o espera) la aprobación del CFO.
   result.policyJustification = String(get(POLICY_JUSTIFICATION_HEADER) || '');
   result.policyDecision = String(get(POLICY_DECISION_HEADER) || '');
@@ -20789,8 +20804,9 @@ function _fareCfoFlagSet_(flagRaw) {
  * Voto del responsable de presupuesto/CFO: presupuesto excedido (sin OT válida)
  * o tarifa superior a la del manual. Un solo voto cubre los dos motivos.
  */
-function _requiresCfoVote_(budgetFlagRaw, workOrderRaw, fareFlagRaw) {
-  return _requiresBudgetOverrun_(budgetFlagRaw, workOrderRaw) || _fareCfoFlagSet_(fareFlagRaw);
+function _requiresCfoVote_(budgetFlagRaw, workOrderRaw, fareFlagRaw, tripChangeRaw) {
+  // #A129: también un cambio pedido después del plazo.
+  return _requiresBudgetOverrun_(budgetFlagRaw, workOrderRaw) || _fareCfoFlagSet_(fareFlagRaw) || _tripChangeLateNeedsCfo_(tripChangeRaw);
 }
 
 /**
@@ -21582,25 +21598,53 @@ function _tripChangeWindow_(depKey, retKey, nowMs, ignoreDeadline, bought) {
   var dep = String(depKey || ''), ret = String(retKey || '');
   if (bought === false && dep) {
     if ((ret || dep) < today) {
-      return { open: false, mode: null, target: '', reason: 'ended', deadlineKey: '', deadlineHour: 0, deadlineMs: 0, newDeparture: false };
+      return { open: false, mode: null, target: '', reason: 'ended', deadlineKey: '', deadlineHour: 0, deadlineMs: 0, newDeparture: false, late: false };
     }
     var dlDep = _changeDeadline_(dep);
-    var late = ignoreDeadline ? dep < today : Number(nowMs) >= dlDep.ms;
-    return { open: true, mode: 'full', target: dep, reason: '', deadlineKey: dlDep.dayKey, deadlineHour: dlDep.hour, deadlineMs: dlDep.ms, newDeparture: late };
+    var pastDep = ignoreDeadline ? dep < today : Number(nowMs) >= dlDep.ms;
+    return { open: true, mode: 'full', target: dep, reason: '', deadlineKey: dlDep.dayKey, deadlineHour: dlDep.hour, deadlineMs: dlDep.ms, newDeparture: pastDep, late: false };
   }
+  // #A129: después del plazo, solo alargar el viaje (si el regreso es de hoy en adelante).
+  var canExtend = !ignoreDeadline && !!ret && ret >= today;
   var mode = null;
   if (dep && (ignoreDeadline ? dep >= today : dep > today)) mode = 'full';
   else if (dep && ret && (ignoreDeadline ? ret >= today : ret > today)) mode = 'return';
   if (!mode) {
     var sameDay = dep === today || ret === today;
     var dlToday = sameDay ? _changeDeadline_(today) : null;
+    if (sameDay && canExtend && dlToday) {
+      return { open: true, mode: 'return', target: ret, reason: '', deadlineKey: dlToday.dayKey, deadlineHour: dlToday.hour, deadlineMs: dlToday.ms, newDeparture: false, late: true };
+    }
     return { open: false, mode: null, target: sameDay ? today : '', reason: sameDay ? 'deadline' : 'ended',
-      deadlineKey: dlToday ? dlToday.dayKey : '', deadlineHour: dlToday ? dlToday.hour : 0, deadlineMs: dlToday ? dlToday.ms : 0, newDeparture: false };
+      deadlineKey: dlToday ? dlToday.dayKey : '', deadlineHour: dlToday ? dlToday.hour : 0, deadlineMs: dlToday ? dlToday.ms : 0, newDeparture: false, late: false };
   }
   var target = mode === 'full' ? dep : ret;
   var dl = _changeDeadline_(target);
   var open = !!ignoreDeadline || Number(nowMs) < dl.ms;
-  return { open: open, mode: mode, target: target, reason: open ? '' : 'deadline', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms, newDeparture: false };
+  if (!open && canExtend) {
+    return { open: true, mode: 'return', target: ret, reason: '', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms, newDeparture: false, late: true };
+  }
+  return { open: open, mode: mode, target: target, reason: open ? '' : 'deadline', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms, newDeparture: false, late: false };
+}
+
+/**
+ * #A129: ¿el regreso nuevo es después del actual? Fecha posterior, o la misma fecha con una hora posterior
+ * (las dos horas escritas). Después del plazo es lo único que se puede pedir. Gemelo de isLaterReturn (utils/changeWindow.ts).
+ */
+function _tripChangeIsLaterReturn_(baseRet, baseRetTime, newRet, newRetTime) {
+  if (!baseRet || !newRet) return false;
+  if (newRet > baseRet) return true;
+  return newRet === baseRet && !!baseRetTime && !!newRetTime && newRetTime > baseRetTime;
+}
+
+/**
+ * #A129: un cambio pedido después del plazo (solo alarga el viaje) lo aprueba también el CFO, con el mismo voto
+ * del presupuesto y la tarifa (rol BUDGET_OVERRUN). Con las reglas de la política apagadas, no.
+ */
+function _tripChangeLateNeedsCfo_(tripChangeRaw) {
+  var tc = _parseTripChangeInfo_(tripChangeRaw);
+  if (!tc || !tc.fueraDePlazo) return false;
+  return _policyApprovalConfig_().enabled;
 }
 
 /** 'miércoles 21 de octubre a las 5:00 p. m.' */
@@ -21849,8 +21893,30 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
       : 'El plazo para pedir el cambio por la plataforma venció el ' + _changeDeadlineText_(win.deadlineKey, win.deadlineHour) +
         ' Si es urgente, ' + _tripContactsText_(_tripContacts_()) + '.'); // la hora ya termina en punto («5:00 p. m.»)
   }
+  // #A129 (David, 19-nov, casos SOL-000777 y SOL-000782: «se les extendió la reparación»): después del plazo,
+  // con el tiquete comprado, solo se puede alargar el viaje. Lo aprueba también el CFO (_tripChangeLateNeedsCfo_).
+  var LATE_KEYS = ['returnDate', 'returnTimePreference', 'hotelName'];
+  var lateOnly = '', lateCall = '';
+  if (win.late) {
+    lateOnly = 'Ya pasó el plazo para cambiarlo por la plataforma (venció el ' + _changeDeadlineText_(win.deadlineKey, win.deadlineHour) + '): ' +
+      (isHotelOnly ? 'solo se puede alargar la estadía (una salida del hotel más tarde)' : 'solo se puede alargar el viaje (un regreso más tarde: otra fecha u otra hora)') +
+      ' y, si hace falta, cambiar el hospedaje.';
+    lateCall = ' Si es urgente, ' + _tripContactsText_(_tripContacts_()) + '.';
+    Object.keys(changes && typeof changes === 'object' ? changes : {}).forEach(function (k) {
+      if (TRIP_CHANGE_KEYS.indexOf(k) !== -1 && LATE_KEYS.indexOf(k) === -1) throw new Error(lateOnly + lateCall);
+    });
+  }
   var norm = _normalizeTripChanges_(parentVals, changes, win.mode, isHotelOnly);
   var next = norm.next;
+  if (win.late) {
+    Object.keys(norm.campos).forEach(function (k) {
+      if (LATE_KEYS.indexOf(k) === -1) throw new Error(lateOnly + lateCall);
+    });
+    if (!_tripChangeIsLaterReturn_(parentVals.ret, parentVals.retTime, next.ret, next.retTime)) {
+      throw new Error(lateOnly + ' ' + (isHotelOnly ? 'La salida' : 'El regreso') + ' actual es el ' + _policyFmtDayLong_(parentVals.ret) +
+        (parentVals.retTime && !isHotelOnly ? ' a las ' + parentVals.retTime : '') + '.' + lateCall);
+    }
+  }
   // #A120: sin comprar y con la ida que ya no da tiempo, el cambio trae una ida nueva.
   if (win.newDeparture && !norm.campos.departureDate) {
     throw new Error('El tiquete todavía no se ha comprado y la fecha de ' + (isHotelOnly ? 'entrada' : 'ida') + ' (' + _policyFmtDayLong_(parentVals.dep) +
@@ -21866,7 +21932,7 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
   }
   // La fecha nueva también tiene que dar tiempo (decisión de Yurani, 19-oct).
   var newTarget = win.mode === 'full' ? next.dep : next.ret;
-  if (!isAdmin && newTarget !== win.target) {
+  if (!isAdmin && !win.late && newTarget !== win.target) {
     if (newTarget < todayKey) {
       throw new Error('La fecha nueva (' + _policyFmtDayLong_(newTarget) + ') ya pasó: elija una de hoy en adelante que dé tiempo. ' +
         'Si ya viajó ese día, el área de compras lo registra a su nombre: ' + _tripContactsText_(_tripContacts_()) + '.');
@@ -21898,6 +21964,8 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
   };
   if (parcial) info.parcial = true;
   if (comprado) info.compra = _tripChangePurchase_(p);
+  // #A129: se pidió después del plazo (el que venció): lo aprueba también el CFO.
+  if (win.late) info.fueraDePlazo = { limite: win.deadlineKey, hora: win.deadlineHour };
 
   var nights = p.requiresHotel ? (next.ret ? Math.max(0, _psDayNumber_(next.ret) - _psDayNumber_(next.dep)) : (Number(p.nights) || 0)) : 0;
   var data = {
@@ -21992,10 +22060,17 @@ function _tripChangeEmailHtml_(parent, data, info, reason) {
   var bagLater = _tripChangeBagLater_(info)
     ? '<div style="background-color:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:10px 12px; margin:10px 0; font-size:12px; color:#9a3412;">Se pidió la maleta de bodega después de comprar el tiquete: pedida desde el principio no habría penalidad.</div>' : '';
   var who = info.rol === 'administrador' ? ' (lo registró el área de compras: ' + escapeHtml_(info.registradoPor) + ')' : '';
+  // #A129: pedido después del plazo (solo alarga el viaje).
+  var lateCfg = info.fueraDePlazo ? _policyApprovalConfig_() : null;
+  var late = info.fueraDePlazo
+    ? '<div style="background-color:#fff7ed; border:1px solid #fed7aa; border-radius:6px; padding:10px 12px; margin:10px 0; font-size:13px; color:#9a3412;"><strong>⏰ Pedido después del plazo</strong> (venció el ' +
+      escapeHtml_(_changeDeadlineText_(info.fueraDePlazo.limite, info.fueraDePlazo.hora)) + '). Es urgente: solo alarga el viaje' +
+      (lateCfg && lateCfg.enabled ? ', y además del aprobador lo aprueba <strong>' + escapeHtml_(lateCfg.name) + '</strong>' : '') + '.</div>'
+    : '';
   var content =
     '<p style="color:#111827; font-size:14px; margin:0 0 6px;"><strong>' + escapeHtml_(parent.requesterEmail) + '</strong> pide cambiar el viaje <strong>' + escapeHtml_(parent.requestId) +
     '</strong> (' + escapeHtml_(route) + ')' + who + '.</p>' +
-    bought +
+    bought + late +
     '<div style="font-size:12px; font-weight:bold; color:#374151; text-transform:uppercase; margin-top:6px;">Qué cambia</div>' + _tripChangeRowsHtml_(info) + bagLater +
     '<div style="font-size:12px; font-weight:bold; color:#374151; text-transform:uppercase; margin-top:12px;">Motivo</div>' +
     '<p style="font-size:13px; color:#374151; font-style:italic; border-left:3px solid #d1d5db; padding-left:10px; margin:6px 0 16px;">"' + escapeHtml_(reason) + '"</p>' +

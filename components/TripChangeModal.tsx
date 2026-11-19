@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CityMaster, RequestStatus, TravelRequest, TripChangeConfig, TripChangeRequestChanges } from '../types';
 import { gasService } from '../services/gasService';
-import { ChangeWindow, changeDeadline, fmtDayLong, fmtHourLabel, isTripBought, toDateKey, tripChangeWindow, untilText } from '../utils/changeWindow';
+import { ChangeWindow, changeDeadline, fmtDayLong, fmtHourLabel, isLaterReturn, isTripBought, toDateKey, tripChangeWindow, untilText } from '../utils/changeWindow';
 import { fareLabel, fareOptionForNights } from '../utils/fare';
 import { formatCop } from '../utils/money';
 import { TimeInput } from './TimeInput';
@@ -156,7 +156,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   const [citiesState, setCitiesState] = useState<'idle' | 'loading' | 'error' | 'ok'>('idle');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
-  const [created, setCreated] = useState<{ id: string; comprado: boolean; parentId: string } | null>(null);
+  const [created, setCreated] = useState<{ id: string; comprado: boolean; parentId: string; late?: boolean } | null>(null);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !sending) onClose(); };
@@ -195,6 +195,9 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   const mode = elig?.win?.mode || 'full';
   // #A120: sin comprar y con la ida que ya no da tiempo: el cambio trae una ida nueva.
   const newDeparture = !!elig?.win?.newDeparture;
+  // #A129: ya pasó el plazo y el tiquete está comprado: solo se puede alargar el viaje; lo aprueba también el CFO.
+  const late = !!elig?.win?.late;
+  const lateCfo = req?.policyApproverName || '';
   const hotelOnly = req?.requestMode === 'HOTEL_ONLY';
   // #A111: se puede cambiar el hospedaje siempre que la solicitud ya lo incluya
   // (solo hospedaje, o vuelo + hotel). Agregarlo donde no lo había es solicitud nueva.
@@ -251,16 +254,21 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
         ? `Con esas fechas el viaje ya terminó (${hotelOnly ? 'salida' : 'regreso'} el ${fmtDayLong(form.ret)}). Para un viaje que ya terminó, cree una solicitud nueva.`
         : `La fecha de ${hotelOnly ? 'entrada' : 'ida'} nueva (${fmtDayLong(form.dep)}) ya pasó y el viaje es solo de ida.`);
     }
+    // #A129: después del plazo, el regreso nuevo tiene que ser más tarde que el actual.
+    if (late && (form.tried || changes.returnDate || changes.returnTimePreference || changes.hotelName) &&
+        !isLaterReturn(base.ret, base.retTime, changes.returnDate || base.ret, changes.returnTimePreference ?? base.retTime)) {
+      problems.push(`Ya pasó el plazo: solo puede alargar el viaje. Elija ${hotelOnly ? 'una salida del hotel' : 'un regreso'} después del actual (${fmtDayLong(base.ret)}${base.retTime && !hotelOnly ? ' a las ' + fmtTime(base.retTime) : ''}).`);
+    }
     if (form.t.fechas) {
       if (form.ret && form.dep && form.ret < form.dep) problems.push('El regreso no puede ser antes de la ida.');
       if (hotelOnly && form.ret && form.ret === form.dep) problems.push('La salida del hotel tiene que ser después de la entrada.');
       const target = mode === 'full' ? form.dep : form.ret;
       const baseTarget = mode === 'full' ? base.dep : base.ret;
-      if (!isAdmin && target && target !== baseTarget && target < todayKey) {
+      if (!isAdmin && !late && target && target !== baseTarget && target < todayKey) {
         // #A127: una fecha que ya pasó, dicha así (antes salía «ya no da tiempo… el plazo era…», que confundía).
         pastTarget = true;
         problems.push(`La fecha nueva (${fmtDayLong(target)}) ya pasó: elija una de hoy en adelante que dé tiempo. Si ya viajó ese día, el área de compras lo registra a su nombre (abajo, a quién llamar).`);
-      } else if (!isAdmin && target && target !== baseTarget) {
+      } else if (!isAdmin && !late && target && target !== baseTarget) {
         const dl = changeDeadline(target);
         if (!dl || nowMs >= dl.ms) {
           problems.push(`La fecha nueva (${fmtDayLong(target)}) ya no da tiempo: para ese vuelo el plazo era el ${dl ? fmtDayLong(dl.dayKey) + ' a las ' + fmtHourLabel(dl.hour) : '—.'}`);
@@ -312,7 +320,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
     setSendError('');
     try {
       const res = await gasService.requestTripChange(req.requestId, changes, form.reason.trim());
-      setCreated(res);
+      setCreated({ ...res, late });
       setStep('done');
       onDone();
     } catch (err) {
@@ -384,9 +392,11 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                         {r.requestMode === 'HOTEL_ONLY' ? 'Entrada' : 'Ida'} {fmtDayLong(toDateKey(r.departureDate))}
                         {r.returnDate ? ` · ${r.requestMode === 'HOTEL_ONLY' ? 'Salida' : 'Regreso'} ${fmtDayLong(toDateKey(r.returnDate))}` : ' · Solo ida'}
                       </p>
-                      <p className={`text-xs font-semibold mt-1 ${e.ok ? (e.win && e.win.deadlineKey === todayKey ? 'text-amber-700' : 'text-green-700') : 'text-red-700'}`}>
+                      <p className={`text-xs font-semibold mt-1 ${e.ok ? (e.win && (e.win.late || e.win.deadlineKey === todayKey) ? 'text-amber-700' : 'text-green-700') : 'text-red-700'}`}>
                         {e.ok && e.win
-                          ? (e.win.newDeparture
+                          ? (e.win.late
+                            ? `Ya pasó el plazo: solo puede alargar el viaje (${r.requestMode === 'HOTEL_ONLY' ? 'salir del hotel más tarde' : 'regresar más tarde'})${r.policyApproverName ? `. Lo aprueba también ${r.policyApproverName}` : ''}.`
+                            : e.win.newDeparture
                             ? `${r.requestMode === 'HOTEL_ONLY' ? 'El hospedaje aún no se reservó' : 'El tiquete aún no se compró'}: puede cambiar todo el viaje con una fecha de ${r.requestMode === 'HOTEL_ONLY' ? 'entrada' : 'ida'} nueva.`
                             : isAdmin ? 'Usted puede registrarlo sin plazo.' : (e.win.mode === 'return' ? 'La ida ya voló. Puede cambiar el regreso ' : 'Puede pedir el cambio ') + withDot(untilText(e.win, nowMs)))
                           : e.why}
@@ -412,7 +422,14 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   {!isAdmin && <> Si es urgente, <TripChangeContactsInline config={config} />.</>}
                 </div>
               )}
-              {isAdmin && travelerWin && travelerWin.open && (
+              {isAdmin && travelerWin && travelerWin.open && travelerWin.late && (
+                <div className="bg-amber-50 border border-amber-300 text-amber-950 rounded-md p-3 text-xs" data-change-traveler-late>
+                  <strong>Ya pasó el plazo del viajero</strong> (venció el {fmtDayLong(travelerWin.deadlineKey)} a las {fmtHourLabel(travelerWin.deadlineHour)}). Él todavía puede pedir
+                  {' '}<strong>alargar el viaje</strong> (un regreso más tarde) con «Cambiar mi viaje», y así lo aprueba también {lateCfo || 'quien aprueba las excepciones'}.
+                  Si es eso, pídale que lo haga por la plataforma; regístrelo usted solo si es otro cambio y es urgente.
+                </div>
+              )}
+              {isAdmin && travelerWin && travelerWin.open && !travelerWin.late && (
                 <div className="bg-amber-50 border border-amber-300 text-amber-950 rounded-md p-3 text-xs" data-change-traveler-can>
                   <strong>El viajero todavía puede pedirlo él mismo</strong> con «Cambiar mi viaje», {withDot(untilText(travelerWin, nowMs))}{' '}
                   Si le escribió o llamó, pídale que lo haga por la plataforma: así queda con su motivo y a su nombre. Regístrelo usted solo si es urgente.
@@ -444,7 +461,16 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   {isAdmin ? ' (de hoy en adelante)' : ' que dé tiempo: hasta las 5:00 p. m. del día hábil anterior (12:00 m. si es sábado)'} y, si hace falta, la de {hotelOnly ? 'salida' : 'regreso'}.
                 </div>
               )}
-              {mode === 'return' && (
+              {late && (
+                <div className="bg-orange-50 border-l-4 border-orange-500 rounded-md p-3 text-orange-950" data-change-late>
+                  <strong>⏰ Ya pasó el plazo para cambiar {hotelOnly ? 'la salida del hotel' : 'el regreso'}</strong> (venció el {fmtDayLong(elig.win!.deadlineKey)} a las {fmtHourLabel(elig.win!.deadlineHour)}).{' '}
+                  Solo puede <strong>alargar el viaje</strong>: {hotelOnly ? 'una salida del hotel más tarde' : 'un regreso más tarde (otra fecha u otra hora)'} y, si hace falta, cambiar el hospedaje.{' '}
+                  {lateCfo
+                    ? <>Además de {req.approverName ? <strong>{req.approverName}</strong> : 'su aprobador'}, lo aprueba <strong>{lateCfo}</strong>.</>
+                    : <>Lo aprueba {req.approverName ? <strong>{req.approverName}</strong> : 'su aprobador'}.</>}
+                </div>
+              )}
+              {mode === 'return' && !late && (
                 <div className="bg-blue-50 border-l-4 border-blue-400 rounded-md p-3 text-blue-950">
                   <strong>{hotelOnly ? `El hospedaje ya empezó (${fmtDayLong(base.dep)}).` : `La ida ya voló (${fmtDayLong(base.dep)}).`}</strong>{' '}
                   {hotelOnly ? 'Puede cambiar la salida o el hospedaje.' : 'Puede cambiar el regreso: fecha, hora o equipaje.'}
@@ -456,8 +482,8 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {choice('fechas', 'Fechas', hotelOnly ? 'Entrada o salida' : mode === 'return' ? 'Del regreso' : 'Ida o regreso')}
                   {!hotelOnly && choice('horas', 'Horas', mode === 'return' ? 'Del vuelo de regreso' : 'De los vuelos')}
-                  {choice('destino', hotelOnly ? 'Ciudad' : 'Destino', mode === 'return' ? 'No, con el viaje en curso' : `Actual: ${(base.dest.split(',')[0] || '').trim()}`, mode === 'return')}
-                  {!hotelOnly && choice('equipaje', 'Equipaje', 'Maleta de bodega')}
+                  {choice('destino', hotelOnly ? 'Ciudad' : 'Destino', late ? 'No, después del plazo' : mode === 'return' ? 'No, con el viaje en curso' : `Actual: ${(base.dest.split(',')[0] || '').trim()}`, mode === 'return')}
+                  {!hotelOnly && choice('equipaje', 'Equipaje', late ? 'No, después del plazo' : 'Maleta de bodega', late)}
                   {canHotel && choice('hospedaje', 'Hospedaje', hotelOnly ? 'Hotel, apartamento, Airbnb…' : 'Cambiar el hotel')}
                 </div>
                 <p className="text-xs text-gray-500 mt-2">Si necesita cambiar algo más (por ejemplo, quitar el hospedaje), escríbalo en el motivo. Para cambiar a quien viaja, pida una solicitud nueva.</p>
@@ -473,7 +499,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                       <DateHint value={form.dep} before={base.dep} />
                     </label>
                   ) : (
-                    <p className="text-xs text-gray-600"><span className="font-semibold block">Ida</span>Ya voló el {fmtDayLong(base.dep)}.</p>
+                    <p className="text-xs text-gray-600"><span className="font-semibold block">{hotelOnly ? 'Entrada' : 'Ida'}</span>{late && base.dep >= todayKey ? `${fmtDayLong(base.dep)}: no cambia después del plazo.` : `Ya ${hotelOnly ? 'empezó' : 'voló'} el ${fmtDayLong(base.dep)}.`}</p>
                   )}
                   {base.ret ? (
                     <label className="block text-xs font-semibold text-gray-600">
@@ -616,10 +642,15 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                 <ol className="list-decimal pl-5 space-y-0.5">
                   <li>El área de compras revisa su cambio{created.comprado ? ' y se lo pide a la agencia' : ''}.</li>
                   <li>Le llegan por correo las opciones {created.comprado ? 'del cambio' : 'nuevas'} y usted describe cuál elige, como siempre.</li>
-                  <li>Su aprobador aprueba {created.comprado ? 'el costo del cambio' : 'el viaje'}.</li>
+                  <li>{created.late && lateCfo ? `Su aprobador y ${lateCfo} aprueban` : 'Su aprobador aprueba'} {created.comprado ? 'el costo del cambio' : 'el viaje'}.</li>
                   <li>Recibe {hotelOnly ? (created.comprado ? 'la reserva nueva' : 'la reserva') : (created.comprado ? 'el tiquete nuevo' : 'los tiquetes')} por correo.</li>
                 </ol>
               </div>
+              {created.late && (
+                <p className="bg-orange-50 border border-orange-200 text-orange-900 rounded-md p-3" data-change-late-call>
+                  Como ya pasó el plazo, avísele también al área de compras para que lo gestione hoy: <TripChangeContactsInline config={config} />.
+                </p>
+              )}
               {created.comprado && <p className="bg-blue-50 border border-blue-200 text-blue-900 rounded-md p-3">Hasta que reciba {hotelOnly ? 'la reserva nueva, la que tiene sigue siendo la válida' : 'el tiquete nuevo, el que tiene sigue siendo el válido'}.</p>}
             </div>
           )}

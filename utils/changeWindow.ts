@@ -8,6 +8,8 @@
 // pedir a cualquier hora. Con el viaje en curso (la ida ya voló) solo se cambia el
 // regreso. El área de compras registra cambios a nombre del viajero sin plazo.
 // Sin tiquete comprado nadie ha volado: se cambia todo el viaje, con una ida que dé tiempo (#A120).
+// Después del plazo, con el tiquete comprado y el regreso de hoy en adelante, el viajero solo puede
+// ALARGAR el viaje (regreso más tarde) y lo aprueba también el CFO (#A129, David, 19-nov).
 // Todas las cuentas van en hora de Bogotá (UTC−5, sin horario de verano).
 
 const DAY_MS = 86400000;
@@ -92,6 +94,12 @@ export interface ChangeWindow {
    * traer una ida nueva que sí dé tiempo (el administrador, una de hoy en adelante).
    */
   newDeparture: boolean;
+  /**
+   * #A129 (David, 19-nov-2026, casos SOL-000777 y SOL-000782): venció el plazo, el tiquete está comprado y el
+   * regreso es de hoy en adelante. El viajero solo puede alargar el viaje (regreso más tarde: `isLaterReturn`)
+   * y el cambio lo aprueba también el CFO. `deadline*` es el plazo que venció.
+   */
+  late: boolean;
 }
 
 /**
@@ -104,27 +112,45 @@ export const tripChangeWindow = (depKey: string, retKey: string, nowMs: number, 
   const dep = String(depKey || ''), ret = String(retKey || '');
   if (!bought && dep) {
     if ((ret || dep) < today) {
-      return { open: false, mode: null, target: '', reason: 'ended', deadlineKey: '', deadlineHour: 0, deadlineMs: 0, newDeparture: false };
+      return { open: false, mode: null, target: '', reason: 'ended', deadlineKey: '', deadlineHour: 0, deadlineMs: 0, newDeparture: false, late: false };
     }
     const dlDep = changeDeadline(dep)!;
-    const late = ignoreDeadline ? dep < today : nowMs >= dlDep.ms;
-    return { open: true, mode: 'full', target: dep, reason: '', deadlineKey: dlDep.dayKey, deadlineHour: dlDep.hour, deadlineMs: dlDep.ms, newDeparture: late };
+    const pastDep = ignoreDeadline ? dep < today : nowMs >= dlDep.ms;
+    return { open: true, mode: 'full', target: dep, reason: '', deadlineKey: dlDep.dayKey, deadlineHour: dlDep.hour, deadlineMs: dlDep.ms, newDeparture: pastDep, late: false };
   }
+  // #A129: después del plazo, solo alargar el viaje (si el regreso es de hoy en adelante).
+  const canExtend = !ignoreDeadline && !!ret && ret >= today;
   let mode: ChangeMode | null = null;
   if (dep && (ignoreDeadline ? dep >= today : dep > today)) mode = 'full';
   else if (dep && ret && (ignoreDeadline ? ret >= today : ret > today)) mode = 'return';
   if (!mode) {
     const sameDay = dep === today || ret === today;
     const dlToday = sameDay ? changeDeadline(today) : null;
+    if (sameDay && canExtend && dlToday) {
+      return { open: true, mode: 'return', target: ret, reason: '', deadlineKey: dlToday.dayKey, deadlineHour: dlToday.hour, deadlineMs: dlToday.ms, newDeparture: false, late: true };
+    }
     return {
       open: false, mode: null, target: sameDay ? today : '', reason: sameDay ? 'deadline' : 'ended',
-      deadlineKey: dlToday ? dlToday.dayKey : '', deadlineHour: dlToday ? dlToday.hour : 0, deadlineMs: dlToday ? dlToday.ms : 0, newDeparture: false
+      deadlineKey: dlToday ? dlToday.dayKey : '', deadlineHour: dlToday ? dlToday.hour : 0, deadlineMs: dlToday ? dlToday.ms : 0, newDeparture: false, late: false
     };
   }
   const target = mode === 'full' ? dep : ret;
   const dl = changeDeadline(target)!;
   const open = ignoreDeadline || nowMs < dl.ms;
-  return { open, mode, target, reason: open ? '' : 'deadline', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms, newDeparture: false };
+  if (!open && canExtend) {
+    return { open: true, mode: 'return', target: ret, reason: '', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms, newDeparture: false, late: true };
+  }
+  return { open, mode, target, reason: open ? '' : 'deadline', deadlineKey: dl.dayKey, deadlineHour: dl.hour, deadlineMs: dl.ms, newDeparture: false, late: false };
+};
+
+/**
+ * #A129: ¿el regreso nuevo es después del actual? Fecha posterior, o la misma fecha con una hora posterior
+ * (las dos horas escritas). Después del plazo es lo único que se puede pedir. Igual que `_tripChangeIsLaterReturn_`.
+ */
+export const isLaterReturn = (baseRet: string, baseRetTime: string, newRet: string, newRetTime: string): boolean => {
+  if (!baseRet || !newRet) return false;
+  if (newRet > baseRet) return true;
+  return newRet === baseRet && !!baseRetTime && !!newRetTime && newRetTime > baseRetTime;
 };
 
 const DAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];

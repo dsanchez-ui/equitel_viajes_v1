@@ -351,7 +351,8 @@ Puedes elegir varias cosas a la vez. Para algo distinto (por ejemplo, quitar el 
 - Si el tiquete **todavía no se compró**, nadie ha volado: puedes cambiar **todo el viaje** aunque la fecha de ida ya haya llegado o ya no dé tiempo. Solo tienes que elegir una **fecha de ida nueva** que sí dé tiempo.
   En tu panel ese viaje dice **IDA VENCIDA · SE PUEDE CAMBIAR** (no «abandonada»), mientras la fecha de regreso no haya pasado.
 - No puedes poner una fecha que ya pasó. Si ya viajaste en otra fecha (por ejemplo, porque no había tiquete el día que pediste), llama al área de compras: lo registra a tu nombre.
-- Después del plazo, el portal no deja pedir el cambio. **Solo si es urgente**, te muestra a quién llamar y en qué orden: primero el área de compras y, si no responde, el director de compras, con sus celulares. El área de compras lo registra a tu nombre.
+- **Después del plazo, solo puedes alargar el viaje** (#A129), si el tiquete ya está comprado y el regreso es de hoy en adelante: un regreso más tarde (otro día, u otra hora el mismo día) y, si hace falta, otro hospedaje. Sirve, por ejemplo, cuando un trabajo se extiende y hay que quedarse un día más. Como se pide tarde, **además de tu jefe lo aprueba quien aprueba las excepciones a la política** (hoy Alejandro Gómez). Al enviarlo, llama al área de compras para que lo gestione ese mismo día.
+- Cualquier otro cambio después del plazo (la ida, el destino, el equipaje o regresar antes) no se puede pedir en el portal. **Solo si es urgente**, te muestra a quién llamar y en qué orden: primero el área de compras y, si no responde, el director de compras, con sus celulares. El área de compras lo registra a tu nombre.
 
 La ventana te dice, viaje por viaje, hasta cuándo puedes pedir el cambio.
 

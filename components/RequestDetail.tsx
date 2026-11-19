@@ -1045,9 +1045,12 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                         {/* Solo aparece si la solicitud tiene flag de presupuesto excedido */}
                                         {request.requiresBudgetOverrunApproval && (
                                             <ApprovalStatusRow
-                                                label={`${request.requiresFareApproval
-                                                    ? (request.budgetExceeded ? 'Presupuesto y tarifa superior al manual' : 'Tarifa superior al manual')
-                                                    : 'Presupuesto de Unidad'}${request.budgetApproverName ? ` (${request.budgetApproverName})` : ''}`}
+                                                label={`${[
+                                                    // #A100: presupuesto y tarifa; #A129: cambio pedido después del plazo. Un voto cubre todo.
+                                                    (request.budgetExceeded || (!request.requiresFareApproval && !request.lateChangeNeedsCfo)) ? 'Presupuesto de Unidad' : '',
+                                                    request.requiresFareApproval ? 'Tarifa superior al manual' : '',
+                                                    request.lateChangeNeedsCfo ? 'Cambio después del plazo' : ''
+                                                ].filter(Boolean).join(' · ')}${request.budgetApproverName ? ` (${request.budgetApproverName})` : ''}`}
                                                 effectiveStatus={request.effectiveApprovalBudgetOverrun}
                                                 rawStatusString={request.approvalStatusBudgetOverrun}
                                                 naReason={request.effectiveApprovalBudgetOverrunReason}

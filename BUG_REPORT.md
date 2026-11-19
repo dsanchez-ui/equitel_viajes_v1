@@ -3861,3 +3861,66 @@ no haya dudas de por qué Laura registró un costo particular»*) ·
 - **Servidor nuevo + app anterior:** cada confirmación ya guarda cuándo y quién, y el correo dice «No se adjuntó soporte».
 - **App nueva + servidor anterior:** el bloque no aparece (la app lo muestra solo si el servidor manda `costEvidence`) y todo funciona como antes.
 - No hay que correr ningún menú.
+
+---
+
+## **#A129 — Después del plazo, el viajero puede alargar el viaje; lo aprueba también el CFO**
+**Fecha:** 2026-11-19 · **Pedido por:** David y Yurani (casos SOL-000777 y SOL-000782 de Mateo Rodríguez: *«se les extendió la reparación…
+deben poder solicitar el cambio… la protección contra abusos sería que pida la aprobación»*) ·
+**Estado:** En `main`; pendiente pegar `Code.gs` y publicar la versión nueva del web app, y después el push.
+
+**Síntoma:**
+- Dos técnicos en Quibdó (SOL-000777, del 17 al 19-nov; SOL-000782, del 18 al 19-nov; tiquetes comprados) no alcanzaron a terminar la
+  reparación y tenían que quedarse un día más.
+- Mateo no podía pedir el cambio: el regreso era hoy y el plazo (#A103) venció ayer a las 5:00 p. m. La plataforma solo le mostraba a quién
+  llamar.
+- Yurani creía que el cambio estaba esperando a Alejandro, pero ni siquiera se había podido pedir.
+
+**Causa raíz:**
+- La regla de #A103 no tenía salida para el viajero después del plazo: solo el área de compras podía registrarlo a su nombre (#A106).
+- Un cambio **no** pasaba por el CFO: lo aprueba el aprobador de área (en el equipo de Mateo, el mismo Mateo). Alejandro solo votaba si se
+  excedía el presupuesto o la tarifa superaba la del manual (#A100).
+
+**Fix:**
+- **Regla nueva** (`utils/changeWindow.ts` ↔ `_tripChangeWindow_`, gemelas): después del plazo, con el tiquete comprado y el regreso de hoy en
+  adelante, el viajero puede pedir **solo alargar el viaje**: un regreso más tarde (otra fecha, u otra hora el mismo día) y, si hace falta,
+  otro hospedaje. Nada más (ni la ida, ni el destino, ni el equipaje).
+  - Las ventanas devuelven `late: true`; `isLaterReturn` ↔ `_tripChangeIsLaterReturn_` decide si el regreso es más tarde.
+  - Sin tiquete comprado sigue #A120.
+  - El área de compras sigue sin plazo y sin marca.
+- **Servidor** (`requestTripChange`):
+  - rechaza lo que no alarga, diciendo cuándo venció el plazo y a quién llamar;
+  - no exige que la fecha nueva «dé tiempo»;
+  - marca el cambio con `fueraDePlazo: { limite, hora }` en `CAMBIO PEDIDO (JSON)` (lo escribe solo el servidor).
+- **Aprobación:** un cambio con esa marca pide también el voto del CFO, con el mismo rol y la misma columna del presupuesto y la tarifa
+  (`_requiresCfoVote_` y `mapRowToRequest`; un voto cubre todo). Lo apaga el mismo interruptor de la política (`policyApprovalEnabled`).
+- **Avisos:**
+  - en «Cambiar mi viaje», qué se puede y quién aprueba;
+  - en el correo al área de compras: «Pedido después del plazo… Es urgente»;
+  - en el correo de aprobación: «CAMBIO PEDIDO DESPUÉS DEL PLAZO»;
+  - en «Mis aprobaciones»: «Cambio pedido después del plazo»;
+  - en el recuadro del cambio y en la fila de aprobación del detalle;
+  - al enviar, la ventana le pide al viajero que llame al área de compras para que lo gestione ese mismo día.
+  - si Laura abre «Solicitar Cambio» en uno de estos viajes, la ventana le dice que el viajero puede pedir él mismo alargar el viaje (así vota el
+    CFO) y que ella lo registre solo si es otro cambio y es urgente.
+
+**Verificado:**
+- `tools/check-trip-change.cjs`:
+  - la ventana en la app y en el servidor, día por día de 2026 a 2031;
+  - los casos de hoy, el regreso más tarde y los rechazos (ida, equipaje, regreso más temprano, solo hotel);
+  - el área de compras sin marca;
+  - de punta a punta: el voto del área no basta, el de Alejandro sí, y «Mis aprobaciones» dice por qué vota;
+  - con la política apagada, no vota el CFO.
+- `check-approvals` y `check-policy-approval` siguen en verde.
+- Entorno local con la exportación del 19-nov, entrando como Mateo:
+  - SOL-000777 y SOL-000782 aparecen con «solo puede alargar el viaje»;
+  - un regreso más temprano da aviso; equipaje y destino quedan deshabilitados;
+  - el regreso del 20-nov se envió (SOL-000794);
+  - Laura lo aceptó y confirmó el costo, y el correo de aprobación llegó a Mateo, a Alejandro y a Yurani (Cadena de Suministro, por el viaje más
+    el cambio), todos con el aviso.
+- `npm run verify` en verde.
+
+**Despliegue:** primero pegar `Code.gs` → versión nueva del web app; después el push del frontend.
+- **App nueva + servidor anterior:** la app ofrece el cambio, pero el servidor lo rechaza con el mensaje del plazo de siempre.
+- **Servidor nuevo + app anterior:** la app sigue sin ofrecerlo.
+- No hay menú que correr.

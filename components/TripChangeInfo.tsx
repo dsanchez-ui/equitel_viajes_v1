@@ -1,6 +1,6 @@
 import React from 'react';
 import { TravelRequest, TripChangeInfo } from '../types';
-import { fmtDayLong } from '../utils/changeWindow';
+import { fmtDayLong, fmtHourLabel } from '../utils/changeWindow';
 import { formatCop } from '../utils/money';
 
 // #A112: hora en 24 h, igual que en el formulario (Yurani, 27-oct-2026).
@@ -91,6 +91,12 @@ export const TripChangeBox: React.FC<{ request: TravelRequest; isAdmin?: boolean
           : 'El viaje original aún no se había comprado: este cambio se cotiza como el viaje completo y la original se anula al aprobarse.'}
         {isAdmin && info.parcial && !info.compraConfirmada && ' La reserva de la original se guardó por partes: el área de compras la confirma antes de cotizar el cambio.'}
       </p>
+      {info.fueraDePlazo && (
+        <p className="text-xs bg-orange-50 border border-orange-200 text-orange-900 rounded px-2 py-1" data-trip-change-late>
+          <strong>⏰ Se pidió después del plazo</strong> (venció el {fmtDayLong(info.fueraDePlazo.limite)} a las {fmtHourLabel(info.fueraDePlazo.hora)}): solo alarga el viaje
+          {request.lateChangeNeedsCfo ? <> y lo aprueba también <strong>{request.policyApproverName || request.budgetApproverName || 'el CFO'}</strong></> : null}.
+        </p>
+      )}
       {rows.length > 0 && <TripChangeRowsTable rows={rows} />}
       {request.changeReason && <p className="text-xs text-gray-700"><strong>Motivo:</strong> <em>"{request.changeReason}"</em></p>}
       {tripChangeBagLater(info) && (
