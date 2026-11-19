@@ -3867,7 +3867,8 @@ no haya dudas de por qué Laura registró un costo particular»*) ·
 ## **#A129 — Después del plazo, el viajero puede alargar el viaje; lo aprueba también el CFO**
 **Fecha:** 2026-11-19 · **Pedido por:** David y Yurani (casos SOL-000777 y SOL-000782 de Mateo Rodríguez: *«se les extendió la reparación…
 deben poder solicitar el cambio… la protección contra abusos sería que pida la aprobación»*) ·
-**Estado:** En `main`; pendiente pegar `Code.gs` y publicar la versión nueva del web app, y después el push.
+**Estado:** Desplegado el 2026-11-19 (David pegó `Code.gs` y publicó la versión nueva del web app; frontend `d351d12`, bundle `index-Cbzb_Rtx.js`,
+`version.json` `ae2b5991…`, el mismo del bundle).
 
 **Síntoma:**
 - Dos técnicos en Quibdó (SOL-000777, del 17 al 19-nov; SOL-000782, del 18 al 19-nov; tiquetes comprados) no alcanzaron a terminar la

@@ -788,8 +788,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-19)
 
-- **#A129 (después del plazo, alargar el viaje con el voto del CFO; casos SOL-000777 y SOL-000782 de Mateo): en `main`, pendiente de
-  desplegar.** Primero pegar `Code.gs` → versión nueva del web app; después el push. Sin menú.
+- **#A129 desplegado (19-nov)** (después del plazo, alargar el viaje con el voto del CFO; casos SOL-000777 y SOL-000782 de Mateo): David pegó
+  `Code.gs` (versión nueva del web app) y el frontend `d351d12` quedó en producción (bundle `index-Cbzb_Rtx.js`). Mateo pide los dos cambios
+  desde «Pedir un cambio» (regreso el 20-nov en la tarde) y le avisa a Laura; los aprueban Mateo y Alejandro.
 
 - **#A128 desplegado (18-nov)** (soporte del costo al confirmar costos, pedido de Yurani): David pegó `Code.gs` (versión nueva del web app)
   y el frontend `5c5441a` quedó en producción (bundle `index-Bx3CpPRY.js`). La columna `SOPORTE COSTO (JSON)` se crea sola en la primera
