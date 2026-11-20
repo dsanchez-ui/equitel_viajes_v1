@@ -7,8 +7,8 @@
 >
 > Para instalar el proyecto en una máquina nueva, ver [MIGRACION.md](MIGRACION.md).
 >
-> **Si esta sesión corre en macOS:** antes de cualquier tarea, haz lo que diga [MIGRACION.md §0](MIGRACION.md) mientras no
-> diga «Hecho» (Node 24 y el recordatorio de seguridad para todos los proyectos del Mac, pendiente desde el 22-oct-2026).
+> **Si esta sesión corre en macOS:** [MIGRACION.md §0](MIGRACION.md) dice **Hecho (20-nov-2026)** — Node 24.22.1, `npm ci`,
+> `npm run verify` y SSH revisados. Lo único que sigue pendiente, y es de David, son las actualizaciones del sistema.
 
 ## Qué es
 
@@ -821,7 +821,7 @@ autorización) y verificar antes de crear una versión nueva del web app.
   confirmación. Pendiente sin código: avisarle a Laura (Ctrl+V en *Confirmar costos*). Las confirmaciones de antes no tienen soporte.
 
 - **Retomar en el Mac (10-nov):** todo está en `main` y desplegado hasta #A127, y no queda nada por pegar en Apps Script. En el
-  Mac: primero [MIGRACION.md §0](MIGRACION.md) (Node 24 y el recordatorio para todos sus proyectos; sigue pendiente), luego
+  Mac: primero [MIGRACION.md §0](MIGRACION.md) (ya dice «Hecho»), luego
   `git pull`, `rm -rf node_modules && npm ci` y `npm run verify`. Para `npm run prueba:local` hay que descargar de nuevo la
   exportación de la hoja: la del PC Linux se queda allá (datos personales).
 
@@ -844,8 +844,9 @@ autorización) y verificar antes de crear una versión nueva del web app.
 - **#A118 y #A119 desplegados** (David confirmó el 5-nov que el `Code.gs` ya estaba pegado; frontend `fc73695`, revisión `00226`).
 - **Informe mensual de octubre (#A101):** llegó el martes 3-nov a Alejandro, Yurani y David.
 
-- **En el Mac, antes de nada: [MIGRACION.md §0](MIGRACION.md)** (Node 24, revisión del equipo y el recordatorio para todos sus
-  proyectos). En el PC Linux ya está hecho.
+- **El Mac quedó a punto el 20-nov** ([MIGRACION.md §0](MIGRACION.md), «Hecho»): Node 24.22.1, dependencias reinstaladas,
+  `npm run verify` en verde y `npm audit --omit=dev` sin vulnerabilidades. Falta solo lo que pide contraseña: las actualizaciones
+  del sistema y `brew upgrade`, que las corre David. El PC Linux está al día desde el 22-oct.
 - **#A115, #A116 y #A117 desplegados (David, 29-oct)** (rastreo continuo con el historial de Google, «Mes a mes» y el dashboard por
   pestañas): pegó `Code.gs` y `CostsDashboard.html` (versión nueva), `Rastreo.gs` en el proyecto aparte, corrió `activarRastreo` y
   revisó la fila `COMPLETO` de Juan Camilo en MISC. Con el plan gratis de SerpApi (250 al mes) el rastreo continuo gasta ~280: se

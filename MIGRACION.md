@@ -9,14 +9,21 @@ dependencias, no.
 
 ---
 
-## 0. Pendiente en el Mac (desde el 22-oct-2026)
+## 0. Puesta a punto del Mac — **Hecho (20-nov-2026)**
 
 > **Agente que trabaja en el Mac (macOS): haz esto antes de cualquier otra tarea** y cuéntale a David qué
 > hiciste y qué le toca a él. Cuando todo esté hecho, cambia «Estado» por la fecha y pásalo a «Hecho» en el
 > «Para retomar» de `CLAUDE.md`. Ese cambio es solo de documentos, pero subirlo a `main` despliega: avísale
 > a David antes del push.
 
-**Estado:** pendiente. El PC Linux ya está al día (Node 24.22.1 desde el 22-oct).
+**Estado: hecho el 20-nov-2026.** Node 24.22.1 (Homebrew), `npm ci` y `npm run verify` en verde,
+`npm audit --omit=dev` sin vulnerabilidades, `ssh -T git@github.com` saluda a `dsanchez-ui`, y el
+`~/.claude/CLAUDE.md` del Mac ya tiene el bloque de abajo y la regla del correo con su candado.
+El PC Linux está al día desde el 22-oct.
+
+**Lo que sigue siendo de David** (pide su contraseña, no lo hace el agente): las actualizaciones del
+sistema (Configuración → General → Actualización de software) y `brew update && brew upgrade`. La línea
+«Última revisión» del bloque de abajo sigue en *pendiente desde el 22-oct-2026* hasta que él las corra.
 
 1. **Node 24.22.1 o más nueva en la línea 24** (revisión de seguridad del 22-oct,
    [docs/SEGURIDAD_22OCT.md](docs/SEGURIDAD_22OCT.md)). Node 20 ya no recibe correcciones y la de octubre
