@@ -11,6 +11,12 @@
  *   4. El panel «Ayuda» (components/HelpMenu.tsx) ofrece solo archivos que existen,
  *      y todo lo publicado está ofrecido a alguien: ni enlaces rotos ni archivos huérfanos.
  *   5. Cada guía dice cuándo se actualizó.
+ *   6. `public/serve.json` es válido para `serve` y trae `cleanUrls: false`.
+ *      Lo segundo porque la app se sirve con `serve -s` (una sola página): con
+ *      `cleanUrls` encendido, /manuales/x.html redirige a /manuales/x, ese archivo
+ *      no existe y la regla de página única devuelve la app en vez del manual.
+ *      Lo primero porque el esquema no admite claves desconocidas (ni comentarios):
+ *      una de más y `serve` no arranca — el sitio entero se cae.
  *
  * No puede saber si el .md quedó al día con la app: eso se revisa al escribir la
  * entrada de BUG_REPORT.md.
@@ -86,6 +92,31 @@ ofrecidos.forEach(({ archivo, html }) => {
 Object.keys(PUBLICADOS).forEach((n) => {
   if (!esperados.has(n)) fallas.push(`se publica ${n} pero el panel «Ayuda» no lo ofrece a nadie`);
 });
+
+// --- 6: la configuración con que se sirven ---
+const SERVE = path.join(ROOT, 'public', 'serve.json');
+try {
+  const cfg = JSON.parse(fs.readFileSync(SERVE, 'utf8'));
+  if (cfg.cleanUrls !== false) {
+    fallas.push('public/serve.json debe tener "cleanUrls": false; si no, /manuales/x.html devuelve la app en vez del manual');
+  }
+  // Mismo esquema que usa `serve` al arrancar: no admite claves desconocidas.
+  let Ajv, schema;
+  try {
+    Ajv = require('ajv');
+    schema = require('@zeit/schemas/deployment/config-static.js');
+  } catch (e) { /* sin las dependencias de serve no se puede validar; no es motivo de falla */ }
+  if (Ajv && schema) {
+    const validar = new Ajv({ allowUnionTypes: true, strict: false }).compile(schema);
+    if (!validar(cfg)) {
+      (validar.errors || []).forEach((e) => {
+        fallas.push(`public/serve.json no cumple el esquema de serve (${e.instancePath || '/'} ${e.message}): con una clave de más, serve no arranca y el sitio no sirve nada`);
+      });
+    }
+  }
+} catch (e) {
+  fallas.push('no se pudo leer public/serve.json: ' + e.message);
+}
 
 // --- resultado ---
 if (fallas.length) {
