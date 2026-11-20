@@ -4,8 +4,10 @@
 
 | Archivo | Contenido |
 |---|---|
-| [guia-administrador.md](./guia-administrador.md) | **Guía técnica completa** del administrador — arquitectura, workflows, Script Properties, triggers, troubleshooting. |
-| [guia-administrador.pdf](./guia-administrador.pdf) | PDF de la guía técnica (11 páginas). |
+| [infografia-procedimiento.html](./infografia-procedimiento.html) | **El procedimiento en dos hojas** (#A130) — quién interviene, el camino completo de una solicitud y qué cambia en cada caso (hospedaje, multidestino, fuera de plazo, cambios). Se publica en la app y es lo que se le pasa a quien no la usa. |
+| [guia-usuario.md](./guia-usuario.md) | **Guía del usuario** — pedir un viaje, describir la selección, cambiarlo, anularlo. Se publica en la app para todos. |
+| [guia-area-compras.md](./guia-area-compras.md) | **Guía del área de compras** (#A130) — la operación del día a día: cotizar, confirmar costos, registrar la reserva, cambios, usuarios y métricas. Se publica en la app para los administradores. |
+| [guia-administrador.md](./guia-administrador.md) | **Guía técnica del administrador** — arquitectura, hojas, activadores, Script Properties, funciones del editor, respaldo y despliegue. **No se publica:** es la otra mitad de la guía que se separó en #A130. |
 | [guia-hoja-calculo.md](./guia-hoja-calculo.md) | **Guía simple del Google Sheets** — explicación no-técnica de cada hoja, cada botón del menú, qué editar y qué no. |
 | [guia-hoja-calculo.pdf](./guia-hoja-calculo.pdf) | PDF de la guía del Sheets (7 páginas). Recomendada para admins nuevos. |
 | [guia-reorganizar-base.md](./guia-reorganizar-base.md) | Guía específica del workflow de reorganización de columnas de la hoja principal. |
@@ -13,7 +15,7 @@
 | [plan-reuniones-2026-09-24-al-10-01.md](./plan-reuniones-2026-09-24-al-10-01.md) | **Plan de trabajo (borrador)** — lo pedido, comprometido y decidido en las reuniones del 24-sep, 30-sep y 1-oct, con citas textuales. Viajes en detalle; otros proyectos en un anexo. |
 | [plan-lectura-facturas.md](./plan-lectura-facturas.md) | **Plan (sin desarrollar)** — lectura automática de las facturas PDF con Gemini desde un proyecto de Apps Script aparte que escribe en la hoja (V5 de las reuniones). |
 | [plan-cambios-de-viaje.md](./plan-cambios-de-viaje.md) | **Plan (sin desarrollar, en revisión con Yurani y Laura)** — cambios de viaje simplificados: botón para el viajero, formulario de cuatro preguntas, plazo hasta el día hábil anterior, costo del cambio con la original «Cambiada» y control del sobrecosto. Prototipo en Claude (privado). |
-| [plan-manuales-en-app.md](./plan-manuales-en-app.md) | **Plan (sin desarrollar)** — manuales dentro del portal: botón «Manuales» por rol, guías como archivos fijos en `public/manuales/`, guía del área de compras separada de la técnica y ayuda en contexto. |
+| [plan-manuales-en-app.md](./plan-manuales-en-app.md) | **Plan — fases 1 y 2 hechas (#A130)** — manuales dentro del portal: botón «Manuales» por rol, guías como archivos fijos en `public/manuales/`, guía del área de compras separada de la técnica y ayuda en contexto. |
 | [plan-comparador-precios.md](./plan-comparador-precios.md) | **Propuesta + prueba** — comparador de precios de tiquetes (Google Flights vía SerpApi, sin IA) y estudio de 2–3 semanas de sobrecosto frente a Aviatur. Pedido de Alejandro Gómez. |
 | [presentacion-impacto.html](./presentacion-impacto.html) | Infografía ejecutiva del impacto del portal (HTML con CSS custom — no usa markdown). |
 | [presentacion-impacto.pdf](./presentacion-impacto.pdf) | PDF ejecutivo para presentar a gerencia (antes vs después, cifras reales, testimonios). |

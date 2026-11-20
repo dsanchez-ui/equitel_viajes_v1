@@ -1,8 +1,14 @@
 # Plan — Manuales dentro de la app
 
-> **Estado (2026-10-14): solo plan, por decisión de David.** Hoy David envía los PDF de
-> `docs/` uno por uno. La idea es que cada persona encuentre su manual en el portal, siempre
-> en la versión vigente, sin que nadie se lo mande.
+> **Estado (2026-11-20): fases 1 y 2 hechas (#A130).** El botón **«Ayuda»** del encabezado
+> abre los manuales del rol desde `public/manuales/`, `npm run build:guia` los publica y
+> `tools/check-manuales.cjs` (dentro de `npm run verify`) garantiza que lo publicado es lo
+> que está en `docs/`. La guía del administrador quedó separada en
+> [guía del área de compras](./guia-area-compras.md) (se publica) y guía técnica (solo repo),
+> y se agregó la [infografía del procedimiento](./infografia-procedimiento.html).
+>
+> **Pendientes:** fase 3 (ayuda en contexto, §3.4) y fase 4 (enlaces en los correos, §3.5,
+> que sí toca `Code.gs`). Los pantallazos de §3.3 siguen sin hacerse.
 
 ---
 

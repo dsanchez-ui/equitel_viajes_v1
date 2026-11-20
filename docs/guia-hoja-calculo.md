@@ -4,7 +4,7 @@
 >
 > **En qué se enfoca:** solo en la hoja de cálculo. Qué tiene, qué se puede tocar y qué no, y cómo usar el menú **Equitel Viajes** que aparece arriba del sheet.
 >
-> **Guía complementaria:** para la operación del portal completo (roles, workflows del analista, Script Properties, triggers, métricas, seguridad), ver la [Guía del Administrador](./guia-administrador.md).
+> **Guías complementarias:** para la operación del portal (roles, trabajo del día a día, usuarios, métricas), ver la [Guía del área de compras](./guia-area-compras.md); para lo técnico (activadores, Script Properties, respaldo), la *Guía técnica del administrador*, que está en el repo. El procedimiento completo, en dos hojas, está en la [infografía del procedimiento](./infografia-procedimiento.html).
 
 ---
 
@@ -526,9 +526,9 @@ Se calculan al leer la solicitud y no se guardan como columnas — son derivados
 
 ## Referencias cruzadas
 
-- [Guía del Administrador](./guia-administrador.md) — operación completa del portal, Script Properties, triggers, métricas, seguridad.
+- [Guía del área de compras](./guia-area-compras.md) — operación completa del portal, triggers, métricas, seguridad.
 - [Guía de reorganización de columnas](./guia-reorganizar-base.md) — workflow de 6 pasos para reordenar "Nueva Base Solicitudes" sin romper el portal.
 
 ---
 
-*Última actualización: 2026-04-20*
+*Última actualización: 2026-11-20*

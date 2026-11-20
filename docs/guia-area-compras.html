@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guía del área de compras — Portal de Viajes Equitel</title>
+  <style>
+  :root {
+    --brand: #D71920;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --bg-light: #f9fafb;
+    --bg-code: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: white;
+    line-height: 1.6;
+    font-size: 13px;
+  }
+  .wrapper { max-width: 820px; margin: 0 auto; padding: 40px 50px; }
+  h1 {
+    color: var(--brand); font-size: 28px; margin: 0 0 8px;
+    letter-spacing: -0.5px; border-bottom: 3px solid var(--brand); padding-bottom: 12px;
+  }
+  h2 {
+    color: #111827; font-size: 20px; margin: 32px 0 12px;
+    border-top: 1px solid var(--border); padding-top: 18px;
+  }
+  h3 { color: #374151; font-size: 15px; margin: 20px 0 8px; font-weight: 600; }
+  p { margin: 10px 0; }
+  ul, ol { margin: 10px 0; padding-left: 26px; }
+  li { margin: 4px 0; }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--bg-code); padding: 1px 5px; border-radius: 3px;
+    font-size: 12px; font-family: Consolas, "Courier New", monospace;
+  }
+  pre {
+    background: #1f2937; color: #e5e7eb; padding: 14px 18px;
+    border-radius: 6px; overflow-x: auto; font-size: 11px; line-height: 1.5;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; font-size: 11px; }
+  blockquote {
+    border-left: 4px solid var(--brand); background: #fef2f2;
+    padding: 10px 16px; margin: 14px 0; color: #7f1d1d; border-radius: 0 4px 4px 0;
+  }
+  blockquote p { margin: 4px 0; }
+  table { border-collapse: collapse; margin: 14px 0; width: 100%; font-size: 12px; }
+  th, td {
+    border: 1px solid var(--border); padding: 7px 10px;
+    text-align: left; vertical-align: top;
+  }
+  th { background: var(--bg-light); font-weight: 600; color: #111827; }
+  tr:nth-child(even) td { background: #fafafa; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+  strong { color: #111827; }
+  @page { size: Letter; margin: 18mm; }
+  @media print {
+    body { font-size: 11.5px; }
+    .wrapper { max-width: 100%; padding: 0; margin: 0; }
+    h1 { font-size: 22px; page-break-before: avoid; }
+    h2 { page-break-after: avoid; font-size: 16px; }
+    h3 { page-break-after: avoid; font-size: 13px; }
+    table, pre, blockquote { page-break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>Guía del área de compras — Portal de Viajes Equitel</h1>
+<blockquote>
+<p><strong>Para quién es:</strong> quien gestiona los viajes día a día — cotizar opciones, confirmar
+costos, registrar reservas, resolver cambios y mantener la base de usuarios.</p>
+<p><strong>Si lo que busca es el procedimiento completo</strong> (quién interviene en cada etapa y qué
+pasa en cada caso), está resumido en una hoja en la
+<a href="./infografia-procedimiento.html">infografía del procedimiento</a>.</p>
+<p><strong>Lo que no cubre:</strong> la parte técnica del sistema (activadores, propiedades del script,
+respaldos, despliegue). Eso está en la <em>Guía técnica del administrador</em>, dentro del repo.</p>
+</blockquote>
+<hr>
+<h2>1. Vista general</h2>
+<h3>¿Qué es el sistema?</h3>
+<p>Una plataforma web donde los empleados piden viajes y hospedajes corporativos, sus jefes aprueban, y el área de compras gestiona la compra. Todo el estado vive en un Google Sheets, la lógica en un proyecto Apps Script, y el frontend en React desplegado en Cloud Run.</p>
+<h3>Los cuatro roles de usuario</h3>
+<table>
+<thead>
+<tr>
+<th>Rol</th>
+<th>Qué hace</th>
+<th>Dónde ingresa</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Solicitante</strong></td>
+<td>Crea solicitudes de viaje/hospedaje, selecciona opciones, sube soportes post-viaje.</td>
+<td>Botón rojo <strong>INGRESAR</strong> con su correo corporativo + PIN personal.</td>
+</tr>
+<tr>
+<td><strong>Aprobador</strong></td>
+<td>Recibe correo de aprobación, click en APROBAR o DENEGAR. NO necesita iniciar sesión en la app.</td>
+<td>Botones firmados HMAC en el correo.</td>
+</tr>
+<tr>
+<td><strong>Analista / Admin (ANALYST)</strong></td>
+<td>Cotiza opciones, confirma costos, registra reservas, gestiona usuarios, consulta métricas. Puede saltar la etapa de selección cuando el viaje se gestionó fuera del sistema. Puede omitir el correo automático al registrar una reserva.</td>
+<td>Botón negro <strong>ADMINISTRADOR</strong> con PIN admin compartido, o botón rojo <strong>INGRESAR</strong> con su PIN personal si tiene fila en USUARIOS.</td>
+</tr>
+<tr>
+<td><strong>Superadmin (SUPERADMIN)</strong></td>
+<td>Todo lo del analista <strong>más</strong>: recibir escalamientos cuando los aprobadores no responden, alternar entre vista admin y vista usuario con el botón <strong>VER USUARIO / VER ADMIN</strong>, y modificar cualquier solicitud (no solo las propias).</td>
+<td>Igual que analista. El rol se asigna en <code>SUPER_ADMIN_EMAILS</code> (Script Property).</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><strong>Jerarquía:</strong> SUPERADMIN hereda todo lo de ANALYST; ANALYST hereda todo lo de SOLICITANTE. Quien está en <code>SUPER_ADMIN_EMAILS</code> NO necesita estar también en <code>ANALYST_EMAILS</code> — la herencia es automática.</p>
+</blockquote>
+<hr>
+<h2>2. Ciclo de vida de una solicitud (estados)</h2>
+<pre><code>  CREAR
+    ↓
+  PENDIENTE_APROBACION       ← aprobadores pueden aprobar/denegar por correo
+    ↓ (aprobado)
+  PENDIENTE_OPCIONES          ← analista debe subir opciones de vuelo/hotel
+    ↓ (opciones subidas)
+  PENDIENTE_SELECCION         ← usuario debe describir su selección
+    ↓ (usuario escribe)
+  PENDIENTE_CONFIRMACION_COSTO ← analista debe confirmar costos finales
+    ↓ (costos confirmados)
+  PENDIENTE_APROBACION         ← nueva aprobación si &gt;$1.2M o internacional
+    ↓
+  APROBADO                    ← todas las aprobaciones completas
+    ↓ (analista registra reserva)
+  RESERVADO                   ← PNR + archivos de confirmación subidos
+    ↓ (post-viaje, soportes subidos)
+  PROCESADO                   ← estado final
+</code></pre>
+<p><strong>Estados terminales</strong> (no pueden volver):</p>
+<ul>
+<li><code>DENEGADO</code> — algún aprobador dijo no</li>
+<li><code>ANULADO</code> — cancelada manualmente por admin o usuario</li>
+<li><code>PROCESADO</code> — ciclo completo</li>
+</ul>
+<p><strong>Estado especial de cambios:</strong></p>
+<ul>
+<li><code>PENDIENTE_ANALISIS_CAMBIO</code> — una solicitud “hija” que reemplaza a otra. El admin decide pasarla a estudio (entra al flujo normal) o denegarla (y decidir qué hacer con la original).</li>
+</ul>
+<p><strong>Estado especial de la política de anticipación (#A100, octubre de 2026):</strong></p>
+<ul>
+<li><code>PENDIENTE_APROBACION_POLITICA</code> — la pidió un solicitante con menos anticipación de la que pide la política (8 días nacional, 30 internacional; también solo hospedaje). Ver <a href="#515-solicitudes-fuera-de-plazo-y-tarifas-superiores-aprobaci%C3%B3n-del-cfo">§3.15</a>.</li>
+</ul>
+<p><strong>Aprobadores requeridos según el tipo de solicitud:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Tipo de solicitud</th>
+<th>Aprobador de área</th>
+<th>Director de Cadena de Suministro (CDS)</th>
+<th>Gerencia General (CEO)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nacional ≤ $1.200.000</td>
+<td>✅ obligatorio</td>
+<td>❌ no aplica</td>
+<td>❌ no aplica</td>
+</tr>
+<tr>
+<td>Nacional &gt; $1.200.000</td>
+<td>✅ obligatorio</td>
+<td>✅ obligatorio</td>
+<td>❌ no aplica (se excluye desde el flujo)</td>
+</tr>
+<tr>
+<td>Internacional (cualquier monto)</td>
+<td>✅ obligatorio</td>
+<td>✅ al menos uno de los dos</td>
+<td>✅ al menos uno de los dos</td>
+</tr>
+</tbody>
+</table>
+<p>Cuando el solicitante <strong>es</strong> un ejecutivo (CEO o CDS), su sola aprobación basta y los banners de “aprobación extraordinaria” / “internacional” se ocultan para no saturarlo. La app también incluye una <strong>defensa en el mapper</strong>: si el status global es <code>APROBADO</code> pero la celda ejecutiva quedó vacía porque el propio ejecutivo se aprobó a sí mismo, la app muestra <code>APROBADO</code> en esa fila automáticamente.</p>
+<hr>
+<h2>3. El trabajo del día a día</h2>
+<h3>3.1 Cotizar opciones (PENDIENTE_OPCIONES → PENDIENTE_SELECCION)</h3>
+<ol>
+<li>Panel admin → fila con status <code>PENDIENTE_OPCIONES</code></li>
+<li>Abre el detalle → <strong>“Subir imágenes de opciones”</strong></li>
+<li>Para vuelos: sube una imagen por opción (A, B, C…). Si hay ida y vuelta, indica dirección IDA o VUELTA. Para hoteles: sube una imagen por opción.
+<ul>
+<li>En vuelos, arriba aparece la <strong>tarifa a cotizar según el manual COM-P-02</strong> (#A95): TIPO 1 para viajes de 0 a 1 noche, TIPO 2 de 2 a 5 y TIPO 3 de 6 o más, con su nombre en cada aerolínea (por ejemplo, TIPO 2 = Avianca Classic, LATAM Light).</li>
+</ul>
+</li>
+<li>Al guardar, el sistema envía automáticamente un correo al solicitante con las imágenes.</li>
+</ol>
+<h3>3.2 Revisar selección y confirmar costos (PENDIENTE_CONFIRMACION_COSTO → PENDIENTE_APROBACION)</h3>
+<ol>
+<li>Fila con status <code>PENDIENTE_CONFIRMACION_COSTO</code></li>
+<li><strong>“Confirmar costos”</strong> abre un modal con todo el detalle de la solicitud a la izquierda (#A81): viaje, datos corporativos y OT, pasajeros con su fecha de nacimiento y celular, hospedaje, observaciones y las imágenes de las opciones. A la derecha, el texto que escribió el usuario (“Opción A, categoría Económica…”) y el formulario. Ya no hace falta abrir la solicitud en otra pestaña.</li>
+<li>Escribe el costo de los tiquetes y, si aplica, el del hotel, en pesos, con o sin puntos de miles (<code>889.518</code> o <code>889518</code>). Bajo cada campo aparece cómo se va a registrar. Si no tiene costo (por ejemplo, un apartamento corporativo), escribe <code>0</code>; cualquier otro valor debe ser de al menos $10.000. La confirmación avisa si el total queda en $0.
+<ul>
+<li><strong>Compra prevista</strong> (#A82): la <strong>aerolínea</strong> (lista o “Otra…”) y el <strong>canal</strong>: <em>Aviatur</em>, <em>Directo</em> (con la aerolínea o, en solo hospedaje, con el hotel) u <em>Otra agencia</em>. Son obligatorios; en solo hospedaje no se pide aerolínea.</li>
+<li><strong>Regreso con otra aerolínea</strong> (#A85): si la ida es con una aerolínea y el regreso con otra (por ejemplo, LATAM de ida y Avianca de regreso), marca <em>“El regreso es con otra aerolínea”</em> y elige la del regreso. Solo aparece en viajes con regreso.</li>
+<li><strong>Tarifa del tiquete</strong> (#A95): viene seleccionada la que recomienda el manual COM-P-02 por las noches del viaje, con el equipaje que incluye. Si vas a comprar otra, elígela y escribe por qué en <em>“¿Por qué otra tarifa?”</em> (mínimo 10 caracteres). Si el viajero marcó <em>maleta de bodega</em> en la solicitud, el bloque lo dice y muestra qué tarifas la incluyen; al elegir una de ellas el motivo se llena solo (puedes cambiarlo), y si eliges una que no la incluye te avisa. Es obligatoria en vuelos; en solo hospedaje no aparece. Ver <a href="manual-com-p-02.md">manual-com-p-02.md</a>.</li>
+<li><strong>Soporte del costo</strong> (#A128, opcional): el pantallazo o el PDF de la cotización con el precio de hoy. La forma más rápida: toma el pantallazo y, con la ventana de <em>Confirmar costos</em> abierta, pulsa <strong>Ctrl+V</strong> (no hace falta hacer clic en ningún lugar). También puedes arrastrar el archivo al recuadro o hacer clic para elegirlo. Imágenes o PDF, hasta 10 MB cada uno y máximo 5; con la ✕ quitas uno. Los archivos se suben al tocar <em>Confirmar y Enviar</em> (si cancelas, no se guarda nada). Quien aprueba los ve en el correo, en «Mis aprobaciones» y en el detalle, con la fecha y la hora en que confirmaste y la frase <em>«Las tarifas cambian con los días: este es el valor de ese momento»</em>. Así, si aprueban días después y el precio ya subió, se sabe por qué registraste ese valor. El viajero también lo ve en su solicitud.</li>
+</ul>
+</li>
+<li>Al guardar, si el total ≤ $1.2M y no es internacional → pasa a <code>APROBADO</code> directo. Si no → pasa a <code>PENDIENTE_APROBACION</code> y se envía correo a CEO + CDS + aprobador de área.</li>
+</ol>
+<p><strong>Costos mal digitados antes del 2026-09-14:</strong> con el campo anterior, <code>889.518</code> se guardaba como 889 pesos con decimales. <strong>Equitel Viajes → 11. Corregir costos mal digitados</strong> los corrige: muestra una vista previa, pide confirmación, deja una nota en OBSERVACIONES y el detalle en la pestaña “Reporte corrección costos”. Los que no se pueden deducir (por ejemplo, costos de $1) solo los lista para revisarlos a mano.</p>
+<ul>
+<li><strong>Tarifa superior a la del manual</strong> (#A100): si eliges una tarifa de mayor TIPO que la recomendada (con nombre distinto, p. ej. <em>Light</em> en un viaje de 1 noche), el bloque avisa que la aprobación también le pedirá el voto a quien aprueba las excepciones (hoy Alejandro Gómez). Ver <a href="#515-solicitudes-fuera-de-plazo-y-tarifas-superiores-aprobaci%C3%B3n-del-cfo">§3.15</a>.</li>
+</ul>
+<h3>3.3 Registrar reserva (APROBADO → RESERVADO)</h3>
+<ol>
+<li>Fila con status <code>APROBADO</code></li>
+<li>Abre el detalle → <strong>“Registrar reserva”</strong></li>
+<li>Ingresa:
+<ul>
+<li><strong>No. reserva / PNR</strong> (texto libre, 3-10 caracteres usualmente)</li>
+<li><strong>Tarjeta de crédito</strong> usada (del dropdown)</li>
+<li><strong>Fecha de compra</strong> (hoy por default; si ya hay una guardada, por ejemplo de una reserva parcial, viene esa)</li>
+<li><strong>Archivos de confirmación</strong> (PDF de la aerolínea / hotel — puedes subir varios)</li>
+<li><strong>Compra (aerolínea y canal)</strong> (#A82): viene llena con lo previsto al confirmar costos. Cámbiala si se compró por otro canal (por ejemplo, directo con la aerolínea porque Aviatur no ajustó el precio). Es obligatoria al registrar; al corregir una reserva es opcional. Si el regreso se compró con otra aerolínea, marca <em>“El regreso es con otra aerolínea”</em> (#A85).</li>
+<li><strong>Tarifa comprada</strong> (#A95): viene con la que se registró al confirmar costos. Cámbiala si al final se compró otra; si no es la recomendada, escribe por qué. Es obligatoria al confirmar la reserva; al corregir o con <em>“Guardar sin enviar”</em> solo se revisa si la cambias.</li>
+<li><strong>Hotel (nombre y canal)</strong> (#A94): solo en solicitudes con hospedaje. Viene con el hotel que pidió el viajero; cámbialo si reservaste otro y elige el canal (<em>Aviatur</em>, <em>Directo con el hotel</em> u <em>Otra agencia</em>). Es obligatorio al confirmar la reserva; con <em>“Guardar sin enviar”</em> puede quedar para después. Si al final no se reservó hotel (lo quitó el aprobador o es un apartamento corporativo), marca <em>“No se reservó hotel”</em>. En solo hospedaje este bloque reemplaza al de compra.</li>
+<li><strong>Valor pagado (opcional)</strong> (#A102): lo que se pagó por los tiquetes y, si hubo hotel, por el hotel, en pesos (con o sin puntos de miles; 0 vale para un apartamento corporativo). Si aún no lo tienes, déjalo vacío y agrégalo después con <em>“Corregir reserva”</em>. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado.</li>
+</ul>
+</li>
+<li>Al guardar:
+<ul>
+<li>La carpeta en Drive se renombra a <code>SOL-000123 - PNR12345 - TC 1234 - MAY 26</code></li>
+<li>Se envía correo al usuario con el PNR y los archivos adjuntos</li>
+</ul>
+</li>
+</ol>
+<h3>3.4 Corregir una reserva ya registrada (RESERVADO → RESERVADO)</h3>
+<p>Si algo salió mal (PNR equivocado, archivo erróneo, cambió la tarjeta):</p>
+<ol>
+<li>Fila con status <code>RESERVADO</code></li>
+<li>Abre el detalle → <strong>“Corregir reserva”</strong></li>
+<li>Puedes:
+<ul>
+<li>Editar PNR / tarjeta / fecha (la fecha viene con la de compra registrada: cámbiala solo si está mal)</li>
+<li>Eliminar archivos existentes</li>
+<li>Subir archivos nuevos</li>
+<li>Agregar nota de corrección (explicación libre)</li>
+<li>Cambiar la compra: aerolínea, canal, tarifa, hotel o valor pagado</li>
+</ul>
+</li>
+<li>El usuario recibe un correo “Corrección de reserva” con los nuevos datos.
+<ul>
+<li><strong>Excepción (#A102):</strong> si solo cambiaste la compra (aerolínea, canal, tarifa, hotel o valor pagado) y nada de la reserva (PNR, tarjeta, fecha, archivos ni nota), se guarda <strong>sin correo</strong>: el viajero no ve esos datos. Así puedes agregar el valor pagado cuando lo tengas.</li>
+</ul>
+</li>
+</ol>
+<h3>3.5 Cerrar la solicitud (RESERVADO → PROCESADO)</h3>
+<p>Cuando los soportes post-viaje están listos:</p>
+<ol>
+<li>Fila con status <code>RESERVADO</code></li>
+<li><strong>“Finalizar solicitud”</strong> → se genera automáticamente el reporte PDF de soporte</li>
+<li>Estado final: <code>PROCESADO</code></li>
+</ol>
+<p><strong>Listas para cerrar y facturas por revisar (#A83).</strong> En el panel del analista aparece una barra con dos cifras: <strong>✅ Listas para cerrar</strong> y <strong>🧾 Facturas por revisar</strong>. Al abrirla se ven las dos listas. <strong>Ninguna solicitud se cierra sola:</strong> tú las revisas y las cierras.</p>
+<p><strong>Listas para cerrar.</strong> Solicitudes <code>RESERVADO</code> que cumplen las tres condiciones:</p>
+<ul>
+<li>el viaje ya terminó (fecha de regreso o, si es solo ida, la de ida, anterior a hoy). Antes no aparecen, porque una solicitud <code>PROCESADO</code> ya no se puede modificar.</li>
+<li>lo facturado es <strong>igual o mayor</strong> que lo cotizado. Una diferencia menor a $1.000 cuenta como igual (redondeo). Facturar de más es normal y no es error.</li>
+<li>hay <strong>al menos un PDF de factura subido por el sistema por cada factura escrita</strong> (los de la reserva no cuentan). Es la misma regla con que avisa el cierre manual, y es necesaria porque con la solicitud <code>PROCESADO</code> ya no se pueden subir soportes desde la app.</li>
+</ul>
+<p>Lo facturado se suma igual que en el dashboard de costos, con las facturas 1 a 6. Cada fila muestra cotizado, facturado y cuántos PDF hay. El botón <strong>Cerrar</strong> es el cierre manual de siempre: pide confirmación (con el resumen “Facturado $X de $Y cotizado; N PDF de M facturas”) y genera el reporte PDF.</p>
+<p><strong>Facturas por revisar.</strong> Viajes terminados hace 7 días o más cuyas facturas suman menos de lo cotizado, no tienen ninguna o no tienen sus PDF subidos. Cada fila muestra cotizado, facturado y lo que falta: el monto, o “Faltan PDF (1 de 2)”. Botones:</p>
+<ul>
+<li><strong>Subir PDF:</strong> abre los soportes de la solicitud. Al subir el que falta y pulsar <strong>↻ Actualizar</strong>, pasa a “Listas para cerrar”.</li>
+<li><strong>Cerrar:</strong> el cierre manual de siempre, aunque falten facturas.</li>
+<li><strong>Omitir aviso:</strong> deja de mostrarla y anota quién y cuándo en la columna <code>AVISO FACTURAS OMITIDO</code>. Si después se completan las facturas y sus PDF, pasa a “Listas para cerrar”. Para volver a ver el aviso, borra esa celda.</li>
+</ul>
+<p>Las listas se consultan al abrir el panel y con <strong>↻ Actualizar</strong>. No envían correos ni cambian nada en la hoja.</p>
+<h3>3.6 Gestionar solicitudes de cambio («Cambiar mi viaje», #A103)</h3>
+<p>Desde el 19-oct los viajeros piden los cambios con el botón <strong>😕 ¿Necesita cambiar su viaje?</strong>: fecha, hora, destino o equipaje, con un motivo obligatorio, hasta las <strong>5:00 p. m. del día hábil anterior al vuelo</strong> (sábado 12:00 m.; domingos y festivos no cuentan). Con el viaje en curso solo cambian el regreso. Si el tiquete <strong>no se ha comprado</strong>, nadie ha volado: el viajero cambia todo el viaje con una fecha de ida nueva que dé tiempo, aunque la de la solicitud ya haya llegado (#A120, caso SOL-000714). En el panel esas solicitudes dicen <strong>IDA VENCIDA · SE PUEDE CAMBIAR</strong> en vez de «ABANDONADA», y <strong>CAMBIO EN CURSO</strong> si ya tienen uno (#A126); usted lo registra a nombre del viajero con «Solicitar Cambio» en el detalle. Puede poner una ida que ya pasó (el viajero ya voló, p. ej. porque no había tiquete el día pedido) mientras el regreso sea de hoy en adelante (#A127); si el viaje ya terminó del todo, es una solicitud nueva. Después del plazo, y solo si es urgente, el portal les dice a quién llamar y en qué orden (tabla de MISC, <strong>menú 16</strong>; ver abajo). <strong>Después del plazo, el viajero sí puede pedir alargar el viaje</strong> (#A129, casos SOL-000777 y SOL-000782): con el tiquete comprado y el regreso de hoy en adelante, un regreso más tarde (fecha u hora) y, si hace falta, otro hospedaje. Te llega con el aviso <strong>«Pedido después del plazo… Es urgente»</strong> y en «Revisar Cambio» dice <strong>«Se pidió después del plazo»</strong>: gestiónalo ese mismo día. En la aprobación vota también quien aprueba las excepciones (hoy Alejandro Gómez), además del aprobador de área; no se puede comprar hasta que los dos aprueben (o Yurani o David salten la etapa).</p>
+<p>Se crea una solicitud “hija” en <code>PENDIENTE_ANALISIS_CAMBIO</code>, ligada a la original, con lo de antes y lo de ahora. Te llega el correo <strong>CAMBIO DE VIAJE</strong>.</p>
+<ol>
+<li>En el panel, la fila del cambio tiene <strong>🔄 Revisar Cambio</strong>. La ventana muestra:
+<ul>
+<li>qué cambia (antes / ahora), el motivo y si la maleta se pidió después de comprar;</li>
+<li><strong>lo que ya se compró</strong> de la original (PNR, aerolínea, canal, tarifa, valor pagado, tarjeta, fecha y archivos);</li>
+<li>un <strong>mensaje listo para la agencia</strong> con el botón para copiarlo.</li>
+</ul>
+</li>
+<li><strong>ACEPTAR Y COTIZAR</strong> → la hija sigue el flujo de siempre (opciones, selección del viajero o saltar la selección, confirmar costos, aprobación, reserva).
+<strong>Denegar</strong> funciona igual que antes (mantener la original, anularla o consultar al usuario).</li>
+<li><strong>Confirmar costos</strong> de un cambio de un tiquete <strong>ya comprado</strong>: se escribe <strong>solo el costo del cambio</strong> en tres campos: <em>Penalidad y cargos</em>, <em>Diferencia de tarifa</em> y <em>Hotel</em> (si cambió). Al lado ves lo que costó el viaje, el viaje con el cambio y cuánto suma. Si no tiene costo, escribe 0: igual va al aprobador.</li>
+<li>El aprobador recibe <strong>APROBACIÓN DE CAMBIO</strong> con lo que costó el viaje, el costo del cambio y el total. Cadena de Suministro aprueba si el <strong>viaje con el cambio</strong> supera $1.200.000.</li>
+<li>Al <strong>registrar la reserva</strong> del cambio, la aerolínea, el canal, el PNR y la tarjeta vienen de la compra original: corrige solo lo que cambió. La original <strong>no se anula</strong>: queda «Cambiada» (columna <code>REEMPLAZADA POR</code>) y su costo sigue contando.</li>
+</ol>
+<p>Si el tiquete <strong>no se había comprado</strong>, la hija se cotiza como el viaje completo y la original se anula al aprobarse el cambio, como antes.</p>
+<p><strong>Si la original tiene la reserva guardada por partes</strong> («Guardar sin enviar», sigue en APROBADO; #A109): para la plataforma el tiquete <strong>ya está comprado</strong>. En <strong>Revisar Cambio</strong> sale un aviso amarillo y <em>ACEPTAR Y COTIZAR</em> queda desactivado hasta que confirmes lo que se compró:</p>
+<ol>
+<li>Toca <strong>Confirmar lo que se compró de SOL-…</strong>. Se abre <em>Registrar reserva</em> de la original, con el PNR, la compra y lo pagado ya puestos y <strong>sin correo al viajero</strong> (ya pidió otras fechas).</li>
+<li>Si el hotel no se alcanzó a reservar, marca <strong>No se reservó hotel</strong>: el hotel de las fechas nuevas va en el cambio. Si sí se reservó, escribe el hotel y lo pagado.</li>
+<li><strong>Confirmar lo que se compró</strong> → la original queda RESERVADO y sale un aviso verde. Ahora sí, <strong>ACEPTAR Y COTIZAR</strong>: el cambio se cotiza como cambio de un tiquete comprado (penalidad, diferencia de tarifa y hotel) y la original no se anula.</li>
+</ol>
+<p><strong>Si un viajero te pide un cambio por correo, teléfono o WhatsApp</strong> (#A106, Yurani y David, 22-oct):</p>
+<ul>
+<li><strong>Si todavía está en plazo</strong>, pídele que lo haga en la plataforma con «Cambiar mi viaje»: así queda con su motivo y a su nombre. Si abres <strong>Solicitar Cambio</strong> en un viaje así, la ventana te avisa en amarillo que el viajero todavía puede pedirlo él mismo y hasta cuándo.</li>
+<li><strong>Si ya pasó el plazo y es urgente</strong>, ábrelo desde el detalle de la solicitud con <strong>Solicitar Cambio</strong>. Lo registras a nombre del viajero, sin plazo, y queda constancia de que lo registraste tú. Si hay que cambiar pasajeros, el centro de costo o el hotel, usa <strong>el formulario completo</strong> desde esa misma ventana.</li>
+</ul>
+<p><strong>A quién llama el viajero después del plazo (menú 16).</strong> La lista está en MISC: correo, nombre y cargo de cada persona, en el orden en que se llama (la primera y, si no responde, la siguiente; máximo 3). El celular se toma de la columna <em>Celular</em> de USUARIOS, así que se corrige en un solo lugar (sidebar o panel móvil). <strong>Equitel Viajes → 16. Contactos para cambios de viaje</strong> crea la tabla la primera vez (con Laura y Diego), muestra el mensaje que ve el viajero y avisa si a alguien le falta el celular. Si alguien cambia de rol, se cambia su fila. La app lo muestra en unos 10 minutos, o de inmediato al volver a correr el menú.</p>
+<p><strong>Control:</strong> <em>Métricas → 🔄 Cambios</em> muestra cada cambio con lo que costó el viaje, el costo del cambio, la penalidad, las maletas pedidas después y el total por unidad (y CSV). El dashboard de costos tiene la pestaña <strong>🔄 Cambios de viaje</strong> por unidad (cada líder ve las suyas) y el informe mensual trae la sección «Cambios de viaje».</p>
+<h3>3.7 Anular una solicitud</h3>
+<ol>
+<li>Fila con cualquier status activo</li>
+<li>Detalle → <strong>“Anular”</strong></li>
+<li>Requiere motivo → queda en el campo <code>OBSERVACIONES</code> + correo al usuario</li>
+</ol>
+<h3>3.8 Saltar la etapa de SELECCIÓN (cualquier analista)</h3>
+<p>Cuando los tiquetes ya se compraron por fuera del sistema y no tiene sentido pedirle al usuario que “seleccione una opción”:</p>
+<ol>
+<li>Carga las opciones desde el modal <strong>“Subir imágenes de opciones”</strong> — desmarca el checkbox <strong>“Enviar correo al usuario”</strong> si no quieres notificarlo. Las opciones quedan guardadas solo para trazabilidad.</li>
+<li>La solicitud avanza directamente a <code>PENDIENTE_CONFIRMACION_COSTO</code>, lista para que confirmes los costos.</li>
+<li>Alternativamente, si ya está en <code>PENDIENTE_SELECCION</code>: abre el detalle → botón indigo <strong>“SALTAR SELECCIÓN”</strong> → escribe justificación (≥10 caracteres) → confirma.</li>
+</ol>
+<p>Queda registrado en OBSERVACIONES con tu correo, timestamp y justificación. No se envía correo al solicitante.</p>
+<h3>3.9 Saltar la etapa de APROBACIÓN (solo Yurani Prieto y David Sánchez)</h3>
+<p><strong>Quién puede:</strong> solo Yurani Prieto y David Sánchez (decisión de Yurani, 2026-09-14). Es una lista fija en el código (<code>SKIP_APPROVAL_ALLOWED</code> en <code>Code.gs</code>), <strong>no un rol</strong>: ningún otro superadmin ni analista puede, aunque tenga acceso de administrador, y para cambiarla hay que modificar el código. Para comprobar quién puede: <strong>Equitel Viajes → 10. Ver administradores y permisos especiales</strong>. A los demás no les aparecen ni el botón ni la casilla, y el sistema rechaza el intento si llegara por otra vía.</p>
+<p>Cuando un ejecutivo ya autorizó verbalmente, por WhatsApp o correo fuera del sistema, y quieres registrar la solicitud como APROBADA sin esperar más votos:</p>
+<ol>
+<li>Fila con status <code>PENDIENTE_APROBACION</code> → abre el detalle.</li>
+<li>Aparece un banner ámbar <strong>“⏩ Saltar etapa de aprobación (permiso especial)”</strong> con un botón <strong>“SALTAR APROBACIÓN”</strong>.</li>
+<li>Click → justificación (≥10 caracteres) → confirma.</li>
+<li>La solicitud pasa directamente a <code>APROBADO</code>. Las columnas <code>APROBADO POR ÁREA?</code>, <code>APROBADO CDS</code>, <code>APROBADO CEO</code> y <code>APROBADO PRESUPUESTO</code> se marcan con <code>Sí (ETAPA SALTADA por tu.correo)</code> y la justificación queda en OBSERVACIONES. Al solicitante no le llega correo (recibe el de “Tiquetes Comprados” cuando se registra la reserva). <strong>A los aprobadores a los que ya se les había pedido el voto les llega un aviso</strong> (#A118): que la solicitud quedó aprobada, que tú saltaste la etapa, cuándo y <strong>con tu justificación</strong>, y que no tienen nada pendiente. Escríbela pensando en que ellos la leen. Si alguno abre el enlace de un correo anterior, la página le dice lo mismo y no cambia nada.</li>
+</ol>
+<p><strong>Alternativa equivalente durante confirmación de costos:</strong> en el modal <strong>“Confirmar costos”</strong> aparece un checkbox “Saltar etapa de aprobación” con el mismo efecto, útil cuando sabes desde antes que no quieres pasar por aprobadores. Ahí no se le pidió el voto a nadie, así que nadie recibe el aviso.</p>
+<h3>3.10 Omitir correo al registrar reserva</h3>
+<p>En el modal <strong>“Registrar reserva”</strong> hay un checkbox <strong>“Enviar correo al usuario”</strong> marcado por default. Si el PNR ya se entregó al usuario por otro medio, desmárcalo. Aparece una confirmación doble para evitar errores. Queda nota en OBSERVACIONES.</p>
+<h3>3.11 Alternar vista admin ↔ usuario</h3>
+<p>Si eres analista o superadmin Y tienes solicitudes propias pendientes (p.ej. tú creaste una), puedes alternar entre el panel de analista y el panel de solicitante usando el botón <strong>VER USUARIO / VER ADMIN</strong> en el header. El sistema revalida tus permisos en cada switch.</p>
+<h3>3.12 Íconos de prioridad y proxy en el panel</h3>
+<p>El dashboard del analista marca con íconos las solicitudes que merecen atención especial:</p>
+<ul>
+<li><strong>⭐</strong> — solicitud <strong>prioritaria</strong>: al menos un pasajero es un ejecutivo del grupo (CEO, CDS o equivalentes). Significa que parte del viaje puede haber sido gestionado por fuera del sistema; revisa antes de pedir selección.</li>
+<li><strong>👥</strong> — solicitud <strong>proxy</strong>: el solicitante registró la solicitud a nombre de otra persona (el primer pasajero no coincide con su cédula). Útil para saber que el solicitante no es quien viaja.</li>
+</ul>
+<p>Ambos íconos se calculan al leer la solicitud, comparando la cédula del primer pasajero contra el directorio de USUARIOS.</p>
+<h3>3.13 Fecha de creación visible en tabla y detalle</h3>
+<p>Las tablas de admin y usuario muestran ahora la <strong>fecha de creación</strong> de cada solicitud junto al ID, en formato local (<code>DD/MM/AAAA HH:mm</code>). El detalle también la muestra. El parser es tolerante con el formato almacenado (ISO o <code>DD/MM/YYYY</code>) para no romperse con solicitudes antiguas.</p>
+<h3>3.14 Conectividad y banner de fallas</h3>
+<p>Al arrancar, el frontend envía un <strong>ping de warmup</strong> al backend. Si la red local o Apps Script están caídos, aparece un banner rojo arriba informando que hay problemas de conectividad. El banner desaparece solo cuando la conexión vuelve. Esto evita que los usuarios confundan un error de red con un problema de permisos o credenciales.</p>
+<p>Relacionado: si el login del admin falla por un error de red (no por PIN incorrecto), el mensaje ahora lo dice explícitamente y <strong>no</strong> consume un intento del rate-limit.</p>
+<h3>3.15 Solicitudes fuera de plazo y tarifas superiores: aprobación del CFO (#A100)</h3>
+<p>Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), <strong>toda desviación de la política la aprueba el CFO antes de la compra</strong>. Quién aprueba es el mismo responsable del <strong>presupuesto excedido</strong>: <code>budgetApproverEmail</code> y <code>budgetApproverName</code> en la <strong>configuración del dashboard de costos</strong> (⚙️, solo superadmin). Si se cambia allí, cambia para las dos reglas, y los enlaces que ya tenía el anterior dejan de servir.</p>
+<p><strong>1. Anticipación.</strong> Una solicitud nueva que no cumple 8 días (nacional) o 30 (internacional) queda en <code>PENDIENTE_APROBACION_POLITICA</code>:</p>
+<ul>
+<li><strong>El área de compras no la gestiona</strong>: no aparece en la lista principal del panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. Para verlas hay un botón aparte, <strong>«⏳ En espera de preaprobación (N)»</strong>, arriba de la lista: muestra, solo para leer, quién la pidió, quién viaja, el viaje, la anticipación, la justificación y cuándo vence, con el aviso de que <strong>no cumplen la política de anticipación y no se gestionan</strong>.</li>
+<li>El solicitante escribe por qué (obligatorio) y recibe un correo <strong>[EN ESPERA DE APROBACIÓN]</strong>.</li>
+<li>El CFO recibe <strong>un resumen cada 2 horas en horario laboral</strong> (lunes a viernes de 7:00 a 17:00, sábados de 8:00 a 12:00, como los demás resúmenes) con una fila por solicitud y los botones <strong>APROBAR</strong> / <strong>RECHAZAR</strong>.</li>
+<li><strong>Aprobada</strong> → pasa a <code>PENDIENTE_OPCIONES</code> y te llega un correo <strong>[APROBADA POR EXCEPCIÓN]</strong> como cualquier solicitud nueva. Los tiempos de las métricas cuentan desde ese momento.</li>
+<li><strong>Rechazada</strong> → <code>DENEGADO</code> con el motivo «No se aprobó la excepción por incumplimiento de la política de anticipación». Solo se avisa al solicitante.</li>
+<li><strong>Vencida</strong> (7 días sin respuesta o pasó la fecha del viaje) → <code>DENEGADO</code> sola, con el mismo motivo.</li>
+<li><strong>Lo que creas tú (cualquier administrador) no queda en espera</strong>, por ejemplo al registrar un viaje que ya se compró por fuera: queda marcado fuera de política y cuenta en el informe.</li>
+<li>No aplica a las solicitudes de cambio.</li>
+<li><strong>Multidestino:</strong> cada tramo se evalúa por su fecha, pero si <strong>cualquier tramo</strong> no cumple, <strong>todo el viaje espera</strong> (los tramos quedan enlazados en <code>GRUPO MULTIDESTINO</code>). En el resumen del CFO el viaje es una sola fila y <strong>una decisión cubre todos los tramos</strong>: aprobado, te llegan todos como nuevos; rechazado o vencido, se deniegan todos.</li>
+</ul>
+<p><strong>2. Tarifa superior a la del manual.</strong> Si al confirmar costos registras una tarifa de mayor TIPO que la recomendada (y es una excepción), la hoja marca <code>REQUIERE APROB TARIFA</code> y la aprobación le pide el voto al CFO (el mismo voto del presupuesto excedido: uno cubre los dos motivos). Al <strong>registrar la reserva</strong> no se puede subir la tarifa por encima de la aprobada; solo Yurani Prieto y David Sánchez pueden autorizarlo. Corregir una reserva ya registrada sí se permite (refleja lo que se compró).</p>
+<p><strong>Hoja de cálculo:</strong> columnas <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code> (<code>Sí_correo_fecha</code>, <code>No_…</code>, <code>Vencida_sistema_…</code>), <code>REQUIERE APROB TARIFA</code> y <code>GRUPO MULTIDESTINO</code>; las crea el sistema o el <strong>menú 12</strong>. El menú <strong>13</strong> activa el resumen cada 2 horas y el <strong>14</strong> muestra las solicitudes en espera, quién aprueba y cuántas personas leyeron el aviso.</p>
+<p><strong>Aviso a los solicitantes:</strong> cada solicitante ve al entrar una ventana con las reglas nuevas y debe tocar <strong>«Entendido»</strong>. No tiene fecha de fin: le sigue saliendo cada vez que entra hasta que lo acepta. Cada lectura queda en la hoja <strong>CONSTANCIA AVISOS</strong> (fecha y correo). Si la constancia no se puede guardar, la ventana lo dice y deja intentarlo otra vez.</p>
+<p><strong>Apagar las reglas sin tocar código:</strong> <code>&quot;policyApprovalEnabled&quot;: false</code> en la configuración del dashboard de costos. Las solicitudes que ya estén en espera se quedan así hasta que se decidan o venzan.</p>
+<p><strong>Informe mensual de cumplimiento (#A101):</strong> el primer día hábil de cada mes, en horario laboral, la plataforma le envía a quien aprueba (hoy Alejandro Gómez), con copia a Yurani Prieto y David Sánchez, el informe del mes anterior. Trae lo mismo que el informe del 13 de octubre:</p>
+<ul>
+<li>las tres cifras del mes (pedidos fuera de plazo, compras a tiempo y viajes de 0–1 noche en tarifa superior) frente al mes anterior;</li>
+<li>la tendencia de los últimos 6 meses y el resultado por unidad;</li>
+<li>los cuadros de honor y de deshonor y «quién pide fuera de plazo», con los últimos 3 meses;</li>
+<li>las compras registradas después de hacerse y lo que pasó por el CFO (aprobadas, rechazadas, vencidas y tarifas superiores).</li>
+</ul>
+<p>Lleva un PDF con lo mismo y un CSV con el detalle de cada solicitud del mes (sin cédulas). Cada viaje cuenta en el mes en que se pidió. Lo envía la misma pasada del resumen cada 2 horas, así que no necesita otro activador. El <strong>menú 15</strong> te lo manda solo a ti para revisarlo.</p>
+<hr>
+<h2>4. Capacidades exclusivas de SUPERADMIN</h2>
+<p>Los <strong>superadmins</strong> (configurados en <code>SUPER_ADMIN_EMAILS</code>) tienen capacidades adicionales que un analista normal no tiene. <strong>Saltar la etapa de aprobación ya no es una de ellas</strong> (#A77): solo Yurani Prieto y David Sánchez, ver 5.9.</p>
+<table>
+<thead>
+<tr>
+<th>Capacidad</th>
+<th>Disponible desde</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Botón VER USUARIO / VER ADMIN</strong></td>
+<td>Header del panel de analista — alternar vistas.</td>
+</tr>
+<tr>
+<td><strong>Recibir escalamientos</strong></td>
+<td>Correos automáticos cuando una solicitud lleva 30h laborales sin aprobación (≈3 días hábiles).</td>
+</tr>
+<tr>
+<td><strong>Ejecutar helpers de Script Properties</strong></td>
+<td><code>setScriptProperty</code>, <code>deleteScriptProperty</code>, <code>listScriptProperties</code> desde el editor GAS.</td>
+</tr>
+<tr>
+<td><strong>Modificar cualquier solicitud</strong></td>
+<td>El endpoint <code>requestModification</code> valida que el solicitante sea el dueño de la solicitud, pero el bypass permite que cualquier analista o superadmin gestione modificaciones a nombre del usuario (caso típico: el área de compras ajusta la solicitud por pedido verbal). Cualquier otro usuario autenticado solo puede modificar las suyas.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Configurar o quitar un superadmin:</strong></p>
+<pre><code class="language-javascript">// Desde el editor GAS → función temporal → ejecutar UNA vez:
+setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&quot;yprieto@equitel.com.co&quot;]');
+</code></pre>
+<p>El cambio aplica <strong>inmediatamente</strong> (no requiere redeploy). Si quitas a alguien, su capacidad superadmin desaparece al siguiente request sin invalidar su sesión.</p>
+<p><strong>Escalamiento automático a superadmins:</strong> tras 30 horas laborales efectivas (L-V 7-17, Sáb 8-12) desde que una solicitud entra a <code>PENDIENTE_APROBACION</code> sin que los aprobadores respondan, el sistema envía UN correo único a todos los superadmins pidiéndoles intervenir. El correo sugiere 3 acciones: contactar al aprobador, saltar la aprobación (si el viaje ya fue autorizado por fuera) o anular. Después de ese correo, los recordatorios automáticos a los aprobadores se detienen para no saturar.</p>
+<hr>
+<h2>5. Gestionar usuarios (sidebar de USUARIOS)</h2>
+<p><strong>Cuándo usarlo:</strong> agregar usuarios nuevos, cambiar aprobadores, detectar problemas.</p>
+<p><strong>Tabs:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Tab</th>
+<th>Para qué</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Usuarios</strong></td>
+<td>CRUD básico. Buscar, crear, editar, eliminar, borrar PIN.</td>
+</tr>
+<tr>
+<td><strong>Anomalías</strong></td>
+<td>Diagnóstico: correos no corporativos, usuarios sin aprobador, aprobadores huérfanos (cédula no existe en USUARIOS).</td>
+</tr>
+<tr>
+<td><strong>Reemplazar</strong></td>
+<td>Si un aprobador sale de la empresa: reemplazar su cédula por la de otro en TODOS los usuarios que lo tienen como aprobador. Vista previa antes de aplicar.</td>
+</tr>
+<tr>
+<td><strong>Ed. Masiva</strong></td>
+<td>Cambios masivos: asignar/agregar aprobador, cambiar empresa/sede/CC a un grupo filtrado de usuarios.</td>
+</tr>
+<tr>
+<td><strong>Duplicados</strong></td>
+<td>Detecta filas con cédula, correo, o nombre repetido. Compara cada grupo lado-a-lado (datos + estado del PIN) y elimina las que sobran.</td>
+</tr>
+</tbody>
+</table>
+<h4>6.1.bis Comportamiento del formulario “Nuevo / Editar usuario”</h4>
+<p>El formulario tiene tres ayudas integradas para evitar errores típicos al gestionar directivos o usuarios urgentes:</p>
+<ul>
+<li>
+<p><strong>Checkbox “Esta persona es su propio aprobador (autoaprobador)”</strong> — Útil cuando llega un nuevo directivo (CEO, CDS, gerente) que se aprueba a sí mismo. Al marcarlo, se oculta el picker de aprobadores y al guardar el sistema escribe automáticamente la propia cédula, correo y nombre en las columnas G, H e I de USUARIOS — sin necesidad de crear primero al usuario y luego buscarlo en el picker. Funciona tanto al crear como al editar. Si abres a un usuario que ya era autoaprobador, el checkbox aparece pre-marcado.</p>
+</li>
+<li>
+<p><strong>Detector de duplicados en vivo</strong> — A medida que escribes la cédula, correo o nombre, el formulario busca coincidencias en USUARIOS. Si la cédula o el correo ya existen, aparece un badge rojo y el botón <strong>Guardar</strong> se bloquea. Si solo el nombre coincide (homónimo), aparece un badge ámbar de advertencia pero deja guardar. Cada badge incluye un botón <strong>“→ Ver / editar este usuario”</strong> que lleva directo a editarlo, útil para corregir información en el registro existente en lugar de duplicarlo.</p>
+</li>
+<li>
+<p><strong>Sugerencias de nombre filtradas por Maestro RH</strong> — El campo “Nombre” autocompleta con personas del Maestro RH, pero excluye automáticamente a las que ya están en USUARIOS. Así, al crear un nuevo usuario, las sugerencias muestran solo empleados aún no registrados.</p>
+</li>
+<li>
+<p><strong>Confirmación visual tras crear</strong> — Después de guardar un usuario nuevo, el listado se refresca automáticamente, hace scroll hasta la fila del nuevo usuario y la resalta con un fondo amarillo durante 3 segundos. Te indica visualmente que quedó registrado.</p>
+</li>
+</ul>
+<h2>6. Validaciones en los formularios</h2>
+<p>Tanto el sidebar como el módulo móvil (§7) aplican validaciones “en vivo” mientras el admin escribe:</p>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Restricción</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cédula</td>
+<td>Solo dígitos. Cualquier letra/símbolo se filtra al escribir. Teclado numérico en móvil.</td>
+</tr>
+<tr>
+<td>Nombre completo</td>
+<td>Auto-UPPERCASE mientras se escribe. Se preservan tildes y Ñ (ej: <code>CÓRDOBA</code>, <code>ZUÑIGA</code>).</td>
+</tr>
+<tr>
+<td>Correo</td>
+<td>Auto-lowercase. Espacios removidos. Validación de formato <code>algo@algo.algo</code> antes de enviar.</td>
+</tr>
+<tr>
+<td>Centro de costo</td>
+<td>Solo dígitos. Teclado numérico en móvil.</td>
+</tr>
+</tbody>
+</table>
+<p>Las validaciones se ejecutan también en el <code>Guardar</code>, por si el admin pega un valor con copy-paste que saltó los filtros. Si algo no cumple, no se envía al backend y se muestra el error.</p>
+<p><strong>Sobre caracteres especiales (tildes, Ñ, Ü):</strong> son <strong>100% seguros</strong> en el sistema. Los nombres se usan en correos, PDFs de reporte, nombres de archivos Drive y comparaciones — en todos los casos el código maneja UTF-8 correctamente. Escribir <code>BRICEÑO</code> o <code>BRICENO</code> es indiferente para el backend, pero el primero respeta la ortografía real del nombre.</p>
+<hr>
+<h2>7. Módulo Admin Móvil</h2>
+<p><strong>Para qué sirve:</strong> crear usuarios nuevos rápidamente desde el celular sin tener que abrir el Sheet en el escritorio.</p>
+<p><strong>Caso de uso típico:</strong> llega RRHH con un empleado nuevo que necesita acceso al portal YA. Desde el celular el admin ingresa cédula, nombre, correo, empresa, sede y aprobador — un minuto y listo.</p>
+<h3>Quién puede usarlo</h3>
+<p>Únicamente los correos registrados como administradores. El módulo usa el mismo PIN de administrador de 8 dígitos que el portal. Cualquier otra persona ve la pantalla de ingreso, pero su PIN siempre falla.</p>
+<h3>Cómo se entra</h3>
+<p>Con un enlace propio del módulo, que pide quien administra el sistema (<a href="mailto:dsanchez@equitel.com.co">dsanchez@equitel.com.co</a>). Conviene guardarlo en la pantalla de inicio del celular: en iPhone, Safari → compartir → «Añadir a pantalla de inicio»; en Android, Chrome → menú → «Añadir a pantalla de inicio». Queda como si fuera una aplicación.</p>
+<h3>Qué hace</h3>
+<ul>
+<li><strong>Login</strong>: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 7 días en ese navegador.</li>
+<li><strong>Crear usuario</strong>: formulario idéntico al del sidebar (cédula, nombre, correo, empresa, sede, CC, aprobadores) con las mismas validaciones y el mismo picker de aprobador.</li>
+<li><strong>Checkbox “Esta persona es su propio aprobador”</strong> — mismo comportamiento que en el sidebar: al marcarlo, oculta el picker y registra al usuario como autoaprobador (cols G, H, I) al guardar. Pensado para registrar directivos urgentes desde el celular.</li>
+<li><strong>Detector de duplicados</strong> — mientras escribes cédula/correo/nombre, te avisa si ya existe alguien registrado. Cédula y correo bloquean el botón Crear; nombre solo advierte (homónimos posibles). El módulo móvil no tiene botón “Editar este usuario” porque no permite editar; si detectas un duplicado, anota la cédula y abre el sidebar del Sheet para corregir.</li>
+<li>Al crear, el usuario aparece inmediatamente en la hoja USUARIOS y puede iniciar sesión en el portal.</li>
+</ul>
+<h3>Qué NO hace (limitaciones por diseño)</h3>
+<p>El módulo está enfocado en <strong>creación</strong>, que es la operación urgente más común fuera de oficina. No incluye:</p>
+<ul>
+<li>Editar usuarios existentes (usar sidebar del Sheet)</li>
+<li>Eliminar usuarios (usar sidebar)</li>
+<li>Detectar anomalías/duplicados</li>
+<li>Reemplazar aprobador masivo</li>
+<li>Edición masiva</li>
+<li>Reorganizar la base principal</li>
+<li>Ver métricas</li>
+</ul>
+<p>Si necesitas cualquiera de esas, abre el Sheet en tu computadora y usa el sidebar.</p>
+<h3>Seguridad</h3>
+<ul>
+<li>La URL es pública pero la página es inútil sin PIN.</li>
+<li>Cada operación del backend (<code>mobileAdmin_getBootstrap</code>, <code>mobileAdmin_createUser</code>) valida el token de sesión y confirma que el correo esté en <code>ANALYST_EMAILS</code> antes de ejecutarse. Sin auth válida, cualquier intento de API retorna error.</li>
+<li>Si el admin es removido de <code>ANALYST_EMAILS</code> mientras tiene sesión activa, la siguiente llamada falla automáticamente y lo manda al login.</li>
+<li>Sesión expira a los 7 días o si el admin cierra sesión manualmente.</li>
+</ul>
+<h3>Impacto en la operación mientras se usa</h3>
+<p><strong>Ninguno para aprobadores ni solicitantes.</strong> El módulo móvil escribe solo en la hoja USUARIOS, mientras que las solicitudes y aprobaciones viven en la hoja Nueva Base Solicitudes. Apps Script soporta ejecuciones concurrentes (hasta 30 por script). Un admin creando un usuario no bloquea:</p>
+<ul>
+<li>Aprobadores clickeando correos de aprobación</li>
+<li>Usuarios haciendo login y generando su PIN por primera vez</li>
+<li>Usuarios creando solicitudes nuevas</li>
+<li>Triggers programados de recordatorios</li>
+</ul>
+<p>El único caso donde hay serialización es cuando <strong>dos admins crean usuarios simultáneamente</strong> (uno desde el sidebar y otro desde el móvil): el segundo espera máximo 2-3 segundos al primero. Esto es intencional para evitar que ambos escriban en la misma fila.</p>
+<hr>
+<h2>8. Métricas</h2>
+<p>Panel accesible desde el dashboard admin → botón <strong>Métricas</strong>. Tiene cuatro pestañas: <strong>Tiempos del flujo</strong>, <strong>Aprobaciones</strong>, <strong>Compras y costos</strong> y <strong>Cambios</strong>.</p>
+<h3>8.1 Tiempos del flujo</h3>
+<p><strong>Qué muestra (desde el 5-nov-2026, #A121, en horas reales):</strong></p>
+<ul>
+<li>Tiempos promedio por etapa, en <strong>horas reales, de calendario</strong> (incluyen noches y fines de semana; antes eran horas laborales):
+<ul>
+<li>Excepción a la política (pedido → aprobada por el CFO), solo en las que la necesitaron (#A123)</li>
+<li>Aceptar cambio (pedido → aceptado por el área de compras), solo en cambios (#A123)</li>
+<li>Cotización (desde que se puede gestionar → opciones cargadas)</li>
+<li>Selección (opciones → usuario describe)</li>
+<li>Confirmación costos (selección → costos finales)</li>
+<li>Aprobación completa (costos → todas las aprobaciones)</li>
+<li>Reserva (aprobación → PNR registrado)</li>
+<li>Ciclo total (creación → reserva, con la espera de la excepción a la política si la hubo)</li>
+</ul>
+</li>
+<li>Performance del analista en las etapas que le corresponden (revisión de cambios, cotización, confirmación costos, compra).</li>
+<li>En la tabla, la columna <strong>Aceptar</strong> dice lo que tardó, antes de cotizar, aceptar el cambio («cambio») o aprobar la excepción («CFO»).</li>
+<li>Performance de cada aprobador (cuánto tarda en aprobar).</li>
+<li>Debajo de cada tiempo, cuándo terminó esa etapa (día/mes y hora). <strong>Al tocar una solicitud</strong> se abre el mismo semáforo del detalle: cuándo pasó por cada etapa, a quién le tocaba, lo que tardó cada voto y quién tuvo la solicitud más tiempo. El solicitante ve ese semáforo en el detalle de su solicitud.</li>
+</ul>
+<p><strong>Filtros:</strong></p>
+<ul>
+<li>Rango de fechas (últimos 30d, 90d, todo, personalizado)</li>
+<li>ID específico</li>
+<li>Excluir: Anuladas, Denegadas, Sin datos (pre-deploy)</li>
+</ul>
+<p><strong>Notas:</strong></p>
+<ul>
+<li>Usa un cache JSON en Drive (<code>metricas_cache.json</code>) — recalcula solo las solicitudes cuyos eventos cambiaron desde la última carga.</li>
+<li>Solicitudes creadas antes del deploy de métricas no tienen <code>EVENTOS_JSON</code> y aparecen como “sin datos”.</li>
+<li>Los cambios aceptados antes del 5-nov-2026 no tienen la hora en que se aceptaron: el semáforo dice «Antes del 5-nov no se guardaba esta hora» y la cotización incluye esa revisión.</li>
+<li>Los tiempos son de calendario (hora de Colombia). Los recordatorios y el escalamiento sí siguen contando horas laborales (L-V 07:00–17:00, Sáb 08:00–12:00).</li>
+<li>En los cambios pedidos antes del 5-nov no quedó cuándo se aceptaron: su cotización se mide desde la solicitud («Incluye la revisión del cambio»).</li>
+</ul>
+<h3>8.1.1 Aprobaciones (#A125)</h3>
+<p>Pestaña <strong>✅ Aprobaciones</strong>: cada solicitud que pasó por aprobación, con <strong>qué se decidió, quién aprobó, quién denegó y el motivo</strong>.
+Responde preguntas como «¿qué le ha negado Alejandro?» sin buscar solicitud por solicitud.</p>
+<ul>
+<li><strong>Resultado</strong> (tocar una tarjeta filtra la lista):
+<ul>
+<li><strong>Aprobada:</strong> tiene todas sus aprobaciones.</li>
+<li><strong>Denegada:</strong> la denegó un aprobador, el CFO (excepción a la política de anticipación) o el área de compras (un cambio que no se aceptó).</li>
+<li><strong>Esperando votos:</strong> ya se pidió el voto y alguien todavía no decide; dice a quién le falta.</li>
+<li><strong>En trámite:</strong> se aprobó la excepción a la política y el viaje aún no llega a la aprobación.</li>
+<li><strong>Anulada:</strong> se anuló después de alguna decisión.</li>
+</ul>
+</li>
+<li><strong>Quién decidió:</strong> cuántas aprobó y cuántas denegó cada persona. Tocar una persona deja solo sus decisiones. Por ejemplo, tocar
+«Alejandro Gómez de Greiff» y después <strong>Denegada</strong> muestra todo lo que él negó.</li>
+<li><strong>Solicitud por solicitud:</strong> quién aprobó (con su rol y la hora), quién denegó o a quién le falta, y el motivo de la denegación o el
+comentario que dejó quien aprobó. <strong>Al tocar una fila</strong> se abre el semáforo con los tiempos de cada etapa.</li>
+<li>Aquí no se excluyen las denegadas ni las anuladas. Cuenta la fecha en que se pidió la solicitud (Últimos 30 días, Todo, etc.).</li>
+<li>Las que todavía esperan que se apruebe la excepción a la política no salen aquí: están en <strong>En espera de preaprobación</strong> del panel
+principal. Cuando el CFO decide, pasan a esta pestaña (y las denegadas, al filtro <strong>Denegado</strong> del panel principal).</li>
+</ul>
+<h3>8.2 Compras y costos</h3>
+<p>Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta anticipación (#A80). Sirve para comparar precios con otra agencia sin armar un Excel a mano. Solo la ven los administradores.</p>
+<p><strong>Qué muestra:</strong></p>
+<ul>
+<li>Tarjetas:
+<ul>
+<li>tiquetes comprados (nacionales e internacionales), por día hábil y por mes</li>
+<li>costo promedio del tiquete nacional (y su mediana) y del internacional</li>
+<li>costo por noche en estadías de 1 a 6 noches (las de 7 o más se muestran aparte porque tienen tarifas mucho menores)</li>
+<li>gasto del periodo, proyección anual y cuánto vale cada 1 % de descuento</li>
+<li>porcentaje de tiquetes comprados con 7 días o menos</li>
+</ul>
+</li>
+<li><strong>¿Cuánto cuesta comprar tarde?:</strong> costo por tiquete nacional según la anticipación de la compra, el sobrecosto del periodo y el ahorro si la mitad de esas compras se planeara con 8 días o más.</li>
+<li>Meses, las 10 rutas con más tiquetes (con el precio comprando con 0 a 7 días y con 8 o más) y las 10 ciudades con más solicitudes con hotel.</li>
+<li>Cómo se viaja: pasajeros por viaje, ida y regreso, anticipación, compras en fin de semana, facturado frente a confirmado y cargos de Aviatur y/o IVA de la factura 1.</li>
+<li><strong>Descargar CSV:</strong> todas las tablas en un archivo que abre en Excel.</li>
+</ul>
+<p><strong>Filtro:</strong> fecha de compra (todo, últimos 30 o 90 días, este año o personalizado).</p>
+<p><strong>Cómo se cuenta:</strong></p>
+<ul>
+<li>Solo solicitudes reservadas o procesadas.</li>
+<li>Tiquetes = pasajeros × trayectos: ida y regreso son 2 por persona. Cada tramo de un multidestino es su propia solicitud.</li>
+<li>Noches-habitación = noches × pasajeros, solo con hotel pagado.</li>
+<li>Costos confirmados; los menores a $10.000 no entran en los promedios.</li>
+<li>La fecha de cada compra es la fecha de compra del tiquete, o la de la solicitud si falta.</li>
+<li>Días hábiles: lunes a viernes sin festivos de Colombia.</li>
+<li>El panel no muestra nombres, cédulas ni correos de los pasajeros.</li>
+</ul>
+<hr>
+<h3>8.3 Cambios (#A103)</h3>
+<p>Pestaña <strong>🔄 Cambios</strong>: cada cambio pedido con «Cambiar mi viaje», con filtros de mes y tipo de cambio. Muestra cuántos fueron de tiquetes ya comprados, lo que costaron los cambios (penalidad, diferencia de tarifa y hotel), qué parte fue penalidad, las maletas pedidas después de comprar y el costo por unidad. Los cambios de antes (formulario anterior) se cuentan aparte porque no traen el detalle. <em>¿Cómo se calcula?</em> explica cada cifra. Exporta a CSV.</p>
+<h2>9. Problemas frecuentes</h2>
+<h3>El usuario dice que no le llega el PIN</h3>
+<ol>
+<li>Verifica que el correo esté en USUARIOS (tab Usuarios del sidebar, o busca en la hoja).</li>
+<li>Verifica que el correo tenga dominio corporativo (<code>@equitel.com.co</code>). Si no, el filtro de validación puede rechazarlo — revisa el tab “Anomalías”.</li>
+<li>El PIN se envía vía Gmail desde el correo del dueño del script. Si Gmail bloqueó al usuario, no llega.</li>
+<li>Fuerza un nuevo PIN: en el login del usuario, que pulse “Reenviar PIN”.</li>
+</ol>
+<h3>El aprobador dice que no le llega el correo</h3>
+<ol>
+<li>Busca la solicitud en el sheet, campo <code>CORREO DE QUIEN APRUEBA (AUTOMÁTICO)</code> — confirma el correo.</li>
+<li>Si viajan pasajeros corporativos, el aprobador del primer pasajero es quien aprueba. Si ese correo está mal, la solicitud no puede aprobarse.</li>
+<li>Si es internacional o &gt;$1.2M, también se envía a CEO y CDS — ver <code>CEO_EMAIL</code> / <code>DIRECTOR_EMAIL</code> en Script Properties.</li>
+</ol>
+<h3>La sesión expira muy seguido</h3>
+<p>Las sesiones duran <strong>7 días</strong>. Si expiran antes:</p>
+<ul>
+<li>Script Properties puede estar lleno (límite 500 KB total). El trigger diario <code>cleanupExpiredSessions</code> limpia lo vencido; si sospechas acumulación, ejecútalo manualmente desde el editor.</li>
+<li>El usuario cambió de navegador o dispositivo — normal.</li>
+<li>El navegador borró localStorage (modo incógnito, limpieza automática).</li>
+<li>El token guardado fue manipulado o corrupto → el frontend lo detecta y fuerza relogin sin consumir rate-limit.</li>
+</ul>
+<h3>El usuario ve un banner rojo de “problemas de conectividad”</h3>
+<p>Significa que el ping de warmup al backend falló. Causas típicas:</p>
+<ul>
+<li>El backend GAS está desplegado pero la cuota diaria (6 h/día en Workspace) se agotó.</li>
+<li>El dominio del frontend cambió y el CORS del backend no lo reconoce.</li>
+<li>La URL <code>WEB_APP_URL</code> apunta a un deploy viejo o eliminado.</li>
+</ul>
+<p>Revisa <code>Ejecuciones</code> en el editor GAS — si ves “Se superó la cuota”, espera hasta el reset diario (medianoche hora Pacífico).</p>
+<h3>El admin cree que su PIN es incorrecto pero en realidad es problema de red</h3>
+<p>Desde los últimos cambios, el login distingue claramente: si falla por red, el mensaje dice “error de conexión” y <strong>no</strong> consume un intento del rate-limit. Si dice “PIN incorrecto” u otro mensaje de permiso, sí es un fallo real. Esto evita bloqueos accidentales por fallos temporales de red.</p>
+<hr>
+<hr>
+<h2>10. Contactos</h2>
+<table>
+<thead>
+<tr>
+<th>Para qué</th>
+<th>A quién</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Gestión del viaje (opciones, tarifas, fechas, cambios).</td>
+<td><strong><a href="mailto:compras.equitel@equitel.com.co">compras.equitel@equitel.com.co</a></strong></td>
+</tr>
+<tr>
+<td>Agregar o corregir una persona en el directorio (cédula, correo, aprobador).</td>
+<td><strong><a href="mailto:compras.equitel@equitel.com.co">compras.equitel@equitel.com.co</a></strong></td>
+</tr>
+<tr>
+<td>Excepciones a la política: fuera de plazo, presupuesto excedido, tarifa superior.</td>
+<td>Quien aprueba el presupuesto (hoy, Alejandro Gómez de Greiff).</td>
+</tr>
+<tr>
+<td>Problemas técnicos de la plataforma (no carga, errores).</td>
+<td><strong><a href="mailto:dsanchez@equitel.com.co">dsanchez@equitel.com.co</a></strong></td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2>Otras guías</h2>
+<ul>
+<li><a href="./infografia-procedimiento.html">Infografía del procedimiento</a> — el camino completo y los casos, en dos hojas.</li>
+<li><a href="./guia-usuario.md">Guía del usuario</a> — lo que ve y hace quien pide el viaje.</li>
+<li><a href="./guia-hoja-calculo.md">Guía del Google Sheets</a> — qué se puede tocar a mano en la hoja y qué no.</li>
+</ul>
+<hr>
+<p><em>Última actualización: 2026-11-20</em></p>
+
+  </div>
+</body>
+</html>

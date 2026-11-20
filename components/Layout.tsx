@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { LOGO_URL } from '../constants';
+import { HelpMenu, HelpRole } from './HelpMenu';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -23,9 +24,15 @@ interface LayoutProps {
   onApprovals?: () => void;
   approvalsCount?: number | null;
   approvalsActive?: boolean;
+  // #A130: qué manuales ofrece el botón «Ayuda». Van por el rol REAL de la persona,
+  // no por la vista: un analista que está mirando su dashboard de usuario sigue
+  // teniendo a mano las guías del área de compras.
+  isAdminUser?: boolean;
+  isApprover?: boolean;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, role, onLogout, onRefresh, canToggleView, viewAsRequester, onToggleView, wide, onApprovals, approvalsCount, approvalsActive }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, role, onLogout, onRefresh, canToggleView, viewAsRequester, onToggleView, wide, onApprovals, approvalsCount, approvalsActive, isAdminUser, isApprover }) => {
+  const helpRole: HelpRole = isAdminUser ? 'ADMIN' : (isApprover ? 'APPROVER' : 'REQUESTER');
   // Header, main y footer comparten el mismo ancho para que el logo y el
   // contenido queden alineados en ambos modos.
   const containerWidth = wide ? 'max-w-[1800px]' : 'max-w-7xl';
@@ -97,6 +104,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, userEmail, userName, r
                     <span className="hidden sm:inline whitespace-nowrap">{viewAsRequester ? 'VER ADMIN' : 'VER USUARIO'}</span>
                   </button>
                 )}
+
+                <HelpMenu rol={helpRole} />
 
                 {onRefresh && (
                   <button

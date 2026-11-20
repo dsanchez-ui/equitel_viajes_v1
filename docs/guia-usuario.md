@@ -172,7 +172,7 @@ CREACIÓN (tú)
 [solo si se pidió fuera de plazo]
 EN ESPERA DE APROBACIÓN POR POLÍTICA (la aprueba o la rechaza
                          quien aprueba las excepciones; el área de
-                         viajes todavía no la gestiona — §2.4)
+                         compras todavía no la gestiona — §2.4)
    ↓
 PENDIENTE DE OPCIONES (el área de compras está cotizando)
    ↓
@@ -635,4 +635,10 @@ Listados en el **orden real** en que los verás pasar:
 
 ---
 
-*Última actualización: 2026-04-24*
+## Otras guías
+
+- [Infografía del procedimiento](./infografia-procedimiento.html) — en dos hojas: quién interviene, el camino completo y qué pasa en cada caso (hospedaje, multidestino, fuera de plazo, cambios).
+
+---
+
+*Última actualización: 2026-11-20*

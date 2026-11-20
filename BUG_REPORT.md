@@ -3925,3 +3925,65 @@ deben poder solicitar el cambio… la protección contra abusos sería que pida 
 - **App nueva + servidor anterior:** la app ofrece el cambio, pero el servidor lo rechaza con el mensaje del plazo de siempre.
 - **Servidor nuevo + app anterior:** la app sigue sin ofrecerlo.
 - No hay menú que correr.
+
+---
+
+## **#A130 — El procedimiento en dos hojas y los manuales dentro del portal, por rol**
+
+**Fecha:** 2026-11-20 · **Pedido por:** David (*«un manual de procedimiento… puede ser en una infografía… que quede alojado en la
+plataforma… que sea posible tanto para los administradores como para los usuarios ver cómo funciona el proceso de solicitud de
+tiquetes en cada uno de los casos puntuales»*, con acceso según el rol) · **Estado:** en `main`, pendiente de push.
+
+**Síntoma:**
+- No existía un documento que mostrara el **proceso completo de un vistazo**. Las guías lo explican bien, pero en 500 líneas: nadie
+  que no use la plataforma a diario se las lee, y al director de compras no se le puede mandar eso.
+- Los manuales vivían solo en `docs/` del repo: David los enviaba uno por uno por correo. Quien no los tuviera a mano no sabía dónde
+  buscarlos, y nada garantizaba que la copia que alguien guardó fuera la vigente.
+- La guía del administrador mezclaba la operación de Laura con lo técnico (activadores, propiedades del script, funciones del editor),
+  así que no se podía publicar tal cual.
+- Dos cosas desactualizadas en la guía del usuario: decía «el área de viajes», que no existe desde #A107, y su pie decía abril aunque
+  el contenido ya traía lo de noviembre.
+
+**Causa raíz:** el plan de manuales en la app existía desde el 14-oct ([docs/plan-manuales-en-app.md](docs/plan-manuales-en-app.md))
+pero estaba sin desarrollar, y nunca se había escrito el procedimiento como una sola pieza.
+
+**Fix:**
+
+1. **Infografía del procedimiento** (`docs/infografia-procedimiento.html` → `.pdf`), dos hojas carta horizontal:
+   - *Hoja 1 — el camino:* los seis que intervienen (viajero, jefe directo, área de compras, CFO, Gerencia General y Cadena de
+     Suministro, la plataforma) y los **8 pasos** con quién actúa, qué se necesita y el detalle que más sorprende en cada uno; abajo,
+     tres avisos clave (**la aprobación no está al principio**, el viajero solo interviene tres veces, todo queda registrado) y los
+     nombres de los estados.
+   - *Hoja 2 — los casos:* según el viaje (ida y vuelta, solo ida, solo hospedaje, multidestino), cuándo hace falta otra aprobación
+     (fuera de plazo, internacional, más de $1.200.000, presupuesto excedido, tarifa superior), los cambios (dentro del plazo, con y
+     sin tiquete comprado, fuera de plazo con el voto del CFO, y a quién llamar cuando ya no se puede) y cómo se detiene una solicitud
+     (anulada, denegada, sin respuesta, en consulta).
+   - El HTML es la fuente y no tiene `<script>` ni emojis: los íconos son SVG escritos a mano, porque los emojis no se imprimen igual
+     en todos los equipos. El PDF lo genera `npm run build:guia` (aquí, con WeasyPrint: en este Mac no hay Chrome).
+2. **Botón «Ayuda» en el encabezado** (`components/HelpMenu.tsx`, montado en `Layout.tsx`): abre un panel con los manuales **del rol**
+   — solicitante: procedimiento, guía del usuario y tarifas; aprobador: además la suya; administrador: además área de compras y hoja
+   de cálculo. Va por el **rol real**, no por la vista: un analista que está mirando su dashboard de usuario sigue teniendo las suyas.
+   Cada manual tiene «Abrir» (HTML) y «PDF», y se abren en otra pestaña.
+3. **`public/manuales/` con nombre fijo**, publicado por `npm run build:guia`. No van dentro del JavaScript (#A96) ni en un `iframe`
+   (la CSP lo prohíbe). Al tener nombre fijo, un enlace no se rompe al publicar otra versión.
+4. **La guía del administrador se separó en dos:** `docs/guia-area-compras.md` (operación: ciclo de vida, trabajo del día a día,
+   SUPERADMIN, usuarios, validaciones, panel móvil sin la URL, métricas y problemas frecuentes), que **se publica**; y
+   `docs/guia-administrador.md`, que queda como **guía técnica** (arquitectura, hojas, activadores, Script Properties, funciones del
+   editor, respaldo, despliegue) y **no se publica**. El corte no perdió ni una línea: se verificó que las 770 del original quedaran
+   repartidas entre las dos.
+5. **`tools/check-manuales.cjs`**, dentro de `npm run verify`: lo publicado es **byte a byte** lo que está en `docs/` (nadie publica
+   una guía vieja por olvidar `build:guia`), no hay nada fuera de la lista permitida (ni la guía técnica ni los planes), ningún HTML
+   trae `<script>` y el panel «Ayuda» ofrece exactamente lo que existe — ni enlaces rotos ni archivos huérfanos.
+6. **Guías al día:** «área de viajes» → «área de compras» en la guía del usuario (#A107), pies de página al 2026-11-20 y enlace a la
+   infografía desde la guía del usuario, la de la hoja de cálculo y el README de `docs/`.
+
+**Qué NO cambia:** el backend. Es solo frontend y documentos: **no hay que pegar `Code.gs`** ni crear versión nueva del web app.
+
+**Lo que esto no es:** control de acceso. Todo lo que está en `public/` lo puede abrir cualquiera que tenga el enlace; el filtro por
+rol es comodidad. Por eso la guía técnica y `manual-com-p-02.md` no se publican.
+
+**Verificado:** `npm run verify` en verde con el chequeo nuevo, que **falla cuando debe** (se comprobó al revés: con una guía
+desactualizada y con un archivo de más en la carpeta). La infografía se revisó página por página sobre el PDF ya generado: dos hojas,
+sin nada recortado. Los 10 archivos llegan a `dist/manuales/`.
+
+**Despliegue:** solo el push del frontend. **Orden indiferente:** el backend no participa.

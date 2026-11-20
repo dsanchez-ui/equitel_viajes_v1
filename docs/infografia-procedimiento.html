@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Cómo se pide y se compra un viaje — Portal de Viajes Equitel</title>
+<style>
+  /* Infografía del procedimiento de solicitud de viajes (#A130).
+     Dos hojas tamaño carta horizontal. Sin scripts y con los estilos aquí
+     mismo: así cumple la política de seguridad de la plataforma (CSP) y se
+     puede publicar tal cual en /manuales/. Los íconos son SVG escritos a
+     mano, no emojis: los emojis no se imprimen igual en todos los equipos. */
+  :root {
+    --brand: #D71920;
+    --ink: #111827;
+    --body: #374151;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --soft: #f9fafb;
+    --viajero: #1d4ed8;
+    --jefe: #6d28d9;
+    --compras: #D71920;
+    --cfo: #b45309;
+    --alta: #047857;
+    --sistema: #374151;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--body); background: #e5e7eb;
+    font-size: 8.4pt; line-height: 1.32;
+  }
+  .hoja {
+    width: 279mm; min-height: 215mm;
+    margin: 10mm auto; padding: 7mm 8mm 5mm;
+    background: #fff; position: relative;
+  }
+  .hoja + .hoja { page-break-before: always; }
+
+  /* ---------- encabezado ---------- */
+  .cab { display: flex; align-items: flex-end; justify-content: space-between;
+         border-bottom: 3px solid var(--brand); padding-bottom: 3mm; margin-bottom: 3.5mm; }
+  .cab h1 { margin: 0; font-size: 17.5pt; color: var(--ink); letter-spacing: -0.4pt; line-height: 1.1; }
+  .cab .sub { margin: 1.5mm 0 0; font-size: 8.6pt; color: var(--muted); }
+  .cab .marca { text-align: right; font-size: 7.4pt; color: var(--muted); line-height: 1.45; white-space: nowrap; padding-left: 8mm; }
+  .cab .marca b { display: block; color: var(--brand); font-size: 10pt; letter-spacing: 0.3pt; }
+
+  h2.bloque {
+    font-size: 7.8pt; letter-spacing: 1.1pt; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 2mm; font-weight: 700;
+  }
+
+  /* ---------- quién interviene ---------- */
+  .roles { display: flex; gap: 2.5mm; margin-bottom: 3.5mm; }
+  .rol { flex: 1; border: 1px solid var(--line); border-top: 3px solid var(--c);
+         border-radius: 2mm; padding: 1.8mm 2.2mm; background: #fff; }
+  .rol .top { display: flex; align-items: center; gap: 1.5mm; margin-bottom: 0.8mm; }
+  .rol .nom { font-weight: 700; color: var(--ink); font-size: 8.2pt; line-height: 1.14; }
+  .rol p { margin: 0; font-size: 7.1pt; color: var(--muted); line-height: 1.28; }
+  .ico { width: 4.6mm; height: 4.6mm; flex: none; }
+
+  /* ---------- el camino ---------- */
+  .fila { display: flex; align-items: stretch; margin-bottom: 2.5mm; }
+  .paso { flex: 1; border: 1px solid var(--line); border-radius: 2mm; padding: 2mm 2.4mm 2.2mm;
+          background: #fff; position: relative; }
+  .paso.act { border-color: var(--c); box-shadow: inset 0 0 0 1px var(--c); }
+  .flecha { width: 6mm; flex: none; display: flex; align-items: center; justify-content: center; }
+  .flecha svg { width: 4mm; height: 4mm; }
+  .paso .num {
+    display: inline-block; width: 4.4mm; height: 4.4mm; line-height: 4.4mm; text-align: center;
+    border-radius: 50%; background: var(--c); color: #fff; font-weight: 700; font-size: 7.4pt;
+    margin-right: 1.3mm; vertical-align: middle;
+  }
+  .paso .tit { font-weight: 700; color: var(--ink); font-size: 8.8pt; letter-spacing: 0.2pt; vertical-align: middle; }
+  .paso .quien { display: flex; align-items: center; gap: 1.2mm; margin: 1.2mm 0;
+                 font-size: 7pt; font-weight: 700; color: var(--c); text-transform: uppercase; letter-spacing: 0.3pt; }
+  .paso .quien svg { width: 3.3mm; height: 3.3mm; flex: none; }
+  .paso ul { margin: 0; padding-left: 3.4mm; }
+  .paso li { font-size: 7.3pt; margin: 0.5mm 0; line-height: 1.28; }
+  .paso .pie { margin-top: 1.3mm; padding-top: 1.1mm; border-top: 1px dashed var(--line);
+               font-size: 6.9pt; color: var(--muted); }
+  .paso .pie b { color: var(--ink); }
+
+  /* ---------- avisos ---------- */
+  .clave { display: flex; gap: 2.5mm; margin: 0 0 3mm; }
+  .aviso { flex: 1; border-radius: 2mm; padding: 2mm 2.6mm; font-size: 7.4pt; line-height: 1.34; }
+  .aviso b { display: block; font-size: 8.2pt; margin-bottom: 0.6mm; }
+  .aviso.rojo { background: #fef2f2; border: 1px solid #fecaca; color: #7f1d1d; }
+  .aviso.rojo b { color: var(--brand); }
+  .aviso.azul { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; }
+  .aviso.azul b { color: #1d4ed8; }
+  .aviso.ambar { background: #fffbeb; border: 1px solid #fde68a; color: #78350f; }
+  .aviso.ambar b { color: #b45309; }
+
+  /* ---------- estados ---------- */
+  .estados { border: 1px solid var(--line); border-radius: 2mm; padding: 2mm 2.6mm; background: var(--soft); }
+  .estados .linea { display: flex; align-items: center; flex-wrap: wrap; gap: 1mm; margin-top: 1.2mm; }
+  .edo { border: 1px solid #d1d5db; background: #fff; border-radius: 1mm; padding: 0.6mm 1.4mm;
+         font-size: 6.9pt; font-family: Consolas, "Courier New", monospace; color: var(--ink); }
+  .edo.fin { border-color: #86efac; background: #f0fdf4; color: #166534; }
+  .edo.mal { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+  .sep { color: var(--muted); font-size: 8pt; }
+
+  /* ---------- casos (hoja 2) ---------- */
+  .grupo { margin-bottom: 3mm; }
+  .grupo > .cinta {
+    display: flex; align-items: baseline; gap: 2.5mm; margin-bottom: 2mm;
+    border-left: 3.5px solid var(--c); padding-left: 2.5mm;
+  }
+  .grupo > .cinta h3 { margin: 0; font-size: 10pt; color: var(--ink); letter-spacing: -0.2pt;
+                       white-space: nowrap; flex: none; }
+  .grupo > .cinta span { font-size: 7.4pt; color: var(--muted); }
+  .casos { display: flex; gap: 2.5mm; align-items: stretch; }
+  .caso { flex: 1; border: 1px solid var(--line); border-radius: 2mm; padding: 2mm 2.4mm; background: #fff; }
+  .caso h4 { margin: 0 0 1mm; font-size: 8.4pt; color: var(--ink); }
+  .caso p { margin: 0 0 1mm; font-size: 7.3pt; line-height: 1.29; }
+  .caso p:last-child { margin-bottom: 0; }
+  .caso .etq {
+    display: inline-block; border-radius: 1mm; padding: 0.4mm 1.3mm; margin-bottom: 1.1mm;
+    font-size: 6.6pt; font-weight: 700; letter-spacing: 0.3pt; text-transform: uppercase;
+    background: var(--c); color: #fff;
+  }
+  .caso .ojo { color: var(--brand); font-weight: 700; }
+  .caso b { color: var(--ink); }
+
+  .pieP { margin-top: 3mm; padding-top: 2mm; border-top: 1px solid var(--line);
+          display: flex; justify-content: space-between; font-size: 7pt; color: var(--muted); }
+
+  /* En pantalla angosta (celular o media pantalla) la hoja deja de ser una hoja:
+     las tiras se vuelven una columna y el texto crece. La versión impresa —el
+     PDF que se comparte— no cambia: todo esto es `@media screen`. */
+  @media screen and (max-width: 1150px) {
+    body { font-size: 11pt; }
+    .hoja { width: auto; min-height: 0; margin: 3mm; padding: 5mm 4mm; border-radius: 2mm; }
+    .cab { flex-direction: column; align-items: flex-start; gap: 2mm; }
+    .cab h1 { font-size: 16pt; }
+    .cab .marca { text-align: left; padding-left: 0; }
+    .roles, .fila, .clave, .casos { flex-direction: column; gap: 2.5mm; }
+    .flecha { display: none; }          /* el número del paso ya dice el orden */
+    .grupo > .cinta { flex-direction: column; align-items: flex-start; gap: 0.5mm; }
+    .grupo > .cinta h3 { white-space: normal; }
+    .paso li, .caso p, .rol p { font-size: 10pt; }
+    .paso .pie, .aviso { font-size: 9.5pt; }
+    .estados .linea { gap: 1.5mm; }
+    .edo { font-size: 8.5pt; }
+    .pieP { flex-direction: column; gap: 1mm; font-size: 9pt; }
+  }
+
+  @page { size: Letter landscape; margin: 0; }
+  @media print {
+    body { background: #fff; }
+    /* min-height se anula: con box-sizing:border-box cualquier valor por encima
+       de la altura de la página empuja el pie a una hoja en blanco. Sin
+       `overflow:hidden` a propósito: si algún día el contenido no cabe, se ve
+       una tercera hoja (y se corrige) en vez de recortarse en silencio. */
+    .hoja { margin: 0; width: 279.4mm; height: 215.9mm; min-height: 0;
+            page-break-after: always; }
+    .hoja:last-child { page-break-after: auto; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ======================= HOJA 1 — EL CAMINO ======================= -->
+<section class="hoja">
+
+  <div class="cab">
+    <div>
+      <h1>Cómo se pide y se compra un viaje</h1>
+      <p class="sub">El camino completo de una solicitud de tiquetes y hospedaje, de punta a punta: quién interviene, qué se necesita y en qué orden.</p>
+    </div>
+    <div class="marca">
+      <b>PORTAL DE VIAJES</b>
+      Organización Equitel<br />Noviembre de 2026 · Hoja 1 de 2
+    </div>
+  </div>
+
+  <h2 class="bloque">Quién interviene</h2>
+  <div class="roles">
+    <div class="rol" style="--c: var(--viajero)">
+      <div class="top">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span class="nom">Viajero<br />(o quien pide por él)</span>
+      </div>
+      <p>Crea la solicitud y <b>describe por escrito</b> qué opción elige. Puede pedir un cambio y anular.</p>
+    </div>
+    <div class="rol" style="--c: var(--jefe)">
+      <div class="top">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#6d28d9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M21 12c0 5-3.8 9.3-9 10.6C6.8 21.3 3 17 3 12V6l9-3 9 3z"/></svg>
+        <span class="nom">Jefe directo<br />(aprobador de área)</span>
+      </div>
+      <p>Aprueba o rechaza <b>siempre</b>, con el costo final a la vista. El directorio dice a quién le toca.</p>
+    </div>
+    <div class="rol" style="--c: var(--compras)">
+      <div class="top">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#D71920" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h2.2l2.3 11.3a2 2 0 0 0 2 1.6h8.3a2 2 0 0 0 2-1.5L21 7H5"/></svg>
+        <span class="nom">Área de compras</span>
+      </div>
+      <p>Cotiza, registra el costo, <b>compra</b> y cierra. Laura Molina; dirección, Diego Caballero.</p>
+    </div>
+    <div class="rol" style="--c: var(--cfo)">
+      <div class="top">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 6.5c0-1.9-2.2-3-5-3s-5 1.1-5 3 2.2 2.8 5 3.3 5 1.4 5 3.4-2.2 3.3-5 3.3-5-1.3-5-3.1"/></svg>
+        <span class="nom">CFO<br />(excepciones y presupuesto)</span>
+      </div>
+      <p>Autoriza lo que se sale de la política: fuera de plazo, presupuesto excedido, tarifa superior.</p>
+    </div>
+    <div class="rol" style="--c: var(--alta)">
+      <div class="top">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#047857" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V9l7-5 7 5v12"/><path d="M10 21v-5h4v5"/></svg>
+        <span class="nom">Gerencia General<br />y Cadena de Suministro</span>
+      </div>
+      <p>Aprueban los viajes <b>internacionales</b> y los de <b>más de $1.200.000</b>.</p>
+    </div>
+    <div class="rol" style="--c: var(--sistema)">
+      <div class="top">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        <span class="nom">La plataforma</span>
+      </div>
+      <p>Valida, avisa, recuerda y deja registro de <b>quién hizo qué y cuándo</b>. Nadie gestiona por fuera.</p>
+    </div>
+  </div>
+
+  <h2 class="bloque">El camino, paso a paso</h2>
+
+  <div class="fila">
+    <div class="paso act" style="--c: var(--viajero)">
+      <div><span class="num">1</span><span class="tit">PEDIR</span></div>
+      <div class="quien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Viajero
+      </div>
+      <ul>
+        <li>Pasajeros (hasta 5), con cédula y, en vuelos, fecha de nacimiento.</li>
+        <li>Origen, destino, fechas y horas en formato de 24 horas.</li>
+        <li>Hospedaje y maleta de bodega, si se necesitan.</li>
+        <li>Centro de costos y <b>motivo del viaje</b>.</li>
+      </ul>
+      <div class="pie">Anticipación mínima: <b>8 días</b> nacional · <b>30 días</b> internacional.</div>
+    </div>
+    <div class="flecha"><svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h12M13 6l6 6-6 6"/></svg></div>
+
+    <div class="paso act" style="--c: var(--compras)">
+      <div><span class="num">2</span><span class="tit">COTIZAR</span></div>
+      <div class="quien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h2.2l2.3 11.3a2 2 0 0 0 2 1.6h8.3a2 2 0 0 0 2-1.5L21 7H5"/></svg>
+        Área de compras
+      </div>
+      <ul>
+        <li>Busca vuelos y hoteles y <b>sube las opciones como imágenes</b>.</li>
+        <li>Al viajero le llega un correo con todas las opciones.</li>
+      </ul>
+      <div class="pie">Son imágenes a propósito: obligan a leerlas y a elegir con criterio, no de un clic.</div>
+    </div>
+    <div class="flecha"><svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h12M13 6l6 6-6 6"/></svg></div>
+
+    <div class="paso act" style="--c: var(--viajero)">
+      <div><span class="num">3</span><span class="tit">ELEGIR</span></div>
+      <div class="quien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Viajero
+      </div>
+      <ul>
+        <li>Entra al portal y <b>escribe cuál opción quiere</b>.</li>
+        <li>Debe decir siempre la <b>categoría</b>: económica, habitación estándar…</li>
+      </ul>
+      <div class="pie"><b>Aquí se detiene todo</b> si el viajero no responde. Es la etapa más importante para él.</div>
+    </div>
+    <div class="flecha"><svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h12M13 6l6 6-6 6"/></svg></div>
+
+    <div class="paso act" style="--c: var(--compras)">
+      <div><span class="num">4</span><span class="tit">CONFIRMAR EL COSTO</span></div>
+      <div class="quien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h2.2l2.3 11.3a2 2 0 0 0 2 1.6h8.3a2 2 0 0 0 2-1.5L21 7H5"/></svg>
+        Área de compras
+      </div>
+      <ul>
+        <li>Registra el costo final de tiquetes y hotel.</li>
+        <li>Aerolínea, canal de compra y <b>tarifa del manual</b>.</li>
+        <li>Adjunta la <b>evidencia de la cotización</b>.</li>
+      </ul>
+      <div class="pie">Con este costo la plataforma calcula <b>quiénes deben aprobar</b>.</div>
+    </div>
+  </div>
+
+  <div class="fila">
+    <div class="paso act" style="--c: var(--jefe)">
+      <div><span class="num">5</span><span class="tit">APROBAR</span></div>
+      <div class="quien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M21 12c0 5-3.8 9.3-9 10.6C6.8 21.3 3 17 3 12V6l9-3 9 3z"/></svg>
+        Jefe directo + los que exija el caso
+      </div>
+      <ul>
+        <li>Llega un correo con el costo, la evidencia y botones de aprobar o denegar.</li>
+        <li>También se decide desde <b>«Mis aprobaciones»</b> en el portal.</li>
+        <li>Puede dejar una instrucción escrita, que manda sobre lo elegido.</li>
+      </ul>
+      <div class="pie">Primer recordatorio a las <b>2 horas laborales</b>. Si nadie responde, escala.</div>
+    </div>
+    <div class="flecha"><svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h12M13 6l6 6-6 6"/></svg></div>
+
+    <div class="paso act" style="--c: var(--compras)">
+      <div><span class="num">6</span><span class="tit">COMPRAR</span></div>
+      <div class="quien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M2 3h2.2l2.3 11.3a2 2 0 0 0 2 1.6h8.3a2 2 0 0 0 2-1.5L21 7H5"/></svg>
+        Área de compras
+      </div>
+      <ul>
+        <li>Compra y registra la reserva: <b>PNR</b>, documentos y tarjeta.</li>
+        <li>Anota lo que se pagó y el hotel reservado.</li>
+      </ul>
+      <div class="pie">Al viajero le llegan los tiquetes o la confirmación del hotel por correo.</div>
+    </div>
+    <div class="flecha"><svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h12M13 6l6 6-6 6"/></svg></div>
+
+    <div class="paso act" style="--c: var(--viajero)">
+      <div><span class="num">7</span><span class="tit">VIAJAR</span></div>
+      <div class="quien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5a2.1 2.1 0 0 0-3-3L13 8 4.8 6.2a.8.8 0 0 0-.8 1.3l5 3.5-2.5 2.5-2.5-.5-1 1 3 1.8L7.8 19l1-1-.5-2.5 2.5-2.5 3.5 5a.8.8 0 0 0 1.3-.8z"/></svg>
+        Viajero
+      </div>
+      <ul>
+        <li>Si algo cambia, se pide el cambio <b>por la plataforma</b> (hoja 2).</li>
+      </ul>
+      <div class="pie">Ni correo, ni teléfono, ni WhatsApp: queda registro de todo.</div>
+    </div>
+    <div class="flecha"><svg viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h12M13 6l6 6-6 6"/></svg></div>
+
+    <div class="paso act" style="--c: var(--compras)">
+      <div><span class="num">8</span><span class="tit">CERRAR</span></div>
+      <div class="quien">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 7-7"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>
+        Área de compras y viajero
+      </div>
+      <ul>
+        <li>Se suben los <b>soportes y las facturas</b> del viaje.</li>
+        <li>El área de compras revisa y cierra la solicitud.</li>
+      </ul>
+      <div class="pie">Queda en <b>PROCESADO</b>. Ninguna se cierra sola: siempre la cierra una persona.</div>
+    </div>
+  </div>
+
+  <div class="clave">
+    <div class="aviso rojo">
+      <b>La aprobación no está al principio</b>
+      Primero se cotiza y el viajero elige. Solo cuando hay un costo final se pide la aprobación, porque hasta ese momento no se sabe quién tiene que aprobar.
+    </div>
+    <div class="aviso azul">
+      <b>El viajero solo interviene tres veces</b>
+      Al pedir el viaje (1), al describir qué opción elige (3) y al final, para subir los soportes (8). El resto del tiempo solo espera los correos.
+    </div>
+    <div class="aviso ambar">
+      <b>Todo queda registrado</b>
+      Cada solicitud muestra un semáforo con la fecha y la hora de cada etapa, cuánto tardó en horas reales y a quién le tocaba.
+    </div>
+  </div>
+
+  <div class="estados">
+    <h2 class="bloque" style="margin:0">Cómo se llama cada etapa en la plataforma</h2>
+    <div class="linea">
+      <span class="edo">PENDIENTE_OPCIONES</span><span class="sep">&rarr;</span>
+      <span class="edo">PENDIENTE_SELECCION</span><span class="sep">&rarr;</span>
+      <span class="edo">PENDIENTE_CONFIRMACION_COSTO</span><span class="sep">&rarr;</span>
+      <span class="edo">PENDIENTE_APROBACION</span><span class="sep">&rarr;</span>
+      <span class="edo">APROBADO</span><span class="sep">&rarr;</span>
+      <span class="edo">RESERVADO</span><span class="sep">&rarr;</span>
+      <span class="edo fin">PROCESADO</span>
+      <span class="sep" style="margin-left:4mm">y si se detiene:</span>
+      <span class="edo mal">DENEGADO</span>
+      <span class="edo mal">ANULADO</span>
+    </div>
+  </div>
+
+</section>
+
+<!-- ======================= HOJA 2 — LOS CASOS ======================= -->
+<section class="hoja">
+
+  <div class="cab">
+    <div>
+      <h1>Los casos que se salen del camino</h1>
+      <p class="sub">Qué cambia cuando el viaje es distinto, cuando hace falta otra aprobación o cuando hay que cambiar algo ya pedido.</p>
+    </div>
+    <div class="marca">
+      <b>PORTAL DE VIAJES</b>
+      Organización Equitel<br />Noviembre de 2026 · Hoja 2 de 2
+    </div>
+  </div>
+
+  <!-- ---------- GRUPO 1: según el viaje ---------- -->
+  <div class="grupo" style="--c: var(--viajero)">
+    <div class="cinta">
+      <h3>1. Según cómo sea el viaje</h3>
+      <span>El camino de la hoja 1 no cambia: cambia lo que se pide en el paso 1.</span>
+    </div>
+    <div class="casos">
+      <div class="caso" style="--c: var(--viajero)">
+        <span class="etq">Ida y vuelta</span>
+        <h4>El caso normal</h4>
+        <p>Se piden las dos fechas y las dos horas. La tarifa que exige el manual sale de las noches del viaje.</p>
+      </div>
+      <div class="caso" style="--c: var(--viajero)">
+        <span class="etq">Solo ida</span>
+        <h4>Sin regreso</h4>
+        <p>Se pide una sola fecha. Si después hay que volver, es una <b>solicitud nueva</b>, no un cambio.</p>
+      </div>
+      <div class="caso" style="--c: var(--viajero)">
+        <span class="etq">Solo hospedaje</span>
+        <h4>Sin vuelo</h4>
+        <p>Se piden <b>entrada y salida del hotel</b>, no ida y regreso. No hay aerolínea, ni tarifa, ni maleta. Todo lo demás es igual.</p>
+      </div>
+      <div class="caso" style="--c: var(--viajero)">
+        <span class="etq">Multidestino</span>
+        <h4>Varias ciudades</h4>
+        <p>Hasta <b>5 tramos</b>. Cada tramo viaja como una solicitud enlazada al mismo viaje.</p>
+        <p class="ojo">Si un solo tramo queda fuera de plazo, esperan todos: una decisión cubre el viaje completo.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- GRUPO 2: quién más aprueba ---------- -->
+  <div class="grupo" style="--c: var(--cfo)">
+    <div class="cinta">
+      <h3>2. Cuando hace falta otra aprobación</h3>
+      <span>Se suman al paso 5. El jefe directo aprueba siempre; estos se agregan según el caso.</span>
+    </div>
+    <div class="casos">
+      <div class="caso" style="--c: var(--cfo)">
+        <span class="etq">Fuera de plazo</span>
+        <h4>Menos de 8 o 30 días</h4>
+        <p>La solicitud <b>queda en espera antes de todo</b>: el área de compras ni siquiera la ve. El viajero escribe por qué no se pidió a tiempo y lo autoriza el <b>CFO</b>.</p>
+        <p class="ojo">Si nadie decide en 7 días, o llega la fecha del viaje, queda denegada.</p>
+      </div>
+      <div class="caso" style="--c: var(--alta)">
+        <span class="etq">Internacional</span>
+        <h4>Fuera de Colombia</h4>
+        <p>Aprueban además <b>Gerencia General o Dirección de Cadena de Suministro</b> (basta uno de los dos).</p>
+        <p>Todos los pasajeros necesitan el <b>pasaporte cargado</b> antes de crear la solicitud.</p>
+      </div>
+      <div class="caso" style="--c: var(--alta)">
+        <span class="etq">Alto costo</span>
+        <h4>Más de $1.200.000</h4>
+        <p>Un viaje nacional por encima de ese valor lo aprueba además la <b>Dirección de Cadena de Suministro</b>.</p>
+      </div>
+      <div class="caso" style="--c: var(--cfo)">
+        <span class="etq">Presupuesto</span>
+        <h4>La unidad se pasa</h4>
+        <p>Si el viaje hace que la unidad de negocio exceda su presupuesto, lo aprueba además el <b>CFO</b>.</p>
+        <p>No aplica si el viaje se carga a una <b>orden de trabajo</b>.</p>
+      </div>
+      <div class="caso" style="--c: var(--cfo)">
+        <span class="etq">Tarifa</span>
+        <h4>Más alta que el manual</h4>
+        <p>La tarifa sale de las noches: <b>TIPO 1</b> de 0 a 1, <b>TIPO 2</b> de 2 a 5, <b>TIPO 3</b> de 6 o más.</p>
+        <p>Comprar una superior exige justificación y la aprueba el <b>CFO</b>.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- GRUPO 3: cambios ---------- -->
+  <div class="grupo" style="--c: var(--compras)">
+    <div class="cinta">
+      <h3>3. Cambiar un viaje ya pedido</h3>
+      <span>Siempre por la plataforma, con el botón «¿Necesita cambiar su viaje?». Todo cambio lo aprueba el jefe, aunque cueste $0.</span>
+    </div>
+    <div class="casos">
+      <div class="caso" style="--c: var(--compras)">
+        <span class="etq">Dentro del plazo</span>
+        <h4>Hasta el día antes</h4>
+        <p>Se puede pedir hasta las <b>5:00 p. m. del día hábil anterior</b> al vuelo (sábados, 12:00 m.).</p>
+        <p>Se cambian fechas, horas, destino, equipaje o dónde se hospeda.</p>
+      </div>
+      <div class="caso" style="--c: var(--compras)">
+        <span class="etq">Tiquete comprado</span>
+        <h4>Se aprueba solo el sobrecosto</h4>
+        <p>El viaje original <b>no se anula</b>: queda marcado como «Cambiada» y su costo sigue contando.</p>
+        <p>Se aprueba únicamente el costo del cambio: penalidad, diferencia de tarifa y hotel.</p>
+      </div>
+      <div class="caso" style="--c: var(--compras)">
+        <span class="etq">Sin comprar</span>
+        <h4>Se cotiza de nuevo</h4>
+        <p>Como no hay nada pagado, el viaje <b>se vuelve a cotizar completo</b> y la solicitud original se anula al aprobar el cambio.</p>
+      </div>
+      <div class="caso" style="--c: var(--cfo)">
+        <span class="etq">Fuera de plazo</span>
+        <h4>Solo alargar el viaje</h4>
+        <p>Pasado el plazo, con el tiquete ya comprado, el viajero solo puede pedir <b>volver más tarde</b> y, si hace falta, más hospedaje.</p>
+        <p class="ojo">Lo aprueban el jefe <b>y el CFO</b>.</p>
+      </div>
+      <div class="caso" style="--c: var(--sistema)">
+        <span class="etq">Ya no se puede</span>
+        <h4>Llamar, y solo entonces</h4>
+        <p>Cuando la plataforma ya no deja pedir el cambio y es urgente: <b>Laura Molina</b> (área de compras) y, si no responde, <b>Diego Caballero</b>.</p>
+        <p>Ella lo registra a nombre del viajero.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- GRUPO 4: se detiene ---------- -->
+  <div class="grupo" style="--c: var(--sistema)">
+    <div class="cinta">
+      <h3>4. Cuando la solicitud se detiene</h3>
+      <span>Cuatro maneras de terminar sin llegar a PROCESADO, o de quedarse quieta esperando a alguien.</span>
+    </div>
+    <div class="casos">
+      <div class="caso" style="--c: var(--sistema)">
+        <span class="etq">Anulada</span>
+        <h4>El viaje ya no va</h4>
+        <p>El viajero anula la suya desde el detalle mientras el viaje no haya terminado. El área de compras también puede anularla, con motivo.</p>
+      </div>
+      <div class="caso" style="--c: var(--sistema)">
+        <span class="etq">Denegada</span>
+        <h4>Un aprobador dijo que no</h4>
+        <p>Basta que <b>uno</b> deniegue para que el proceso se detenga. Al viajero le llega el motivo por correo. Si el viaje sigue siendo necesario, se crea una solicitud nueva.</p>
+      </div>
+      <div class="caso" style="--c: var(--sistema)">
+        <span class="etq">Sin respuesta</span>
+        <h4>Nadie aprueba</h4>
+        <p>La plataforma recuerda a quien le toca. Si la solicitud lleva demasiado tiempo quieta, avisa a la administración para que alguien decida.</p>
+      </div>
+      <div class="caso" style="--c: var(--sistema)">
+        <span class="etq">En consulta</span>
+        <h4>El área pregunta</h4>
+        <p>Si el área de compras necesita saber si el viaje sigue en pie, el viajero recibe un correo con <b>CONTINUAR</b> o <b>ANULAR</b>. Mientras responde, la solicitud se queda quieta.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="pieP">
+    <span>Dudas del viaje: compras.equitel@equitel.com.co · Problemas con la plataforma: dsanchez@equitel.com.co</span>
+    <span>Hoja 2 de 2 — los casos.</span>
+  </div>
+
+</section>
+
+</body>
+</html>

@@ -1064,6 +1064,9 @@ const App: React.FC = () => {
       onApprovals={approvalsEnabled && view !== 'NEW' ? () => setView((v) => (v === 'APPROVALS' ? 'LIST' : 'APPROVALS')) : undefined}
       approvalsCount={approvalsCount}
       approvalsActive={view === 'APPROVALS'}
+      // #A130: los manuales van por el rol real, no por la vista en que esté.
+      isAdminUser={role === UserRole.ANALYST || role === UserRole.SUPERADMIN}
+      isApprover={approvalsEnabled}
     >
 
       {/* #A100: aviso de cómo funcionan ahora las solicitudes; constancia al tocar «Entendido». */}

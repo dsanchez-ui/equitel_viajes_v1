@@ -85,6 +85,14 @@ const GUIAS = {
     pdf: path.join(ROOT, 'docs', 'guia-usuario.pdf'),
     title: 'Guía del Usuario — Portal de Viajes Equitel',
   },
+  // Operación del día a día del área de compras (#A130). Es la mitad publicable
+  // de la antigua guía del administrador; la otra mitad (técnica) se queda en el repo.
+  'area-compras': {
+    md: path.join(ROOT, 'docs', 'guia-area-compras.md'),
+    html: path.join(ROOT, 'docs', 'guia-area-compras.html'),
+    pdf: path.join(ROOT, 'docs', 'guia-area-compras.pdf'),
+    title: 'Guía del área de compras — Portal de Viajes Equitel',
+  },
   'hoja-calculo': {
     md: path.join(ROOT, 'docs', 'guia-hoja-calculo.md'),
     html: path.join(ROOT, 'docs', 'guia-hoja-calculo.html'),
@@ -96,6 +104,13 @@ const GUIAS = {
   'presentacion': {
     html: path.join(ROOT, 'docs', 'presentacion-impacto.html'),
     pdf: path.join(ROOT, 'docs', 'presentacion-impacto.pdf'),
+    htmlOnly: true,
+  },
+  // Infografía del procedimiento (#A130): dos hojas horizontales, el HTML es la
+  // fuente (SVG y CSS propios). Es la que se le pasa a quien no usa la plataforma.
+  'procedimiento': {
+    html: path.join(ROOT, 'docs', 'infografia-procedimiento.html'),
+    pdf: path.join(ROOT, 'docs', 'infografia-procedimiento.pdf'),
     htmlOnly: true,
   },
 };
@@ -229,17 +244,72 @@ function buildGuia(slug, guia) {
   return false;
 }
 
-// --- Ejecutar según argumentos ---
-const arg = process.argv[2];
-const toBuild = arg ? [arg] : Object.keys(GUIAS);
+// =====================================================================
+// PUBLICACIÓN EN LA APP (#A130)
+// =====================================================================
+// Lo que la gente abre desde el botón «Ayuda» vive en `public/manuales/` con
+// nombre fijo: así el enlace no se rompe en cada publicación (a diferencia del
+// JavaScript, que lleva huella — #A96). Vite copia `public/` tal cual a `dist/`.
+//
+// Son COPIAS exactas de `docs/`: `tools/check-manuales.cjs` compara byte a byte,
+// de modo que no se puede publicar una guía vieja por olvidar `build:guia`.
+// Lo que NO está en esta lista no se publica (la guía técnica, los planes).
+const PUBLICADOS = {
+  'procedimiento.html': path.join(ROOT, 'docs', 'infografia-procedimiento.html'),
+  'procedimiento.pdf':  path.join(ROOT, 'docs', 'infografia-procedimiento.pdf'),
+  'guia-usuario.html':  path.join(ROOT, 'docs', 'guia-usuario.html'),
+  'guia-usuario.pdf':   path.join(ROOT, 'docs', 'guia-usuario.pdf'),
+  'area-compras.html':  path.join(ROOT, 'docs', 'guia-area-compras.html'),
+  'area-compras.pdf':   path.join(ROOT, 'docs', 'guia-area-compras.pdf'),
+  'hoja-calculo.html':  path.join(ROOT, 'docs', 'guia-hoja-calculo.html'),
+  'hoja-calculo.pdf':   path.join(ROOT, 'docs', 'guia-hoja-calculo.pdf'),
+  'tarifas.pdf':        path.join(ROOT, 'infografia-tarifas.pdf'),
+  'aprobadores.pdf':    path.join(ROOT, 'infografia-aprobadores.pdf'),
+};
 
-let allOk = true;
-for (const slug of toBuild) {
-  if (!GUIAS[slug]) {
-    console.error('✗ Guía desconocida:', slug, '— disponibles:', Object.keys(GUIAS).join(', '));
-    allOk = false;
-    continue;
-  }
-  if (!buildGuia(slug, GUIAS[slug])) allOk = false;
+function publicar() {
+  const destDir = path.join(ROOT, 'public', 'manuales');
+  fs.mkdirSync(destDir, { recursive: true });
+  let ok = true;
+  let copiados = 0;
+  Object.keys(PUBLICADOS).forEach(function (nombre) {
+    const origen = PUBLICADOS[nombre];
+    if (!fs.existsSync(origen)) {
+      console.error('✗ Falta el archivo de origen:', path.relative(ROOT, origen));
+      ok = false;
+      return;
+    }
+    fs.copyFileSync(origen, path.join(destDir, nombre));
+    copiados++;
+  });
+  // Nada que no esté en la lista: evita publicar la guía técnica por accidente.
+  fs.readdirSync(destDir).forEach(function (nombre) {
+    if (!PUBLICADOS[nombre]) {
+      fs.unlinkSync(path.join(destDir, nombre));
+      console.log('  (retirado de public/manuales:', nombre + ')');
+    }
+  });
+  console.log('\n✓ Publicados en public/manuales:', copiados, 'archivos');
+  return ok;
 }
-process.exit(allOk ? 0 : 1);
+
+// La lista la reutiliza tools/check-manuales.cjs: una sola fuente de verdad.
+module.exports = { PUBLICADOS, GUIAS };
+
+// --- Ejecutar según argumentos (solo si se invoca directamente) ---
+if (require.main === module) {
+  const arg = process.argv[2];
+  const toBuild = arg ? [arg] : Object.keys(GUIAS);
+
+  let allOk = true;
+  for (const slug of toBuild) {
+    if (!GUIAS[slug]) {
+      console.error('✗ Guía desconocida:', slug, '— disponibles:', Object.keys(GUIAS).join(', '));
+      allOk = false;
+      continue;
+    }
+    if (!buildGuia(slug, GUIAS[slug])) allOk = false;
+  }
+  if (!publicar()) allOk = false;
+  process.exit(allOk ? 0 : 1);
+}

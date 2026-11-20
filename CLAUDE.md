@@ -31,7 +31,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + enlaces con dominio + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + enlaces con dominio + manuales publicados + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
    Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
    (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -41,16 +41,19 @@ archivos; Gmail para notificaciones.
    Todo el UI y la documentación van **en español**. **Las respuestas a David, siempre en
    español**, también los avisos entre pasos y el reporte final (David, 9-nov: *«siempre repórtame en
    español»*). Los commits van a nombre de David (el `git config` del repo es el correcto).
-6. **Sugerir y que una persona confirme.** Cuando algo cambiaría estados en producción
+6. **Un cambio que altera lo que una persona ve actualiza su guía en el mismo commit** (#A130) y corre `npm run build:guia`.
+   `npm run verify` comprueba que lo publicado en `public/manuales/` es lo que está en `docs/`, pero no puede saber si el `.md`
+   quedó al día: eso se revisa al escribir la entrada de `BUG_REPORT.md`.
+7. **Sugerir y que una persona confirme.** Cuando algo cambiaría estados en producción
    (cerrar, aprobar, anular), David prefiere que el sistema lo muestre en una bandeja o aviso y
    que el área de compras lo confirme con el flujo de siempre (#A83: *"es más seguro"*). Si de
    verdad conviene automatizar, preguntar antes de construirlo. **Un permiso de solo ver** se da en
    una tabla de MISC (como `COMPLETO`, #A113), no en una lista fija del código; lo que cambia datos o da
    poder (saltar aprobación, excluir del ahorro) sí va en listas fijas.
-7. **`git fetch` antes de elegir el siguiente `#Axx`, antes de un push y antes de pedirle a David que pegue
+8. **`git fetch` antes de elegir el siguiente `#Axx`, antes de un push y antes de pedirle a David que pegue
    `Code.gs`.** David trabaja desde el Mac, el PC Linux y otras sesiones: el 28-oct dos sesiones usaron los
    mismos números, y un `Code.gs` armado sin lo que subió la otra borraría eso en producción al pegarlo.
-8. **Subir lo verificado al menos cada 2 horas** (David, 9-oct), aunque sea solo documentación: así lo
+9. **Subir lo verificado al menos cada 2 horas** (David, 9-oct), aunque sea solo documentación: así lo
    último queda en la nube y no solo en un equipo. Nunca trabajo a medias a `main` (despliega); eso va en
    una rama `wip/…` (ver [MIGRACION.md §3](MIGRACION.md)).
 
@@ -59,7 +62,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + build + un solo .js y version.json  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + manuales + build + un solo .js y version.json  ← antes de cualquier push
 npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
@@ -550,6 +553,18 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   aerolínea, a la par (Google $34.501 más caro en 5). Con la tarifa del manual, 20 viajes $5.485.521: Miami $1,58 M, volar otra
   aerolínea $1,94 M, misma aerolínea $0,82 M (casi todo aproximado, LATAM) y sin dato $1,16 M. Lo cotizado por Aviatur ya trae sus
   cargos (208 vuelos sin hotel: facturado = cotizado en la mediana).
+- **Los manuales viven en la app, por rol** (#A130, pedido de David del 20-nov: un procedimiento «muy fácil de leer», alojado en la
+  plataforma y accesible según el rol). Botón **«Ayuda»** en el encabezado (`HelpMenu.tsx`): el solicitante ve la infografía del
+  procedimiento, la guía del usuario y la de tarifas; el aprobador, además la suya; el administrador, todo, **según su rol real, no la
+  vista en que esté**.
+  - Los manuales **no van dentro del JavaScript** (#A96): son archivos con nombre fijo en `public/manuales/`, copias exactas de
+    `docs/` que publica `npm run build:guia` y que compara byte a byte `tools/check-manuales.cjs` dentro de `npm run verify`. Se abren
+    en otra pestaña (la CSP prohíbe mostrarlos dentro de la app) y no llevan `<script>`.
+  - **Lo que está en `public/` lo abre cualquiera que tenga el enlace**: el filtro por rol es comodidad, no control de acceso. Por eso
+    la **guía técnica del administrador no se publica** (#A130 la separó: operación → `docs/guia-area-compras.md`, que sí se publica;
+    técnica → `docs/guia-administrador.md`, solo en el repo). Nunca publicar la técnica ni `manual-com-p-02.md`.
+  - **La infografía del procedimiento** (`docs/infografia-procedimiento.html`, dos hojas carta horizontal) es lo que se le pasa a quien
+    no usa la plataforma. El HTML es la fuente; el PDF lo genera `build:guia`. Sin emojis: no se imprimen igual en todos los equipos.
 - **Carga masiva de fechas desde la lista de RR. HH.** (#A72, menú *7. Cargar fechas
   de nacimiento*): solo usuarios **ya registrados** (no crea usuarios), nunca
   sobrescribe una fecha válida distinta (la reporta como conflicto), y el enlace de
@@ -692,6 +707,7 @@ components/
   TimeInput.tsx            Campo de hora HH:MM de 24 h, con la hora en palabras y lista propia de horas; reemplaza a <input type="time"> (#A112)
   UpdateBanner.tsx         Aviso «Hay una versión nueva de la plataforma» cuando version.json cambia (#A124)
   CostEvidence.tsx         Soporte del costo: selector de «Confirmar costos» (Ctrl+V, arrastrar, elegir) y recuadro de cuándo y con qué se confirmó (#A128)
+  HelpMenu.tsx             Botón «Ayuda» del encabezado: los manuales del rol, desde /manuales/ (#A130)
   Layout.tsx, ConfirmationDialog.tsx
 services/gasService.ts     Cliente HTTP hacia GAS (timeout 30 s + AbortController)
 utils/dateUtils.ts         Parseo/formato de fechas (zona America/Bogota)
@@ -723,6 +739,7 @@ tools/check-invoice-review.cjs       Facturas listas para cerrar y por revisar c
 tools/check-price-tracking.cjs       Rastreo de precios: el proyecto aparte y Code.gs juntos sobre una hoja simulada (#A84)
 tools/check-savings-analysis.cjs     Caché del dashboard (alcance, invalidación, trozos, fallas) y cuentas de la proyección de ahorro (#A89, #A90)
 tools/check-webapp-links.cjs         Enlaces a páginas del web app con el dominio de Equitel (#A91)
+tools/check-manuales.cjs             Lo publicado en public/manuales es lo de docs/, sin <script> y ofrecido por el panel (#A130)
 tools/check-fare-rules.cjs           Tarifa del manual; frontend y backend coinciden y guardado en la hoja (#A95)
 tools/check-single-bundle.cjs        La app es un solo archivo JavaScript, sin cargas bajo demanda (#A96)
 tools/check-policy-approval.cjs      Aprobación del CFO por la política: espera, resumen, decisiones, vencimiento, tarifa y aviso (#A100)
@@ -734,8 +751,10 @@ tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
 tools/comparador-precios/apps-script/  Proyecto de Apps Script APARTE del rastreo de precios (#A84): Rastreo.gs, manifiesto y guía
-scripts/build-guia.cjs     Genera los PDF de docs/ (resuelve Chrome por plataforma)
-docs/                      Guías de administrador, hoja de cálculo y planes
+scripts/build-guia.cjs     Genera el HTML y el PDF de las guías y los publica en public/manuales/ (#A130)
+public/manuales/           Lo que abre el botón «Ayuda»: copias exactas de docs/, con nombre fijo (#A130)
+docs/                      Guías (usuario, área de compras, técnica, hoja de cálculo), la infografía del
+                           procedimiento y los planes
 ```
 
 ## Arquitectura y patrones que hay que respetar
@@ -786,7 +805,12 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-19)
+### Para retomar (estado al 2026-11-20)
+
+- **#A130 (20-nov): la infografía del procedimiento y los manuales dentro del portal.** Solo frontend y documentos: **no hay nada que
+  pegar en Apps Script**. Lo que se le pasa a quien no usa la plataforma es `docs/infografia-procedimiento.pdf` (dos hojas). Pendientes
+  sin código: que Laura lea la [guía del área de compras](docs/guia-area-compras.md) antes de darla por buena, y las fases 3 y 4 del
+  plan (ayuda en contexto y enlaces en los correos, que sí tocan `Code.gs`).
 
 - **#A129 desplegado (19-nov)** (después del plazo, alargar el viaje con el voto del CFO; casos SOL-000777 y SOL-000782 de Mateo): David pegó
   `Code.gs` (versión nueva del web app) y el frontend `d351d12` quedó en producción (bundle `index-Cbzb_Rtx.js`). Mateo pide los dos cambios
@@ -893,8 +917,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
     tiene la exoneración de aportes (contabilidad), el caso de Sandra Omaña (SOL-000665) y la cifra del comparador con Yurani.
 - **#A103 «Cambiar mi viaje», #A104 y #A105: desplegados el 21-oct.** Ya se probó en producción (lo probó otra persona, David, 22-oct) y
   Laura ya tiene la guía «Cómo gestionar un cambio de viaje».
-- **Manuales dentro de la app** (David, 14-oct): **solo plan**, en
-  [docs/plan-manuales-en-app.md](docs/plan-manuales-en-app.md) — hoy David los pasa uno por uno (`docs/guia-*.pdf`).
+- **Manuales dentro de la app** (#A130, pedido de David del 20-nov): **fases 1 y 2 hechas**. Faltan la ayuda en contexto (§3.4 del
+  plan) y los enlaces en los correos (§3.5, toca `Code.gs`): [docs/plan-manuales-en-app.md](docs/plan-manuales-en-app.md).
 - **Informe por unidad para cada jefe** (posible segunda etapa de #A101): la presentación de Alejandro dice que «su jefe
   directo recibe el ranking mensual de su unidad». Nadie lo ha pedido todavía; preguntar antes de construirlo.
 - **Módulo de legalizaciones de gastos** — plan V2 aprobado en reunión del

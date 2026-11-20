@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guía del Google Sheets — Portal de Viajes Equitel</title>
+  <style>
+  :root {
+    --brand: #D71920;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --bg-light: #f9fafb;
+    --bg-code: #f3f4f6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: white;
+    line-height: 1.6;
+    font-size: 13px;
+  }
+  .wrapper { max-width: 820px; margin: 0 auto; padding: 40px 50px; }
+  h1 {
+    color: var(--brand); font-size: 28px; margin: 0 0 8px;
+    letter-spacing: -0.5px; border-bottom: 3px solid var(--brand); padding-bottom: 12px;
+  }
+  h2 {
+    color: #111827; font-size: 20px; margin: 32px 0 12px;
+    border-top: 1px solid var(--border); padding-top: 18px;
+  }
+  h3 { color: #374151; font-size: 15px; margin: 20px 0 8px; font-weight: 600; }
+  p { margin: 10px 0; }
+  ul, ol { margin: 10px 0; padding-left: 26px; }
+  li { margin: 4px 0; }
+  a { color: #2563eb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--bg-code); padding: 1px 5px; border-radius: 3px;
+    font-size: 12px; font-family: Consolas, "Courier New", monospace;
+  }
+  pre {
+    background: #1f2937; color: #e5e7eb; padding: 14px 18px;
+    border-radius: 6px; overflow-x: auto; font-size: 11px; line-height: 1.5;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; font-size: 11px; }
+  blockquote {
+    border-left: 4px solid var(--brand); background: #fef2f2;
+    padding: 10px 16px; margin: 14px 0; color: #7f1d1d; border-radius: 0 4px 4px 0;
+  }
+  blockquote p { margin: 4px 0; }
+  table { border-collapse: collapse; margin: 14px 0; width: 100%; font-size: 12px; }
+  th, td {
+    border: 1px solid var(--border); padding: 7px 10px;
+    text-align: left; vertical-align: top;
+  }
+  th { background: var(--bg-light); font-weight: 600; color: #111827; }
+  tr:nth-child(even) td { background: #fafafa; }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 28px 0; }
+  strong { color: #111827; }
+  @page { size: Letter; margin: 18mm; }
+  @media print {
+    body { font-size: 11.5px; }
+    .wrapper { max-width: 100%; padding: 0; margin: 0; }
+    h1 { font-size: 22px; page-break-before: avoid; }
+    h2 { page-break-after: avoid; font-size: 16px; }
+    h3 { page-break-after: avoid; font-size: 13px; }
+    table, pre, blockquote { page-break-inside: avoid; }
+    a { color: inherit; text-decoration: none; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrapper">
+    <h1>Guía del Google Sheets — Portal de Viajes Equitel</h1>
+<blockquote>
+<p><strong>Para quién es esta guía:</strong> cualquier persona del área de compras que vaya a manejar el Google Sheets que está detrás del portal.</p>
+<p><strong>En qué se enfoca:</strong> solo en la hoja de cálculo. Qué tiene, qué se puede tocar y qué no, y cómo usar el menú <strong>Equitel Viajes</strong> que aparece arriba del sheet.</p>
+<p><strong>Guía complementaria:</strong> para la operación del portal completo (roles, workflows del analista, Script Properties, triggers, métricas, seguridad), ver la <a href="./guia-administrador.md">Guía del Administrador</a>.</p>
+</blockquote>
+<hr>
+<h2>¿Qué es este Google Sheets?</h2>
+<p>Es la <strong>base de datos</strong> de todo el portal. Cada solicitud, cada usuario, cada PIN, cada reserva — todo vive aquí.</p>
+<p>Cuando un empleado crea una solicitud desde el portal, se agrega una fila en este sheet. Cuando un jefe aprueba por correo, se actualiza una celda de esa fila. Cuando el analista registra una reserva, el número de PNR queda guardado acá.</p>
+<p>El portal (la página web) y este Sheets están conectados todo el tiempo: <strong>lo que pasa en uno se refleja en el otro.</strong></p>
+<hr>
+<h2>Las hojas y qué hay en cada una</h2>
+<p>El archivo tiene varias pestañas abajo. Aquí explico qué hay en cada una:</p>
+<h3>Nueva Base Solicitudes (la más importante)</h3>
+<p>Una fila por cada solicitud de viaje u hospedaje que se haya creado. Tiene 75 columnas con todo: quién solicita, destino, fechas, pasajeros, costos, número de reserva, observaciones, aprobaciones, archivos adjuntos.</p>
+<p><strong>¿Puedo editar a mano?</strong> Sí, pero con mucho cuidado. Las columnas con fondo amarillo claro son las “editables” (nombre de hotel, tarjeta de crédito, tipo de compra, número de factura, etc.). El resto se llena automático desde el portal.</p>
+<p><strong>Lo que NO debes hacer aquí:</strong></p>
+<ul>
+<li>Borrar filas (eso rompe los IDs y la trazabilidad).</li>
+<li>Cambiar el status a mano (usa el portal — los correos automáticos no saldrán si lo haces a mano).</li>
+<li>Cambiar el <code>ID RESPUESTA</code> de una solicitud.</li>
+<li>Eliminar columnas.</li>
+<li>Editar a mano las celdas de <code>APROBADO POR ÁREA? (AUTOMÁTICO)</code>, <code>APROBADO CDS</code> o <code>APROBADO CEO</code>: el portal las llena solo y usa esas celdas para decidir si la solicitud avanza. Si ves una solicitud con <code>APROBADO</code> global pero una celda ejecutiva vacía, la app lo corrige en pantalla automáticamente (no toques la hoja).</li>
+<li>Modificar <code>EVENTOS_JSON</code> u <code>OBSERVACIONES</code> a mano: son el log de auditoría. Pueden contener marcadores internos (<code>[CONSULTA_USUARIO_PENDIENTE]</code>, <code>[ETAPA SALTADA por …]</code>, <code>[RESERVA]: Registrada sin notificación al usuario</code>) que el backend lee y respeta.</li>
+</ul>
+<h3>USUARIOS</h3>
+<p>Directorio de todas las personas que pueden usar el portal. Cada fila es una persona con:</p>
+<ul>
+<li>Cédula</li>
+<li>Nombre</li>
+<li>Correo corporativo</li>
+<li>Empresa (Cumandes, Equitel, Ingenergía, LAP)</li>
+<li>Sede</li>
+<li>Centro de costo</li>
+<li>Aprobadores asignados (quiénes le aprueban las solicitudes)</li>
+<li>PIN (automático — no se edita a mano)</li>
+</ul>
+<p><strong>Tip:</strong> puedes convertir esta hoja a una <strong>tabla de Google Sheets</strong> (menú Formato → Convertir a tabla) para tener filtros por columna, formato bonito, y poder referenciar columnas por nombre en otras fórmulas. No afecta el portal.</p>
+<p><strong>Lo que NO debes hacer:</strong></p>
+<ul>
+<li>Editar la columna PIN a mano (borraría el PIN del usuario)</li>
+<li>Cambiar el orden de columnas</li>
+<li>Escribir directamente en las columnas “Correos Aprobadores (auto)” o “Nombres Aprobadores (auto)” — esas se llenan solas con base en las cédulas de la columna G</li>
+</ul>
+<p><strong>Lo que SÍ puedes hacer, pero es mejor desde el sidebar</strong> (ver más abajo):</p>
+<ul>
+<li>Agregar usuarios nuevos</li>
+<li>Cambiar aprobadores</li>
+<li>Corregir empresa/sede/centro de costo</li>
+<li>Borrar PINs viejos</li>
+</ul>
+<h3>CDS vs UDEN</h3>
+<p>Catálogo de centros de costo con su descripción y la unidad de negocio a la que pertenecen. El portal lo usa para mostrar el nombre del centro de costo cuando alguien selecciona un código.</p>
+<p><strong>Lo que SÍ puedes hacer:</strong> agregar nuevos centros de costo al final.</p>
+<p><strong>Lo que NO debes hacer:</strong> cambiar las columnas.</p>
+<h3>CIUDADES DEL MUNDO</h3>
+<p>Listado de ciudades con país. Se usa para el autocompletar de origen/destino en el portal, y para detectar si un viaje es internacional.</p>
+<p><strong>Lo que SÍ puedes hacer:</strong> agregar ciudades nuevas al final. Columna A = país, Columna B = ciudad.</p>
+<p><strong>Lo que NO debes hacer:</strong> cambiar el nombre de las columnas.</p>
+<h3>MISC</h3>
+<p>Hoja con dos catálogos pequeños y dos tablas:</p>
+<ul>
+<li>Tarjetas de crédito disponibles (las que aparecen en el dropdown cuando registras una reserva)</li>
+<li>Sedes (para el formulario de nueva solicitud)</li>
+<li>Accesos al dashboard de costos: quién puede verlo y de qué unidad de negocio (ver abajo)</li>
+<li>A quién llama el viajero cuando ya pasó el plazo para cambiar su viaje (ver abajo)</li>
+</ul>
+<p><strong>Lo que SÍ puedes hacer:</strong> agregar sedes o tarjetas nuevas al final.</p>
+<h4>Accesos al dashboard de costos</h4>
+<p>Dos columnas normales con los encabezados <code>DASHBOARD COSTOS · CORREO</code> y <code>DASHBOARD COSTOS · UNIDAD DE NEGOCIO</code> en la <strong>fila 1</strong>, que crea el menú 9 para no tener que escribirlos a mano. Los datos van debajo.</p>
+<ul>
+<li><strong>Analistas y superadmins</strong> ven todas las unidades sin estar en la tabla.</li>
+<li><strong>Cada fila da acceso a una persona a una unidad:</strong> el correo con el que entra al portal y la unidad de negocio escrita igual que en las solicitudes. El menú 9 muestra la lista de unidades válidas. Para varias unidades, una fila por unidad; <code>TODAS</code> da acceso a todas.</li>
+<li><strong><code>COMPLETO</code> en vez de la unidad: todo el dashboard, solo para mirar</strong> (desde el 28-oct-2026; hoy, Juan Camilo Pineda). Esa persona lo ve como un administrador: todas las unidades, la variación, los cambios de viaje, el comparador de precios y la proyección. No excluye viajes del ahorro ni cambia la configuración, y en la plataforma sigue siendo solicitante. No se le pone a un analista (a Laura le mostraría la variación y el comparador): el menú 9 avisa si pasa.</li>
+<li><strong>Quien no esté en la tabla no puede entrar al dashboard</strong>, aunque sea aprobador.</li>
+<li><strong>La vista “Variación cotizado vs facturado” y el comparador de precios</strong> los ven Yurani Prieto, Diego Caballero y David Sánchez (regla fija en el código) y quien tenga <code>COMPLETO</code>. Con <code>TODAS</code> no se ven. Excluir un viaje del ahorro, solo ellos tres. Se comprueba con <strong>Equitel Viajes → 10. Ver administradores y permisos especiales</strong>.</li>
+<li>La tabla se crea y se revisa con <strong>Equitel Viajes → 9. Accesos al dashboard de costos</strong>. La primera vez escribe solo los dos encabezados, al final de MISC y dejando una columna libre. Cada vez que se usa muestra quién ve qué y las unidades válidas, y avisa de errores: correo no registrado en USUARIOS, unidad mal escrita, filas repetidas o incompletas.</li>
+<li>Los cambios aplican la próxima vez que la persona abra el dashboard. No hay que desplegar nada.</li>
+</ul>
+<p><strong>Lo que NO debes hacer:</strong> cambiar los encabezados de esas dos columnas ni escribir las unidades a mano sin revisarlas con el menú 9 (una unidad mal escrita no muestra datos).</p>
+<h4>Contactos para cambios de viaje (#A106)</h4>
+<p>Tres columnas con los encabezados <code>CONTACTO CAMBIOS · CORREO</code>, <code>CONTACTO CAMBIOS · NOMBRE</code> y <code>CONTACTO CAMBIOS · CARGO</code> en la <strong>fila 1</strong>. Las crea <strong>Equitel Viajes → 16. Contactos para cambios de viaje</strong>, al final de MISC y dejando una columna libre, con Laura Molina (área de compras) y Diego Caballero (director de compras) debajo.</p>
+<ul>
+<li><strong>Una fila por persona, en el orden en que se llama:</strong> la primera y, si no responde, la siguiente. Se muestran máximo 3.</li>
+<li><strong>El nombre y el cargo</strong> son los que ve el viajero. <strong>El correo</strong> es con el que la persona está en USUARIOS: de ahí se toma su celular (columna <em>Celular</em>). Si alguien no tiene celular válido, se muestra su correo.</li>
+<li><strong>Solo se muestra cuando ya no se puede pedir el cambio en el portal</strong> (pasó el plazo) y es urgente. Antes, el portal pide que todo se haga por la plataforma.</li>
+<li><strong>Si alguien cambia de rol</strong>, se cambia su fila. Si cambia el celular, se corrige en USUARIOS (sidebar o panel móvil). La app lo muestra en unos 10 minutos, o de inmediato al volver a correr el menú 16.</li>
+<li>Sin la tabla, el portal muestra el correo del área de compras, como antes.</li>
+</ul>
+<h3>REGLAS_COAPROBADOR</h3>
+<p>Define reglas especiales de co-aprobación. Por ejemplo: “si alguien internacional tiene a Juan Pérez como aprobador, también debe aprobarlo María García”. Útil para viajes internacionales que requieren doble aprobación.</p>
+<p><strong>Lo que SÍ puedes hacer:</strong> agregar reglas nuevas con la misma estructura.</p>
+<h3>INTEGRANTES_OLD</h3>
+<p>La antigua hoja de usuarios, antes de la migración a USUARIOS. Está ahí como respaldo histórico.</p>
+<p><strong>Lo que NO debes hacer:</strong> borrarla todavía. Déjala al menos 1-2 meses más por si acaso.</p>
+<h3>COMPARATIVO PRECIOS y COMPARATIVO ESTADO (ocultas)</h3>
+<p>Las crea y las escribe el <strong>rastreo de precios</strong> (#A84), un proyecto de Apps Script aparte que
+compara lo cotizado con el precio de Google Flights durante el estudio de dos semanas. Una
+fila por búsqueda, y el estado del rastreo. Desde #A86 cada búsqueda trae la ida y el regreso
+por separado; la columna <code>TRAMOS</code> guarda los vuelos de cada tramo (texto en formato JSON, para
+el dashboard). Desde #A95 cada búsqueda guarda también la tarifa del viaje (<code>TARIFA</code>) y las
+maletas de mano pedidas a Google (<code>MALETA DE MANO</code>: 0 en TIPO 1, una por pasajero en TIPO 2 y 3),
+para comparar con la misma tarifa. El dashboard de costos las lee en la sección
+<em>Comparador de precios</em> (solo Yurani, Diego y David).</p>
+<p>Están ocultas (menú <strong>Ver → Hojas ocultas</strong> para verlas) y avisan si alguien intenta editarlas.
+<strong>No las edites ni las borres mientras el estudio esté activo.</strong> Al terminar se pueden borrar:
+nada de la plataforma depende de ellas.</p>
+<h3>CONSTANCIA AVISOS</h3>
+<p>La crea la app (#A100) la primera vez que alguien toca <strong>«Entendido»</strong> en la ventana que explica cómo funcionan ahora las solicitudes (se muestra a cada solicitante, sin fecha de fin, hasta que lo acepta). Una fila por persona y aviso: <code>FECHA</code>, <code>CORREO</code> y <code>AVISO</code>. Es la constancia de que cada uno lo leyó. No la edites; si se borra una fila, a esa persona le vuelve a salir la ventana.</p>
+<p>Desde el 20-oct también guarda, con el aviso <code>cambios-de-viaje-2026-10</code> (#A103), quién leyó la explicación de «Cambiar mi viaje», que sale la primera vez que el viajero toca el botón de cambio.</p>
+<h3>INFORMES ENVIADOS</h3>
+<p>La crea el sistema (#A101) la primera vez que envía el informe mensual de cumplimiento de la política. Está oculta. Una fila por informe enviado: <code>FECHA</code>, <code>INFORME</code>, <code>MES</code>, <code>PARA</code> y <code>COPIA</code>. Sirve de constancia y evita que el informe de un mes salga dos veces. No la edites; si se borra la fila de un mes, ese informe se vuelve a enviar en la siguiente pasada del mismo mes.</p>
+<h3>Hojas con <code>_OLD_</code> en el nombre</h3>
+<p>Son respaldos de reorganizaciones anteriores de la hoja principal. <strong>Déjalas quietas</strong> hasta que hayas confirmado que la versión activa funciona bien (usualmente 1-2 semanas) y luego puedes borrarlas.</p>
+<hr>
+<h2>El menú Equitel Viajes (la barra de herramientas)</h2>
+<p>Arriba del sheet, al lado de los menús estándar (Archivo, Editar, Ver…), aparece un menú llamado <strong>Equitel Viajes</strong>. Este es tu centro de control.</p>
+<h3>Gestionar Usuarios (Sidebar)</h3>
+<p>Abre un panel lateral a la derecha con <strong>5 pestañas</strong>. Esta es la herramienta principal para manejar la lista de empleados sin tener que tocar la hoja directamente.</p>
+<h4>Pestaña “Usuarios”</h4>
+<p><strong>Para qué sirve:</strong> ver, crear, editar o eliminar usuarios.</p>
+<p><strong>Botones y qué hacen:</strong></p>
+<ul>
+<li><strong>Buscar</strong> (arriba): escribe un nombre, cédula o correo y filtra en tiempo real.</li>
+<li><strong>+ Nuevo</strong> (botón rojo): abre el formulario para crear un usuario nuevo.</li>
+<li><strong>Click en un usuario de la lista</strong>: abre el formulario con sus datos para editar.</li>
+<li><strong>Eliminar</strong> (solo cuando estás editando): borra al usuario.</li>
+<li><strong>Borrar PIN</strong> (solo cuando estás editando): borra el PIN del usuario para forzarle a generar uno nuevo en su próximo login.</li>
+<li><strong>Cancelar / Guardar</strong>: descartar o guardar los cambios.</li>
+</ul>
+<p><strong>Cómo agregar aprobadores a un usuario:</strong></p>
+<ol>
+<li>Edita el usuario</li>
+<li>En el campo “Aprobadores” escribe el nombre o cédula del aprobador</li>
+<li>Te aparece una lista — los que ya son aprobadores de alguien tienen un chip azul “aprobador” al lado, pero el listado incluye <strong>a todos los usuarios</strong>, no solo a los que ya aprueban a alguien</li>
+<li>Haz click en la persona que quieres → se agrega como chip amarillo arriba</li>
+<li>Puedes agregar varios</li>
+<li>Para quitar uno, click en la “×” de su chip</li>
+<li><strong>Guardar</strong></li>
+</ol>
+<p><strong>Caso especial: el usuario es su propio aprobador (autoaprobador)</strong></p>
+<p>Cuando llega un directivo nuevo que aprueba sus propias solicitudes (CEO, CDS, gerente), no tienes que crearlo primero y luego volver a buscarlo en el picker. El formulario tiene un <strong>checkbox “Esta persona es su propio aprobador”</strong> arriba de la sección de aprobadores:</p>
+<ol>
+<li>Marca el checkbox → el picker se oculta y aparece un mensaje azul confirmando la acción</li>
+<li>Llena el resto del formulario normalmente y <strong>Guardar</strong></li>
+<li>El sistema escribe la cédula, correo y nombre del propio usuario en las columnas G, H e I de USUARIOS</li>
+</ol>
+<p>Si abres a un usuario que ya estaba registrado como autoaprobador, el checkbox aparece pre-marcado automáticamente.</p>
+<p><strong>Detector de duplicados al crear / editar</strong></p>
+<p>Mientras escribes cédula, correo o nombre, el formulario busca en tiempo real si ya existe alguien con esos datos:</p>
+<ul>
+<li>🔴 <strong>Cédula o correo ya registrado</strong> → aparece un badge rojo con el nombre del usuario existente. El botón <strong>Guardar</strong> se bloquea — no puedes crear duplicados con la misma cédula/correo. El badge incluye un botón <strong>“→ Ver / editar este usuario”</strong> que abre directamente al duplicado para corregir su información en lugar de crear uno nuevo.</li>
+<li>🟡 <strong>Nombre ya registrado</strong> → badge ámbar de advertencia, pero <strong>no bloquea</strong> el guardado (homónimos legítimos son posibles, ej: “JUAN PÉREZ” en sedes distintas).</li>
+</ul>
+<p><strong>Sugerencias del Maestro RH al escribir el nombre</strong></p>
+<p>El campo “Nombre” autocompleta con empleados del Maestro RH (la fuente externa de RRHH), pero excluye automáticamente a quienes ya están en USUARIOS. Así, las sugerencias solo muestran personas que aún no han sido registradas — útil para crear usuarios nuevos sin volver a registrar a alguien que ya existe.</p>
+<p><strong>Confirmación visual tras crear</strong></p>
+<p>Después de guardar un usuario nuevo, el listado se refresca solo, hace scroll hasta la fila del nuevo usuario y la resalta con un fondo amarillo durante 3 segundos. Te indica visualmente que quedó registrado y puedes verlo en su lugar.</p>
+<h4>Pestaña “Anomalías”</h4>
+<p><strong>Para qué sirve:</strong> diagnóstico rápido de problemas en la hoja USUARIOS.</p>
+<p>Hace click en <strong>Recargar</strong> y te muestra en rojo/amarillo:</p>
+<ul>
+<li><strong>Aprobadores huérfanos</strong> 🚨 — un usuario tiene como aprobador a alguien cuya cédula no está en USUARIOS. Esto impide que le lleguen los correos de aprobación.</li>
+<li><strong>Sin aprobador</strong> ⚠️ — usuarios que no tienen a nadie asignado como aprobador. Sus solicitudes no pueden avanzar.</li>
+<li><strong>Correo no corporativo</strong> 📧 — usuarios con un correo que no es @equitel.com.co. No los bloquea, pero conviene actualizarlos.</li>
+</ul>
+<p><strong>Click en cualquier fila</strong> → te lleva directo a editar ese usuario en la pestaña Usuarios.</p>
+<p>Si el badge al lado de “Anomalías” muestra un número rojo (ej: “3”), son problemas que debes atender.</p>
+<h4>Pestaña “Reemplazar”</h4>
+<p><strong>Para qué sirve:</strong> cambiar a un aprobador por otro en todos los usuarios que lo tienen asignado. Útil cuando alguien sale de la empresa.</p>
+<p><strong>Cómo usarlo:</strong></p>
+<ol>
+<li>En “Aprobador a reemplazar (viejo)” busca a la persona que sale</li>
+<li>En “Aprobador nuevo” busca a quien va a reemplazarla</li>
+<li><strong>Vista previa</strong> → te dice cuántos usuarios serán afectados y te muestra la lista</li>
+<li>Si todo se ve bien → <strong>Confirmar reemplazo</strong></li>
+</ol>
+<p><strong>Seguro porque:</strong> solo cambia la columna de aprobadores (col G). No borra a nadie ni toca PINs.</p>
+<h4>Pestaña “Ed. Masiva”</h4>
+<p><strong>Para qué sirve:</strong> cambios masivos a varios usuarios al mismo tiempo (ej: asignarle a 50 personas el mismo aprobador de una sola vez).</p>
+<p><strong>Cómo usarlo:</strong></p>
+<p><strong>Paso 1 — Seleccionar usuarios:</strong></p>
+<ul>
+<li>Escoge un filtro: “Sin aprob.” (los que no tienen aprobador asignado), “Por aprob.” (busca por aprobador específico), o “Búsqueda” (por nombre/cédula/correo)</li>
+<li>Marca los checkboxes de los usuarios que quieres cambiar (o usa “Todos” / “Ninguno”)</li>
+<li><strong>Siguiente →</strong></li>
+</ul>
+<p><strong>Paso 2 — Qué cambiar:</strong></p>
+<ul>
+<li>Escoge la acción del dropdown:
+<ul>
+<li><em>Asignar aprobador(es)</em> — reemplaza los aprobadores actuales por los que selecciones</li>
+<li><em>Agregar aprobador</em> — suma un aprobador sin borrar los que ya tenían</li>
+<li><em>Cambiar empresa / sede / centro de costo</em></li>
+</ul>
+</li>
+<li>Completa el valor nuevo</li>
+<li><strong>Aplicar cambios</strong></li>
+</ul>
+<p><strong>Advertencia:</strong> los cambios masivos no se pueden deshacer automáticamente. Usa este tab con calma y siempre revisa a quiénes vas a afectar antes de confirmar.</p>
+<h4>Pestaña “Duplicados”</h4>
+<p><strong>Para qué sirve:</strong> detectar y limpiar filas repetidas en USUARIOS.</p>
+<p><strong>Cómo usarlo:</strong></p>
+<ol>
+<li><strong>Escanear duplicados</strong> → busca filas con cédula, correo o nombre repetido</li>
+<li>Cada grupo muestra las filas duplicadas lado a lado con toda su información (datos + si tiene PIN configurado)</li>
+<li>Compara y decide cuál dejar. La que quieres borrar → botón <strong>Eliminar</strong>.</li>
+<li>Si la que borras tenía un PIN, el sistema te advierte primero.</li>
+</ol>
+<p><strong>Orden recomendado:</strong></p>
+<ul>
+<li>Primero elimina los duplicados por <strong>cédula</strong> (los más graves — rompen lookups)</li>
+<li>Luego los de <strong>correo</strong> (el PIN siempre se lee de la primera fila, las demás quedan huérfanas)</li>
+<li>Los de <strong>nombre</strong> son informativos — no siempre son errores, a veces son dos personas distintas con el mismo nombre</li>
+</ul>
+<hr>
+<h3>Reorganizar Base Principal (Sidebar)</h3>
+<p><strong>⚠️ ADVERTENCIA IMPORTANTE:</strong> Esta es una herramienta avanzada. Úsala solo si realmente necesitas cambiar el orden de las columnas de la hoja principal. Si no sabes qué hace o por qué la necesitarías, <strong>no la abras</strong>. Déjala quieta.</p>
+<p><strong>Para qué sirve (si es necesario):</strong> permite al admin reorganizar el orden de las 75 columnas de “Nueva Base Solicitudes” sin romper el portal. El proceso es un workflow de 6 pasos que:</p>
+<ol>
+<li>Crea una hoja paralela con los headers canónicos</li>
+<li>Te deja reorganizar las columnas a mano</li>
+<li>Verifica que no falten columnas</li>
+<li>Migra todos los datos (con validaciones, colores, formatos)</li>
+<li>Te permite comparar fila por fila</li>
+<li>Hace el “switch” final: renombra la hoja vieja a <code>_OLD_&lt;fecha&gt;</code> y activa la nueva</li>
+</ol>
+<p><strong>Incluye también</strong> una sección para:</p>
+<ul>
+<li>Crear respaldo completo del archivo antes de hacer cambios</li>
+<li>Ocultar/mostrar columnas (sin afectar el portal)</li>
+</ul>
+<p><strong>Sugerencia:</strong> si alguna vez quieres usarla, léete primero la guía detallada en <code>docs/guia-reorganizar-base.md</code> antes.</p>
+<hr>
+<h2>📱 Crear usuarios desde el celular (Módulo Móvil)</h2>
+<p>Cuando llega alguien nuevo y necesita acceso inmediato al portal, y tú no estás frente al computador, <strong>no hace falta abrir el Google Sheets</strong>. Hay una página web pensada para el celular que te deja crear usuarios en un minuto.</p>
+<h3>¿Cómo accedes?</h3>
+<p>Abre este enlace desde el navegador de tu teléfono (Safari o Chrome):</p>
+<pre><code>https://script.google.com/a/macros/equitel.com.co/s/AKfycbymPQQO0C8Xf089bjAVIciWNbsr9DmS50odghFp7t_nh5ZqHGFe7HisbaFF-TqMPxPwwQ/exec?action=admin
+</code></pre>
+<p>Usa este enlace, con <code>/a/macros/equitel.com.co/</code>: si el celular tiene varias cuentas de Google abiertas, la versión
+corta (sin el dominio) muestra <em>“No se pudo abrir el archivo”</em> (#A53, #A91).</p>
+<p><strong>Recomendación:</strong> guárdalo como atajo en la pantalla de inicio de tu celular para abrirlo de un solo toque como si fuera una app:</p>
+<ul>
+<li><strong>iPhone</strong> (Safari): botón compartir → “Añadir a pantalla de inicio”</li>
+<li><strong>Android</strong> (Chrome): menú ⋮ → “Añadir a pantalla de inicio”</li>
+</ul>
+<h3>¿Cómo entras?</h3>
+<p>La primera vez te pide:</p>
+<ul>
+<li>Tu correo de administrador.</li>
+<li>El PIN de 8 dígitos (el mismo que usas en el portal normal con el botón negro “Administrador”, o tu PIN personal si tienes fila propia en USUARIOS).</li>
+</ul>
+<p>Una vez que entras, el teléfono recuerda tu sesión <strong>por 7 días</strong>. No tienes que volver a meter el PIN cada vez. Si cambias de celular o borras datos del navegador, sí hay que volver a ingresar.</p>
+<h3>¿Qué puedes hacer?</h3>
+<p><strong>Solo una cosa: crear usuarios.</strong> El módulo móvil tiene un formulario simple con los mismos campos que el sidebar del Sheets:</p>
+<ul>
+<li>Cédula</li>
+<li>Nombre completo</li>
+<li>Correo</li>
+<li>Empresa (dropdown)</li>
+<li>Sede (dropdown)</li>
+<li>Centro de costo</li>
+<li>Aprobadores (buscador)</li>
+</ul>
+<p>Llenas los campos, presionas “Crear usuario” y listo — el usuario queda en la hoja USUARIOS y puede iniciar sesión en el portal de inmediato.</p>
+<p><strong>Mismas ayudas que el sidebar:</strong></p>
+<ul>
+<li>☑️ <strong>Checkbox “Esta persona es su propio aprobador”</strong> — para registrar directivos autoaprobadores en un solo paso desde el celular.</li>
+<li>🔴 <strong>Detector de duplicados</strong> — si escribes una cédula o correo que ya existe, el botón “Crear usuario” se bloquea y aparece un mensaje con el nombre del usuario existente. Si solo el nombre coincide, se muestra una advertencia pero deja crear (homónimos posibles).</li>
+</ul>
+<p>Si detectas un duplicado y necesitas corregirlo, anota la cédula y abre el Sheet en el computador para editarlo desde el sidebar — el módulo móvil solo crea, no edita.</p>
+<h3>¿Qué NO puedes hacer desde el móvil?</h3>
+<p>El móvil está pensado para la acción más urgente fuera de oficina: <strong>agregar gente nueva</strong>. Todo lo demás se hace desde el sidebar del Google Sheets:</p>
+<ul>
+<li>Editar un usuario existente</li>
+<li>Eliminar un usuario</li>
+<li>Ver anomalías o duplicados</li>
+<li>Reemplazar aprobador masivo</li>
+<li>Cambios masivos (empresa/sede/CC)</li>
+<li>Borrar un PIN</li>
+</ul>
+<p>Si necesitas cualquiera de esas, abre el Sheets en el computador y usa el sidebar.</p>
+<h3>¿Es seguro?</h3>
+<p>Sí. Aunque el enlace sea público, <strong>sin el PIN nadie puede hacer nada</strong>. Además:</p>
+<ul>
+<li>Solo correos que están en la lista <code>ANALYST_EMAILS</code> (los administradores autorizados) pueden usar el módulo. El resto verá la pantalla de login pero su PIN siempre fallará.</li>
+<li>Después de 5 intentos fallidos, el sistema bloquea <strong>a ese correo específico</strong> por 15 minutos (no afecta a los demás administradores).</li>
+<li>Si el login falla por red y no por PIN, el sistema lo detecta y <strong>no</strong> consume intentos del rate-limit.</li>
+<li>Cada acción (cargar datos, crear usuario) re-verifica que tu sesión siga siendo válida. Si te quitaron de la lista de administradores mientras estabas logueado, la siguiente acción te saca automáticamente.</li>
+</ul>
+<h3>¿Afecta a las demás personas mientras yo lo uso?</h3>
+<p><strong>No.</strong> Los aprobadores pueden seguir aprobando desde sus correos, los solicitantes pueden seguir creando solicitudes, los usuarios nuevos pueden seguir generando su PIN por primera vez — todo al mismo tiempo que tú creas un usuario desde el celular, sin conflictos.</p>
+<p>La única vez que algo espera es si otro admin está creando otro usuario al mismo segundo desde el sidebar del Sheets. En ese caso, tu creación espera 2-3 segundos al otro admin y luego procede. Nada grave.</p>
+<hr>
+<p><strong>Columnas al final que agrega el sistema (2-oct-2026):</strong></p>
+<ul>
+<li>
+<p><code>AEROLINEA</code> y <code>CANAL DE COMPRA</code> (#A82): con qué aerolínea y por qué canal (<em>Aviatur</em>, <em>Directo</em> u <em>Otra agencia</em>) se compró. Las llenan “Confirmar costos” y “Registrar reserva”.</p>
+</li>
+<li>
+<p><code>AEROLINEA REGRESO</code> (#A85, 7-oct-2026): la aerolínea del regreso <strong>solo si es distinta</strong> de la de ida (por ejemplo, <code>AEROLINEA</code> = LATAM y <code>AEROLINEA REGRESO</code> = Avianca). Vacía = la misma aerolínea o viaje solo de ida.</p>
+</li>
+<li>
+<p><code>AVISO FACTURAS OMITIDO</code> (#A83): quién omitió el aviso de facturas incompletas y cuándo. Borrar la celda vuelve a mostrar el aviso en el panel.</p>
+</li>
+<li>
+<p><code>HOTEL RESERVADO</code> y <code>CANAL DE COMPRA HOTEL</code> (#A94, 8-oct-2026): el hotel que reservó el área de compras (en mayúsculas y sin tildes) y su canal (<em>Aviatur</em>, <em>Directo</em> u <em>Otra agencia</em>). <em>No se reservó</em> = al final no hubo hotel. <code>NOMBRE HOTEL</code> sigue siendo el que pidió el viajero. Las llena “Registrar reserva”.</p>
+</li>
+<li>
+<p><code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code> y <code>TARIFA JUSTIFICACION</code> (#A95, 8-oct-2026): la tarifa que recomienda el manual COM-P-02 por las noches del viaje (<code>TIPO 1</code>, <code>TIPO 2</code> o <code>TIPO 3</code>, la calcula el sistema), su nombre en la aerolínea (por ejemplo, <em>Classic</em>) y, si se compró otra, el motivo. La tarifa comprada sigue en <code>TIPO DE COMPRA DE TKT</code>, que ahora llenan “Confirmar costos” y “Registrar reserva”. Ver <a href="manual-com-p-02.md">manual-com-p-02.md</a>.</p>
+</li>
+<li>
+<p><code>VALOR COMPRA TIQUETES</code> y <code>VALOR COMPRA HOTEL</code> (#A102, 14-oct-2026): lo que se pagó al comprar, en pesos. Opcionales: los llena “Registrar reserva” (o “Corregir reserva”) si el área de compras los tiene. Vacías = no se registró. Mientras llega la factura, el dashboard de costos usa este valor en vez de lo cotizado. No confundir con <code>VALOR PAGADO A AEROLINEA Y/O HOTEL</code>, que es el valor de la factura 1.</p>
+</li>
+<li>
+<p><code>MALETA DE BODEGA</code> (#A95, 8-oct-2026): lo que marcó el viajero en el formulario (<em>¿Lleva maleta de bodega?</em>): <code>SI</code> o <code>NO</code>. Vacía = la solicitud es anterior y no se preguntó. Solo vuelos.</p>
+</li>
+<li>
+<p><code>JUSTIFICACION ANTICIPACION</code> (#A100, 14-oct-2026): por qué la solicitud se pidió con menos anticipación de la que pide la política (8 días nacional, 30 internacional). La escribe el solicitante; la lee el CFO antes de decidir.</p>
+</li>
+<li>
+<p><code>APROBACION CFO ANTICIPACION</code> (#A100): la decisión sobre esa solicitud: <code>Sí_correo_fecha</code> (aprobada), <code>No_correo_fecha</code> (rechazada) o <code>Vencida_sistema_fecha</code> (nadie la aprobó en 7 días o antes del viaje). Vacía = no la necesitó.</p>
+</li>
+<li>
+<p><code>REQUIERE APROB TARIFA</code> (#A100): <code>SI</code> cuando la tarifa confirmada es superior a la del manual; entonces la aprobación pide el voto del CFO (el mismo de <code>APROBADO PRESUPUESTO</code>). La marca el sistema al confirmar costos.</p>
+</li>
+<li>
+<p><code>GRUPO MULTIDESTINO</code> (#A100): llave que enlaza los tramos de un mismo viaje multidestino (<code>MD-…</code>). Si un tramo no cumple la anticipación, todos esperan la misma aprobación del CFO.</p>
+</li>
+<li>
+<p><code>CAMBIO PEDIDO (JSON)</code> (#A103): en una solicitud de cambio pedida con «Cambiar mi viaje», lo de antes y lo de ahora, si el tiquete ya estaba comprado, lo que costó el viaje original y la compra de la original. La escribe el sistema: <strong>no editar</strong>. Si está llena y dice <code>&quot;comprado&quot;:true</code>, la solicitud lleva solo el costo del cambio.</p>
+</li>
+<li>
+<p><code>PENALIDAD CAMBIO</code> (#A103): de lo que costó un cambio, cuánto es penalidad y cargos (pesos). La escribe el área de compras al confirmar el costo del cambio.</p>
+</li>
+<li>
+<p><code>REEMPLAZADA POR</code> (#A103): en la solicitud original, el ID del cambio que la reemplazó («Cambiada»). La original comprada no se anula: su tiquete se pagó y su costo sigue contando.</p>
+</li>
+<li>
+<p><code>SOPORTE COSTO (JSON)</code> (#A128): cada confirmación de costos, con cuándo, quién, cuánto y los soportes que adjuntó el área de compras (los archivos <code>SoporteCosto_…</code> de la carpeta de la solicitud). La escribe el sistema: <strong>no editar</strong>. Si se confirmó más de una vez, la última es la que ven el aprobador y el viajero.</p>
+</li>
+<li>
+<p>Estado <code>PENDIENTE_APROBACION_POLITICA</code> (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de compras no la ve hasta que se apruebe.</p>
+</li>
+</ul>
+<p>Todas las crea el menú <em>12. Columnas de compra y resumen de facturas</em> (o el sistema, la primera vez que las necesita).</p>
+<h3>12. Columnas de compra y resumen de facturas</h3>
+<p>Crea al final de la hoja las columnas <code>AEROLINEA</code>, <code>CANAL DE COMPRA</code>, <code>AEROLINEA REGRESO</code>, <code>HOTEL RESERVADO</code>, <code>CANAL DE COMPRA HOTEL</code>, <code>TARIFA RECOMENDADA</code>, <code>TARIFA NOMBRE</code>, <code>TARIFA JUSTIFICACION</code>, <code>MALETA DE BODEGA</code>, <code>VALOR COMPRA TIQUETES</code>, <code>VALOR COMPRA HOTEL</code>, <code>JUSTIFICACION ANTICIPACION</code>, <code>APROBACION CFO ANTICIPACION</code>, <code>REQUIERE APROB TARIFA</code>, <code>GRUPO MULTIDESTINO</code>, <code>CAMBIO PEDIDO (JSON)</code>, <code>PENALIDAD CAMBIO</code>, <code>REEMPLAZADA POR</code>, <code>SOPORTE COSTO (JSON)</code> y <code>AVISO FACTURAS OMITIDO</code> si aún no existen, y muestra cuántas solicitudes <code>RESERVADO</code> hay en cada lista:</p>
+<ul>
+<li><strong>listas para cerrar:</strong> viaje terminado, facturas que suman lo cotizado o más (diferencias menores a $1.000 son redondeo) y un PDF subido por cada factura escrita</li>
+<li><strong>facturas por revisar:</strong> les faltan facturas o PDF, a partir del día 7 después del viaje</li>
+<li>avisos omitidos y solicitudes en espera</li>
+</ul>
+<p><strong>No cierra nada.</strong> Las dos listas aparecen en el panel del analista, que es donde se cierran (ver la guía de administrador, 5.5).</p>
+<h3>13. Aprobaciones por política: activar resumen cada 2 h</h3>
+<p>El disparador <code>procesarAprobacionesPolitica</code> (#A100) deniega cada 2 horas las solicitudes fuera de plazo que vencieron. Solo en horario laboral (lunes a viernes de 7:00 a 17:00, sábados de 8:00 a 12:00), además le manda al CFO el resumen de las que esperan su aprobación.</p>
+<p>Este proyecto no tiene permiso para crear activadores desde el código, así que <strong>el activador se crea a mano</strong>, igual que los recordatorios. El menú muestra estos pasos:</p>
+<ol>
+<li>En el editor de Apps Script, abre <strong>Activadores</strong> (el reloj del menú de la izquierda) → <strong>+ Agregar activador</strong>.</li>
+<li>Función: <code>procesarAprobacionesPolitica</code> · Implementación: Principal · Fuente del evento: Según tiempo · Tipo: Temporizador por horas · Intervalo: Cada 2 horas.</li>
+<li>Guardar.</li>
+</ol>
+<p><strong>Créalo con la misma cuenta de los demás activadores</strong>: los correos salen desde la cuenta que lo crea. Crea uno solo: dos activadores mandarían el resumen dos veces.</p>
+<h3>14. Aprobaciones por política: ver pendientes</h3>
+<p>Solo lectura. Muestra:</p>
+<ul>
+<li>si las reglas están encendidas;</li>
+<li>quién aprueba (se cambia en la configuración del dashboard de costos, <code>budgetApproverEmail</code> / <code>budgetApproverName</code>);</li>
+<li>cuántas personas leyeron el aviso;</li>
+<li>la lista de solicitudes en espera, con su fecha de vencimiento.</li>
+</ul>
+<p>Si el proyecto no puede consultar los activadores, en vez de decir si el resumen está activo te remite a <strong>Activadores</strong>. Allí debe estar <code>procesarAprobacionesPolitica</code>, cada 2 horas.</p>
+<p>También dice cuándo sale el próximo informe mensual y cuál fue el último enviado.</p>
+<h3>15. Informe mensual de la política: prueba (solo a mí)</h3>
+<p>El informe mensual de cumplimiento (#A101) sale solo: la pasada de <code>procesarAprobacionesPolitica</code> lo envía <strong>el primer día hábil de cada mes</strong>, en horario laboral, con las cifras del mes anterior. Le llega a quien aprueba en la configuración del dashboard de costos (hoy Alejandro Gómez), con copia a Yurani Prieto y David Sánchez. El primero es el de octubre de 2026, el <strong>martes 3 de noviembre</strong> (el lunes 2 es festivo).</p>
+<p>Este menú pide un mes (<code>AAAA-MM</code>; vacío = el mes anterior) y te envía ese informe <strong>solo a ti</strong>, sin copia y sin dejar constancia. Sirve para revisarlo antes o para ver un mes cualquiera. Al final te dice cuándo sale el próximo automático y para quién.</p>
+<h3>Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)</h3>
+<p>Un item del menú que al hacer click te muestra un diálogo diciendo <strong>qué hoja está leyendo el portal en este momento</strong>. No cambia nada, solo te informa.</p>
+<p>En producción debe decir “Modo activo: USUARIOS”. Si dice “INTEGRANTES” significa que alguien revirtió el flag.</p>
+<hr>
+<h3>Opciones de migración (1-4)</h3>
+<p>Estas opciones (<code>Crear hoja USUARIOS</code>, <code>Migrar desde INTEGRANTES</code>, <code>Sincronizar con Maestro RH</code>, <code>Recargar resoluciones</code>) se usaron durante la migración inicial a USUARIOS. <strong>Hoy día casi no las necesitas</strong>, salvo:</p>
+<ul>
+<li>
+<p><strong>“Sincronizar con Maestro RH”</strong>: si Recursos Humanos actualiza su base con empleados nuevos, ejecuta esto para traerlos a USUARIOS como filas stub (solo cédula, nombre, correo). Después les asignas aprobador manualmente desde la pestaña Usuarios del sidebar.</p>
+</li>
+<li>
+<p><strong>“Recargar resoluciones”</strong>: si editaste manualmente la columna G (cédulas aprobadores) de USUARIOS, ejecuta esto para que las columnas H e I (correos/nombres auto) se actualicen.</p>
+</li>
+</ul>
+<p>Las otras dos (Crear / Migrar) ya se ejecutaron. No las corras de nuevo a menos que sepas exactamente lo que haces.</p>
+<hr>
+<h2>Cómo funcionan los campos del formulario de usuarios</h2>
+<p>Tanto en el sidebar (pestaña Usuarios) como en el módulo móvil, los campos tienen reglas automáticas que te ayudan a escribir datos bien formateados sin pensar:</p>
+<table>
+<thead>
+<tr>
+<th>Campo</th>
+<th>Qué pasa mientras escribes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Cédula</strong></td>
+<td>Solo acepta números. Si intentas escribir letras, las ignora. En el celular sale el teclado numérico.</td>
+</tr>
+<tr>
+<td><strong>Nombre completo</strong></td>
+<td>Todo lo que escribes se convierte automáticamente a MAYÚSCULAS. Las tildes y la Ñ se respetan — puedes escribir <code>CÓRDOBA</code>, <code>ÁNGEL</code>, <code>ZÚÑIGA</code> normalmente.</td>
+</tr>
+<tr>
+<td><strong>Correo</strong></td>
+<td>Se convierte a minúsculas solo. Los espacios se eliminan. Si el formato no es tipo <code>algo@algo.algo</code>, el guardado falla y te avisa.</td>
+</tr>
+<tr>
+<td><strong>Centro de costo</strong></td>
+<td>Solo acepta números. Teclado numérico en el celular.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Duda común:</strong> ¿es importante escribir nombres con tildes y Ñ o sin ellos?
+<strong>Respuesta:</strong> Da exactamente lo mismo para el portal. El sistema maneja ambos igual — los correos que salen, los reportes en PDF, los nombres de archivos en Drive, todo funciona idéntico con o sin tildes. Es solo estética. Mi recomendación: escribir con tildes y Ñ para respetar la ortografía real de los nombres, pero si prefieres sin ellos por simplicidad, también está bien.</p>
+<hr>
+<h2>Reglas de oro</h2>
+<ol>
+<li>
+<p><strong>Siempre haz respaldo antes de cambios grandes.</strong> Menú → Reorganizar Base Principal → “Crear respaldo ahora”. Tarda 30 segundos y te guarda una copia completa en tu Drive privado.</p>
+</li>
+<li>
+<p><strong>No edites la columna PIN a mano.</strong> Si necesitas borrar un PIN, usa el botón “Borrar PIN” en la pestaña Usuarios del sidebar.</p>
+</li>
+<li>
+<p><strong>Para agregar, editar o eliminar usuarios, prefiere el sidebar.</strong> Es más rápido y evita errores comunes.</p>
+</li>
+<li>
+<p><strong>Nunca cambies el nombre de las columnas.</strong> El portal las busca por nombre exacto. Si cambias “CORREO ENCUESTADO” a “CORREO SOLICITANTE”, el portal se rompe.</p>
+</li>
+<li>
+<p><strong>No cambies los IDs de solicitud.</strong> La trazabilidad depende de ellos.</p>
+</li>
+<li>
+<p><strong>Si ves algo raro, primero busca en Anomalías.</strong> La mitad de los problemas del portal se detectan ahí.</p>
+</li>
+<li>
+<p><strong>Para cambios masivos, usa Ed. Masiva — pero con vista previa.</strong> Nunca confirmes sin haber revisado la lista de afectados.</p>
+</li>
+<li>
+<p><strong>Antes de borrar un usuario, busca duplicados.</strong> Quizás hay dos filas del mismo y puedes consolidar en vez de borrar el “bueno”.</p>
+</li>
+<li>
+<p><strong>No toques la hoja REGLAS_COAPROBADOR salvo que sepas qué estás haciendo.</strong> Un cambio mal hecho ahí rompe las aprobaciones ejecutivas.</p>
+</li>
+<li>
+<p><strong>Si todo falla, siempre puedes restaurar el respaldo.</strong> Los respaldos están en tu carpeta privada de Drive (la que configuraste en el sidebar de Reorganizar).</p>
+</li>
+<li>
+<p><strong>No edites las celdas de aprobación (<code>APROBADO POR ÁREA?</code>, <code>APROBADO CDS</code>, <code>APROBADO CEO</code>).</strong> Las llena el portal. Si ves una solicitud <code>APROBADO</code> global con alguna de esas celdas vacía, no es un error: el portal la muestra como <code>APROBADO</code> en pantalla automáticamente cuando el propio ejecutivo se aprobó a sí mismo.</p>
+</li>
+<li>
+<p><strong>No toques <code>EVENTOS_JSON</code> ni los marcadores dentro de <code>OBSERVACIONES</code>.</strong> Son la bitácora que el portal usa para métricas, recordatorios y lógica de negocio. Cualquier edición manual puede romper los badges de cruce de día o impedir que los triggers funcionen.</p>
+</li>
+</ol>
+<hr>
+<h2>Preguntas frecuentes</h2>
+<p><strong>¿Puedo filtrar la hoja USUARIOS con la herramienta de filtro de Sheets?</strong>
+Sí, no afecta el portal. Los filtros son solo visuales para ti.</p>
+<p><strong>¿Puedo ordenar las filas de USUARIOS?</strong>
+Sí, pero procura no cortar filas a la mitad. Ordena rangos completos, no columnas sueltas.</p>
+<p><strong>¿Puedo convertir USUARIOS a tabla de Google Sheets (Formato → Convertir a tabla)?</strong>
+Sí, te da filtros nativos y referencias por nombre de columna en otras fórmulas. Las filas nuevas que se creen desde el sidebar se absorben automáticamente en la tabla (si la tabla tiene “Extender automáticamente” activado, que es el default). Si vas a hacerlo, haz respaldo antes y prueba creando un usuario después para confirmar.</p>
+<p><strong>¿Puedo dar permisos a otra persona para que edite el sheet?</strong>
+Sí, usa <strong>Compartir</strong> (botón azul arriba a la derecha del sheet). Pero <strong>solo da permisos a personas de confianza</strong> — cualquiera con acceso de edición puede abrir los sidebars y hacer cambios masivos.</p>
+<p><strong>¿Qué pasa si borro por error un usuario?</strong>
+Tienes dos opciones: (a) ctrl+Z inmediatamente para deshacer en el sheet, o (b) abrir un respaldo reciente y copiarle la fila.</p>
+<p><strong>¿Por qué un usuario no puede iniciar sesión?</strong>
+En orden: (1) revisa que su correo esté en USUARIOS, (2) revisa que tenga un aprobador asignado (sidebar → Anomalías), (3) pídele que presione “Reenviar PIN” en el login, (4) borra su PIN manualmente desde el sidebar para forzarle uno nuevo.</p>
+<p><strong>¿Cómo sé si el portal está leyendo de USUARIOS o de INTEGRANTES?</strong>
+Menú → “Modo activo”. Te lo dice.</p>
+<p><strong>¿Qué pasa si alguien anula una solicitud que tiene un cambio en curso?</strong>
+El portal lo impide: si la solicitud tiene una “hija” (modificación) activa, no se puede anular al padre hasta resolver primero la hija. Evita que queden huérfanos en la base.</p>
+<p><strong>¿Qué significan los íconos ⭐ y 👥 en el panel del administrador?</strong></p>
+<ul>
+<li>⭐ = solicitud <strong>prioritaria</strong> (al menos un pasajero es ejecutivo del grupo — CEO, CDS o equivalentes). Puede haberse gestionado por fuera.</li>
+<li>👥 = solicitud <strong>proxy</strong> (la creó una persona distinta a quien viaja; el primer pasajero tiene cédula diferente a la del solicitante).</li>
+</ul>
+<p>Se calculan al leer la solicitud y no se guardan como columnas — son derivados.</p>
+<hr>
+<h2>Referencias cruzadas</h2>
+<ul>
+<li><a href="./guia-administrador.md">Guía del Administrador</a> — operación completa del portal, Script Properties, triggers, métricas, seguridad.</li>
+<li><a href="./guia-reorganizar-base.md">Guía de reorganización de columnas</a> — workflow de 6 pasos para reordenar “Nueva Base Solicitudes” sin romper el portal.</li>
+</ul>
+<hr>
+<p><em>Última actualización: 2026-11-20</em></p>
+
+  </div>
+</body>
+</html>
