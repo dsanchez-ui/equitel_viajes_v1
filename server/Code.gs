@@ -17624,7 +17624,10 @@ function _csBuildData_(filters, allowedUnits) {
     if (perRow.month < fromMonth || perRow.month > toMonth) { requestsExcluded.byMonthYear++; continue; }
     // OTs no cargan al presupuesto operativo (acuerdo Yurani 2026-05-21).
     // Si la fila tiene una OT válida, se considera cargada a la OT y no a la unidad.
-    if (_esOTValida_(perRow.workOrder)) { requestsExcluded.byOT = (requestsExcluded.byOT || 0) + 1; continue; }
+    // #A131 (Yurani, 19-nov: «cuánto se ha pagado por unidad, cuáles son cargados a OT y cuáles CC»): ya no se
+    // descarta sin más; se suma APARTE en la unidad (ot*) para mostrarlo, y nunca entra contra el presupuesto.
+    var isOT = _esOTValida_(perRow.workOrder);
+    if (isOT) requestsExcluded.byOT = (requestsExcluded.byOT || 0) + 1;
 
     var unidadNorm = _csNormalize_(perRow.unidadRaw);
     var empresaNorm = _csNormalize_(perRow.empresaRaw);
@@ -17666,7 +17669,12 @@ function _csBuildData_(filters, allowedUnits) {
         totalExecutedReal: 0,
         totalExecutedEstimated: 0,
         requestCount: 0,
-        requests: []
+        requests: [],
+        // #A131: lo cargado a una OT, aparte (no suma contra el presupuesto).
+        monthlyOtReal: new Array(12).fill(0),
+        monthlyOtEstimated: new Array(12).fill(0),
+        otRequestCount: 0,
+        otRequests: []
       };
     }
 
@@ -17677,6 +17685,22 @@ function _csBuildData_(filters, allowedUnits) {
 
     var bucket = unitsAgg[unidadNorm];
     var monthIdx = perRow.month - 1;
+    if (isOT) {
+      if (perRow.isEstimated) bucket.monthlyOtEstimated[monthIdx] += perRow.estimated;
+      else bucket.monthlyOtReal[monthIdx] += perRow.real;
+      bucket.otRequestCount++;
+      bucket.otRequests.push({
+        requestId: perRow.requestId,
+        requesterEmail: perRow.requesterEmail,
+        workOrder: String(perRow.workOrder || '').trim().substring(0, 60),
+        purchaseDate: perRow.purchaseDate,
+        month: perRow.month,
+        executed: perRow.isEstimated ? perRow.estimated : perRow.real,
+        isEstimated: perRow.isEstimated,
+        status: perRow.status
+      });
+      continue;
+    }
     if (perRow.isEstimated) {
       bucket.monthlyExecutedEstimated[monthIdx] += perRow.estimated;
       bucket.totalExecutedEstimated += perRow.estimated;
@@ -17723,8 +17747,9 @@ function _csBuildData_(filters, allowedUnits) {
     rowsOut.push(b);
   });
 
-  // Filtrar buckets que quedaron vacíos por filtro includeNoPresupuesto
-  rowsOut = rowsOut.filter(function(b) { return b.requestCount > 0; });
+  // Filtrar buckets que quedaron vacíos por filtro includeNoPresupuesto. #A131: una unidad con viajes solo cargados
+  // a OT también sale (para mostrar lo de OT); su presupuesto cuenta como el de cualquier unidad de la vista.
+  rowsOut = rowsOut.filter(function(b) { return b.requestCount > 0 || b.otRequestCount > 0; });
 
   // Orden: con presupuesto primero (por % desc), luego sin presupuesto
   rowsOut.sort(function(a, b) {
@@ -18626,7 +18651,8 @@ function getCostsDashboard(filters, currentUserEmail, fresh) {
   // Un líder solo recibe sus unidades: el filtro va DENTRO del cálculo (#A76), y la
   // llave de la caché lleva su alcance (#A89): nunca recibe la respuesta de otro.
   var scope = access.allUnits ? 'ALL' : access.units.slice().sort().join(',');
-  var data = _dashCached_(['getData', JSON.stringify(filters || {}), scope], fresh, function() {
+  // #A131: 'getData2' — la respuesta trae lo cargado a OT; una guardada antes del cambio no lo tiene.
+  var data = _dashCached_(['getData2', JSON.stringify(filters || {}), scope], fresh, function() {
     return _csBuildData_(filters, access.allUnits ? null : access.units);
   });
   data.meta.access = {

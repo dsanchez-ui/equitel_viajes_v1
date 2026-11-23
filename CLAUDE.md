@@ -31,7 +31,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + enlaces con dominio + manuales publicados + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + desglose del presupuesto con OT + enlaces con dominio + manuales publicados + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
    Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
    (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -62,7 +62,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + manuales + build + un solo .js y version.json  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + desglose con OT + manuales + build + un solo .js y version.json  ← antes de cualquier push
 npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
@@ -373,6 +373,15 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   datos* recalcula. **Nunca guardar nada en Script Properties** (decisión de David). Toda visual
   nueva sale de un payload en caché, lee la hoja una sola vez y no encadena llamadas; los controles
   interactivos calculan en el navegador. Ver [docs/plan-analitica-ahorro.md](docs/plan-analitica-ahorro.md) §3.
+- **De qué está hecho el % del presupuesto, y lo cargado a OT aparte** (#A131; Yurani y David, 19-nov: *«cuáles son cargados a OT y
+  cuáles CC»*, *«que un pantallazo sea autoexplicativo»*). Lo de OT (número válido: empieza por OT y tiene un dígito, `_esOTValida_`)
+  **nunca** se compara con el presupuesto, pero se suma aparte por unidad y mes (`monthlyOt*`, `otRequests` con el número) y se muestra:
+  tarjeta «Cargado a OT · no suma», columnas en la tabla con «Total de los viajes» y fila de total, CSV.
+  - **Nada de tortas para el presupuesto:** una torta no puede mostrar más del 100 %. Es una barra con la línea negra del presupuesto
+    (100 %), lo que se pasó rayado en rojo y, debajo, cada parte con su % del presupuesto, lo que no suma y los filtros con la hora de
+    los datos (`renderBudgetMeter`). La anual tiene además «Cada unidad frente a su presupuesto» (`renderUnitMeters`).
+  - **Colores:** azul para el gasto (`--spend-fact` #1d4ed8 facturado, `--spend-est` #5b9cf5 sin factura, validados con el script de
+    dataviz), negro para el presupuesto, rojo **solo** para lo que se pasó, siempre con ícono y texto.
 - **Dashboard de costos por pestañas** (#A117, David, 28-oct: *«está demasiado largo»*): Año · Periodo · Mes · Mes a mes · Cotizado vs
   facturado · Cambios de viaje · Comparador de precios · Proyección de ahorro, al final de la tarjeta de filtros. Se ve una sección a la
   vez. **Los datos se siguen pidiendo todos en paralelo** (#A89): lo que ahorra es el dibujo, porque solo se dibuja la pestaña que se ve
@@ -747,6 +756,7 @@ tools/check-monthly-report.cjs       Informe mensual de la política: primer dí
 tools/check-trip-change.cjs          Cambios de viaje: plazo igual en los dos lados, cambio con y sin compra, costo, aprobación, «Cambiada» (#A103)
 tools/check-approvals.cjs            Avisos a los aprobadores (caso SOL-000695), recordatorios, «Mis aprobaciones» (#A118, #A119), la línea de tiempo (#A121) y Métricas → Aprobaciones (#A125)
 tools/check-cost-evidence.cjs        Soporte del costo: subir, confirmar, correo, «Mis aprobaciones» y las validaciones del servidor (#A128)
+tools/check-costs-ot.cjs             Desglose del presupuesto: lo cargado a OT aparte, la barra del 100 % y cada unidad frente a su presupuesto (#A131)
 tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.gs real sobre una copia de la base; correos a una bandeja local (#A103)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
@@ -805,7 +815,11 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-20)
+### Para retomar (estado al 2026-11-23)
+
+- **#A131 (dashboard de costos: de qué está hecho el %, lo de OT aparte y una barra en vez de la torta; pedido de Yurani): en `main`,
+  pendiente de desplegar.** Pegar `Code.gs` y `CostsDashboard.html` → versión nueva del web app; sin menú. Después, mostrárselo a Yurani
+  (David se lo prometió para el 20-nov).
 
 - **#A130 (20-nov): la infografía del procedimiento y los manuales dentro del portal.** Solo frontend y documentos: **no hay nada que
   pegar en Apps Script**. Lo que se le pasa a quien no usa la plataforma es `docs/infografia-procedimiento.pdf` (dos hojas). Pendientes

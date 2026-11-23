@@ -25,6 +25,15 @@
       --amber: #d97706;
       --red: #dc2626;
       --blue: #2563eb;
+      /* #A131: el gasto frente al presupuesto. Azul = gasto (oscuro: facturado; claro: comprado sin factura;
+         validados para daltonismo). El rojo queda solo para lo que pasa del presupuesto, siempre con ícono y
+         texto. Negro = la línea del presupuesto (100 %). Gris = lo cargado a OT, que no suma. */
+      --spend-fact: #1d4ed8;
+      --spend-est: #5b9cf5;
+      --over: #d03b3b;
+      --limit: #111827;
+      --track: #e5e7eb;
+      --ot: #9ca3af;
     }
     html, body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -203,9 +212,11 @@
     .kpi .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
     .kpi .value { font-size: 22px; font-weight: 800; color: var(--text); margin-top: 4px; line-height: 1.2; }
     .kpi .extra { font-size: 11px; color: var(--muted); margin-top: 4px; }
-    .kpi.real { border-left: 4px solid var(--brand); }
-    .kpi.estimated { border-left: 4px solid var(--amber); }
-    .kpi.budget { border-left: 4px solid var(--blue); }
+    .kpi.real { border-left: 4px solid var(--spend-fact); }
+    .kpi.estimated { border-left: 4px solid var(--spend-est); }
+    .kpi.ot { border-left: 4px solid var(--ot); }
+    .kpi.ot .value { color: #4b5563; }
+    .kpi.budget { border-left: 4px solid var(--limit); }
     .kpi.delta { border-left: 4px solid var(--green); }
     .kpi.delta.over { border-left-color: var(--red); }
     .kpi.delta.over .value { color: var(--red); }
@@ -359,34 +370,76 @@
       gap: 14px;
       margin-bottom: 14px;
     }
-    .chart-wrap-square {
-      position: relative;
-      width: 100%;
-      max-width: 320px;
-      aspect-ratio: 1 / 1;
-      margin: 0 auto;
+
+    /* ===== #A131: GASTO FRENTE AL PRESUPUESTO (barra con la línea del 100 %) ===== */
+    .bm { display: grid; gap: 12px; }
+    .bm-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; }
+    .bm-hero { font-size: 44px; font-weight: 700; line-height: 1; color: var(--text); }
+    .bm-hero small { font-size: 14px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+    .bm-verdict { font-size: 15px; font-weight: 600; }
+    .bm-verdict.over { color: var(--red); }
+    .bm-verdict.ok { color: #047857; }
+    .bm-plot { padding: 22px 0 0; }
+    .bm-track { position: relative; height: 28px; background: var(--track); border-radius: 4px; }
+    .bm-seg { position: absolute; top: 0; bottom: 0; }
+    .bm-seg.fact { background: var(--spend-fact); border-radius: 4px 0 0 4px; }
+    .bm-seg.est { background: var(--spend-est); border-left: 2px solid #fff; }
+    .bm-seg.last { border-top-right-radius: 4px; border-bottom-right-radius: 4px; }
+    .bm-over {
+      position: absolute; top: -5px; bottom: -5px; border: 2px solid var(--over); border-left: 0; border-radius: 0 5px 5px 0;
+      background: repeating-linear-gradient(45deg, rgba(208, 59, 59, 0.55) 0 4px, rgba(208, 59, 59, 0.08) 4px 9px);
     }
-    .donut-center {
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      pointer-events: none;
+    .bm-limit { position: absolute; top: -9px; bottom: -9px; width: 0; border-left: 3px solid var(--limit); }
+    .bm-limit-label { position: absolute; bottom: 100%; margin-bottom: 9px; font-size: 11px; font-weight: 700; color: var(--text); white-space: nowrap; }
+    .bm-axis { position: relative; height: 18px; margin-top: 10px; font-size: 11px; color: var(--muted); }
+    .bm-axis span { position: absolute; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .bm-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .bm-table td { padding: 5px 6px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    .bm-table td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .bm-table td small { display: block; color: var(--muted); font-size: 11px; }
+    .bm-table tr.sum td { font-weight: 700; border-top: 2px solid var(--border); }
+    .bm-table tr.verdict.over td { color: var(--red); font-weight: 700; }
+    .bm-table tr.verdict.ok td { color: #047857; font-weight: 700; }
+    .bm-sw { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+    .bm-sw.fact { background: var(--spend-fact); }
+    .bm-sw.est { background: var(--spend-est); }
+    .bm-sw.over { background: repeating-linear-gradient(45deg, var(--over) 0 2px, #fff 2px 4px); border: 1px solid var(--over); }
+    .bm-sw.limit { width: 3px; background: var(--limit); border-radius: 0; margin-left: 4px; margin-right: 10px; }
+    .bm-note { font-size: 12px; color: #4b5563; margin: 0; line-height: 1.5; }
+    .bm-context { font-size: 11px; color: var(--muted); margin: 0; }
+
+    /* Cada unidad frente a su presupuesto (#A131): una fila por unidad, la línea del 100 % alineada. */
+    .um-sub { font-size: 12px; color: var(--muted); margin: -4px 0 12px; line-height: 1.5; }
+    .um-list { display: grid; gap: 12px; }
+    .um-row { display: grid; grid-template-columns: minmax(150px, 230px) 1fr minmax(170px, 240px); gap: 4px 14px; align-items: center; }
+    .um-name { font-size: 13px; font-weight: 600; line-height: 1.25; }
+    .um-name small { display: block; font-weight: 400; color: var(--muted); font-size: 11px; }
+    .um-bar { position: relative; height: 14px; background: var(--track); border-radius: 3px; }
+    .um-bar .bm-over { top: -3px; bottom: -3px; border-width: 1.5px; border-left: 0; }
+    .um-bar .bm-limit { top: -5px; bottom: -5px; border-left-width: 2px; }
+    .um-fig { font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; line-height: 1.35; color: #374151; }
+    .um-fig strong { font-size: 14px; color: var(--text); }
+    .um-fig .over { color: var(--red); font-weight: 700; }
+    .um-fig .ok { color: #047857; }
+    .um-fig .ot { color: #6b7280; }
+    .um-nobudget { font-size: 12px; color: #4b5563; margin-top: 14px; line-height: 1.6; }
+    @media (max-width: 680px) {
+      .um-row { grid-template-columns: 1fr; }
+      .um-fig { text-align: left; }
+      .bm-hero { font-size: 36px; }
     }
-    .donut-center .pct {
-      font-size: 28px;
-      font-weight: 800;
-      color: var(--text);
-      line-height: 1;
-    }
-    .donut-center .label {
-      font-size: 11px;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-top: 4px;
-    }
-    .donut-center.over .pct { color: var(--red); }
+    /* Tabla por unidad: encabezado en dos niveles, fila de total y lo de OT en gris (#A131). */
+    table.units th.grp { text-align: center; border-bottom: 1px solid var(--border); }
+    table.units th.grp.ot, table.units td.ot { background: #f9fafb; color: #4b5563; }
+    table.units tr.total-row td { font-weight: 700; border-top: 2px solid var(--border); background: #f3f4f6; cursor: default; }
+    table.units td.unit-cell { min-width: 150px; }
+    /* La tabla por unidad (#A131) cabe completa: celdas más angostas y encabezados en dos líneas. */
+    table.units.units-budget { font-size: 12.5px; }
+    table.units.units-budget th, table.units.units-budget td { padding: 8px 7px; }
+    table.units.units-budget th { white-space: normal; line-height: 1.3; vertical-align: bottom; }
+    table.units td.unit-cell small { display: block; margin-left: 14px; font-size: 11px; color: var(--muted); font-style: normal; }
+    table.units tr.total-row td.ot { background: #eef0f3; }
+    .units-foot { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.5; }
 
     /* ===== STICKY FILTERS ===== */
     /* La card de filtros queda pegada al top al scrollear, así siempre se ve
@@ -899,7 +952,8 @@
       <dl>
         <dt>Qué se cuenta</dt>
         <dd>Las solicitudes compradas (reservadas o procesadas), en el mes de su fecha de compra. Las cargadas a una orden de
-          trabajo (OT) no cuentan: se pagan con la OT.</dd>
+          trabajo (OT) no cuentan contra el presupuesto: se pagan con la OT. Se muestran aparte («Cargado a OT · no suma»)
+          para saber cuánto costaron de verdad los viajes.</dd>
         <dt>Desde abril de 2026</dt>
         <dd>La plataforma arrancó el 27 de marzo de 2026: de enero a marzo no tiene compras registradas. Por eso la vista
           anual de 2026 cuenta el presupuesto y el gasto desde abril; si contara el presupuesto de enero a marzo, el
@@ -916,6 +970,13 @@
         <dt>Gasto, disponible y % usado</dt>
         <dd>Gasto = facturado + comprado sin factura. Disponible = presupuesto − gasto. % usado = gasto ÷ presupuesto. Las
           unidades sin presupuesto no entran en estas dos cifras.</dd>
+        <dt>La barra del presupuesto</dt>
+        <dd>La línea negra es el presupuesto (100 %). El azul oscuro es lo facturado y el claro lo comprado sin factura;
+          debajo, cada uno con su % del presupuesto, y los dos suman el % usado. Si el gasto pasa de la línea, lo que se
+          pasó va rayado en rojo. Sirve más que una torta: una torta no puede mostrar más del 100 %.</dd>
+        <dt>Total de los viajes</dt>
+        <dd>Gasto contra el presupuesto + lo cargado a OT. Es lo que costaron los viajes de la unidad, se pague con su
+          presupuesto o con una orden de trabajo.</dd>
         <dt>Top 10 de viajeros</dt>
         <dd>El costo de cada viaje se reparte en partes iguales entre sus pasajeros.</dd>
       </dl>
@@ -933,26 +994,17 @@
       <!-- KPIs anuales -->
       <div id="annualKpis" class="kpi-grid"></div>
 
-      <!-- Donuts lado a lado -->
-      <div class="charts-row">
-        <div class="card">
-          <h2 id="annualDonutTitle">% del presupuesto del año usado</h2>
-          <div class="chart-wrap-square">
-            <canvas id="annualDonutPct"></canvas>
-            <div id="annualDonutCenter" class="donut-center">
-              <div class="pct" id="annualDonutPctValue">—</div>
-              <div class="label">usado</div>
-            </div>
-          </div>
-          <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px;" id="annualDonutCaption"></p>
-        </div>
-        <div class="card">
-          <h2>Distribución del gasto por unidad</h2>
-          <div class="chart-wrap-square">
-            <canvas id="annualDonutDist"></canvas>
-          </div>
-          <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px;">Cada segmento es una unidad. Toca para ver el monto y % del total.</p>
-        </div>
+      <!-- #A131: el gasto frente al presupuesto (barra con la línea del 100 %), en vez de la torta -->
+      <div class="card">
+        <h2 id="annualMeterTitle">% del presupuesto usado</h2>
+        <div id="annualBudgetMeter"></div>
+      </div>
+
+      <!-- #A131: cada unidad frente a su presupuesto, en vez de la torta «Distribución del gasto por unidad» -->
+      <div class="card">
+        <h2>Cada unidad frente a su presupuesto</h2>
+        <p class="um-sub">La línea negra es el presupuesto de cada unidad (100 %). Lo rayado en rojo es lo que se pasó. De la que más se pasó a la que menos.</p>
+        <div id="annualUnitMeters"></div>
       </div>
 
       <!-- Barras meses -->
@@ -1022,19 +1074,10 @@
       <!-- KPIs del periodo -->
       <div id="periodKpis" class="kpi-grid"></div>
 
-      <!-- Donut + caption del periodo -->
-      <div class="charts-row" style="grid-template-columns: 1fr;">
-        <div class="card" style="max-width: 380px; margin: 0 auto; width: 100%;">
-          <h2>% del presupuesto del periodo usado</h2>
-          <div class="chart-wrap-square">
-            <canvas id="periodDonut"></canvas>
-            <div id="periodDonutCenter" class="donut-center">
-              <div class="pct" id="periodDonutPctValue">—</div>
-              <div class="label">usado</div>
-            </div>
-          </div>
-          <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px;" id="periodDonutCaption"></p>
-        </div>
+      <!-- #A131: el gasto del periodo frente a su presupuesto -->
+      <div class="card">
+        <h2 id="periodMeterTitle">% del presupuesto del periodo usado</h2>
+        <div id="periodBudgetMeter"></div>
       </div>
 
       <!-- Tabla del periodo -->
@@ -1096,19 +1139,10 @@
       <!-- KPIs mensuales -->
       <div id="monthlyKpis" class="kpi-grid"></div>
 
-      <!-- Donut mensual -->
-      <div class="charts-row" style="grid-template-columns: 1fr;">
-        <div class="card" style="max-width: 380px; margin: 0 auto; width: 100%;">
-          <h2>% del presupuesto del mes usado</h2>
-          <div class="chart-wrap-square">
-            <canvas id="monthlyDonut"></canvas>
-            <div id="monthlyDonutCenter" class="donut-center">
-              <div class="pct" id="monthlyDonutPctValue">—</div>
-              <div class="label">usado</div>
-            </div>
-          </div>
-          <p style="font-size: 11px; color: var(--muted); text-align: center; margin-top: 8px;" id="monthlyDonutCaption"></p>
-        </div>
+      <!-- #A131: el gasto del mes frente a su presupuesto -->
+      <div class="card">
+        <h2 id="monthlyMeterTitle">% del presupuesto del mes usado</h2>
+        <div id="monthlyBudgetMeter"></div>
       </div>
 
       <!-- Tabla mensual -->
@@ -1808,10 +1842,6 @@ var MONTHS_FULL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Ago
 // Charts (instances reusadas en cada render — destroy + new para evitar leaks)
 var charts = {
   monthlyBars: null,
-  annualDonutPct: null,
-  annualDonutDist: null,
-  monthlyDonut: null,
-  periodDonut: null,
   varianceChart: null,
   saVolume: null,
   saProj: null
@@ -2063,7 +2093,6 @@ function refreshView() {
   Array.prototype.forEach.call(document.querySelectorAll('.how-period'), function(el) {
     el.textContent = bounds.periodMonths === 1 ? '1 mes' : bounds.periodMonths + ' meses';
   });
-  if (bounds.periodMonths === 12 && charts.periodDonut) { charts.periodDonut.destroy(); charts.periodDonut = null; }
   setTabAvailable('periodo', bounds.periodMonths !== 12);
   applyTabs();
   // Todo lo que depende de los filtros de arriba: se dibuja la pestaña que se ve; las demás, al abrirlas.
@@ -2159,10 +2188,16 @@ function applyClientFilters(raw) {
       clone.totalExecutedEstimated = 0;
       clone.requests = (b.requests || []).filter(function(r) { return !r.isEstimated; });
       clone.requestCount = clone.requests.length;
+      // #A131: lo cargado a OT sigue la misma regla.
+      if (b.monthlyOtEstimated) clone.monthlyOtEstimated = b.monthlyOtEstimated.map(function() { return 0; });
+      clone.otRequests = (b.otRequests || []).filter(function(r) { return !r.isEstimated; });
+      clone.otRequestCount = clone.otRequests.length;
       return clone;
     }
     return b;
   });
+  // #A131: ¿el servidor ya manda lo cargado a OT? (con uno anterior no se muestra esa columna).
+  var otSupported = (raw.rows || []).some(function(b) { return Array.isArray(b.monthlyOtReal); });
 
   // #A99: en 2026 la vista anual cuenta desde abril (presupuesto, gasto y solicitudes). Las vistas de periodo y mes
   // usan los arreglos por mes y la lista completa de solicitudes (allRequests), que no cambian.
@@ -2176,9 +2211,15 @@ function applyClientFilters(raw) {
       c.totalExecutedReal = dashSumMonths(b.monthlyExecutedReal, startM, 12);
       c.totalExecutedEstimated = dashSumMonths(b.monthlyExecutedEstimated, startM, 12);
       c.totalBudgetAnnual = b.hasBudget ? dashSumMonths(b.monthlyBudget, startM, 12) : 0;
+      c.allOtRequests = b.otRequests || [];
+      c.otRequests = c.allOtRequests.filter(function(r) { return !r.month || r.month >= startM; });
       return c;
-    }).filter(function(c) { return c.hasBudget || c.requestCount > 0 || c.totalExecutedReal + c.totalExecutedEstimated > 0; });
+    }).filter(function(c) {
+      return c.hasBudget || c.requestCount > 0 || c.totalExecutedReal + c.totalExecutedEstimated > 0 ||
+        dashSumMonths(c.monthlyOtReal, startM, 12) + dashSumMonths(c.monthlyOtEstimated, startM, 12) > 0;
+    });
   }
+  var annualFrom = Math.min(Math.max(1, startM), 13);
 
   // Recomputar totales y byMonth desde las filas filtradas.
   // Distinguimos dos grupos:
@@ -2193,10 +2234,17 @@ function applyClientFilters(raw) {
   var grand = { real: 0, estimated: 0, budget: 0 };
   var grandBudgeted = { real: 0, estimated: 0 };
   var unbudgetedUnitCount = 0;
+  var otGrand = { real: 0, estimated: 0, count: 0 };
 
   rows.forEach(function(b) {
     grand.real += b.totalExecutedReal || 0;
     grand.estimated += b.totalExecutedEstimated || 0;
+    // #A131: lo cargado a OT en los meses de la vista anual (desde abril en 2026).
+    b.otReal = dashSumMonths(b.monthlyOtReal, annualFrom, 12);
+    b.otEstimated = dashSumMonths(b.monthlyOtEstimated, annualFrom, 12);
+    b.otTotal = b.otReal + b.otEstimated;
+    b.otCount = (b.otRequests || []).filter(function(r) { return !r.month || r.month >= annualFrom; }).length;
+    otGrand.real += b.otReal; otGrand.estimated += b.otEstimated; otGrand.count += b.otCount;
     for (var m = 1; m <= 12; m++) {
       var idx = m - 1;
       totalsByMonth[m].real += (b.monthlyExecutedReal[idx] || 0);
@@ -2266,6 +2314,9 @@ function applyClientFilters(raw) {
       executedTotal: (grand.real - grandBudgeted.real) + (grand.estimated - grandBudgeted.estimated),
       unitCount: unbudgetedUnitCount
     },
+    // #A131: lo cargado a OT (no suma contra el presupuesto; se muestra aparte).
+    ot: { real: otGrand.real, estimated: otGrand.estimated, total: otGrand.real + otGrand.estimated, count: otGrand.count },
+    otSupported: otSupported,
     meta: raw.meta
   };
 }
@@ -2304,17 +2355,16 @@ function renderAnnualView(data) {
   document.getElementById('annualSubtitle').textContent = limited
     ? '(' + dashAnnualRangeLabel(year).replace(' de ' + year, '') + ': la plataforma arrancó el 27 de marzo de 2026)'
     : '(enero a diciembre)';
-  document.getElementById('annualDonutTitle').textContent = limited ? '% del presupuesto usado (' + dashAnnualRangeLabel(year).replace(' de ' + year, '') + ')' : '% del presupuesto del año usado';
-  document.getElementById('annualBudgetTh').textContent = dashAnnualBudgetLabel(year);
+  document.getElementById('annualMeterTitle').textContent = '% del presupuesto usado · ' + dashAnnualRangeLabel(year);
   document.getElementById('monthlyChartNote').textContent = limited
     ? 'Enero a marzo: antes de la plataforma. No hay compras registradas y su presupuesto no se cuenta en la vista anual.'
     : '';
   renderKpis('annualKpis', data, limited ? 'de ' + dashAnnualRangeLabel(year).replace(' de ' + year, '') : 'Acumulado anual');
   _renderAnnualToDateKpi(data);
-  renderAnnualDonutPct(data);
-  renderAnnualDonutDist(data);
+  renderBudgetMeter('annualBudgetMeter', data, dashAnnualRangeLabel(year));
+  renderUnitMeters('annualUnitMeters', data);
   renderMonthlyBarsChart(data);
-  renderUnitsTable('annualUnitsBody', 'annualUnitCount', 'annualEmptyState', data.rows, 'annual');
+  renderUnitsTable('annualUnitsBody', 'annualUnitCount', 'annualEmptyState', data.rows, 'annual', dashAnnualBudgetLabel(year));
   renderTopTravelers('annual', data.rows);
 }
 
@@ -2366,6 +2416,20 @@ function renderKpis(containerId, data, contextLabel) {
     div.appendChild(lbl); div.appendChild(val); div.appendChild(ext);
     container.appendChild(div);
   }
+
+  // #A131: lo cargado a una orden de trabajo. Se paga con la OT: no entra en el % ni en el disponible; se muestra
+  // para saber cuánto costaron de verdad los viajes (con un servidor anterior no llega y no se muestra).
+  if (data.otSupported) {
+    var o = data.ot || { total: 0, count: 0 };
+    var od = document.createElement('div');
+    od.className = 'kpi ot';
+    var ol = document.createElement('div'); ol.className = 'label'; ol.textContent = 'Cargado a OT · no suma';
+    var ov = document.createElement('div'); ov.className = 'value'; ov.textContent = fmtMoney(o.total);
+    var oe = document.createElement('div'); oe.className = 'extra';
+    oe.textContent = o.count ? ptPlural(o.count, 'viaje con orden de trabajo', 'viajes con orden de trabajo') + ': se pagan con la OT' : 'ningún viaje con orden de trabajo';
+    od.appendChild(ol); od.appendChild(ov); od.appendChild(oe);
+    container.appendChild(od);
+  }
 }
 
 /** #A99: lo gastado frente al presupuesto de los meses que ya pasaron (no del año completo). */
@@ -2382,116 +2446,139 @@ function _renderAnnualToDateKpi(data) {
   document.getElementById('annualKpis').appendChild(div);
 }
 
-function renderAnnualDonutPct(data) {
-  var canvas = document.getElementById('annualDonutPct');
-  if (!canvas || typeof Chart === 'undefined') return;
-  // CORRECTO: usar solo unidades con presupuesto (totalsBudgeted) para que
-  // el % refleje la realidad del comparativo. Sin esto, el ejecutado de
-  // unidades sin ppto distorsiona el cociente.
-  var t = data.totalsBudgeted || data.totals;
-  var real = t.executedReal || 0;
-  var est = t.executedEstimated || 0;
-  var budget = t.budget || 0;
-  var disponible = Math.max(0, budget - real - est);
-  var overBudget = (budget > 0 && (real + est) > budget);
+// =====================================================================
+// GASTO FRENTE AL PRESUPUESTO (#A131, pedido de Yurani, 19-nov-2026)
+// =====================================================================
+// Antes era una torta: con más del 100 % no se veía que el presupuesto ya se había pasado, y una captura de
+// pantalla no decía de qué estaba hecho el porcentaje. Ahora es una barra con la línea del presupuesto (100 %):
+// azul oscuro lo facturado, azul claro lo comprado sin factura y, si pasa de la línea, lo que se pasó rayado en
+// rojo. Debajo, cada cifra con su % del presupuesto, lo que no suma (OT y unidades sin presupuesto) y los filtros,
+// para que una captura se explique sola.
+function dashR1(x) { return Math.round(x * 10) / 10; }
 
-  var centerEl = document.getElementById('annualDonutCenter');
-  var pctEl = document.getElementById('annualDonutPctValue');
-  var capEl = document.getElementById('annualDonutCaption');
-
-  if (budget === 0) {
-    pctEl.textContent = '—';
-    centerEl.classList.remove('over');
-    capEl.textContent = 'Sin presupuesto definido en las unidades filtradas.';
-  } else {
-    pctEl.textContent = fmtPct(t.percentUsed);
-    centerEl.classList.toggle('over', overBudget);
-    capEl.textContent = overBudget
-      ? 'Por encima del presupuesto: ' + fmtMoney((real + est) - budget)
-      : 'Disponible: ' + fmtMoney(disponible) + ' de ' + fmtMoney(budget) +
-        (data.startMonth > 1 && data.startMonth <= 12 ? ' (sin enero a marzo, antes de la plataforma)' : '');
+/** «Empresa: Cumandes · Unidad: POTENCIA (GDM - P&M) · Datos del 23/11/2026, 18:30» (para que una captura diga qué muestra). */
+function dashFilterContext() {
+  var c = document.getElementById('f_company').value;
+  var u = document.getElementById('f_unit').value;
+  var access = (fullYearData && fullYearData.meta && fullYearData.meta.access) || {};
+  var parts = ['Empresa: ' + (c || 'todas'), 'Unidad: ' + (u || (access.scope === 'UNITS' ? 'las asignadas' : 'todas'))];
+  if (!document.getElementById('f_includeEstimated').checked) parts.push('sin lo comprado sin factura');
+  var at = fullYearData && fullYearData.meta && fullYearData.meta.computedAt ? new Date(fullYearData.meta.computedAt) : null;
+  if (at && !isNaN(at.getTime())) {
+    parts.push('Datos del ' + at.toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }));
   }
-
-  var labels = ['Facturado', 'Comprado sin factura'];
-  var values = [real, est];
-  var colors = ['#D71920', '#d97706'];
-  if (!overBudget && budget > 0) {
-    labels.push('Disponible');
-    values.push(disponible);
-    colors.push('#e5e7eb');
-  }
-
-  if (charts.annualDonutPct) charts.annualDonutPct.destroy();
-  charts.annualDonutPct = new Chart(canvas, {
-    type: 'doughnut',
-    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#ffffff' }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      cutout: '65%',
-      plugins: {
-        legend: { position: 'bottom', labels: { font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: function(ctx) {
-              return ctx.label + ': $' + Number(ctx.parsed || 0).toLocaleString('es-CO');
-            }
-          }
-        }
-      }
-    }
-  });
+  return parts.join(' · ');
 }
 
-function renderAnnualDonutDist(data) {
-  var canvas = document.getElementById('annualDonutDist');
-  if (!canvas || typeof Chart === 'undefined') return;
-  // Top 10 unidades por ejecutado total + "Otras"
-  var sorted = (data.rows || []).map(function(b) {
-    return { label: b.unit, value: (b.totalExecutedReal || 0) + (b.totalExecutedEstimated || 0) };
-  }).filter(function(x) { return x.value > 0; })
-    .sort(function(a, b) { return b.value - a.value; });
+/** Lo que no suma contra el presupuesto, en una frase («Cargado a OT: $X (N viajes) · unidades sin presupuesto: $Y»). */
+function dashNotCountedText(data) {
+  var ot = data.ot || { total: 0, count: 0 };
+  var unb = data.unbudgeted || { executedTotal: 0, unitCount: 0 };
+  var parts = [];
+  if (ot.total > 0) parts.push('cargado a una orden de trabajo (OT), que se paga con la OT: ' + fmtMoney(ot.total) + ' (' + ptPlural(ot.count, 'viaje', 'viajes') + ')');
+  if (unb.executedTotal > 0) parts.push('gasto de ' + ptPlural(unb.unitCount, 'unidad sin presupuesto', 'unidades sin presupuesto') + ': ' + fmtMoney(unb.executedTotal));
+  if (parts.length) return 'No suman aquí: ' + parts.join(' · ') + '.';
+  return data.otSupported ? 'No hay viajes cargados a OT ni gasto de unidades sin presupuesto en estos meses.' : '';
+}
 
-  var topN = 10;
-  var labels = [], values = [];
-  sorted.slice(0, topN).forEach(function(x) { labels.push(x.label); values.push(x.value); });
-  if (sorted.length > topN) {
-    var rest = sorted.slice(topN).reduce(function(s, x) { return s + x.value; }, 0);
-    if (rest > 0) { labels.push('Otras (' + (sorted.length - topN) + ')'); values.push(rest); }
-  }
-  var total = values.reduce(function(s, v) { return s + v; }, 0);
+/** La barra de un gasto frente a su presupuesto: segmentos, lo que se pasó rayado y la línea del 100 %. */
+function dashMeterBarHtml(real, est, budget, scaleMax, cls, limitLabel) {
+  var spend = real + est;
+  var w = function(v) { return Math.max(0, Math.min(100, v / scaleMax * 100)); };
+  var fw = w(real), ew = Math.max(0, w(spend) - fw), limit = w(budget);
+  var over = spend > budget;
+  var h = '<div class="' + cls + '">';
+  if (fw > 0) h += '<div class="bm-seg fact' + (ew <= 0 && !over ? ' last' : '') + '" style="left:0;width:' + fw.toFixed(3) + '%"></div>';
+  if (ew > 0) h += '<div class="bm-seg est last" style="left:' + fw.toFixed(3) + '%;width:' + ew.toFixed(3) + '%"></div>';
+  if (over) h += '<div class="bm-over" style="left:' + limit.toFixed(3) + '%;width:' + Math.max(0, w(spend) - limit).toFixed(3) + '%"></div>';
+  // La etiqueta de la línea: centrada sobre ella, o hacia adentro si la línea queda muy a un lado.
+  var pos = limit > 65 ? 'right:3px' : limit < 35 ? 'left:0' : 'left:0;transform:translateX(-50%)';
+  h += '<div class="bm-limit" style="left:calc(' + limit.toFixed(3) + '% - 1px)">' +
+    (limitLabel ? '<span class="bm-limit-label" style="' + pos + '">' + escHtml(limitLabel) + '</span>' : '') + '</div>';
+  return h + '</div>';
+}
 
-  var palette = ['#D71920','#d97706','#059669','#2563eb','#7c3aed','#db2777','#0891b2','#65a30d','#ea580c','#475569','#9ca3af'];
-  var colors = labels.map(function(_, i) { return palette[i % palette.length]; });
-
-  if (charts.annualDonutDist) charts.annualDonutDist.destroy();
-  if (labels.length === 0) {
-    var ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+function renderBudgetMeter(containerId, data, rangeText) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  var t = data.totalsBudgeted || data.totals;
+  var real = t.executedReal || 0, est = t.executedEstimated || 0, spend = real + est, budget = t.budget || 0;
+  var notCounted = dashNotCountedText(data);
+  var foot = (notCounted ? '<p class="bm-note">' + escHtml(notCounted) + '</p>' : '') +
+    '<p class="bm-context">' + escHtml(rangeText + ' · ' + dashFilterContext()) + '</p>';
+  if (budget <= 0) {
+    el.innerHTML = '<div class="bm"><p class="bm-note">' + escHtml(spend > 0
+      ? 'Hay gasto (' + fmtMoney(spend) + ') pero ninguna unidad de lo filtrado tiene presupuesto en estos meses. Defínalo en PPTOS UNIDADES para ver el % usado.'
+      : 'Sin presupuesto ni gasto en estos meses para lo filtrado.') + '</p>' + foot + '</div>';
     return;
   }
-  charts.annualDonutDist = new Chart(canvas, {
-    type: 'doughnut',
-    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#ffffff' }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      cutout: '60%',
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: function(ctx) {
-              var pct = total > 0 ? ((ctx.parsed / total) * 100).toFixed(1) : '0';
-              return ctx.label + ': $' + Number(ctx.parsed || 0).toLocaleString('es-CO') + ' (' + pct + '%)';
-            }
-          }
-        }
-      }
-    }
+  var pT = dashR1(spend / budget * 100), pF = dashR1(real / budget * 100), pE = dashR1(pT - pF);
+  var over = spend > budget;
+  var scale = Math.max(budget, spend);
+  var verdict = over
+    ? '⚠ Se pasó del presupuesto en ' + fmtMoney(spend - budget) + ' (' + fmtPct(dashR1(pT - 100)) + ' más de lo presupuestado)'
+    : '✓ Queda disponible ' + fmtMoney(budget - spend) + ' (' + fmtPct(dashR1(100 - pT)) + ' del presupuesto)';
+  var aria = fmtPct(pT) + ' del presupuesto: ' + fmtMoney(spend) + ' de ' + fmtMoney(budget) + '. ' + verdict.replace(/^[^ ]+ /, '');
+  var h = '<div class="bm">';
+  h += '<div class="bm-head"><div class="bm-hero">' + escHtml(fmtPct(pT)) + '<small>del presupuesto</small></div>' +
+    '<div class="bm-verdict ' + (over ? 'over' : 'ok') + '">' + escHtml(verdict) + '</div></div>';
+  h += '<div class="bm-plot" role="img" aria-label="' + escHtml(aria) + '">';
+  // El monto del presupuesto va sobre su línea; abajo, $0 y (si se pasó) el gasto al final: así no se montan en un celular.
+  h += dashMeterBarHtml(real, est, budget, scale, 'bm-track', 'Presupuesto ' + fmtMoney(budget) + ' (100 %)');
+  h += '<div class="bm-axis"><span style="left:0">$0</span>' +
+    (over ? '<span style="right:0">Gasto ' + escHtml(fmtMoney(spend)) + '</span>' : '') + '</div>';
+  h += '</div>';
+  h += '<table class="bm-table"><tbody>' +
+    '<tr><td><i class="bm-sw fact"></i>Facturado</td><td class="num">' + fmtMoney(real) + '</td><td class="num">' + fmtPct(pF) + '</td></tr>' +
+    '<tr><td><i class="bm-sw est"></i>Comprado sin factura<small>lo pagado o lo cotizado, mientras llega la factura</small></td><td class="num">' + fmtMoney(est) + '</td><td class="num">' + fmtPct(pE) + '</td></tr>' +
+    '<tr class="sum"><td>Gasto contra el presupuesto</td><td class="num">' + fmtMoney(spend) + '</td><td class="num">' + fmtPct(pT) + '</td></tr>' +
+    '<tr><td><i class="bm-sw limit"></i>Presupuesto<small>' + escHtml(rangeText) + '</small></td><td class="num">' + fmtMoney(budget) + '</td><td class="num">100.0%</td></tr>' +
+    (over
+      ? '<tr class="verdict over"><td><i class="bm-sw over"></i>⚠ Por encima del presupuesto</td><td class="num">' + fmtMoney(spend - budget) + '</td><td class="num">' + fmtPct(dashR1(pT - 100)) + '</td></tr>'
+      : '<tr class="verdict ok"><td>✓ Disponible</td><td class="num">' + fmtMoney(budget - spend) + '</td><td class="num">' + fmtPct(dashR1(100 - pT)) + '</td></tr>') +
+    '</tbody></table>';
+  h += foot + '</div>';
+  el.innerHTML = h;
+}
+
+/** Cada unidad frente a su presupuesto (#A131): de la que más se pasó a la que menos; la línea del 100 % alineada. */
+function renderUnitMeters(containerId, data) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  var items = [], noBudget = [];
+  (data.rows || []).forEach(function(b) {
+    var spend = (b.totalExecutedReal || 0) + (b.totalExecutedEstimated || 0);
+    var ot = b.otTotal || 0;
+    if (spend <= 0 && ot <= 0) return;
+    if (b.hasBudget && b.budgetInRange > 0) items.push({ b: b, spend: spend, ot: ot, pct: spend / b.budgetInRange * 100, over: spend - b.budgetInRange });
+    else noBudget.push({ b: b, spend: spend, ot: ot });
   });
+  if (!items.length && !noBudget.length) { el.innerHTML = '<p class="bm-note">No hay gasto en estos meses para lo filtrado.</p>'; return; }
+  items.sort(function(x, y) { return (y.over - x.over) || (y.pct - x.pct); });
+  // Escala común: hasta el % más alto (máximo 300 %), para que la línea del 100 % quede en el mismo sitio en todas.
+  var scalePct = Math.min(300, Math.max(100, items.reduce(function(m, x) { return Math.max(m, x.pct); }, 0)));
+  var h = '<div class="um-list">';
+  items.forEach(function(x) {
+    var b = x.b, bud = b.budgetInRange;
+    var scaleMoney = bud * scalePct / 100;
+    var label = fmtPct(dashR1(x.pct)) + ' del presupuesto: ' + fmtMoney(x.spend) + ' de ' + fmtMoney(bud);
+    h += '<div class="um-row">' +
+      '<div class="um-name">' + escHtml(b.unit) + (b.company ? '<small>' + escHtml(b.company) + '</small>' : '') + '</div>' +
+      '<div role="img" aria-label="' + escHtml(b.unit + ': ' + label) + '" title="' + escHtml(label + (x.pct > scalePct ? ' (la barra llega hasta ' + scalePct + ' %)' : '')) + '">' +
+        dashMeterBarHtml(b.totalExecutedReal || 0, b.totalExecutedEstimated || 0, bud, scaleMoney, 'um-bar') + '</div>' +
+      '<div class="um-fig"><strong>' + escHtml(fmtPct(dashR1(x.pct))) + '</strong> · ' + escHtml(fmtMoney(x.spend)) + ' de ' + escHtml(fmtMoney(bud)) + '<br>' +
+        (x.over > 0 ? '<span class="over">⚠ se pasó ' + escHtml(fmtMoney(x.over)) + '</span>' : '<span class="ok">disponible ' + escHtml(fmtMoney(-x.over)) + '</span>') +
+        (x.ot > 0 ? ' · <span class="ot">+ ' + escHtml(fmtMoney(x.ot)) + ' en OT (no suma)</span>' : '') +
+      '</div></div>';
+  });
+  h += '</div>';
+  if (noBudget.length) {
+    noBudget.sort(function(x, y) { return (y.spend + y.ot) - (x.spend + x.ot); });
+    h += '<p class="um-nobudget"><strong>Sin presupuesto en estos meses (no entran en el %):</strong> ' + noBudget.map(function(x) {
+      return escHtml(x.b.unit) + ' ' + escHtml(fmtMoney(x.spend)) + (x.ot > 0 ? ' + ' + escHtml(fmtMoney(x.ot)) + ' en OT' : '');
+    }).join(' · ') + '.</p>';
+  }
+  el.innerHTML = h;
 }
 
 function renderMonthlyBarsChart(data) {
@@ -2514,9 +2601,10 @@ function renderMonthlyBarsChart(data) {
     data: {
       labels: labels,
       datasets: [
-        { label: 'Facturado', data: realData, backgroundColor: '#D71920', stack: 'ejec' },
-        { label: 'Comprado sin factura', data: estData, backgroundColor: '#d97706', stack: 'ejec' },
-        { label: 'Presupuesto', data: budgetData, type: 'line', borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.08)', tension: 0.2, pointRadius: 4, fill: false }
+        // #A131: mismos colores que la barra del presupuesto (azul = gasto; negro = presupuesto).
+        { label: 'Facturado', data: realData, backgroundColor: '#1d4ed8', stack: 'ejec' },
+        { label: 'Comprado sin factura', data: estData, backgroundColor: '#5b9cf5', stack: 'ejec' },
+        { label: 'Presupuesto', data: budgetData, type: 'line', borderColor: '#111827', backgroundColor: '#111827', borderWidth: 2, borderDash: [6, 4], tension: 0, pointRadius: 3, fill: false }
       ]
     },
     options: {
@@ -2552,8 +2640,9 @@ function renderMonthlyView(data, month) {
   var monthData = computeMonthlyData(data, month);
   var label = MONTHS_FULL[month - 1] + ' ' + (fullYearData ? fullYearData.meta.year : '');
   renderKpis('monthlyKpis', monthData, label);
-  renderMonthlyDonut(monthData);
-  renderUnitsTable('monthlyUnitsBody', 'monthlyUnitCount', 'monthlyEmptyState', monthData.rows, 'monthly');
+  document.getElementById('monthlyMeterTitle').textContent = '% del presupuesto del mes usado · ' + label;
+  renderBudgetMeter('monthlyBudgetMeter', monthData, label);
+  renderUnitsTable('monthlyUnitsBody', 'monthlyUnitCount', 'monthlyEmptyState', monthData.rows, 'monthly', 'Presupuesto del mes');
   renderTopTravelers('monthly', monthData.rows);
 }
 
@@ -2566,6 +2655,7 @@ function computeMonthlyData(filtered, month) {
   var grand = { real: 0, estimated: 0, budget: 0 };
   var grandBudgeted = { real: 0, estimated: 0 };
   var unbudgetedUnitCount = 0;
+  var otGrand = { real: 0, estimated: 0, count: 0 };
   var idx = month - 1;
 
   (filtered.rows || []).forEach(function(b) {
@@ -2573,10 +2663,14 @@ function computeMonthlyData(filtered, month) {
     var estM = b.monthlyExecutedEstimated[idx] || 0;
     var budgetM = b.hasBudget ? (b.monthlyBudget[idx] || 0) : 0;
     var execTotal = realM + estM;
-    if (execTotal === 0 && budgetM === 0) return;
+    // #A131: lo cargado a OT en el mes (aparte).
+    var otR = (b.monthlyOtReal && b.monthlyOtReal[idx]) || 0, otE = (b.monthlyOtEstimated && b.monthlyOtEstimated[idx]) || 0;
+    if (execTotal === 0 && budgetM === 0 && otR + otE === 0) return;
 
     var pct = budgetM > 0 ? Math.round((execTotal / budgetM) * 1000) / 10 : null;
     var requestsM = (b.allRequests || b.requests || []).filter(function(r) { return r.month === month; });
+    var otRequestsM = (b.allOtRequests || b.otRequests || []).filter(function(r) { return r.month === month; });
+    otGrand.real += otR; otGrand.estimated += otE; otGrand.count += otRequestsM.length;
 
     rows.push({
       unit: b.unit,
@@ -2588,7 +2682,8 @@ function computeMonthlyData(filtered, month) {
       deltaInRange: b.hasBudget ? (budgetM - execTotal) : null,
       percentUsed: pct,
       requestCount: requestsM.length,
-      requests: requestsM
+      requests: requestsM,
+      otReal: otR, otEstimated: otE, otTotal: otR + otE, otCount: otRequestsM.length, otRequests: otRequestsM
     });
     grand.real += realM;
     grand.estimated += estM;
@@ -2636,68 +2731,10 @@ function computeMonthlyData(filtered, month) {
       executedTotal: (grand.real - grandBudgeted.real) + (grand.estimated - grandBudgeted.estimated),
       unitCount: unbudgetedUnitCount
     },
+    ot: { real: otGrand.real, estimated: otGrand.estimated, total: otGrand.real + otGrand.estimated, count: otGrand.count },
+    otSupported: !!filtered.otSupported,
     month: month
   };
-}
-
-function renderMonthlyDonut(monthData) {
-  var canvas = document.getElementById('monthlyDonut');
-  if (!canvas || typeof Chart === 'undefined') return;
-  // Mismo razonamiento que renderAnnualDonutPct: usar totalsBudgeted
-  // para no contaminar el % con ejecutado de unidades sin presupuesto.
-  var t = monthData.totalsBudgeted || monthData.totals;
-  var real = t.executedReal || 0;
-  var est = t.executedEstimated || 0;
-  var budget = t.budget || 0;
-  var disponible = Math.max(0, budget - real - est);
-  var overBudget = (budget > 0 && (real + est) > budget);
-
-  var centerEl = document.getElementById('monthlyDonutCenter');
-  var pctEl = document.getElementById('monthlyDonutPctValue');
-  var capEl = document.getElementById('monthlyDonutCaption');
-
-  if (budget === 0) {
-    pctEl.textContent = '—';
-    centerEl.classList.remove('over');
-    capEl.textContent = 'Sin presupuesto definido en este mes para las unidades filtradas.';
-  } else {
-    pctEl.textContent = fmtPct(t.percentUsed);
-    centerEl.classList.toggle('over', overBudget);
-    capEl.textContent = overBudget
-      ? 'Por encima del presupuesto: ' + fmtMoney((real + est) - budget)
-      : 'Disponible: ' + fmtMoney(disponible) + ' de ' + fmtMoney(budget);
-  }
-
-  var labels = ['Facturado', 'Comprado sin factura'];
-  var values = [real, est];
-  var colors = ['#D71920', '#d97706'];
-  if (!overBudget && budget > 0) {
-    labels.push('Disponible');
-    values.push(disponible);
-    colors.push('#e5e7eb');
-  }
-
-  if (charts.monthlyDonut) charts.monthlyDonut.destroy();
-  charts.monthlyDonut = new Chart(canvas, {
-    type: 'doughnut',
-    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#ffffff' }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      cutout: '65%',
-      plugins: {
-        legend: { position: 'bottom', labels: { font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: function(ctx) {
-              return ctx.label + ': $' + Number(ctx.parsed || 0).toLocaleString('es-CO');
-            }
-          }
-        }
-      }
-    }
-  });
 }
 
 // =====================================================================
@@ -2736,6 +2773,7 @@ function computePeriodData(filtered, bounds) {
   var grand = { real: 0, estimated: 0, budget: 0 };
   var grandBudgeted = { real: 0, estimated: 0 };
   var unbudgetedUnitCount = 0;
+  var otGrand = { real: 0, estimated: 0, count: 0 };
 
   (filtered.rows || []).forEach(function(b) {
     var realP = 0, estP = 0, budgetP = 0;
@@ -2746,12 +2784,19 @@ function computePeriodData(filtered, bounds) {
       if (b.hasBudget) budgetP += b.monthlyBudget[idx] || 0;
     }
     var execTotal = realP + estP;
-    if (execTotal === 0 && budgetP === 0) return;
+    // #A131: lo cargado a OT en el periodo (aparte).
+    var otR = dashSumMonths(b.monthlyOtReal, bounds.fromMonth, bounds.toMonth);
+    var otE = dashSumMonths(b.monthlyOtEstimated, bounds.fromMonth, bounds.toMonth);
+    if (execTotal === 0 && budgetP === 0 && otR + otE === 0) return;
 
     var pct = budgetP > 0 ? Math.round((execTotal / budgetP) * 1000) / 10 : null;
     var requestsP = (b.allRequests || b.requests || []).filter(function(r) {
       return r.month >= bounds.fromMonth && r.month <= bounds.toMonth;
     });
+    var otRequestsP = (b.allOtRequests || b.otRequests || []).filter(function(r) {
+      return r.month >= bounds.fromMonth && r.month <= bounds.toMonth;
+    });
+    otGrand.real += otR; otGrand.estimated += otE; otGrand.count += otRequestsP.length;
 
     rows.push({
       unit: b.unit,
@@ -2763,7 +2808,8 @@ function computePeriodData(filtered, bounds) {
       deltaInRange: b.hasBudget ? (budgetP - execTotal) : null,
       percentUsed: pct,
       requestCount: requestsP.length,
-      requests: requestsP
+      requests: requestsP,
+      otReal: otR, otEstimated: otE, otTotal: otR + otE, otCount: otRequestsP.length, otRequests: otRequestsP
     });
     grand.real += realP;
     grand.estimated += estP;
@@ -2811,6 +2857,8 @@ function computePeriodData(filtered, bounds) {
       executedTotal: (grand.real - grandBudgeted.real) + (grand.estimated - grandBudgeted.estimated),
       unitCount: unbudgetedUnitCount
     },
+    ot: { real: otGrand.real, estimated: otGrand.estimated, total: otGrand.real + otGrand.estimated, count: otGrand.count },
+    otSupported: !!filtered.otSupported,
     bounds: bounds
   };
 }
@@ -2835,95 +2883,67 @@ function renderPeriodView(data) {
 
   var pData = computePeriodData(data, bounds);
   renderKpis('periodKpis', pData, bounds.label + ' ' + year);
-  renderPeriodDonut(pData);
-  renderUnitsTable('periodUnitsBody', 'periodUnitCount', 'periodEmptyState', pData.rows, 'period');
+  var periodRange = bounds.label + ' ' + year + (bounds.periodMonths > 1 && bounds.periodMonths < 12
+    ? ' (' + MONTHS_FULL[bounds.fromMonth - 1].toLowerCase() + ' a ' + MONTHS_FULL[bounds.toMonth - 1].toLowerCase() + ')' : '');
+  document.getElementById('periodMeterTitle').textContent = '% del presupuesto del periodo usado · ' + periodRange;
+  renderBudgetMeter('periodBudgetMeter', pData, periodRange);
+  renderUnitsTable('periodUnitsBody', 'periodUnitCount', 'periodEmptyState', pData.rows, 'period', 'Presupuesto del periodo');
   renderTopTravelers('period', pData.rows);
-}
-
-function renderPeriodDonut(pData) {
-  var canvas = document.getElementById('periodDonut');
-  if (!canvas || typeof Chart === 'undefined') return;
-  var t = pData.totalsBudgeted || pData.totals;
-  var real = t.executedReal || 0;
-  var est = t.executedEstimated || 0;
-  var budget = t.budget || 0;
-  var disponible = Math.max(0, budget - real - est);
-  var overBudget = (budget > 0 && (real + est) > budget);
-  var noBudgetWithSpend = (budget === 0 && (real + est) > 0);
-
-  var centerEl = document.getElementById('periodDonutCenter');
-  var pctEl = document.getElementById('periodDonutPctValue');
-  var capEl = document.getElementById('periodDonutCaption');
-
-  if (budget === 0) {
-    pctEl.textContent = '—';
-    centerEl.classList.remove('over');
-    capEl.textContent = noBudgetWithSpend
-      ? 'Hay ejecución en este periodo pero NINGUNA unidad filtrada tiene presupuesto asignado. Configurarlo en PPTOS UNIDADES para habilitar el % de uso.'
-      : 'Sin presupuesto definido en este periodo para las unidades filtradas.';
-  } else {
-    pctEl.textContent = fmtPct(t.percentUsed);
-    centerEl.classList.toggle('over', overBudget);
-    capEl.textContent = overBudget
-      ? 'Por encima del presupuesto: ' + fmtMoney((real + est) - budget)
-      : 'Disponible: ' + fmtMoney(disponible) + ' de ' + fmtMoney(budget);
-  }
-
-  var labels = ['Facturado', 'Comprado sin factura'];
-  var values = [real, est];
-  var colors = ['#D71920', '#d97706'];
-  if (!overBudget && budget > 0) {
-    labels.push('Disponible');
-    values.push(disponible);
-    colors.push('#e5e7eb');
-  }
-
-  if (charts.periodDonut) charts.periodDonut.destroy();
-  charts.periodDonut = new Chart(canvas, {
-    type: 'doughnut',
-    data: { labels: labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#ffffff' }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      cutout: '65%',
-      plugins: {
-        legend: { position: 'bottom', labels: { font: { size: 11 } } },
-        tooltip: {
-          callbacks: {
-            label: function(ctx) {
-              return ctx.label + ': $' + Number(ctx.parsed || 0).toLocaleString('es-CO');
-            }
-          }
-        }
-      }
-    }
-  });
 }
 
 // =====================================================================
 // TABLA UNIDADES (compartida por anual, periodo y mensual)
 // =====================================================================
-function renderUnitsTable(bodyId, countId, emptyId, rows, viewKey) {
+function renderUnitsTable(bodyId, countId, emptyId, rows, viewKey, budgetLabel) {
   var body = document.getElementById(bodyId);
   body.innerHTML = '';
   document.getElementById(countId).textContent = '(' + rows.length + ')';
   document.getElementById(emptyId).style.display = rows.length === 0 ? '' : 'none';
+  // #A131 (Yurani, 19-nov): por unidad, lo que va contra el presupuesto (centro de costo), lo cargado a OT (no suma)
+  // y el total de los viajes; abajo, el total. Con un servidor anterior no llega lo de OT y esas columnas no salen.
+  var showOt = !!(filteredData && filteredData.otSupported);
+  var table = body.parentNode;
+  table.classList.add('units-budget');
+  var thead = table.tHead || table.createTHead();
+  thead.innerHTML =
+    '<tr><th rowspan="2">Unidad · empresa</th>' +
+    '<th class="grp" colspan="7">Contra el presupuesto de la unidad (centro de costo)</th>' +
+    (showOt ? '<th class="grp ot" colspan="2">Cargado a OT · no suma</th><th rowspan="2" class="num">Total de los viajes</th>' : '') + '</tr>' +
+    '<tr><th class="num">' + escHtml(budgetLabel || 'Presupuesto') + '</th><th class="num">Facturado</th><th class="num">Comprado sin factura</th>' +
+    '<th class="num">Gasto</th><th class="num">Disponible</th><th class="num">% usado</th><th class="num">Viajes</th>' +
+    (showOt ? '<th class="num ot">Gasto</th><th class="num ot">Viajes</th>' : '') + '</tr>';
+  var cols = showOt ? 11 : 8;
+  var td = function(text, cls, color) {
+    var c = document.createElement('td');
+    if (cls) c.className = cls;
+    c.textContent = text;
+    if (color) c.style.color = color;
+    return c;
+  };
+  var tot = { budget: 0, real: 0, est: 0, spendBudgeted: 0, count: 0, ot: 0, otCount: 0, unbudgeted: 0 };
 
   rows.forEach(function(b, idx) {
+    var spend = (b.totalExecutedReal || 0) + (b.totalExecutedEstimated || 0);
+    var ot = b.otTotal || 0;
+    tot.real += b.totalExecutedReal || 0;
+    tot.est += b.totalExecutedEstimated || 0;
+    tot.count += b.requestCount || 0;
+    tot.ot += ot;
+    tot.otCount += b.otCount || 0;
+    if (b.hasBudget) { tot.budget += b.budgetInRange || 0; tot.spendBudgeted += spend; } else { tot.unbudgeted += spend; }
+
     var tr = document.createElement('tr');
     tr.className = 'unit-row' + (b.hasBudget ? '' : ' no-budget');
-
     var detailId = viewKey + '-detail-' + idx;
     tr.addEventListener('click', function() {
       var row = document.getElementById(detailId);
       if (row) row.classList.toggle('show');
     });
 
-    var sem = semaphoreClass(b.percentUsed);
     var unitTd = document.createElement('td');
     var semSpan = document.createElement('span');
-    semSpan.className = 'semaphore ' + sem;
+    semSpan.className = 'semaphore ' + semaphoreClass(b.percentUsed);
+    unitTd.className = 'unit-cell';
     unitTd.appendChild(semSpan);
     unitTd.appendChild(document.createTextNode(b.unit));
     if (!b.hasBudget) {
@@ -2931,95 +2951,113 @@ function renderUnitsTable(bodyId, countId, emptyId, rows, viewKey) {
       span.className = 'badge-est'; span.textContent = 'sin ppto';
       unitTd.appendChild(span);
     }
+    // #A131: la empresa va debajo del nombre (una columna menos: la tabla cabe completa en la pantalla).
+    if (b.company) { var co = document.createElement('small'); co.textContent = b.company; unitTd.appendChild(co); }
     tr.appendChild(unitTd);
-
-    var companyTd = document.createElement('td'); companyTd.textContent = b.company || '—';
-    tr.appendChild(companyTd);
-
-    var bTd = document.createElement('td'); bTd.className = 'num';
-    bTd.textContent = b.hasBudget ? fmtMoney(b.budgetInRange) : '—';
-    tr.appendChild(bTd);
-
-    var rTd = document.createElement('td'); rTd.className = 'num';
-    rTd.textContent = fmtMoney(b.totalExecutedReal);
-    tr.appendChild(rTd);
-
-    var eTd = document.createElement('td'); eTd.className = 'num';
-    eTd.textContent = fmtMoney(b.totalExecutedEstimated);
-    tr.appendChild(eTd);
-
-    var dTd = document.createElement('td'); dTd.className = 'num';
-    if (b.hasBudget) {
-      var delta = b.deltaInRange;
-      dTd.textContent = (delta < 0 ? '-' : '') + fmtMoney(Math.abs(delta));
-      if (delta < 0) dTd.style.color = 'var(--red)';
-    } else {
-      dTd.textContent = '—';
+    tr.appendChild(td(b.hasBudget ? fmtMoney(b.budgetInRange) : '—', 'num'));
+    tr.appendChild(td(fmtMoney(b.totalExecutedReal), 'num'));
+    tr.appendChild(td(fmtMoney(b.totalExecutedEstimated), 'num'));
+    tr.appendChild(td(fmtMoney(spend), 'num'));
+    var delta = b.deltaInRange;
+    tr.appendChild(b.hasBudget ? td((delta < 0 ? '-' : '') + fmtMoney(Math.abs(delta)), 'num', delta < 0 ? 'var(--red)' : '') : td('—', 'num'));
+    tr.appendChild(td(b.hasBudget ? fmtPct(b.percentUsed) : '—', 'num', b.hasBudget && b.percentUsed > 100 ? 'var(--red)' : ''));
+    tr.appendChild(td(String(b.requestCount || 0), 'num'));
+    if (showOt) {
+      tr.appendChild(td(ot > 0 ? fmtMoney(ot) : '—', 'num ot'));
+      tr.appendChild(td(b.otCount ? String(b.otCount) : '—', 'num ot'));
+      tr.appendChild(td(fmtMoney(spend + ot), 'num'));
     }
-    tr.appendChild(dTd);
-
-    var pTd = document.createElement('td'); pTd.className = 'num';
-    pTd.textContent = b.hasBudget ? fmtPct(b.percentUsed) : '—';
-    tr.appendChild(pTd);
-
-    var qTd = document.createElement('td'); qTd.className = 'num';
-    qTd.textContent = b.requestCount;
-    tr.appendChild(qTd);
-
     body.appendChild(tr);
 
-    // DETAIL ROW
     var detailTr = document.createElement('tr');
     detailTr.className = 'detail-row';
     detailTr.id = detailId;
     var detailTd = document.createElement('td');
-    detailTd.colSpan = 8;
-    detailTd.appendChild(buildDetailContent(b));
+    detailTd.colSpan = cols;
+    detailTd.appendChild(buildDetailContent(b, showOt));
     detailTr.appendChild(detailTd);
     body.appendChild(detailTr);
   });
-}
 
-function buildDetailContent(bucket) {
-  var div = document.createElement('div');
-  div.className = 'detail-content';
-  var h = document.createElement('div');
-  h.style.fontSize = '11px';
-  h.style.textTransform = 'uppercase';
-  h.style.fontWeight = '600';
-  h.style.color = 'var(--muted)';
-  h.style.marginBottom = '8px';
-  h.textContent = 'Solicitudes que suman el gasto (' + (bucket.requests || []).length + ')';
-  div.appendChild(h);
-
-  if (!bucket.requests || bucket.requests.length === 0) {
-    var p = document.createElement('p');
-    p.style.color = 'var(--muted)';
-    p.textContent = 'Sin solicitudes.';
-    div.appendChild(p);
-    return div;
+  if (rows.length > 1) {
+    var spendAll = tot.real + tot.est;
+    var deltaT = tot.budget - tot.spendBudgeted;
+    var pctT = tot.budget > 0 ? Math.round(tot.spendBudgeted / tot.budget * 1000) / 10 : null;
+    var tr = document.createElement('tr');
+    tr.className = 'total-row';
+    tr.appendChild(td('Total'));
+    tr.appendChild(td(tot.budget > 0 ? fmtMoney(tot.budget) : '—', 'num'));
+    tr.appendChild(td(fmtMoney(tot.real), 'num'));
+    tr.appendChild(td(fmtMoney(tot.est), 'num'));
+    tr.appendChild(td(fmtMoney(spendAll), 'num'));
+    tr.appendChild(tot.budget > 0 ? td((deltaT < 0 ? '-' : '') + fmtMoney(Math.abs(deltaT)), 'num', deltaT < 0 ? 'var(--red)' : '') : td('—', 'num'));
+    tr.appendChild(td(fmtPct(pctT), 'num', pctT > 100 ? 'var(--red)' : ''));
+    tr.appendChild(td(String(tot.count), 'num'));
+    if (showOt) {
+      tr.appendChild(td(tot.ot > 0 ? fmtMoney(tot.ot) : '—', 'num ot'));
+      tr.appendChild(td(tot.otCount ? String(tot.otCount) : '—', 'num ot'));
+      tr.appendChild(td(fmtMoney(spendAll + tot.ot), 'num'));
+    }
+    body.appendChild(tr);
   }
 
-  var table = document.createElement('table');
-  table.className = 'requests';
-  var thead = document.createElement('thead');
-  thead.innerHTML = '<tr><th>ID</th><th>Solicitante</th><th>Fecha compra</th><th>Mes</th><th>Estado</th><th class="num">Gasto</th></tr>';
-  table.appendChild(thead);
-  var tbody = document.createElement('tbody');
-  bucket.requests.slice().sort(function(a, b) {
-    return (a.purchaseDate || '').localeCompare(b.purchaseDate || '');
-  }).forEach(function(r) {
-    var tr = document.createElement('tr');
-    var c1 = document.createElement('td'); c1.textContent = r.requestId; tr.appendChild(c1);
-    var c2 = document.createElement('td'); c2.textContent = r.requesterEmail; tr.appendChild(c2);
-    var c3 = document.createElement('td'); c3.textContent = r.purchaseDate || '—'; tr.appendChild(c3);
-    var c4 = document.createElement('td'); c4.textContent = MONTHS[(r.month || 1) - 1]; tr.appendChild(c4);
-    var c5 = document.createElement('td'); c5.textContent = r.status + (r.isEstimated ? ' (est.)' : ''); tr.appendChild(c5);
-    var c6 = document.createElement('td'); c6.className = 'num'; c6.textContent = fmtMoney(r.executed); tr.appendChild(c6);
-    tbody.appendChild(tr);
-  });
-  table.appendChild(tbody);
-  div.appendChild(table);
+  // Nota al pie: qué es cada columna (una sola vez por tabla).
+  var card = table.closest('.card');
+  var foot = card && card.querySelector('.units-foot');
+  if (card && !foot) {
+    foot = document.createElement('p');
+    foot.className = 'units-foot';
+    card.appendChild(foot);
+  }
+  if (foot) {
+    foot.textContent = 'Gasto = facturado + comprado sin factura: es lo que se compara con el presupuesto. ' +
+      (showOt ? 'Cargado a OT: viajes con número de orden de trabajo; se pagan con la OT y no suman al presupuesto. Total de los viajes = gasto + OT. ' : '') +
+      (tot.unbudgeted > 0 ? 'Las unidades sin presupuesto (' + fmtMoney(tot.unbudgeted) + ') no entran en el disponible ni en el % del total. ' : '') +
+      'Toque una unidad para ver sus viajes.';
+  }
+}
+
+function buildDetailContent(bucket, showOt) {
+  var div = document.createElement('div');
+  div.className = 'detail-content';
+  var title = function(text) {
+    var h = document.createElement('div');
+    h.style.fontSize = '11px';
+    h.style.textTransform = 'uppercase';
+    h.style.fontWeight = '600';
+    h.style.color = 'var(--muted)';
+    h.style.margin = '4px 0 8px';
+    h.textContent = text;
+    return h;
+  };
+  var list = function(reqs, withOt) {
+    var table = document.createElement('table');
+    table.className = 'requests';
+    var thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>ID</th><th>Solicitante</th>' + (withOt ? '<th>OT</th>' : '') + '<th>Fecha compra</th><th>Mes</th><th>Estado</th><th class="num">Gasto</th></tr>';
+    table.appendChild(thead);
+    var tbody = document.createElement('tbody');
+    reqs.slice().sort(function(a, b) { return (a.purchaseDate || '').localeCompare(b.purchaseDate || ''); }).forEach(function(r) {
+      var tr = document.createElement('tr');
+      var cells = [r.requestId, r.requesterEmail];
+      if (withOt) cells.push(r.workOrder || '');
+      cells.push(r.purchaseDate || '—', MONTHS[(r.month || 1) - 1], r.status + (r.isEstimated ? ' (sin factura)' : ''));
+      cells.forEach(function(v) { var c = document.createElement('td'); c.textContent = v; tr.appendChild(c); });
+      var c6 = document.createElement('td'); c6.className = 'num'; c6.textContent = fmtMoney(r.executed); tr.appendChild(c6);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    return table;
+  };
+  var reqs = bucket.requests || [];
+  div.appendChild(title('Viajes que suman contra el presupuesto (' + reqs.length + ')'));
+  if (reqs.length) div.appendChild(list(reqs, false));
+  else { var p = document.createElement('p'); p.style.color = 'var(--muted)'; p.textContent = 'Ninguno en estos meses.'; div.appendChild(p); }
+  var otReqs = bucket.otRequests || [];
+  if (showOt && otReqs.length) {
+    div.appendChild(title('Cargados a una orden de trabajo: no suman al presupuesto (' + otReqs.length + ')'));
+    div.appendChild(list(otReqs, true));
+  }
   return div;
 }
 
@@ -5554,20 +5592,19 @@ function exportCSV() {
 
   // SECCIÓN 1: Vista anual
   rows.push(['VISTA ANUAL — ' + dashAnnualRangeLabel(year)].map(csvSafe).join(','));
-  rows.push(['Unidad', 'Empresa', 'Tiene presupuesto', dashAnnualBudgetLabel(year), 'Facturado', 'Comprado sin factura', 'Disponible', '% usado', 'Solicitudes'].map(csvSafe).join(','));
-  (filteredData.rows || []).forEach(function(b) {
-    rows.push([
-      b.unit,
-      b.company || '',
-      b.hasBudget ? 'Sí' : 'No',
-      b.hasBudget ? b.budgetInRange : '',
-      b.totalExecutedReal,
-      b.totalExecutedEstimated,
-      b.hasBudget ? b.deltaInRange : '',
-      b.hasBudget && b.percentUsed !== null ? b.percentUsed : '',
-      b.requestCount
-    ].map(csvSafe).join(','));
-  });
+  // #A131: lo cargado a OT no suma al presupuesto; va aparte, con el total de los viajes.
+  var csvUnitHeader = function(budgetLabel) {
+    return ['Unidad', 'Empresa', 'Tiene presupuesto', budgetLabel, 'Facturado', 'Comprado sin factura', 'Gasto contra el presupuesto', 'Disponible', '% usado', 'Solicitudes',
+      'Cargado a OT (no suma)', 'Viajes con OT', 'Total de los viajes'].map(csvSafe).join(',');
+  };
+  var csvUnitRow = function(b) {
+    var spend = (b.totalExecutedReal || 0) + (b.totalExecutedEstimated || 0);
+    return [b.unit, b.company || '', b.hasBudget ? 'Sí' : 'No', b.hasBudget ? b.budgetInRange : '', b.totalExecutedReal, b.totalExecutedEstimated, spend,
+      b.hasBudget ? b.deltaInRange : '', b.hasBudget && b.percentUsed !== null ? b.percentUsed : '', b.requestCount,
+      b.otTotal || 0, b.otCount || 0, spend + (b.otTotal || 0)].map(csvSafe).join(',');
+  };
+  rows.push(csvUnitHeader(dashAnnualBudgetLabel(year)));
+  (filteredData.rows || []).forEach(function(b) { rows.push(csvUnitRow(b)); });
 
   Array.prototype.push.apply(rows, csvTopTravelersLines('TOP 10 VIAJEROS POR COSTO — ANUAL', filteredData.rows));
 
@@ -5575,39 +5612,24 @@ function exportCSV() {
   var monthData = computeMonthlyData(filteredData, selectedMonth);
   rows.push('');
   rows.push(['VISTA MENSUAL — ' + MONTHS_FULL[selectedMonth - 1] + ' ' + year].map(csvSafe).join(','));
-  rows.push(['Unidad', 'Empresa', 'Tiene presupuesto', 'Presupuesto del mes', 'Facturado', 'Comprado sin factura', 'Disponible', '% usado', 'Solicitudes'].map(csvSafe).join(','));
-  monthData.rows.forEach(function(b) {
-    rows.push([
-      b.unit,
-      b.company || '',
-      b.hasBudget ? 'Sí' : 'No',
-      b.hasBudget ? b.budgetInRange : '',
-      b.totalExecutedReal,
-      b.totalExecutedEstimated,
-      b.hasBudget ? b.deltaInRange : '',
-      b.hasBudget && b.percentUsed !== null ? b.percentUsed : '',
-      b.requestCount
-    ].map(csvSafe).join(','));
-  });
+  rows.push(csvUnitHeader('Presupuesto del mes'));
+  monthData.rows.forEach(function(b) { rows.push(csvUnitRow(b)); });
 
   Array.prototype.push.apply(rows, csvTopTravelersLines('TOP 10 VIAJEROS POR COSTO — ' + MONTHS_FULL[selectedMonth - 1] + ' ' + year, monthData.rows));
 
   // SECCIÓN 3: detalle de solicitudes (todas las del año filtradas)
   rows.push('');
   rows.push(['DETALLE DE SOLICITUDES'].map(csvSafe).join(','));
-  rows.push(['Unidad', 'ID solicitud', 'Solicitante', 'Fecha compra', 'Mes', 'Estado', 'Sin factura (se cuenta lo pagado o lo cotizado)', 'Gasto'].map(csvSafe).join(','));
+  rows.push(['Unidad', 'ID solicitud', 'Solicitante', 'Fecha compra', 'Mes', 'Estado', 'Sin factura (se cuenta lo pagado o lo cotizado)', 'Gasto', 'Se carga a'].map(csvSafe).join(','));
   (filteredData.rows || []).forEach(function(b) {
     (b.requests || []).forEach(function(r) {
-      rows.push([
-        b.unit,
-        r.requestId,
-        r.requesterEmail,
-        r.purchaseDate || '',
-        MONTHS[(r.month || 1) - 1],
-        r.status,
-        r.isEstimated ? 'Sí' : 'No',
-        r.executed
-      ].map(csvSafe).join(','));
+      rows.push([b.unit, r.requestId, r.requesterEmail, r.purchaseDate || '', MONTHS[(r.month || 1) - 1], r.status, r.isEstimated ? 'Sí' : 'No', r.executed,
+        'Presupuesto de la unidad'].map(csvSafe).join(','));
+    });
+    // #A131: los cargados a una OT, con su número (no suman al presupuesto).
+    (b.otRequests || []).forEach(function(r) {
+      rows.push([b.unit, r.requestId, r.requesterEmail, r.purchaseDate || '', MONTHS[(r.month || 1) - 1], r.status, r.isEstimated ? 'Sí' : 'No', r.executed,
+        'Orden de trabajo ' + String(r.workOrder || '') + ' (no suma al presupuesto)'].map(csvSafe).join(','));
     });
   });
 
@@ -5639,10 +5661,7 @@ function exportPDF() {
   // lo que evita el bug de "el contenedor se expande al perder al canvas"
   // cuando el usuario cancela el diálogo de impresión.
   var chartCanvases = [
-    { id: 'monthlyChart', chart: charts.monthlyBars },
-    { id: 'annualDonutPct', chart: charts.annualDonutPct },
-    { id: 'annualDonutDist', chart: charts.annualDonutDist },
-    { id: 'monthlyDonut', chart: charts.monthlyDonut }
+    { id: 'monthlyChart', chart: charts.monthlyBars }
   ];
   var inserted = [];
   chartCanvases.forEach(function(c) {

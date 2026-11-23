@@ -3987,3 +3987,67 @@ desactualizada y con un archivo de más en la carpeta). La infografía se revis�
 sin nada recortado. Los 10 archivos llegan a `dist/manuales/`.
 
 **Despliegue:** solo el push del frontend. **Orden indiferente:** el backend no participa.
+
+---
+
+## **#A131 — Dashboard de costos: de qué está hecho el % del presupuesto, lo cargado a OT aparte y una barra en vez de la torta**
+**Fecha:** 2026-11-23 · **Pedido por:** Yurani (19-nov: *«¿este valor tiene en cuenta los tkts que van a OT?… podemos sacar cuánto en
+total se ha pagado en viajes reales por uden y cuáles son cargados a OT y cuáles CC»*) y David (*«que si tomo un pantallazo sea
+autoexplicativo… con 135.8 % no es claro que ya se pasó del 100 %, porque es una torta»*) ·
+**Estado:** En `main`; pendiente pegar `Code.gs` y `CostsDashboard.html` y publicar la versión nueva del web app.
+
+**Síntoma:**
+- La captura de Yurani (POTENCIA (GDM - P&M), abril a diciembre) mostraba una torta con 135,8 % sin decir que ya se había pasado del 100 %
+  ni de qué estaba hecho ese porcentaje.
+- La torta «Distribución del gasto por unidad» no tenía nombres (solo al pasar el cursor) y, con una unidad filtrada, era un anillo de un
+  solo color.
+- No había forma de ver cuánto se cargó a órdenes de trabajo (OT): se descartaba sin sumar.
+
+**Causa raíz:**
+- Lo de OT se excluía bien del presupuesto (regla del 21-may con Yurani), pero el servidor lo saltaba sin sumarlo en ningún lado; solo
+  contaba cuántas solicitudes.
+- Una torta no puede mostrar más del 100 % ni las partes de un porcentaje.
+
+**Fix:**
+- **Servidor** (`_csBuildData_`): lo de OT (número válido: empieza por OT y tiene un dígito) se suma **aparte** en su unidad
+  (`monthlyOtReal` / `monthlyOtEstimated`, `otRequests` con el número de la OT). Lo que se compara con el presupuesto no cambia.
+  - Una unidad con viajes solo a OT también aparece.
+  - Valen los mismos filtros (unidad, empresa, líder, «comprado sin factura»).
+  - La llave de la caché pasa a `getData2`, para que nadie vea una respuesta guardada sin lo de OT.
+- **Dashboard** (`CostsDashboard.html`), en las vistas anual, de periodo y de mes:
+  - **Barra del presupuesto** en vez de la torta:
+    - el % grande y una frase («⚠ Se pasó del presupuesto en $X (Y % más)» o «✓ Queda disponible…»);
+    - la barra con la línea negra del presupuesto (100 %) y su monto, y lo que se pasó rayado en rojo;
+    - debajo, cada parte con su % del presupuesto (facturado + comprado sin factura = % usado), el presupuesto y lo que se pasó o
+      queda;
+    - lo que no suma (OT y unidades sin presupuesto) y los filtros con la hora de los datos. Así una captura se explica sola.
+  - **Cada unidad frente a su presupuesto** (anual), en vez de la torta por unidad: una fila por unidad con su barra, la línea del 100 %
+    alineada, cuánto se pasó o queda y lo de OT. De la que más se pasó a la que menos; al final, las unidades sin presupuesto.
+  - **Tarjeta «Cargado a OT · no suma»** con el monto y los viajes.
+  - **Tabla por unidad:** encabezado en dos niveles («Contra el presupuesto de la unidad (centro de costo)» / «Cargado a OT · no suma»),
+    columnas Gasto y Total de los viajes, fila de total y nota al pie. La empresa va debajo de la unidad para que quepa completa.
+    El detalle de cada unidad lista aparte los viajes a OT con su número.
+  - **Colores:** azul para el gasto (oscuro facturado, claro sin factura; validados para daltonismo), negro para el presupuesto, rojo
+    solo para lo que se pasó, siempre con ícono y texto. Antes lo facturado era rojo.
+  - El CSV trae lo de OT y el total de los viajes; el detalle dice a qué se carga cada viaje. El «¿Cómo se calcula?» explica la barra, OT
+    y el total de los viajes.
+  - Con un `Code.gs` anterior, el dashboard nuevo no muestra lo de OT y todo lo demás funciona.
+
+**Verificado:**
+- `tools/check-costs-ot.cjs` (nuevo, en `npm run verify`), con hoja sintética:
+  - servidor: OT aparte por mes, con el número; la unidad solo con OT; «OT pendiente» no es OT; anulada fuera; filtros y líder;
+  - navegador: vistas anual, de periodo y de mes, y con un servidor anterior no se muestra lo de OT;
+  - la barra con las partes que suman el %, por debajo y por encima del presupuesto;
+  - las unidades ordenadas por lo que se pasaron.
+- Entorno local con la exportación del 19-nov:
+  - las cifras de siempre no cambian (presupuesto $598.251.192, 85,6 %);
+  - lo de OT: **89 viajes, $93.767.784**, que no suman;
+  - POTENCIA: 130,1 %, se pasó en $48.868.182, y tiene $6.541.701 en OT (9 viajes);
+  - las unidades que más se pasaron: POTENCIA, INGENERGIA ($15,9 M), ADM INVENTARIOS ($11,0 M) y ADM AUDITORIA ($4,5 M);
+  - capturas en escritorio (1400 px) y celular (400 px) sin cruces de texto; la tabla cabe completa; sin errores en la consola.
+- `npm run verify` en verde.
+
+**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` en Apps Script → versión nueva del web app. No hay menú que correr. El push solo
+lleva la prueba y los documentos (la app no cambia: no sale el aviso de versión nueva).
+- **Dashboard nuevo + `Code.gs` anterior:** sin lo de OT, todo lo demás igual.
+- **`Code.gs` nuevo + dashboard anterior:** el anterior ignora lo de OT; sus cifras no cambian.

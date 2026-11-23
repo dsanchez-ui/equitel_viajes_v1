@@ -380,6 +380,12 @@ Aviatur.
 
 ## 11. Bitácora
 
+- **2026-11-23** — Pedido de Yurani (19-nov) y de David (#A131): de qué está hecho el % del presupuesto y cuánto se carga a OT.
+  - La torta del % usado pasa a una barra con la línea del presupuesto (100 %), lo que se pasó rayado en rojo y cada parte con su %.
+  - La torta por unidad pasa a «Cada unidad frente a su presupuesto».
+  - Lo de OT se suma aparte (tarjeta, tabla con el total de los viajes y CSV) y no entra en el %.
+  - Con la base del 19-nov: 89 viajes con OT, $93,8 M; POTENCIA 130,1 % ($48,9 M por encima) y $6,5 M en OT.
+
 - **2026-10-28** — Reunión de David con Juan Camilo: se sigue pagando SerpApi (plan de 1.000 al mes) para comparar el ahorro
   mes a mes. Implementados #A115 (rastreo continuo con `price_history`), #A116 («Mes a mes») y #A117 (pestañas, dibujar solo la
   que se ve, lectura liviana de los tramos). Con la base del 22-oct, octubre hasta el 22:
