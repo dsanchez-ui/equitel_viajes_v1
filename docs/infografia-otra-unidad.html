@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Viajes cargados a otra unidad — Portal de Viajes Equitel</title>
+<style>
+  /* Infografía de #A133 (24-nov-2026): quién aprueba cuando el viaje se carga a otra unidad. Una hoja carta
+     vertical, sin scripts y sin emojis (no se imprimen igual en todos los equipos), con la paleta de la
+     infografía del procedimiento. */
+  :root {
+    --brand: #D71920; --ink: #111827; --body: #374151; --muted: #6b7280; --line: #e5e7eb; --soft: #f9fafb;
+    --viajero: #1d4ed8; --paga: #6d28d9; --ok: #047857; --stop: #b91c1c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--body); background: #e5e7eb; font-size: 8pt; line-height: 1.3; }
+  .hoja { width: 215.9mm; min-height: 279.4mm; margin: 10mm auto; padding: 8mm 10mm 5mm; background: #fff; }
+  b { color: var(--ink); }
+
+  .cab { display: flex; align-items: flex-end; justify-content: space-between; border-bottom: 3px solid var(--brand);
+         padding-bottom: 2.5mm; margin-bottom: 3mm; }
+  .cab h1 { margin: 0; font-size: 16.5pt; color: var(--ink); letter-spacing: -0.4pt; line-height: 1.1; }
+  .cab .sub { margin: 1.5mm 0 0; font-size: 9pt; color: var(--muted); }
+  .cab .marca { text-align: right; font-size: 7.4pt; color: var(--muted); line-height: 1.45; white-space: nowrap; padding-left: 6mm; }
+  .cab .marca b { display: block; color: var(--brand); font-size: 10pt; letter-spacing: 0.3pt; }
+
+  h2 { font-size: 7.8pt; letter-spacing: 1.1pt; text-transform: uppercase; color: var(--muted); margin: 0 0 2mm; font-weight: 700; }
+  section { margin-bottom: 3mm; }
+
+  .regla { border-left: 4px solid var(--paga); background: #f5f3ff; padding: 2.4mm 3.4mm; border-radius: 0 2mm 2mm 0;
+           font-size: 9.6pt; line-height: 1.38; color: var(--ink); }
+  .regla small { display: block; margin-top: 1.2mm; font-size: 8.2pt; color: var(--body); }
+
+  .dos { display: flex; gap: 3mm; }
+  .tarjeta { flex: 1; border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: 2mm; padding: 2mm 2.6mm; }
+  .tarjeta h3 { margin: 0 0 1mm; font-size: 9.4pt; color: var(--c); }
+  .tarjeta p { margin: 0 0 0.9mm; font-size: 7.8pt; }
+  .tarjeta p:last-child { margin-bottom: 0; }
+  .tarjeta .donde { font-size: 7.6pt; color: var(--muted); }
+
+  .casos { display: flex; flex-direction: column; gap: 1.6mm; }
+  .caso { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 2mm; overflow: hidden; }
+  .caso .si { width: 50mm; flex: none; background: var(--c); color: #fff; padding: 1.8mm 2.6mm; font-weight: 700; font-size: 8.3pt; line-height: 1.25; }
+  .caso .si span { display: block; font-weight: 400; font-size: 7.4pt; opacity: 0.92; margin-top: 0.6mm; }
+  .caso .entonces { flex: 1; padding: 1.8mm 2.6mm; font-size: 7.8pt; }
+  .caso .entonces p { margin: 0 0 0.8mm; }
+  .caso .entonces p:last-child { margin-bottom: 0; }
+
+  .notas { display: flex; gap: 2.4mm; margin-top: 1.6mm; }
+  .nota { flex: 1; background: var(--soft); border: 1px solid var(--line); border-radius: 2mm; padding: 1.6mm 2.2mm; font-size: 7.3pt; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 7.8pt; }
+  th { text-align: left; font-size: 7.2pt; letter-spacing: 0.6pt; text-transform: uppercase; color: var(--muted);
+       border-bottom: 2px solid var(--line); padding: 1.2mm 2mm; }
+  td { border-bottom: 1px solid var(--line); padding: 0.7mm 2mm; vertical-align: top; }
+  td:first-child { font-weight: 700; color: var(--ink); width: 46%; }
+  tr.sin td { color: var(--stop); }
+  tr.sin td:first-child { color: var(--stop); }
+
+  .ej { display: flex; gap: 2mm; align-items: stretch; }
+  .ej .p { flex: 1; border: 1px solid var(--line); border-radius: 2mm; padding: 1.6mm 2.2mm; font-size: 7.4pt; }
+  .ej .p .n { display: inline-block; width: 4.4mm; height: 4.4mm; line-height: 4.4mm; text-align: center; border-radius: 50%;
+              background: var(--paga); color: #fff; font-weight: 700; font-size: 7.2pt; margin-right: 1.2mm; }
+  .ej .p .t { font-weight: 700; color: var(--ink); font-size: 8.3pt; }
+  .ej .p p { margin: 1mm 0 0; }
+
+  .ver { display: flex; gap: 3mm; }
+  .ver div { flex: 1; font-size: 7.4pt; }
+  .ver h4 { margin: 0 0 0.8mm; font-size: 8.4pt; color: var(--ink); }
+  .ver p { margin: 0; }
+
+  .compras { border: 1px dashed var(--brand); border-radius: 2mm; padding: 2mm 2.6mm; font-size: 7.5pt; }
+  .compras ul { margin: 0.8mm 0 0; padding-left: 4.5mm; }
+  .compras li { margin-bottom: 0.6mm; }
+  .pie { margin-top: 2mm; font-size: 7pt; color: var(--muted); text-align: right; }
+
+  @page { size: letter; margin: 0; }
+  @media print { html, body { background: #fff; } .hoja { margin: 0; } }
+  @media screen and (max-width: 760px) {
+    .hoja { width: auto; min-height: 0; margin: 0; padding: 16px; }
+    .dos, .notas, .ej, .ver { flex-direction: column; }
+    .caso { flex-direction: column; } .caso .si { width: auto; }
+    html, body { font-size: 10pt; }
+  }
+</style>
+</head>
+<body>
+<div class="hoja">
+
+  <div class="cab">
+    <div>
+      <h1>Viajes cargados a otra unidad: quién aprueba</h1>
+      <p class="sub">Lo que cambió en el Portal de Viajes el 24 de noviembre de 2026</p>
+    </div>
+    <div class="marca"><b>EQUITEL</b>Portal de Viajes<br>Área de compras</div>
+  </div>
+
+  <section>
+    <div class="regla">
+      Cada solicitud tiene dos unidades: <b>la del viajero</b> y <b>la que paga el viaje</b>. Si son la misma, todo sigue igual.
+      Si son distintas, además del aprobador de siempre, la aprueba <b>el responsable de la unidad que paga</b>.
+      <small>El viaje cuenta en el presupuesto, el dashboard de costos y el reporte en Excel de la unidad que paga.</small>
+    </div>
+  </section>
+
+  <section>
+    <h2>Las dos unidades de cada solicitud</h2>
+    <div class="dos">
+      <div class="tarjeta" style="--c: var(--viajero)">
+        <h3>La unidad del viajero</h3>
+        <p>Es la del <b>primer pasajero</b>, el mismo que decide el aprobador de siempre. Sale de su registro y se ve debajo de su nombre.</p>
+        <p>Si no la tiene, el formulario le pregunta <b>una sola vez</b> y queda guardada. Al aprobador le llega el aviso <b>«Unidad registrada por primera vez»</b> para que revise que esté bien.</p>
+      </div>
+      <div class="tarjeta" style="--c: var(--paga)">
+        <h3>La unidad que paga</h3>
+        <p>Es la <b>unidad de negocio y el centro de costos</b> que se eligen arriba, como siempre, con la barra de su presupuesto.</p>
+        <p>Si no es la del primer pasajero, el formulario lo avisa en dos lugares: junto al centro de costos y junto al primer pasajero, y muestra quién más aprueba.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quién aprueba</h2>
+    <div class="casos">
+      <div class="caso" style="--c: var(--ok)">
+        <div class="si">Son la misma unidad<span>El caso de casi todos los viajes</span></div>
+        <div class="entonces"><p>Aprueba <b>el aprobador de siempre</b> del primer pasajero, y los demás de siempre cuando aplican: Gerencia o Cadena de Suministro (internacional o más de $1.200.000) y el CFO (presupuesto, tarifa o fuera de plazo). <b>Nada cambia.</b></p></div>
+      </div>
+      <div class="caso" style="--c: var(--paga)">
+        <div class="si">Son distintas<span>El viaje lo paga otra unidad</span></div>
+        <div class="entonces">
+          <p>Aprueban <b>el aprobador de siempre</b> y además <b>el responsable de la unidad que paga</b> (tabla de abajo). A los dos les llega el correo al mismo tiempo, cuando el área de compras confirma los costos.</p>
+          <p>Tienen que aprobar los dos; si cualquiera la deniega, la solicitud se detiene. En el correo ven el recuadro <b>«Centro de costos de otra unidad»</b> y en el detalle sale la <b>unidad que paga</b> y la <b>del viajero</b>.</p>
+        </div>
+      </div>
+      <div class="caso" style="--c: var(--stop)">
+        <div class="si">La unidad que paga no tiene responsable<span>Hoy: Energía MYFAL y PROLUB</span></div>
+        <div class="entonces"><p>No se puede cargarle el viaje: el formulario lo avisa en rojo y no deja enviar. Se elige la unidad del viajero o el área de compras registra al responsable.</p></div>
+      </div>
+    </div>
+    <div class="notas">
+      <div class="nota"><b>Un solo voto.</b> Si el responsable de la unidad que paga es también el jefe del viajero, con aprobar una vez basta.</div>
+      <div class="nota"><b>Nadie aprueba su propio viaje.</b> Si el viajero es el responsable de la unidad que paga, ese voto no se pide.</div>
+      <div class="nota"><b>Varios responsables.</b> Si una unidad tiene dos, basta con que apruebe uno. Se aprueba desde el correo o desde «Mis aprobaciones».</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Responsables de cada unidad</h2>
+    <table>
+      <tr><th>Unidad que paga</th><th>Aprueba además del aprobador de siempre</th></tr>
+      <tr><td>POTENCIA (GDM - P&amp;M)</td><td>Simón García</td></tr>
+      <tr><td>ENERGÍA POSTVENTA</td><td>Yesid Roncancio</td></tr>
+      <tr><td>ENERGÍA PROYECTOS</td><td>Ana Elvira Ochoa o Alexandra Olave</td></tr>
+      <tr><td>INGENERGÍA e INGENERGÍA - COMAP</td><td>Ana Elvira Ochoa o Susana López</td></tr>
+      <tr><td>LAP (COMERCIAL - ART - ARTIMO)</td><td>Pablo Piedrahita</td></tr>
+      <tr><td>CPK</td><td>Luis Hernando Casas</td></tr>
+      <tr><td>Unidades administrativas (todas las ADM y Facturación Admon)</td><td>Yurani Prieto</td></tr>
+      <tr class="sin"><td>ENERGÍA MYFAL y PROLUB</td><td>Sin responsable: no reciben viajes de otras unidades</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Un ejemplo</h2>
+    <div class="ej">
+      <div class="p"><span class="n">1</span><span class="t">Pide el viaje</span><p>Víctor es de <b>Energía Postventa</b> y viaja a un trabajo de Potencia.</p></div>
+      <div class="p"><span class="n">2</span><span class="t">Elige quién paga</span><p>Arriba elige <b>POTENCIA</b> y el centro de costos 201. Ve la barra del presupuesto de Potencia y el aviso de otra unidad.</p></div>
+      <div class="p"><span class="n">3</span><span class="t">Aprueban dos</span><p><b>Yesid Roncancio</b>, su jefe, y <b>Simón García</b>, por Potencia.</p></div>
+      <div class="p"><span class="n">4</span><span class="t">Cuenta en Potencia</span><p>El costo suma al presupuesto de Potencia y la solicitud queda marcada: Víctor es de Energía Postventa.</p></div>
+    </div>
+  </section>
+
+  <div class="compras">
+    <b>Para el área de compras</b>
+    <ul>
+      <li><b>Una unidad mal registrada</b> se corrige en USUARIOS, columna O («Unidad de negocio»), escrita igual que en «CDS vs UDEN».</li>
+      <li><b>Responsables:</b> se agregan o cambian en la tabla «Responsable unidad» de MISC y se revisan con el menú <b>18</b>.</li>
+      <li><b>Quienes no tienen unidad</b> (117 personas, casi todas sin viajes) la registran la primera vez que viajan; el menú <b>17</b> completa las que puede.</li>
+    </ul>
+  </div>
+
+</div>
+</body>
+</html>

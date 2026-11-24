@@ -852,11 +852,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-24)
 
-- **#A133 a medio desplegar (24-nov)** (centro de costos de otra unidad: la unidad del viajero, la que paga y el voto del responsable de esa
-  unidad; pedido de Yurani). David pegó `Code.gs` y `CostsDashboard.html` y corrió los menús 18 y 17 (553 personas con unidad). Después se
-  ajustó el formulario (la unidad de arriba vuelve a ser la que paga; la del primer pasajero se pregunta una vez y se guarda) y el menú 17
-  (por el aprobador). Falta: pegar el `Code.gs` de `main`, agregar a Yurani como responsable de las unidades ADM y FACTURACION ADMON en la tabla
-  de MISC, correr los menús 18 y 17 otra vez y **publicar la versión nueva del web app**. Pendiente de Yurani: quién responde por las unidades administrativas, MYFAL y PROLUB (hoy sin responsable: no
+- **#A133 desplegado (24-nov)** (centro de costos de otra unidad: la unidad del viajero, la que paga y el voto del responsable de esa
+  unidad; pedido de Yurani). Yurani responde por las unidades ADM y FACTURACION ADMON; MYFAL y PROLUB sin responsable. 652 personas con unidad;
+  las 117 restantes (casi todas sin viajes) la registran la primera vez que son primer pasajero. Infografía para Yurani:
+  `docs/infografia-otra-unidad.pdf`. Pendiente de Yurani: quién responde por las unidades administrativas, MYFAL y PROLUB (hoy sin responsable: no
   reciben viajes de otras unidades) y la unidad de las 117 personas que quedan (las aprueban ~12 personas sin unidad). Siguiente paso posible:
   mostrar y editar la unidad en el panel «Gestionar usuarios».
 - **#A132 desplegado (24-nov)** (reporte en Excel de una unidad desde el dashboard de costos; el dashboard suma las facturas 4 a 6). La

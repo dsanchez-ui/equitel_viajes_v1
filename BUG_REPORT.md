@@ -4136,8 +4136,10 @@ pertenecen, pero que puedan marcar otro centro de costos… que sea muy claro…
 de otras unidades… un aviso… quedaría la anotación… impactaría a la unidad de negocio dueña de ese centro de costos… las aprobaciones
 dependan de ese centro de costos: mi aprobador normal y adicionalmente el aprobador que se encarga de esos centros de costos»*). Decisiones
 de David del 24-nov: la unidad de cada persona en una columna de USUARIOS que se prellena y revisa Yurani; un responsable por unidad en
-una tabla de MISC; una unidad sin responsable no ofrece sus centros de costos. · **Estado:** En el repo; falta pegar `Code.gs` y
-`CostsDashboard.html`, correr los menús 18 y 17 y publicar la versión nueva.
+una tabla de MISC; una unidad sin responsable no ofrece sus centros de costos. · **Estado:** Desplegado el 24-nov (David pegó `Code.gs` y
+`CostsDashboard.html`, agregó a Yurani como responsable de las unidades ADM y FACTURACION ADMON, corrió los menús 18 y 17 —652 personas con
+unidad, 117 sin ella— y publicó la versión nueva; frontend `443a492`). Infografía para Yurani: `docs/infografia-otra-unidad.pdf` (una hoja);
+la del procedimiento suma el caso «Paga otra unidad».
 
 **Síntoma:**
 - El formulario dejaba elegir cualquier unidad y después un centro de costos de esa unidad. Quien viajaba para otra unidad elegía esa
