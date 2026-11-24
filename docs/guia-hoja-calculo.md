@@ -445,7 +445,8 @@ Llena la columna `Unidad de negocio` de USUARIOS (#A133; la crea al final si no 
 
 1. Por su **historial**: las solicitudes donde es el primer pasajero o quien pide; si tiene al menos 2 y el 80 % es de una unidad, esa.
 2. Si no, por su **código de RR. HH.** (la columna *Centro de Costo*): la unidad del 85 % o más de las solicitudes de las personas con ese código (con al menos 3).
-3. Si no hay datos claros, la deja vacía: esa persona elige su unidad en el formulario.
+3. Si no, por su **aprobador** (el primero de la columna H): la unidad de las demás personas que aprueba, si al menos 2 la tienen y el 80 % es la misma; si casi nadie de su equipo la tiene, la del propio aprobador. Un aprobador con un equipo de varias unidades (la alta gerencia) no reparte la suya. Va en cascada: lo que se propone sirve para el equipo del siguiente. Con la base del 24-nov acertó en el 99 % de quienes ya tenían unidad.
+4. Si no hay datos claros, la deja vacía: esa persona elige su unidad en el formulario. El menú dice quiénes aprueban a esas personas: si se les escribe la unidad a ellas (o a alguien de su equipo) y se vuelve a correr el menú, se completan sus equipos.
 
 Antes de escribir, muestra cuántas propone por cada camino y cuántas quedan vacías, y **pregunta**. **Nunca cambia una celda escrita** y avisa las que no son una unidad de «CDS vs UDEN». Se puede correr cuantas veces se quiera (por ejemplo, después de crear usuarios nuevos).
 

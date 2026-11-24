@@ -285,7 +285,7 @@ Desde noviembre de 2026 (pedido de Yurani) el viajero dice **a qué unidad perte
 - **Recordatorios, «Mis aprobaciones», avisos y la línea de tiempo** incluyen ese voto como cualquier otro. Saltar la etapa de aprobación también lo salta.
 
 **De dónde sale cada cosa** (lo administra el área de compras desde la hoja; ver la guía de la hoja de cálculo):
-- **La unidad del viajero:** columna `Unidad de negocio` de USUARIOS (**menú 17**). Si el primer pasajero la tiene, el formulario la muestra y no se cambia; si no, el viajero la elige. Al crear la solicitud el servidor vuelve a mirar USUARIOS: no vale lo que diga el navegador.
+- **La unidad del viajero:** columna `Unidad de negocio` de USUARIOS (**menú 17**, que la propone por el historial, el código de RR. HH. o el aprobador de cada persona). Si el primer pasajero la tiene, el formulario la muestra y no se cambia; si no, el viajero la elige. Al crear la solicitud el servidor vuelve a mirar USUARIOS: no vale lo que diga el navegador.
 - **Quién responde por cada unidad:** la tabla `RESPONSABLE UNIDAD` de MISC (**menú 18**). **Una unidad sin responsable no aparece** entre los centros de costos de otras unidades, y si alguien intenta cargarle un viaje, la solicitud no se crea y le dice por qué. Un cambio de un viaje que ya estaba cargado allá sí pasa (marcado, sin el voto extra).
 
 Si un viajero dice que su unidad está mal, se corrige en la columna `Unidad de negocio` de USUARIOS; las solicitudes nuevas ya salen con la correcta.

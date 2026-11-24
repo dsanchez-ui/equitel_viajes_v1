@@ -401,7 +401,7 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   el servidor con «CDS vs UDEN») y ahí cuenta en presupuesto, dashboard e informes; `UNIDAD DEL VIAJERO` guarda la suya, y la solicitud queda
   marcada (`[OTRA UNIDAD]` en OBSERVACIONES, recuadro morado en el detalle y en el correo).
   - **La unidad de cada persona** está en USUARIOS, columna `Unidad de negocio` (al final, por nombre). El `Centro de Costo` de USUARIOS es un
-    código de RR. HH. que **no** coincide con «CDS vs UDEN». El **menú 17** la propone (historial o código de RR. HH.) sin pisar nada; sin unidad
+    código de RR. HH. que **no** coincide con «CDS vs UDEN». El **menú 17** la propone (historial, código de RR. HH. o el equipo de su aprobador) sin pisar nada; sin unidad
     registrada, el viajero la elige. El servidor usa la de USUARIOS, nunca la que mande el navegador.
   - **Vota también el responsable de la unidad dueña** (rol `OTHER_UNIT`, columnas `APROBADOR OTRA UNIDAD` y `APROBADO OTRA UNIDAD`), además del
     aprobador de siempre. Responsables: tabla `RESPONSABLE UNIDAD · UNIDAD DE NEGOCIO / · CORREO` de MISC (**menú 18**, arranca con los líderes del
@@ -847,11 +847,12 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-24)
 
-- **#A133 en el repo, falta desplegarlo (24-nov)** (centro de costos de otra unidad: la unidad del viajero, la que paga y el voto del
-  responsable de esa unidad; pedido de Yurani): pegar `Code.gs` y `CostsDashboard.html` → **menú 18** (revisar la tabla de responsables) →
-  **menú 17** (unidad de cada persona; pregunta antes de escribir) → versión nueva del web app; push del frontend el mismo día. Pendiente de
-  Yurani: quién responde por las unidades administrativas, MYFAL y PROLUB (hoy sin responsable: no reciben viajes de otras unidades) y la
-  unidad de las 216 personas sin datos claros. Siguiente paso posible: mostrar y editar la unidad en el panel «Gestionar usuarios».
+- **#A133 a medio desplegar (24-nov)** (centro de costos de otra unidad: la unidad del viajero, la que paga y el voto del responsable de esa
+  unidad; pedido de Yurani). Frontend en producción (11:32). David pegó `Code.gs` y `CostsDashboard.html` y corrió los menús 18 y 17 (553
+  personas con unidad). Falta: pegar el `Code.gs` con el tercer camino del menú 17 (por el aprobador), correrlo otra vez (99 más) y **publicar
+  la versión nueva del web app**. Pendiente de Yurani: quién responde por las unidades administrativas, MYFAL y PROLUB (hoy sin responsable: no
+  reciben viajes de otras unidades) y la unidad de las 117 personas que quedan (las aprueban ~12 personas sin unidad). Siguiente paso posible:
+  mostrar y editar la unidad en el panel «Gestionar usuarios».
 - **#A132 desplegado (24-nov)** (reporte en Excel de una unidad desde el dashboard de costos; el dashboard suma las facturas 4 a 6). La
   primera descarga en producción se quedó pensando y la segunda bajó en unos 10 s; #A133 le pone contador y aviso al botón.
 - **Retomar en el Mac (23-nov):** todo está en `main` y desplegado hasta #A131. En el Mac:

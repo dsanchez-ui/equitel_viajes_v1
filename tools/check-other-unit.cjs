@@ -83,7 +83,16 @@ function load() {
     user('160', 'JEFE UNO', 'jefe@p.co', 101, ''),
     user('170', 'JEFE DE SIMON', 'jefesimon@p.co', 101, ''),
     user('180', 'ROJAS RESPONSABLE', 'resp2@p.co', 20402, EPV),
-    user('400', 'PRIETO YURANI', 'yprieto@equitel.com.co', 102, 'ADM INVENTARIOS Y BODEGA')];
+    user('400', 'PRIETO YURANI', 'yprieto@equitel.com.co', 102, 'ADM INVENTARIOS Y BODEGA'),
+    // Menú 17, por el aprobador: el equipo de JEFE DOS es de ENERGIA POSTVENTA; JEFE TRES (ENERGIA PROYECTOS) no tiene equipo con
+    // unidad; EQUIPO C1 lo aprueba EQUIPO B1, que recibe la unidad en la primera pasada (cascada).
+    user('500', 'JEFE DOS', 'jefe2@p.co', 999, ''),
+    user('501', 'EQUIPO A1', 'ea1@p.co', 999, EPV, 'jefe2@p.co'),
+    user('502', 'EQUIPO A2', 'ea2@p.co', 999, EPV, 'jefe2@p.co'),
+    user('503', 'EQUIPO A3', 'ea3@p.co', 999, '', 'jefe2@p.co'),
+    user('510', 'JEFE TRES', 'jefe3@p.co', 999, EP),
+    user('511', 'EQUIPO B1', 'eb1@p.co', 999, '', 'jefe3@p.co'),
+    user('512', 'EQUIPO C1', 'ec1@p.co', 999, '', 'eb1@p.co')];
   const cds = [['CENTRO COSTOS', 'Descripcion del CC', 'UNIDAD DE NEGOCIO'],
     [100, 'SERVICIO-GDM-GRAL', 'NA'], [101, 'SERVICIO-GDM', POT], [201, 'PARTES Y MOTORES', POT], [401, 'PROYECTOS ENERGIA-EQUIPOS', EP],
     [503, 'POSTVENTA ENERGIA-MTTO CONV', EPV], [1901, 'IG-COMAP', 'INGENERGIA'], [1901, 'IG-COMAP', 'INGENERGIA- COMAP'],
@@ -386,6 +395,10 @@ function main() {
   eq('propuestas: Luis por su historial y el nuevo por su código de RR. HH.', [byName['ROJAS LUIS'], byName['NUEVO SIN HISTORIAL']],
     [POT + ' · historial', POT + ' · código 20101']);
   ok('sin datos claros: queda para que la persona la elija', prop.pending.includes('SIN DATOS') && !byName['SIN DATOS']);
+  eq('por el aprobador: el equipo de su aprobador, la del aprobador y en cascada', [byName['EQUIPO A3'], byName['EQUIPO B1'], byName['EQUIPO C1']],
+    [EPV + ' · equipo de su aprobador', EP + ' · su aprobador', EP + ' · su aprobador']);
+  ok('un aprobador con un equipo de varias unidades no reparte la suya (JEFE UNO)', prop.pending.includes('JEFE DOS') &&
+    prop.pendingByApprover.some((x) => x[0] === 'JEFE UNO' && x[1] >= 2));
   ok('una unidad mal escrita se reporta y no se toca', prop.invalid.some((w) => /UNIDAD MAL ESCRITA.*POTENCIAS/.test(w)) && !byName['UNIDAD MAL ESCRITA']);
   ok('quien ya tiene unidad no se propone', !byName['PEREZ ANA'] && prop.already >= 4);
   users.find((u) => u[0] === '115')[14] = 'ADM GENERAL'; // alguien la escribió a mano mientras tanto

@@ -4205,3 +4205,16 @@ una tabla de MISC; una unidad sin responsable no ofrece sus centros de costos. �
 
 **Pendiente (sin código):** que Yurani revise la tabla de responsables (¿quién aprueba por las unidades administrativas, MYFAL y PROLUB?) y
 complete la unidad de las 216 personas sin datos claros. El panel «Gestionar usuarios» todavía no muestra la unidad: se corrige en la hoja.
+
+**Ajuste del 24-nov (David, después de correr los menús 18 y 17: *«para los que no tienen uden, les podemos poner la uden de su aprobador
+habitual? es lo lógico»*):** el menú 17 tiene un tercer camino, **por el aprobador** (el primero de la columna H de USUARIOS): la unidad de
+las demás personas que aprueba (al menos 2 con unidad y el 80 % en una) o, si casi nadie de su equipo la tiene, la del propio aprobador; en
+cascada. Medido con la exportación de las 11:39 sobre quienes ya tenían unidad: la unidad propia del aprobador coincide en el 96 % (465 de
+483) y falla con la alta gerencia, que aprueba directores de varias unidades; el equipo del aprobador, en el 99 % (484 de 488); la regla
+combinada, que no reparte la unidad de un aprobador con un equipo mixto, en el 99 % (495 de 500). Propone 99 personas más (CPK 41, ENERGIA
+PROYECTOS 24, INGENERGIA 15, LAP 9…) y quedan 117: las aprueban unas 12 personas que tampoco tienen unidad (Alejandro Gómez 29, Yurani 21,
+John Deyver Campos 14, Yina Machado 8…); si se les escribe la unidad y se vuelve a correr el menú, se completan sus equipos. El menú muestra
+cuántas propone por cada camino, por unidad y aprobador, y a quién aprueban las que quedan. Revisión de la exportación: la columna quedó en
+la O de USUARIOS con 553 personas y ninguna mal escrita; la tabla de responsables en MISC Q:R con sus 10 filas. Ana Elvira Ochoa
+(`aochoa@`) tiene dos filas en USUARIOS con su correo: «OCHOA PACHECO ANA ELVIRA (Latam)» y «ANA KREMER (avianca)» (cédula 318846610);
+la plataforma muestra la primera. Prueba en `tools/check-other-unit.cjs` (equipo, aprobador, cascada y equipo mixto).

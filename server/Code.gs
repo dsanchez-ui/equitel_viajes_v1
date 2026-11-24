@@ -23081,8 +23081,13 @@ function _ouNote_(plan, cc, ccName) {
 /**
  * Propone la unidad de quien no la tiene. Primero su historial (las solicitudes donde es el primer
  * pasajero o quien pide: al menos 2 y el 80 % en una unidad); si no, la de su código de RR. HH. (el 85 %
- * o más de las solicitudes de las personas con ese código, con al menos 3). Nunca cambia una celda
- * escrita. Devuelve { col, created, proposals: [{row, name, unit, from}], pending: [nombres], invalid: [] }.
+ * o más de las solicitudes de las personas con ese código, con al menos 3); si no, la de su aprobador
+ * (David, 24-nov: «la uden de su aprobador habitual»): la de las demás personas que aprueba (al menos 2
+ * con unidad y el 80 % en una) o, si casi nadie de su equipo la tiene, la del propio aprobador. Con la
+ * base del 24-nov acierta en el 99 % de quienes ya tenían unidad; un aprobador con un equipo de varias
+ * unidades (la alta gerencia) no reparte la suya. Va en cascada: lo que se propone sirve para el equipo
+ * del siguiente. Nunca cambia una celda escrita.
+ * Devuelve { col, proposals: [{row, name, unit, from, by}], pending: [nombres], pendingByApprover: [[nombre, n]], invalid: [], already }.
  */
 function _ouProposeUserUnits_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -23090,7 +23095,7 @@ function _ouProposeUserUnits_() {
   if (!users || users.getLastRow() < 2) throw new Error('La hoja USUARIOS no existe o está vacía.');
   var col = _ouUserUnitCol_(users);
   var n = users.getLastRow() - 1;
-  var base = users.getRange(2, 1, n, 6).getValues(); // A cédula, B nombre, C correo, F código de RR. HH.
+  var base = users.getRange(2, 1, n, 8).getValues(); // A cédula, B nombre, C correo, F código de RR. HH., H correos de los aprobadores
   var current = col > 0 ? users.getRange(2, col, n, 1).getValues() : null;
   var reqSheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   var hist = {}; // correo → { norm: cuántas }
@@ -23128,22 +23133,62 @@ function _ouProposeUserUnits_() {
     Object.keys(hist[e]).forEach(function (u) { agg[u] = (agg[u] || 0) + hist[e][u]; });
   });
   var units = _ouCostCenters_().units;
-  var out = { col: col, proposals: [], pending: [], invalid: [], already: 0 };
+  var out = { col: col, proposals: [], pending: [], pendingByApprover: [], invalid: [], already: 0 };
+  var unitOf = {};   // correo → unidad normalizada (la escrita o la propuesta)
+  var nameOf = {};   // correo → nombre (la primera fila de ese correo)
+  var waiting = [];  // índices que siguen sin unidad tras los dos primeros caminos
   base.forEach(function (r, i) {
     var name = String(r[1] || '').trim(), email = String(r[2] || '').toLowerCase().trim();
     if (!r[0] || !email) return;
+    if (!nameOf[email]) nameOf[email] = name;
     var cur = current ? String(current[i][0] == null ? '' : current[i][0]).trim() : '';
     if (cur) {
-      if (_ouCanonicalUnit_(cur)) out.already++;
+      var canon = _ouCanonicalUnit_(cur);
+      if (canon) { out.already++; if (!unitOf[email]) unitOf[email] = _csNormalize_(canon); }
       else out.invalid.push('Fila ' + (i + 2) + ' (' + name + '): «' + cur + '» no es una unidad de «CDS vs UDEN».');
       return;
     }
     var h = top(hist[email]);
     var c = top(byCode[code(r[5])]);
-    if (h.total >= 2 && h.n / h.total >= 0.8) out.proposals.push({ row: i + 2, name: name, unit: units[h.unit], from: 'historial' });
-    else if (c.total >= 3 && c.n / c.total >= 0.85) out.proposals.push({ row: i + 2, name: name, unit: units[c.unit], from: 'código ' + code(r[5]) });
-    else out.pending.push(name);
+    var pick = function (norm, from) { out.proposals.push({ row: i + 2, name: name, unit: units[norm], from: from, by: '' }); if (!unitOf[email]) unitOf[email] = norm; };
+    if (h.total >= 2 && h.n / h.total >= 0.8) pick(h.unit, 'historial');
+    else if (c.total >= 3 && c.n / c.total >= 0.85) pick(c.unit, 'código ' + code(r[5]));
+    else waiting.push(i);
   });
+  // 3. Por su aprobador (el primero de la columna H), en cascada.
+  var approverOf = function (r) { return _ouList_(r[7])[0] || ''; };
+  var team = {}; // aprobador → índices de las personas que aprueba
+  base.forEach(function (r, i) { var a = approverOf(r), e = String(r[2] || '').toLowerCase().trim(); if (a && e && a !== e) (team[a] = team[a] || []).push(i); });
+  for (var pass = 0; pass < 8 && waiting.length; pass++) {
+    var picked = [];
+    waiting.forEach(function (i) {
+      var a = approverOf(base[i]);
+      if (!a) return;
+      var counts = {};
+      (team[a] || []).forEach(function (j) { var u = unitOf[String(base[j][2] || '').toLowerCase().trim()]; if (u) counts[u] = (counts[u] || 0) + 1; });
+      var t = top(counts), own = unitOf[a] || '';
+      var unit = '', from = '';
+      if (t.total >= 2) { if (t.n / t.total >= 0.8) { unit = t.unit; from = 'equipo de su aprobador'; } }
+      else if (own && (t.total === 0 || t.unit === own)) { unit = own; from = 'su aprobador'; }
+      if (unit) picked.push({ i: i, unit: unit, from: from, by: nameOf[a] || a });
+    });
+    if (!picked.length) break;
+    picked.forEach(function (p) {
+      var r = base[p.i];
+      out.proposals.push({ row: p.i + 2, name: String(r[1] || '').trim(), unit: units[p.unit], from: p.from, by: p.by });
+      unitOf[String(r[2] || '').toLowerCase().trim()] = p.unit;
+    });
+    var done = picked.map(function (p) { return p.i; });
+    waiting = waiting.filter(function (i) { return done.indexOf(i) === -1; });
+  }
+  var byAppr = {};
+  waiting.forEach(function (i) {
+    out.pending.push(String(base[i][1] || '').trim());
+    var a = approverOf(base[i]);
+    var who = a ? (nameOf[a] || a) : '(sin aprobador)';
+    byAppr[who] = (byAppr[who] || 0) + 1;
+  });
+  out.pendingByApprover = Object.keys(byAppr).map(function (k) { return [k, byAppr[k]]; }).sort(function (x, y) { return y[1] - x[1]; });
   return out;
 }
 
@@ -23176,12 +23221,24 @@ function menuUnidadUsuarios() {
     _requireAnalyst_();
     var p = _ouProposeUserUnits_();
     var fromHist = p.proposals.filter(function (x) { return x.from === 'historial'; }).length;
+    var fromCode = p.proposals.filter(function (x) { return x.from.indexOf('código') === 0; }).length;
+    var byAppr = p.proposals.filter(function (x) { return !!x.by; });
     var lines = [
       'Columna «' + OU_USER_UNIT_HEADER + '» de USUARIOS' + (p.col > 0 ? ' (' + _csColumnLetter_(p.col) + ')' : ' (se crea al final)') + '.',
       'Ya tienen unidad: ' + p.already + '.',
-      'Se propone para ' + p.proposals.length + ': ' + fromHist + ' por su historial de solicitudes y ' + (p.proposals.length - fromHist) + ' por su código de RR. HH.',
-      'Quedan sin unidad ' + p.pending.length + ': no hay datos claros. Eligen su unidad en el formulario, o escríbala en la hoja.'
+      'Se propone para ' + p.proposals.length + ': ' + fromHist + ' por su historial de solicitudes, ' + fromCode + ' por su código de RR. HH. y ' +
+        byAppr.length + ' por su aprobador.'
     ];
+    if (byAppr.length) {
+      var groups = {};
+      byAppr.forEach(function (x) { var k = x.unit + ' (las aprueba ' + x.by + ')'; groups[k] = (groups[k] || 0) + 1; });
+      Object.keys(groups).sort(function (a, b) { return groups[b] - groups[a]; }).slice(0, 15).forEach(function (k) { lines.push('   • ' + groups[k] + ' en ' + k); });
+    }
+    lines.push('Quedan sin unidad ' + p.pending.length + ': no hay datos claros. Eligen su unidad en el formulario, o escríbala en la hoja.');
+    if (p.pendingByApprover.length) {
+      lines.push('   Las aprueban: ' + p.pendingByApprover.slice(0, 12).map(function (x) { return x[0] + ' (' + x[1] + ')'; }).join(', ') + '.');
+      lines.push('   Si les escribe la unidad a esas personas (o a alguien de su equipo) y vuelve a correr este menú, se completan sus equipos.');
+    }
     if (p.invalid.length) { lines.push(''); lines.push('Revisar (' + p.invalid.length + '):'); p.invalid.slice(0, 15).forEach(function (w) { lines.push('• ' + w); }); }
     if (!p.proposals.length) { ui.alert('Unidad de negocio de cada persona', lines.join('\n'), ui.ButtonSet.OK); return; }
     lines.push('');
