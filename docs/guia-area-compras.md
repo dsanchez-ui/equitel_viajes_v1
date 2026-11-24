@@ -475,6 +475,26 @@ Cuántos tiquetes y noches de hotel se compran, a qué costo y con cuánta antic
 ### 8.3 Cambios (#A103)
 
 Pestaña **🔄 Cambios**: cada cambio pedido con «Cambiar mi viaje», con filtros de mes y tipo de cambio. Muestra cuántos fueron de tiquetes ya comprados, lo que costaron los cambios (penalidad, diferencia de tarifa y hotel), qué parte fue penalidad, las maletas pedidas después de comprar y el costo por unidad. Los cambios de antes (formulario anterior) se cuentan aparte porque no traen el detalle. *¿Cómo se calcula?* explica cada cifra. Exporta a CSV.
+
+### 8.4 Dashboard de costos: reporte en Excel de una unidad (#A132)
+
+Para llevarle a una unidad (por ejemplo, POTENCIA) el detalle de lo que suma a su presupuesto y que ella diga qué pagó la fábrica, qué le reconocen con descuento o nota crédito y qué corresponde a una OT. Está en el **dashboard de costos**, pestañas *Año*, *Periodo* y *Mes*, al final: tarjeta **📊 Reporte en Excel de una unidad**.
+
+1. Elige la **unidad de negocio** (o *Todas las unidades*) y los meses de compra (**desde** y **hasta**). El año y la empresa son los de los filtros de arriba.
+2. Toca **📥 Descargar Excel**. En unos segundos baja el archivo *Viajes que suman - UNIDAD - meses.xlsx*.
+
+Se puede generar cuantas veces se quiera: cada archivo es una foto del momento en que se generó.
+
+**Qué trae** (las mismas cifras del dashboard para esos filtros):
+- **Resumen:** lo facturado, lo pendiente de factura (con lo pagado al comprar o lo cotizado), el total que suma, el presupuesto y el % usado, lo cargado a OT, cada mes de compra y cómo leer el archivo.
+- **Viajes que suman:** una fila por viaje: solicitante, pasajeros, servicio, origen y destino, fechas de ida y regreso, motivo del viaje, centro de costos, anticipación, aerolínea, tarifa, hotel, cada factura (número y fecha), el valor que suma y si ya está facturado o pendiente. Al final, **columnas amarillas** para que la unidad escriba a qué OT corresponde el viaje, cuánto pagó la fábrica, cuánto le reconocen con descuento o nota crédito y su justificación; el **valor neto** y el resumen se calculan solos.
+- **Facturas:** cada factura por separado (en la factura 1, lo pagado a la aerolínea o el hotel y el cargo de la agencia con su IVA; en las demás, el valor y el IVA).
+- **Por pasajero:** cuántos viajes y cuánto suma cada persona (el valor de cada viaje se reparte en partes iguales entre sus pasajeros).
+- **Cargados a OT (no suman):** los viajes con número de OT, aparte.
+
+**Quién lo genera:** quien entra al dashboard de costos. Un líder solo puede sacar el de sus unidades y su archivo no trae lo cotizado ni lo pagado al comprar (eso, como la variación, es solo para Yurani, Diego, David y quien tenga `COMPLETO`). El archivo no trae cédulas, fechas de nacimiento, celulares ni tarjetas.
+
+**Desde noviembre de 2026 el dashboard suma también las facturas 4 a 6** (antes solo de la 1 a la 3): las cifras de las unidades con una cuarta factura subieron un poco.
 ## 9. Problemas frecuentes
 
 ### El usuario dice que no le llega el PIN

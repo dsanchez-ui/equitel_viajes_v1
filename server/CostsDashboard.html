@@ -304,6 +304,13 @@
       justify-content: flex-end;
       margin-top: 14px;
     }
+    /* #A132: reporte en Excel de una unidad */
+    #unitReportCard { margin-top: 14px; }
+    .rp-lead { font-size: 13px; color: var(--muted); margin: 0 0 12px; line-height: 1.45; max-width: 760px; }
+    .rp-controls { display: grid; grid-template-columns: minmax(200px, 2fr) repeat(2, minmax(120px, 1fr)) auto; gap: 12px; align-items: end; }
+    .rp-btn { width: auto; padding: 11px 18px; white-space: nowrap; }
+    .rp-scope { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    @media (max-width: 640px) { .rp-controls { grid-template-columns: 1fr 1fr; } .rp-controls .field:first-child, .rp-btn { grid-column: 1 / -1; } }
 
     /* ===== CONFIG SECTION ===== */
     #configCard { display: none; }
@@ -526,7 +533,7 @@
         page-break-inside: avoid;
         margin-bottom: 8px;
       }
-      .header-actions, .export-bar, #btnLogout, #configCard, #btnConfig, .tabs {
+      .header-actions, .export-bar, #btnLogout, #configCard, #btnConfig, .tabs, #unitReportCard {
         display: none !important;
       }
       /* Quitar sticky en print — la card de filtros no debe quedar pegada
@@ -959,7 +966,7 @@
           anual de 2026 cuenta el presupuesto y el gasto desde abril; si contara el presupuesto de enero a marzo, el
           «disponible» se vería más grande de lo que es.</dd>
         <dt>Facturado</dt>
-        <dd>La suma de las facturas de cada solicitud (hasta 3). Si una factura no tiene total, se suman su valor y su IVA.</dd>
+        <dd>La suma de las facturas de cada solicitud (hasta 6). Si una factura no tiene total, se suman su valor y su IVA.</dd>
         <dt>Comprado sin factura</dt>
         <dd>Si la solicitud está reservada pero aún no tiene factura, se toma lo pagado al comprar, si el área de compras lo
           escribió en «Registrar reserva»; si no, lo cotizado (tiquetes y hotel por separado). Cuando llega la
@@ -1663,6 +1670,31 @@
       <button id="btnExportPDF" class="btn-secondary">🖨️ Exportar PDF (imprimir)</button>
     </div>
 
+    <!-- REPORTE EN EXCEL POR UNIDAD (#A132, pedido de Yurani del 24-nov) -->
+    <div class="card" id="unitReportCard">
+      <h2>📊 Reporte en Excel de una unidad</h2>
+      <p class="rp-lead">Cada viaje que suma al presupuesto: quién viajó, de dónde a dónde, las fechas, el motivo y cada factura. Lo que aún no
+        tiene factura sale como pendiente. Trae columnas en amarillo para que la unidad escriba a qué OT corresponde cada viaje, qué pagó la
+        fábrica y qué le reconocen con descuento o nota crédito.</p>
+      <div class="rp-controls">
+        <div class="field" style="margin: 0;">
+          <label for="rp_unit">Unidad de negocio</label>
+          <select id="rp_unit"></select>
+        </div>
+        <div class="field" style="margin: 0;">
+          <label for="rp_from">Compras desde</label>
+          <select id="rp_from"></select>
+        </div>
+        <div class="field" style="margin: 0;">
+          <label for="rp_to">Hasta</label>
+          <select id="rp_to"></select>
+        </div>
+        <button id="btnUnitReport" class="btn-primary rp-btn">📥 Descargar Excel</button>
+      </div>
+      <div id="rp_scope" class="rp-scope"></div>
+      <div id="unitReportStatus" class="status" style="margin: 10px 0 0;"></div>
+    </div>
+
     <!-- CONFIG (solo superadmin) -->
     <div id="configCard" class="card">
       <h2>⚙️ Configuración de columnas (solo superadmin)</h2>
@@ -1888,9 +1920,9 @@ function initFilters() {
 // dibuja la pestaña que se ve, y las demás quedan marcadas para cuando se abran. Las
 // restringidas aparecen cuando el servidor las entrega (a quien no las ve, nunca).
 var TABS = [
-  { id: 'anual', label: '📅 Año', els: ['budgetHow', 'annualSection', 'budgetExport'] },
-  { id: 'periodo', label: '🎯 Periodo actual', els: ['budgetHow', 'periodSection', 'budgetExport'] },
-  { id: 'mes', label: '📆 Mes', els: ['budgetHow', 'monthlySection', 'budgetExport'] },
+  { id: 'anual', label: '📅 Año', els: ['budgetHow', 'annualSection', 'budgetExport', 'unitReportCard'] },
+  { id: 'periodo', label: '🎯 Periodo actual', els: ['budgetHow', 'periodSection', 'budgetExport', 'unitReportCard'] },
+  { id: 'mes', label: '📆 Mes', els: ['budgetHow', 'monthlySection', 'budgetExport', 'unitReportCard'] },
   { id: 'mesames', label: '🗓️ Mes a mes', els: ['momSection'] },
   { id: 'variacion', label: '📊 Cotizado vs facturado', els: ['varianceSection'] },
   { id: 'cambios', label: '🔄 Cambios de viaje', els: ['changesSection'] },
@@ -2034,6 +2066,7 @@ function loadDashboard(fresh) {
       canEditConfig = !!(fullYearData.meta && fullYearData.meta.access && fullYearData.meta.access.canConfig);
       document.getElementById('btnConfig').style.display = canEditConfig ? '' : 'none';
       populateCompanyUnitDropdowns();
+      rpPopulateControls(); // #A132
       refreshView();
       // Variación (#A78) y comparador (#A84) ya se pidieron en paralelo; si el
       // backend dice que este usuario no los ve, se ocultan.
@@ -5648,6 +5681,693 @@ function exportCSV() {
 }
 
 // =====================================================================
+// REPORTE EN EXCEL DE UNA UNIDAD (#A132)
+// Pedido de Yurani (24-nov): llevarle a cada unidad (la primera, POTENCIA) los viajes que suman a su presupuesto, para
+// que diga qué pagó la fábrica, qué le reconocen con descuento o nota crédito y qué corresponde a una OT. El servidor
+// da los datos con las cuentas del dashboard (getCostsUnitReport) y aquí se arma un .xlsx de verdad, sin librerías:
+// un ZIP sin comprimir con sus XML. Se regenera cuando se quiera: es una foto del momento.
+// =====================================================================
+
+var XLSX_CRC_TABLE = null;
+function xlsxCrc32(bytes) {
+  if (!XLSX_CRC_TABLE) {
+    XLSX_CRC_TABLE = [];
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      XLSX_CRC_TABLE[n] = c >>> 0;
+    }
+  }
+  var crc = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i++) crc = XLSX_CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+/** ZIP sin comprimir (método 0), con nombres en UTF-8. files: [{ name, text }]. Devuelve Uint8Array. */
+function xlsxZip(files) {
+  var enc = new TextEncoder();
+  var parts = [], central = [], offset = 0;
+  var now = new Date();
+  var dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+  var dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  files.forEach(function(f) {
+    var name = enc.encode(f.name), data = enc.encode(f.text), crc = xlsxCrc32(data);
+    var lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true); lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true); lh.setUint32(14, crc, true);
+    lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+    lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), name, data);
+    var ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true); ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true); ch.setUint32(16, crc, true);
+    ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true);
+    ch.setUint16(30, 0, true); ch.setUint16(32, 0, true); ch.setUint16(34, 0, true); ch.setUint16(36, 0, true);
+    ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + data.length;
+  });
+  var cdSize = 0;
+  central.forEach(function(p) { cdSize += p.length; });
+  var end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(4, 0, true); end.setUint16(6, 0, true);
+  end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true); end.setUint16(20, 0, true);
+  var all = parts.concat(central, [new Uint8Array(end.buffer)]);
+  var total = 0;
+  all.forEach(function(p) { total += p.length; });
+  var out = new Uint8Array(total), pos = 0;
+  all.forEach(function(p) { out.set(p, pos); pos += p.length; });
+  return out;
+}
+
+/** Texto para XML: sin caracteres de control (Excel no abre el archivo con ellos) y con &, <, > y " escapados. */
+function xlsxEsc(v) {
+  return String(v === null || v === undefined ? '' : v)
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+/** 0 → A, 26 → AA. */
+function xlsxCol(i) {
+  var s = '';
+  i = i + 1;
+  while (i > 0) { var m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); }
+  return s;
+}
+/** 'AAAA-MM-DD' → número de fecha de Excel; null si no es una fecha. */
+function xlsxDateSerial(key) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+  if (!m) return null;
+  return Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) - Date.UTC(1899, 11, 30)) / 86400000);
+}
+function xlsxSheetRef(name) { return "'" + String(name).replace(/'/g, "''") + "'"; }
+
+// Estilos (índice en cellXfs de XLSX_STYLES).
+var XS = { text: 0, head: 1, money: 2, date: 3, wrap: 4, title: 5, bold: 6, moneyTot: 7, inMoney: 8, inText: 9, pct: 10,
+  headIn: 11, note: 12, int: 13, totLabel: 14, pctTot: 15, intTot: 16, section: 17, moneyBold: 18, headCalc: 19, noteLine: 20 };
+var XLSX_STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+  '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+  '<numFmts count="3"><numFmt numFmtId="164" formatCode="&quot;$&quot;\\ #,##0"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy"/><numFmt numFmtId="166" formatCode="0.0%"/></numFmts>' +
+  '<fonts count="6">' +
+    '<font><sz val="10"/><name val="Arial"/></font>' +
+    '<font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Arial"/></font>' +
+    '<font><b/><sz val="14"/><name val="Arial"/></font>' +
+    '<font><b/><sz val="10"/><name val="Arial"/></font>' +
+    '<font><i/><sz val="9"/><color rgb="FF4B5563"/><name val="Arial"/></font>' +
+    '<font><b/><sz val="11"/><color rgb="FF1F2937"/><name val="Arial"/></font>' +
+  '</fonts>' +
+  '<fills count="7">' +
+    '<fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FF1F2937"/><bgColor indexed="64"/></patternFill></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFFFD966"/><bgColor indexed="64"/></patternFill></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFF3F4F6"/><bgColor indexed="64"/></patternFill></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFDBEAFE"/><bgColor indexed="64"/></patternFill></fill>' +
+  '</fills>' +
+  '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>' +
+    '<border><left style="thin"><color rgb="FFD1D5DB"/></left><right style="thin"><color rgb="FFD1D5DB"/></right>' +
+    '<top style="thin"><color rgb="FFD1D5DB"/></top><bottom style="thin"><color rgb="FFD1D5DB"/></bottom><diagonal/></border></borders>' +
+  '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+  '<cellXfs count="21">' +
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +                                                   // 0 text
+    '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>' + // 1 head
+    '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +                           // 2 money
+    '<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +                           // 3 date
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' + // 4 wrap
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +                                     // 5 title
+    '<xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +                                     // 6 bold
+    '<xf numFmtId="164" fontId="3" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>' + // 7 money total
+    '<xf numFmtId="164" fontId="0" fillId="3" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1" applyBorder="1"/>' + // 8 input money
+    '<xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1" applyBorder="1"/>' +                     // 9 input text
+    '<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +                           // 10 pct
+    '<xf numFmtId="0" fontId="3" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>' + // 11 head input
+    '<xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>' + // 12 note
+    '<xf numFmtId="1" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' +                             // 13 int
+    '<xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>' +       // 14 total label
+    '<xf numFmtId="166" fontId="3" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>' + // 15 pct total
+    '<xf numFmtId="1" fontId="3" fillId="5" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyFill="1" applyBorder="1"/>' + // 16 int total
+    '<xf numFmtId="0" fontId="5" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +                                     // 17 section
+    '<xf numFmtId="164" fontId="3" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/>' +             // 18 money bold
+    '<xf numFmtId="0" fontId="3" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>' + // 19 head calc
+    '<xf numFmtId="0" fontId="4" fillId="0" borderId="0" xfId="0" applyFont="1"/>' +                                     // 20 note en una línea
+  '</cellXfs>' +
+  '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+  '</styleSheet>';
+
+/**
+ * Una celda: null/'' = vacía; número; texto; { v, s } con estilo; { d: 'AAAA-MM-DD' } fecha; { f: 'SUM(…)', v } fórmula
+ * con su valor calculado (lo muestra cualquier visor aunque no recalcule).
+ */
+function xlsxCellXml(ref, c) {
+  if (c === null || c === undefined || c === '') return '';
+  if (typeof c !== 'object') c = { v: c };
+  var s = c.s ? ' s="' + c.s + '"' : '';
+  if (c.f) {
+    var cached = typeof c.v === 'number' && isFinite(c.v) ? '<v>' + c.v + '</v>' : '';
+    return '<c r="' + ref + '"' + s + '><f>' + xlsxEsc(c.f) + '</f>' + cached + '</c>';
+  }
+  if (c.d !== undefined) {
+    var serial = xlsxDateSerial(c.d);
+    if (serial !== null) return '<c r="' + ref + '" s="' + (c.s || XS.date) + '"><v>' + serial + '</v></c>';
+    c = { v: c.d, s: c.s && c.s !== XS.date ? c.s : 0 };
+    s = c.s ? ' s="' + c.s + '"' : '';
+  }
+  if (c.v === null || c.v === undefined || c.v === '') return s ? '<c r="' + ref + '"' + s + '/>' : '';
+  if (typeof c.v === 'number') return isFinite(c.v) ? '<c r="' + ref + '"' + s + '><v>' + c.v + '</v></c>' : '';
+  return '<c r="' + ref + '"' + s + ' t="inlineStr"><is><t xml:space="preserve">' + xlsxEsc(String(c.v).substring(0, 32000)) + '</t></is></c>';
+}
+
+/** Hoja: { name, rows: [[celda]], widths: [n], freeze: { rows, cols }, filter: 'A1:X9', merges: ['A1:F1'], heights: { fila: alto } }. */
+function xlsxSheetXml(sh) {
+  var x = ['<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'];
+  var maxCol = 1;
+  sh.rows.forEach(function(r) { maxCol = Math.max(maxCol, r.length); });
+  if (sh.fitWidth) x.push('<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>'); // imprimir a lo ancho de una hoja
+  x.push('<dimension ref="A1:' + xlsxCol(maxCol - 1) + Math.max(1, sh.rows.length) + '"/>');
+  x.push('<sheetViews><sheetView workbookViewId="0"' + (sh.selected ? ' tabSelected="1"' : '') + '>');
+  if (sh.freeze && (sh.freeze.rows || sh.freeze.cols)) {
+    var fr = sh.freeze, tl = xlsxCol(fr.cols || 0) + ((fr.rows || 0) + 1);
+    var pane = fr.cols && fr.rows ? 'bottomRight' : fr.rows ? 'bottomLeft' : 'topRight';
+    x.push('<pane' + (fr.cols ? ' xSplit="' + fr.cols + '"' : '') + (fr.rows ? ' ySplit="' + fr.rows + '"' : '') +
+      ' topLeftCell="' + tl + '" activePane="' + pane + '" state="frozen"/>');
+    x.push('<selection pane="' + pane + '" activeCell="' + tl + '" sqref="' + tl + '"/>');
+  }
+  x.push('</sheetView></sheetViews><sheetFormatPr defaultRowHeight="13.2"/>');
+  if (sh.widths && sh.widths.length) {
+    x.push('<cols>');
+    sh.widths.forEach(function(w, i) { if (w) x.push('<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>'); });
+    x.push('</cols>');
+  }
+  x.push('<sheetData>');
+  sh.rows.forEach(function(r, ri) {
+    var n = ri + 1, ht = sh.heights && sh.heights[n];
+    var cells = '';
+    for (var ci = 0; ci < r.length; ci++) cells += xlsxCellXml(xlsxCol(ci) + n, r[ci]);
+    x.push('<row r="' + n + '"' + (ht ? ' ht="' + ht + '" customHeight="1"' : '') + '>' + cells + '</row>');
+  });
+  x.push('</sheetData>');
+  if (sh.filter) x.push('<autoFilter ref="' + sh.filter + '"/>');
+  if (sh.merges && sh.merges.length) {
+    x.push('<mergeCells count="' + sh.merges.length + '">');
+    sh.merges.forEach(function(m) { x.push('<mergeCell ref="' + m + '"/>'); });
+    x.push('</mergeCells>');
+  }
+  x.push('<pageMargins left="0.5" right="0.5" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>');
+  x.push('<pageSetup orientation="landscape" fitToWidth="1" fitToHeight="0"/>');
+  x.push('</worksheet>');
+  return x.join('');
+}
+
+/** Libro .xlsx con sus hojas, como Uint8Array. Excel recalcula las fórmulas al abrirlo. */
+function xlsxWorkbook(sheets) {
+  var ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    sheets.map(function(sh, i) {
+      return '<Override PartName="/xl/worksheets/sheet' + (i + 1) + '.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+    }).join('') + '</Types>';
+  var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+    '</Relationships>';
+  var wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    sheets.map(function(sh, i) {
+      return '<Relationship Id="rId' + (i + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet' + (i + 1) + '.xml"/>';
+    }).join('') +
+    '<Relationship Id="rId' + (sheets.length + 1) + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+    '</Relationships>';
+  var names = sheets.map(function(sh, i) {
+    if (!sh.filter) return '';
+    var abs = sh.filter.replace(/([A-Z]+)(\d+)/g, '$$$1$$$2');
+    return '<definedName name="_xlnm._FilterDatabase" localSheetId="' + i + '" hidden="1">' + xlsxEsc(xlsxSheetRef(sh.name) + '!' + abs) + '</definedName>';
+  }).join('');
+  var wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<bookViews><workbookView activeTab="0"/></bookViews><sheets>' +
+    sheets.map(function(sh, i) { return '<sheet name="' + xlsxEsc(sh.name) + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>'; }).join('') +
+    '</sheets>' + (names ? '<definedNames>' + names + '</definedNames>' : '') + '<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>';
+  var files = [
+    { name: '[Content_Types].xml', text: ct },
+    { name: '_rels/.rels', text: rels },
+    { name: 'xl/workbook.xml', text: wb },
+    { name: 'xl/_rels/workbook.xml.rels', text: wbRels },
+    { name: 'xl/styles.xml', text: XLSX_STYLES }
+  ];
+  sheets.forEach(function(sh, i) { files.push({ name: 'xl/worksheets/sheet' + (i + 1) + '.xml', text: xlsxSheetXml(sh) }); });
+  return xlsxZip(files);
+}
+
+// ---------- El reporte ----------
+
+var RP_SHEET_CC = 'Viajes que suman';
+var RP_SHEET_OT = 'Cargados a OT (no suman)';
+var RP_STATUS = { RESERVADO: 'Reservado', PROCESADO: 'Cerrado' };
+var RP_KIND = { ORIGINAL: 'Viaje', CAMBIO: 'Cambio de un viaje', CAMBIO_COMPRADO: 'Cambio de un tiquete ya comprado (solo el costo del cambio)' };
+
+/** «Facturado», «Pendiente de factura (…)» o por qué no suma valor. */
+function rpValueLabel(t) {
+  var src = t.d.source;
+  if (src === 'FACTURADO') return 'Facturado';
+  if (src === 'PAGADO') return 'Pendiente de factura (valor pagado al comprar)';
+  if (src === 'COTIZADO') return 'Pendiente de factura (valor cotizado)';
+  return t.r.status === 'PROCESADO' ? 'Cerrado sin factura ($0)' : 'Sin valor registrado ($0)';
+}
+function rpPending(t) { return t.d.source === 'PAGADO' || t.d.source === 'COTIZADO'; }
+/** Texto en una línea para las hojas de viajes (un salto de línea agranda la fila). */
+function rpOneLine(s) { return String(s || '').replace(/\s*\n+\s*/g, ' / ').trim(); }
+function rpDateText(key) {
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+  return m ? m[3] + '/' + m[2] + '/' + m[1] : String(key || '');
+}
+
+/** Viajes de la respuesta, por fecha de compra: los que suman (cc) y los cargados a una OT (ot). */
+function rpTrips(data) {
+  var cc = [], ot = [];
+  (data.rows || []).forEach(function(b) {
+    (b.requests || []).forEach(function(r) { if (r.detail) cc.push({ unit: b.unit, r: r, d: r.detail }); });
+    (b.otRequests || []).forEach(function(r) { if (r.detail) ot.push({ unit: b.unit, r: r, d: r.detail }); });
+  });
+  var order = function(a, b) {
+    return String(a.d.purchaseDate || '').localeCompare(String(b.d.purchaseDate || '')) || String(a.r.requestId).localeCompare(String(b.r.requestId));
+  };
+  cc.sort(order); ot.sort(order);
+  return { cc: cc, ot: ot };
+}
+
+/** Columnas de las hojas de viajes. kind: 'cc' (suman, con las columnas para la unidad) u 'ot'. */
+function rpColumns(showQuoted, kind, multiUnit) {
+  var cols = [{ h: 'Solicitud', w: 12, v: function(t) { return t.r.requestId; } }];
+  if (kind === 'ot') cols.push({ h: 'Orden de trabajo (OT)', w: 18, v: function(t) { return t.r.workOrder; } });
+  if (multiUnit) cols.push({ h: 'Unidad de negocio', w: 22, v: function(t) { return t.unit; } });
+  cols = cols.concat([
+    { h: 'Estado', w: 10, v: function(t) { return RP_STATUS[t.r.status] || t.r.status; } },
+    { h: 'Tipo', w: 18, v: function(t) { return (RP_KIND[t.d.kind] || 'Viaje') + (t.d.replacedBy ? ' (cambiado después: ' + t.d.replacedBy + ')' : ''); } },
+    { h: 'Solicitud original', w: 11, v: function(t) { return t.d.kind === 'ORIGINAL' ? '' : t.d.parentId; } },
+    { h: 'Fecha de la solicitud', w: 11, date: true, v: function(t) { return t.d.requestDate; } },
+    { h: 'Fecha de compra', w: 11, date: true, v: function(t) { return t.d.purchaseDate || t.r.purchaseDate; } },
+    { h: 'Mes en que suma', w: 8, v: function(t) { return MONTHS[(t.r.month || 1) - 1]; } },
+    { h: 'Solicitante', w: 24, v: function(t) { return t.d.requesterName || t.d.requesterEmail; } },
+    { h: 'Correo del solicitante', w: 26, v: function(t) { return t.d.requesterEmail; } },
+    { h: 'Pasajeros', w: 34, v: function(t) { return (t.d.passengers || []).join(', '); } },
+    { h: 'N.º de pasajeros', w: 9, int: true, v: function(t) { return t.d.pax; } },
+    { h: 'Servicio', w: 13, v: function(t) { return t.d.onlyHotel ? 'Solo hospedaje' : (t.d.hotel ? 'Vuelo y hotel' : 'Vuelo'); } },
+    { h: 'Origen', w: 18, v: function(t) { return t.d.onlyHotel ? '' : t.d.origin; } },
+    { h: 'Destino', w: 18, v: function(t) { return t.d.destination; } },
+    { h: 'Nacional o internacional', w: 12, v: function(t) { return t.d.international ? 'Internacional' : 'Nacional'; } },
+    { h: 'Fecha de ida', w: 11, date: true, v: function(t) { return t.d.departDate; } },
+    { h: 'Fecha de regreso', w: 11, date: true, v: function(t) { return t.d.returnDate; } },
+    { h: 'Noches de hotel', w: 8, int: true, v: function(t) { return t.d.hotel ? t.d.nights : ''; } },
+    { h: 'Motivo del viaje (lo que escribió el solicitante)', w: 48, v: function(t) { return rpOneLine(t.d.reason); } },
+    { h: 'Qué se cambió', w: 28, v: function(t) { return rpOneLine(t.d.changeText); } },
+    { h: 'Empresa', w: 11, v: function(t) { return t.d.company; } },
+    { h: 'Centro de costos', w: 30, v: function(t) {
+      var cc = [t.d.costCenter, t.d.costCenterName].filter(Boolean).join(' - ');
+      return t.d.costCenters ? (cc ? cc + ' · ' : '') + 'varios: ' + t.d.costCenters : cc;
+    } },
+    { h: 'Sede', w: 12, v: function(t) { return t.d.sede; } },
+    { h: 'Días entre la compra y la ida', w: 10, int: true, v: function(t) { return t.d.leadDays === null || t.d.leadDays === undefined ? '' : t.d.leadDays; } },
+    { h: 'Pedido con menos anticipación de la que pide la política', w: 13, v: function(t) { return t.d.policyViolation ? 'Sí' : 'No'; } },
+    { h: 'Justificación de la anticipación', w: 28, v: function(t) { return rpOneLine(t.d.leadJustification); } },
+    { h: 'Aerolínea', w: 16, v: function(t) { return t.d.returnAirline ? t.d.airline + ' (regreso: ' + t.d.returnAirline + ')' : t.d.airline; } },
+    { h: 'Canal de compra', w: 12, v: function(t) { return t.d.channel; } },
+    { h: 'Tarifa', w: 16, v: function(t) { return t.d.fare; } },
+    { h: 'Reserva (PNR)', w: 12, v: function(t) { return t.d.pnr; } },
+    { h: 'Hotel', w: 22, v: function(t) { return t.d.hotel ? t.d.hotelName : ''; } },
+    { h: 'Canal del hotel', w: 12, v: function(t) { return t.d.hotel ? t.d.hotelChannel : ''; } }
+  ]);
+  if (showQuoted) {
+    cols = cols.concat([
+      { h: 'Cotizado: tiquetes', money: true, sum: true, v: function(t) { return t.d.quotedTickets || ''; } },
+      { h: 'Cotizado: hotel', money: true, sum: true, v: function(t) { return t.d.quotedHotel || ''; } },
+      { h: 'Pagado al comprar: tiquetes', money: true, sum: true, v: function(t) { return t.d.paidTickets === null || t.d.paidTickets === undefined ? '' : t.d.paidTickets; } },
+      { h: 'Pagado al comprar: hotel', money: true, sum: true, v: function(t) { return t.d.paidHotel === null || t.d.paidHotel === undefined ? '' : t.d.paidHotel; } }
+    ]);
+  }
+  cols = cols.concat([
+    { h: 'N.º de facturas', w: 9, int: true, v: function(t) { return (t.d.invoices || []).length; } },
+    { h: 'Facturas (número y fecha)', w: 34, v: function(t) {
+      return (t.d.invoices || []).map(function(i) { return (i.number || 'sin número') + (i.date ? ' (' + rpDateText(i.date) + ')' : ''); }).join('; ');
+    } },
+    { h: 'Total facturado', money: true, sum: true, v: function(t) { return t.d.invoiced || 0; } },
+    { h: 'Penalidad del cambio', money: true, sum: true, v: function(t) { return t.d.penalty || ''; } },
+    { h: 'Estado del valor', w: 26, v: rpValueLabel },
+    { h: kind === 'ot' ? 'Valor cargado a la OT' : 'Valor que suma al presupuesto', money: true, sum: true, key: 'counted', bold: true,
+      v: function(t) { return t.d.counted || 0; } }
+  ]);
+  if (kind === 'cc') {
+    cols = cols.concat([
+      { h: '¿A qué OT corresponde? (si aplica)', w: 20, input: 'text', key: 'ot' },
+      { h: 'Valor que pagó la fábrica', w: 15, input: 'money', sum: true, key: 'factory' },
+      { h: 'Valor reconocido con descuento o nota crédito', w: 17, input: 'money', sum: true, key: 'credit' },
+      { h: 'Justificación de la unidad', w: 40, input: 'text', key: 'why' },
+      { h: 'Valor neto para la unidad', w: 15, calc: true, sum: true, key: 'net' }
+    ]);
+  }
+  cols.forEach(function(c) { if (!c.w) c.w = c.money || c.input === 'money' ? 15 : 12; });
+  return cols;
+}
+
+/** Hoja de viajes con su fila de total. Devuelve la hoja y dónde quedó cada columna con llave (para las fórmulas). */
+function rpTripsSheet(name, trips, cols) {
+  var idx = {};
+  cols.forEach(function(c, i) { if (c.key) idx[c.key] = xlsxCol(i); });
+  var rows = [cols.map(function(c) { return { v: c.h, s: c.input ? XS.headIn : c.calc ? XS.headCalc : XS.head }; })];
+  trips.forEach(function(t, ti) {
+    var n = ti + 2;
+    rows.push(cols.map(function(c) {
+      if (c.input) return { v: '', s: c.input === 'money' ? XS.inMoney : XS.inText };
+      if (c.calc) {
+        return { f: idx.counted + n + '-' + idx.factory + n + '-' + idx.credit + n, v: t.d.counted || 0, s: XS.moneyBold };
+      }
+      var v = c.v(t);
+      if (c.date) return { d: v || '' };
+      if (c.money) return { v: v === '' ? '' : Number(v) || 0, s: c.bold ? XS.moneyBold : XS.money };
+      if (c.int) return { v: v === '' ? '' : Number(v), s: XS.int };
+      return v;
+    }));
+  });
+  var last = trips.length + 1;
+  var total = cols.map(function(c, i) {
+    if (i === 0) return { v: 'Total (' + trips.length + (trips.length === 1 ? ' viaje' : ' viajes') + ')', s: XS.totLabel };
+    if (!c.sum) return { v: '', s: XS.totLabel };
+    var col = xlsxCol(i), cached = 0;
+    trips.forEach(function(t) {
+      if (c.calc) cached += t.d.counted || 0;
+      else if (!c.input) cached += Number(c.v(t)) || 0;
+    });
+    return { f: trips.length ? 'SUBTOTAL(9,' + col + '2:' + col + last + ')' : '0', v: cached, s: XS.moneyTot };
+  });
+  rows.push(total);
+  return {
+    sheet: { name: name, rows: rows, widths: cols.map(function(c) { return c.w; }), freeze: { rows: 1, cols: 1 },
+      filter: 'A1:' + xlsxCol(cols.length - 1) + last, heights: { 1: 54 } },
+    col: idx, last: last
+  };
+}
+
+/** Facturas una por una: la 1 con lo pagado a la aerolínea o el hotel y el cargo de Aviatur con su IVA; de la 2 a la 6, valor e IVA. */
+function rpInvoicesSheet(cc, ot, multiUnit) {
+  var head = ['Solicitud'].concat(multiUnit ? ['Unidad de negocio'] : [], ['¿Suma al presupuesto?', 'Factura', 'Número', 'Fecha',
+    'Valor (aerolínea u hotel)', 'Cargo de la agencia o IVA', 'Total de la factura']);
+  var rows = [head.map(function(h) { return { v: h, s: XS.head }; })];
+  var add = function(t, suma) {
+    (t.d.invoices || []).forEach(function(i) {
+      rows.push([t.r.requestId].concat(multiUnit ? [t.unit] : [], [suma, 'Factura ' + i.n, i.number, { d: i.date || '' },
+        { v: i.value === null || i.value === undefined ? '' : i.value, s: XS.money },
+        { v: i.tax === null || i.tax === undefined ? '' : i.tax, s: XS.money },
+        { v: i.total || 0, s: XS.money }]));
+    });
+  };
+  cc.forEach(function(t) { add(t, 'Sí'); });
+  ot.forEach(function(t) { add(t, 'No: OT ' + (t.r.workOrder || '')); });
+  var count = rows.length - 1, last = rows.length, off = multiUnit ? 1 : 0;
+  var tot = [{ v: 'Total (' + count + (count === 1 ? ' factura' : ' facturas') + ')', s: XS.totLabel }];
+  for (var i = 1; i < head.length; i++) {
+    if (i < 5 + off) { tot.push({ v: '', s: XS.totLabel }); continue; }
+    var col = xlsxCol(i), cached = 0;
+    for (var r = 1; r < rows.length; r++) cached += Number((rows[r][i] || {}).v) || 0;
+    tot.push({ f: count ? 'SUBTOTAL(9,' + col + '2:' + col + last + ')' : '0', v: cached, s: XS.moneyTot });
+  }
+  rows.push(tot);
+  return { name: 'Facturas', rows: rows, widths: [12].concat(multiUnit ? [22] : [], [22, 10, 18, 11, 16, 16, 16]),
+    freeze: { rows: 1, cols: 1 }, filter: 'A1:' + xlsxCol(head.length - 1) + last, heights: { 1: 30 } };
+}
+
+/** Cuánto suma cada pasajero: el valor de cada viaje en partes iguales entre sus pasajeros (la regla del top 10, #A78). */
+function rpTravelersSheet(cc, travelerNames) {
+  var by = {};
+  cc.forEach(function(t) {
+    var ids = (t.r.travelers && t.r.travelers.length) ? t.r.travelers : null;
+    var list = ids ? ids.map(function(id) { return { id: id, name: (travelerNames || {})[id] || 'Pasajero sin nombre' }; })
+      : (t.d.passengers || []).map(function(nm) { return { id: 'n:' + nm, name: nm }; });
+    if (!list.length) list = [{ id: 'sin', name: 'Sin pasajero registrado' }];
+    var share = (t.d.counted || 0) / list.length;
+    list.forEach(function(p) {
+      var e = by[p.id] = by[p.id] || { name: p.name, trips: 0, value: 0, ids: [] };
+      e.trips++; e.value += share; e.ids.push(t.r.requestId);
+    });
+  });
+  var list = Object.keys(by).map(function(k) { return by[k]; })
+    .sort(function(a, b) { return b.value - a.value || b.trips - a.trips || a.name.localeCompare(b.name, 'es'); });
+  var rows = [['Pasajero', 'Viajes', 'Su parte del valor que suma', 'Solicitudes'].map(function(h) { return { v: h, s: XS.head }; })];
+  list.forEach(function(e) { rows.push([e.name, { v: e.trips, s: XS.int }, { v: Math.round(e.value), s: XS.money }, e.ids.join(', ')]); });
+  var last = rows.length, cached = 0;
+  list.forEach(function(e) { cached += Math.round(e.value); });
+  rows.push([{ v: 'Total (' + list.length + (list.length === 1 ? ' pasajero' : ' pasajeros') + ')', s: XS.totLabel }, { v: '', s: XS.totLabel },
+    { f: list.length ? 'SUBTOTAL(9,C2:C' + last + ')' : '0', v: cached, s: XS.moneyTot }, { v: '', s: XS.totLabel }]);
+  rows.push([]);
+  rows.push([{ v: 'El valor de cada viaje se reparte en partes iguales entre sus pasajeros, igual que en el top de viajeros del dashboard. Por eso el total puede diferir en unos pesos del de la hoja «' + RP_SHEET_CC + '» (redondeo).', s: XS.note }]);
+  return { name: 'Por pasajero', rows: rows, widths: [34, 9, 18, 60], freeze: { rows: 1, cols: 0 }, filter: 'A1:D' + last,
+    merges: ['A' + (last + 2) + ':D' + (last + 2)], heights: (function() { var h = {}; h[last + 2] = 40; return h; })() };
+}
+
+/** Hoja «Resumen»: totales, lo que escribe la unidad (fórmulas sobre la hoja de viajes), por mes, por unidad y cómo se lee. */
+function rpSummarySheet(data, ctx, trips, ccInfo) {
+  var rows = [], merges = [], heights = {};
+  var add = function(r) { rows.push(r || []); return rows.length; };
+  var cc = trips.cc, ot = trips.ot;
+  var sumOf = function(list, f) { var s = 0; list.forEach(function(t) { if (!f || f(t)) s += t.d.counted || 0; }); return s; };
+  var countOf = function(list, f) { return list.filter(function(t) { return !f || f(t); }).length; };
+  var fact = function(t) { return t.d.source === 'FACTURADO'; };
+  var paid = function(t) { return t.d.source === 'PAGADO'; };
+  var quoted = function(t) { return t.d.source === 'COTIZADO'; };
+  var zero = function(t) { return t.d.source === 'SIN_VALOR'; };
+  var budgeted = (data.rows || []).filter(function(b) { return b.hasBudget && b.budgetInRange > 0; });
+  var budget = 0, spentBudgeted = 0;
+  budgeted.forEach(function(b) { budget += b.budgetInRange; spentBudgeted += b.totalExecutedInRange; });
+  var total = sumOf(cc);
+
+  var r = add([{ v: 'Viajes que suman al presupuesto · ' + ctx.unitLabel, s: XS.title }]);
+  merges.push('A' + r + ':F' + r); heights[r] = 22;
+  add([{ v: 'Compras de ' + ctx.rangeText + ' · Empresa: ' + ctx.companyLabel + ' · Generado el ' + ctx.generatedText + ' por ' + ctx.generatedBy, s: XS.noteLine }]);
+  add([{ v: 'Es una foto de ese momento: para cifras al día, genérelo de nuevo desde el dashboard de costos.', s: XS.noteLine }]);
+  add();
+  add([{ v: 'Concepto', s: XS.head }, { v: 'Valor', s: XS.head }, { v: 'Viajes', s: XS.head }, { v: 'Qué es', s: XS.head }]);
+  var line = function(label, value, n, note, strong) {
+    return add([{ v: label, s: strong ? XS.totLabel : 0 }, { v: value, s: strong ? XS.moneyTot : XS.money },
+      n === '' ? (strong ? { v: '', s: XS.totLabel } : '') : { v: n, s: strong ? XS.intTot : XS.int }, { v: note, s: XS.noteLine }]);
+  };
+  line('Facturado', sumOf(cc, fact), countOf(cc, fact), 'Con sus facturas cargadas en la plataforma.');
+  line('Pendiente de factura: valor pagado al comprar', sumOf(cc, paid), countOf(cc, paid), 'Ya se compró; mientras llega la factura se usa lo que se pagó al comprar.');
+  line('Pendiente de factura: valor cotizado', sumOf(cc, quoted), countOf(cc, quoted), 'Ya se compró; mientras llega la factura se usa lo cotizado.');
+  if (countOf(cc, zero)) line('Sin factura ni valor', 0, countOf(cc, zero), 'Cerrados o reservados sin factura ni valor: no suman. Conviene revisar si falta cargar la factura.');
+  line('Total que suma al presupuesto', total, cc.length, 'La misma cifra del dashboard de costos para estos filtros.', true);
+  if (ctx.multiUnit) {
+    if (budgeted.length) {
+      line('Presupuesto (unidades con presupuesto)', budget, '', 'Presupuesto de estos meses de las unidades que tienen uno cargado.');
+      r = add([{ v: '% del presupuesto usado', s: XS.bold }, { v: budget > 0 ? spentBudgeted / budget : 0, s: XS.pct }, '',
+        { v: 'Gasto de las unidades con presupuesto ÷ su presupuesto. Las unidades sin presupuesto no entran en el %.', s: XS.noteLine }]);
+    }
+  } else if (budgeted.length) {
+    line('Presupuesto de la unidad', budget, '', 'Presupuesto de estos meses en la hoja PPTOS UNIDADES.');
+    add([{ v: '% del presupuesto usado', s: XS.bold }, { v: budget > 0 ? total / budget : 0, s: XS.pct }, '',
+      { v: total > budget ? 'Se pasó en ' + fmtMoney(total - budget) + '.' : 'Queda disponible ' + fmtMoney(budget - total) + '.', s: XS.noteLine }]);
+  } else {
+    add([{ v: 'Presupuesto de la unidad', s: XS.bold }, 'Sin presupuesto cargado para estos meses', '', '']);
+  }
+  line('Cargado a una OT (no suma)', sumOf(ot), ot.length, 'Viajes con número de OT: se pagan con la OT. Están en la hoja «' + RP_SHEET_OT + '».');
+
+  add();
+  r = add([{ v: 'Lo que escribe la unidad (columnas amarillas de la hoja «' + RP_SHEET_CC + '»)', s: XS.section }]);
+  merges.push('A' + r + ':F' + r);
+  add([{ v: 'Concepto', s: XS.head }, { v: 'Valor', s: XS.head }, { v: 'Viajes', s: XS.head }, { v: 'Qué es', s: XS.head }]);
+  var ref = function(key) { return xlsxSheetRef(RP_SHEET_CC) + '!' + ccInfo.col[key] + '2:' + ccInfo.col[key] + ccInfo.last; };
+  var hasRows = cc.length > 0;
+  add(['Viajes que la unidad asigna a una OT',
+    { f: hasRows ? 'SUMIF(' + ref('ot') + ',"<>",' + ref('counted') + ')' : '0', v: 0, s: XS.money },
+    { f: hasRows ? 'COUNTIF(' + ref('ot') + ',"<>")' : '0', v: 0, s: XS.int },
+    { v: 'Valor de los viajes en los que la unidad escribió una OT.', s: XS.noteLine }]);
+  add(['Pagado por la fábrica', { f: hasRows ? 'SUM(' + ref('factory') + ')' : '0', v: 0, s: XS.money },
+    { f: hasRows ? 'COUNT(' + ref('factory') + ')' : '0', v: 0, s: XS.int }, { v: 'Lo que la unidad dice que pagó la fábrica.', s: XS.noteLine }]);
+  add(['Reconocido con descuento o nota crédito', { f: hasRows ? 'SUM(' + ref('credit') + ')' : '0', v: 0, s: XS.money },
+    { f: hasRows ? 'COUNT(' + ref('credit') + ')' : '0', v: 0, s: XS.int }, { v: 'Lo que la unidad dice que le reconocen después.', s: XS.noteLine }]);
+  add([{ v: 'Valor neto para la unidad', s: XS.totLabel }, { f: hasRows ? 'SUM(' + ref('net') + ')' : '0', v: total, s: XS.moneyTot }, { v: '', s: XS.totLabel },
+    { v: 'Lo que suma al presupuesto menos lo que pagó la fábrica y lo reconocido.', s: XS.noteLine }]);
+
+  add();
+  r = add([{ v: 'Por mes de compra', s: XS.section }]);
+  merges.push('A' + r + ':F' + r);
+  add(['Mes', 'Facturado', 'Pendiente de factura', 'Total que suma', 'Presupuesto', 'Cargado a OT (no suma)'].map(function(h) { return { v: h, s: XS.head }; }));
+  var first = rows.length + 1, tm = [0, 0, 0, 0, 0];
+  for (var m = ctx.fromMonth; m <= ctx.toMonth; m++) {
+    var fa = 0, pe = 0, bu = 0, o = 0;
+    (data.rows || []).forEach(function(b) {
+      fa += (b.monthlyExecutedReal || [])[m - 1] || 0;
+      pe += (b.monthlyExecutedEstimated || [])[m - 1] || 0;
+      if (b.hasBudget) bu += (b.monthlyBudget || [])[m - 1] || 0;
+      o += ((b.monthlyOtReal || [])[m - 1] || 0) + ((b.monthlyOtEstimated || [])[m - 1] || 0);
+    });
+    tm[0] += fa; tm[1] += pe; tm[2] += fa + pe; tm[3] += bu; tm[4] += o;
+    add([MONTHS_FULL[m - 1] + ' ' + ctx.year, { v: fa, s: XS.money }, { v: pe, s: XS.money }, { v: fa + pe, s: XS.money }, { v: bu, s: XS.money }, { v: o, s: XS.money }]);
+  }
+  var lastM = rows.length;
+  add([{ v: 'Total', s: XS.totLabel }].concat(['B', 'C', 'D', 'E', 'F'].map(function(c, i) {
+    return { f: 'SUM(' + c + first + ':' + c + lastM + ')', v: tm[i], s: XS.moneyTot };
+  })));
+
+  if (ctx.multiUnit) {
+    add();
+    r = add([{ v: 'Por unidad de negocio', s: XS.section }]);
+    merges.push('A' + r + ':F' + r);
+    add(['Unidad', 'Total que suma', 'Viajes', 'Presupuesto', '% usado', 'Cargado a OT (no suma)'].map(function(h) { return { v: h, s: XS.head }; }));
+    (data.rows || []).slice().sort(function(a, b) { return (b.totalExecutedInRange || 0) - (a.totalExecutedInRange || 0); }).forEach(function(b) {
+      var otv = 0;
+      (b.otRequests || []).forEach(function(x) { otv += x.executed || 0; });
+      add([b.unit, { v: b.totalExecutedInRange || 0, s: XS.money }, { v: b.requestCount || 0, s: XS.int },
+        b.hasBudget ? { v: b.budgetInRange || 0, s: XS.money } : 'Sin presupuesto',
+        b.hasBudget && b.budgetInRange > 0 ? { v: (b.totalExecutedInRange || 0) / b.budgetInRange, s: XS.pct } : '',
+        { v: otv, s: XS.money }]);
+    });
+  }
+
+  add();
+  r = add([{ v: 'Cómo leer este reporte', s: XS.section }]);
+  merges.push('A' + r + ':F' + r);
+  [
+    'Cada viaje cuenta en el mes en que se compró el tiquete (o el hotel), igual que en el dashboard de costos. Solo entran los viajes ya comprados (reservados o cerrados).',
+    'El valor de cada viaje es la suma de sus facturas (hasta 6). Si aún no tiene factura, se usa lo pagado al comprar o, si no se registró, lo cotizado, y va marcado como «Pendiente de factura».',
+    'Los viajes con un número de orden de trabajo (OT) no suman al presupuesto: se pagan con la OT y están en la hoja «' + RP_SHEET_OT + '».',
+    'Un cambio de un tiquete ya comprado suma solo lo que costó el cambio (penalidad y diferencia de tarifa); el viaje original sigue contando.',
+    'Para la unidad: en la hoja «' + RP_SHEET_CC + '», llene las columnas amarillas de cada viaje: a qué OT corresponde (si aplica), cuánto pagó la fábrica, cuánto le reconocen con descuento o nota crédito y la justificación. El valor neto y este resumen se calculan solos.',
+    'La hoja «Facturas» trae cada factura por separado: en la factura 1, lo pagado a la aerolínea o el hotel y el cargo de la agencia con su IVA; en las demás, el valor y el IVA. Si solo se registró el total, esas dos columnas quedan vacías.',
+    'Sin cédulas, fechas de nacimiento ni celulares: los pasajeros van por nombre.'
+  ].forEach(function(t) {
+    var n = add([{ v: '• ' + t, s: XS.wrap }]);
+    merges.push('A' + n + ':F' + n); heights[n] = 14 * Math.max(1, Math.ceil(t.length / 120)) + 3; // Excel no ajusta el alto de una celda combinada
+  });
+  return { name: 'Resumen', rows: rows, widths: [44, 16, 16, 16, 16, 22], merges: merges, heights: heights, selected: true, fitWidth: true };
+}
+
+/** Arma el libro completo a partir de la respuesta de getCostsUnitReport. Devuelve { bytes, fileName, counts }. */
+function rpBuildWorkbook(data, ctx) {
+  var rep = (data.meta && data.meta.report) || {};
+  var trips = rpTrips(data);
+  var multiUnit = !!ctx.multiUnit;
+  var showQuoted = rep.showQuoted === true;
+  var ccS = rpTripsSheet(RP_SHEET_CC, trips.cc, rpColumns(showQuoted, 'cc', multiUnit));
+  var otS = rpTripsSheet(RP_SHEET_OT, trips.ot, rpColumns(showQuoted, 'ot', multiUnit));
+  var sheets = [
+    rpSummarySheet(data, ctx, trips, ccS),
+    ccS.sheet,
+    rpInvoicesSheet(trips.cc, trips.ot, multiUnit),
+    rpTravelersSheet(trips.cc, data.meta && data.meta.travelerNames),
+    otS.sheet
+  ];
+  var safe = function(s) { return String(s).replace(/[\\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim(); };
+  return {
+    bytes: xlsxWorkbook(sheets),
+    fileName: safe('Viajes que suman - ' + ctx.unitLabel + ' - ' + ctx.rangeShort) + '.xlsx',
+    counts: { cc: trips.cc.length, ot: trips.ot.length },
+    sheets: sheets
+  };
+}
+
+/** Llena los selectores de la tarjeta: las unidades que ve esta persona y los meses del año elegido. */
+function rpPopulateControls(evt) {
+  var uSel = document.getElementById('rp_unit'), fSel = document.getElementById('rp_from'), tSel = document.getElementById('rp_to');
+  if (!uSel || !fSel || !tSel) return;
+  var year = parseInt(document.getElementById('f_year').value, 10) || new Date().getFullYear();
+  var units = ((fullYearData && fullYearData.meta && fullYearData.meta.units) || []).map(function(u) { return u.label; })
+    .sort(function(a, b) { return a.localeCompare(b, 'es'); });
+  var fromFilter = !uSel.options.length || (evt && evt.target && evt.target.id === 'f_unit');
+  var want = fromFilter ? document.getElementById('f_unit').value : uSel.value;
+  var limited = fullYearData && fullYearData.meta && fullYearData.meta.access && fullYearData.meta.access.scope === 'UNITS';
+  uSel.innerHTML = '';
+  var all = document.createElement('option');
+  all.value = ''; all.textContent = limited ? 'Todas mis unidades' : 'Todas las unidades';
+  uSel.appendChild(all);
+  units.forEach(function(u) {
+    var o = document.createElement('option');
+    o.value = u; o.textContent = u;
+    uSel.appendChild(o);
+  });
+  uSel.value = units.indexOf(want) !== -1 ? want : '';
+  var sm = Math.min(12, Math.max(1, dashStartMonth(year)));
+  var em = dashElapsedMonth(year) || 12;
+  var keepF = fSel.dataset && fSel.dataset.year === String(year) ? fSel.value : '';
+  var keepT = tSel.dataset && tSel.dataset.year === String(year) ? tSel.value : '';
+  [fSel, tSel].forEach(function(sel) {
+    sel.innerHTML = '';
+    for (var m = sm; m <= 12; m++) {
+      var o = document.createElement('option');
+      o.value = String(m); o.textContent = MONTHS_FULL[m - 1] + ' ' + year;
+      sel.appendChild(o);
+    }
+    if (sel.dataset) sel.dataset.year = String(year);
+  });
+  fSel.value = keepF || String(sm);
+  tSel.value = keepT || String(Math.max(sm, Math.min(12, em)));
+  var company = document.getElementById('f_company').value;
+  document.getElementById('rp_scope').textContent = 'Año ' + year + ' · Empresa: ' + (company || 'todas') +
+    ' (según los filtros de arriba) · Incluye lo pendiente de factura y lo cargado a OT aparte.';
+}
+
+/** Pide los datos y descarga el Excel. */
+function downloadUnitReport() {
+  if (!session) { showLogin(); return; }
+  var btn = document.getElementById('btnUnitReport');
+  var year = parseInt(document.getElementById('f_year').value, 10);
+  var unit = document.getElementById('rp_unit').value;
+  var from = parseInt(document.getElementById('rp_from').value, 10), to = parseInt(document.getElementById('rp_to').value, 10);
+  var company = document.getElementById('f_company').value;
+  if (!year || !from || !to) { showStatus('unitReportStatus', 'Elija la unidad y los meses.', 'error'); return; }
+  if (from > to) { showStatus('unitReportStatus', 'El mes «desde» va antes del mes «hasta».', 'error'); return; }
+  var limited = fullYearData && fullYearData.meta && fullYearData.meta.access && fullYearData.meta.access.scope === 'UNITS';
+  var ctx = {
+    year: year, fromMonth: from, toMonth: to,
+    unitLabel: unit || (limited ? 'Mis unidades' : 'Todas las unidades'),
+    multiUnit: !unit,
+    companyLabel: company || 'todas',
+    rangeText: from === to ? MONTHS_FULL[from - 1].toLowerCase() + ' de ' + year
+      : MONTHS_FULL[from - 1].toLowerCase() + ' a ' + MONTHS_FULL[to - 1].toLowerCase() + ' de ' + year,
+    rangeShort: from === to ? MONTHS[from - 1].toLowerCase() + ' ' + year : MONTHS[from - 1].toLowerCase() + ' a ' + MONTHS[to - 1].toLowerCase() + ' ' + year
+  };
+  btn.disabled = true;
+  showStatus('unitReportStatus', 'Armando el reporte de ' + ctx.unitLabel + '… (puede tardar unos segundos)', 'info');
+  google.script.run
+    .withSuccessHandler(function(res) {
+      btn.disabled = false;
+      if (!res || !res.success) {
+        var msg = (res && res.error) || 'No se pudo armar el reporte.';
+        showStatus('unitReportStatus', msg, 'error');
+        if (res && res.code === 'SESSION_EXPIRED') { clearSession(); showLogin(); }
+        return;
+      }
+      try {
+        var data = res.data, rep = (data.meta && data.meta.report) || {};
+        ctx.generatedBy = rep.generatedBy || session.email;
+        ctx.generatedText = rpDateText(String(rep.generatedAt || '').substring(0, 10)) + ' ' + String(rep.generatedAt || '').substring(11, 16);
+        var out = rpBuildWorkbook(data, ctx);
+        var blob = new Blob([out.bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = out.fileName;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function() { URL.revokeObjectURL(url); a.remove(); }, 400);
+        showStatus('unitReportStatus', 'Listo: ' + out.fileName + ' (' + ptPlural(out.counts.cc, 'viaje que suma', 'viajes que suman') +
+          (out.counts.ot ? ' y ' + ptPlural(out.counts.ot, 'cargado a OT', 'cargados a OT') : '') + ').', 'success');
+      } catch (e) {
+        showStatus('unitReportStatus', 'No se pudo armar el archivo: ' + (e && e.message ? e.message : e), 'error');
+      }
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      showStatus('unitReportStatus', (err && err.message) || 'Error de conexión.', 'error');
+    })
+    .costsDashboard_getUnitReport({
+      filters: { year: year, fromMonth: from, toMonth: to, businessUnits: unit ? [unit] : [], companies: company ? [company] : [] },
+      userEmail: session.email,
+      sessionToken: session.token
+    });
+}
+
+// =====================================================================
 // EXPORT PDF — invoca window.print(). Antes, fuerza al chart a re-render
 // como imagen base64 para que se imprima nítido (Canvas no siempre se
 // imprime bien en algunos navegadores).
@@ -5807,6 +6527,8 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   document.getElementById('btnLogout').addEventListener('click', handleLogout);
   document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
+  document.getElementById('btnUnitReport').addEventListener('click', downloadUnitReport); // #A132
+  ['f_year', 'f_company', 'f_unit'].forEach(function(id) { document.getElementById(id).addEventListener('change', rpPopulateControls); });
   document.getElementById('btnExportPDF').addEventListener('click', exportPDF);
   document.getElementById('btnConfig').addEventListener('click', openConfig);
   document.getElementById('btnRefresh').addEventListener('click', function() { loadDashboard(true); });

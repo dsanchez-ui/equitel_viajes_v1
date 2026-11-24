@@ -31,7 +31,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + desglose del presupuesto con OT + enlaces con dominio + manuales publicados + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + desglose del presupuesto con OT + reporte en Excel de una unidad + enlaces con dominio + manuales publicados + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
    Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
    (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -62,7 +62,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + desglose con OT + manuales + build + un solo .js y version.json  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + desglose con OT + reporte de unidad + manuales + build + un solo .js y version.json  ← antes de cualquier push
 npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
@@ -384,6 +384,16 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     los datos (`renderBudgetMeter`). La anual tiene además «Cada unidad frente a su presupuesto» (`renderUnitMeters`).
   - **Colores:** azul para el gasto (`--spend-fact` #1d4ed8 facturado, `--spend-est` #5b9cf5 sin factura, validados con el script de
     dataviz), negro para el presupuesto, rojo **solo** para lo que se pasó, siempre con ícono y texto.
+- **Reporte en Excel de una unidad** (#A132; Yurani y David, 24-nov: que POTENCIA, o cualquier unidad, diga qué pagó la fábrica, qué le
+  reconocen con descuento o nota crédito y qué va a una OT). Tarjeta «📊 Reporte en Excel de una unidad» en las pestañas Año, Periodo y Mes
+  del dashboard de costos: unidad y meses de compra; año y empresa de los filtros. `getCostsUnitReport` usa **las mismas cuentas del
+  dashboard** (`_csBuildData_` con `{ detail: true }`, que lo decide el servidor) y el navegador arma un `.xlsx` de verdad **sin librerías**
+  (ZIP sin comprimir, `xlsxWorkbook`): Resumen, Viajes que suman (con las columnas amarillas para la unidad y el valor neto con fórmula),
+  Facturas, Por pasajero y Cargados a OT. Lo pendiente de factura sale siempre, marcado. Mismo acceso que el dashboard; **lo cotizado y lo
+  pagado al comprar solo para quien ve la variación** (#A78); nunca cédulas, fechas de nacimiento, celulares ni tarjetas. Se regenera cuando
+  se quiera: no guarda nada.
+  - **El dashboard suma las facturas 1 a 6** (#A132; antes solo de la 1 a la 3: la cuarta de 5 viajes, $3,05 M, no contaba).
+    `_csLoadConfig_` le agrega a una configuración guardada las que le falten (`_csWithAllInvoices_`).
 - **Dashboard de costos por pestañas** (#A117, David, 28-oct: *«está demasiado largo»*): Año · Periodo · Mes · Mes a mes · Cotizado vs
   facturado · Cambios de viaje · Comparador de precios · Proyección de ahorro, al final de la tarjeta de filtros. Se ve una sección a la
   vez. **Los datos se siguen pidiendo todos en paralelo** (#A89): lo que ahorra es el dibujo, porque solo se dibuja la pestaña que se ve
@@ -759,6 +769,7 @@ tools/check-trip-change.cjs          Cambios de viaje: plazo igual en los dos la
 tools/check-approvals.cjs            Avisos a los aprobadores (caso SOL-000695), recordatorios, «Mis aprobaciones» (#A118, #A119), la línea de tiempo (#A121) y Métricas → Aprobaciones (#A125)
 tools/check-cost-evidence.cjs        Soporte del costo: subir, confirmar, correo, «Mis aprobaciones» y las validaciones del servidor (#A128)
 tools/check-costs-ot.cjs             Desglose del presupuesto: lo cargado a OT aparte, la barra del 100 % y cada unidad frente a su presupuesto (#A131)
+tools/check-unit-report.cjs          Reporte en Excel de una unidad: facturas 4 a 6, mismas cuentas del dashboard, permisos y el .xlsx armado (#A132)
 tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.gs real sobre una copia de la base; correos a una bandeja local (#A103)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
@@ -817,9 +828,12 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-23)
+### Para retomar (estado al 2026-11-24)
 
-- **Retomar en el Mac (23-nov):** todo está en `main` y desplegado hasta #A131, y no queda nada por pegar en Apps Script. En el Mac:
+- **#A132 en `main`, falta pegarlo (24-nov)** (reporte en Excel de una unidad desde el dashboard de costos, pedido de Yurani para POTENCIA; el
+  dashboard suma las facturas 4 a 6): pegar `Code.gs` y `CostsDashboard.html` juntos y publicar la versión nueva del web app. Las cifras
+  suben un poco (POTENCIA de 130,1 % a 131,2 %; el año de 85,6 % a 86,1 %).
+- **Retomar en el Mac (23-nov):** todo está en `main` y desplegado hasta #A131. En el Mac:
   `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la exportación de la hoja.
 - **#A131 desplegado (23-nov)** (dashboard de costos: de qué está hecho el %, lo de OT aparte y una barra en vez de la torta; pedido de
   Yurani): David pegó `Code.gs` y `CostsDashboard.html` y publicó la versión nueva del web app. Yurani lo revisó y se queda con esta vista

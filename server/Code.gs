@@ -828,6 +828,7 @@ function dispatch(action, payload) {
       // puede modificar config — el check superadmin ya pasó arriba en
       // superAdminOnlyActions para los set/reset).
       case 'getCostsDashboard': result = getCostsDashboard(payload.filters, currentUserEmail, payload.fresh === true); break;
+      case 'getCostsUnitReport': result = getCostsUnitReport(payload.filters, currentUserEmail); break; // #A132
       case 'getCostsDashboardConfig': result = getCostsDashboardConfig(currentUserEmail); break;
       case 'setCostsDashboardConfig': result = setCostsDashboardConfig(payload.config, currentUserEmail); break;
       case 'resetCostsDashboardConfig': result = resetCostsDashboardConfig(currentUserEmail); break;
@@ -16936,7 +16937,7 @@ function _csDefaultConfig_() {
           ivaHeader: 'IVA FACTURA 3'
         }
       }
-    ],
+    ].concat(_csExtraInvoices_()),
     estimateFallback: {
       ticketsHeader: 'COSTO_FINAL_TIQUETES',
       hotelHeader: 'COSTO_FINAL_HOTEL'
@@ -16968,6 +16969,36 @@ function _csDefaultConfig_() {
     // Bucket del mes M: floor((M-1) / periodMonths). Solo valores que dividen 12.
     budgetPeriodMonths: 2
   };
+}
+
+/**
+ * Facturas 4 a 6 (#A132): la hoja tiene columnas para seis facturas y la configuración solo sumaba tres. En noviembre
+ * de 2026 cinco viajes ya tenían una cuarta factura (~$3 M) que no entraba en el dashboard ni en el reporte.
+ */
+function _csExtraInvoices_() {
+  var out = [];
+  for (var n = 4; n <= 6; n++) {
+    out.push({
+      name: 'Factura ' + n,
+      totalHeader: 'TOTAL FACTURA ' + n,
+      fallback: { type: 'valuePlusIva', valueHeader: 'VALOR FACTURA ' + n, ivaHeader: 'IVA FACTURA ' + n }
+    });
+  }
+  return out;
+}
+
+/**
+ * Una configuración guardada antes de #A132 tiene solo tres facturas: se le agregan las que falten de la configuración
+ * por defecto (por su columna de total), al final y sin cambiar las que ya tiene. Devuelve una copia.
+ */
+function _csWithAllInvoices_(cfg) {
+  var have = {};
+  (cfg.facturas || []).forEach(function(f) { if (f && f.totalHeader) have[String(f.totalHeader).trim().toUpperCase()] = true; });
+  var missing = _csDefaultConfig_().facturas.filter(function(f) { return !have[f.totalHeader.toUpperCase()]; });
+  if (!missing.length) return cfg;
+  var copy = JSON.parse(JSON.stringify(cfg));
+  copy.facturas = copy.facturas.concat(missing);
+  return copy;
 }
 
 /**
@@ -17028,7 +17059,7 @@ function _csLoadConfig_() {
       console.warn('CostsDashboard: config en Script Property tiene forma inválida, usando default.');
       return (_CS_CONFIG_CACHE = _csDefaultConfig_());
     }
-    return (_CS_CONFIG_CACHE = parsed);
+    return (_CS_CONFIG_CACHE = _csWithAllInvoices_(parsed)); // #A132: también las facturas 4 a 6
   } catch (e) {
     console.error('CostsDashboard: error parseando config, usando default. ' + e);
     return (_CS_CONFIG_CACHE = _csDefaultConfig_());
@@ -17489,9 +17520,11 @@ function _csRowTravelers_(row, headerMap, state) {
  * @param {string[]|null} allowedUnits unidades NORMALIZADAS visibles para un líder
  *   (#A76); null = todas. Las demás se descartan antes de cualquier suma o conteo.
  */
-function _csBuildData_(filters, allowedUnits) {
+function _csBuildData_(filters, allowedUnits, opts) {
   filters = filters || {};
   var config = _csLoadConfig_();
+  // #A132: el reporte en Excel pide el detalle de cada viaje. Lo decide el servidor (opts), nunca un filtro del navegador.
+  var report = opts && opts.detail ? { names: _policyUserNames_(), showQuoted: opts.showQuoted === true } : null;
   var configHash = _csComputeConfigHash_(config);
   var now = new Date();
   var currentYear = parseInt(Utilities.formatDate(now, 'America/Bogota', 'yyyy'), 10);
@@ -17699,6 +17732,7 @@ function _csBuildData_(filters, allowedUnits) {
         isEstimated: perRow.isEstimated,
         status: perRow.status
       });
+      if (report) bucket.otRequests[bucket.otRequests.length - 1].detail = _csReportDetail_(row, headerMap, config, report);
       continue;
     }
     if (perRow.isEstimated) {
@@ -17723,6 +17757,7 @@ function _csBuildData_(filters, allowedUnits) {
       // Después de todos los filtros: solo se nombran pasajeros de filas visibles.
       travelers: _csRowTravelers_(row, headerMap, travelers)
     });
+    if (report) bucket.requests[bucket.requests.length - 1].detail = _csReportDetail_(row, headerMap, config, report);
     requestsCounted++;
   }
 
@@ -17806,6 +17841,183 @@ function _csEmptyResult_(year, fromMonth, toMonth, config) {
     totals: { executedReal: 0, executedEstimated: 0, executedTotal: 0, budget: 0, delta: 0, percentUsed: null, byMonth: months },
     meta: { year: year, fromMonth: fromMonth, toMonth: toMonth, companies: [], units: [], requestsCounted: 0, computedAt: new Date().toISOString() }
   };
+}
+
+// ---------- REPORTE EN EXCEL POR UNIDAD (#A132) ----------
+// Pedido de Yurani (24-nov): llevarle a cada unidad (la primera, POTENCIA) el detalle de los viajes que suman a su
+// presupuesto para que diga qué pagó la fábrica, qué le reconocen con descuentos o notas crédito y qué va a una OT.
+// El navegador arma el .xlsx con lo que devuelve getCostsUnitReport: las mismas cuentas de _csBuildData_ (las del
+// dashboard), con el detalle de cada viaje. Sin cédulas, fechas de nacimiento, celulares ni tarjetas.
+
+var CS_REPORT_TEXT_MAX = 500;
+
+/** Texto de una celda, recortado. */
+function _csReportText_(v, max) {
+  var s = String(v === null || v === undefined ? '' : v).replace(/\r/g, '').trim();
+  max = max || CS_REPORT_TEXT_MAX;
+  return s.length > max ? s.substring(0, max - 1) + '…' : s;
+}
+
+/** Fecha 'AAAA-MM-DD' de una celda, o el texto tal cual si no es una fecha (p. ej. una fecha mal escrita). */
+function _csReportDate_(v) {
+  var k = _psDateKey_(v);
+  if (k && /^\d{4}-\d{2}-\d{2}$/.test(k)) return k;
+  return (v instanceof Date) ? '' : _csReportText_(v, 40);
+}
+
+/** Número de una factura: los que la hoja guarda como número salen sin decimales. */
+function _csReportInvoiceNumber_(v) {
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'number') return isFinite(v) ? String(Math.round(v)) : '';
+  return _csReportText_(v, 60);
+}
+
+/** Lo que escribió el solicitante en OBSERVACIONES, sin las notas que agrega el sistema ([SISTEMA], [RESERVA]…). */
+function _csReportReason_(raw) {
+  var lines = String(raw || '').split(USER_CONSULT_MARKER).join('').split(/\r?\n/);
+  var keep = lines.filter(function(l) { return !/^\s*\[[^\]]*\]/.test(l); });
+  return _csReportText_(keep.join('\n').replace(/\n{3,}/g, '\n\n'));
+}
+
+/**
+ * Columnas de número, fecha, valor e IVA de una factura de la configuración. La 1 tiene las suyas: el valor pagado a
+ * la aerolínea o el hotel y el cargo de Aviatur con su IVA. De la 2 a la 6, VALOR/IVA/FACTURA/FECHA FACTURA n.
+ */
+function _csReportInvoiceColumns_(f) {
+  var total = String(f.totalHeader || '').trim().toUpperCase();
+  if (total === 'TOTAL FACTURA') {
+    return { n: 1, number: '# DE FACTURA', date: 'FECHA DE FACTURA', value: 'VALOR PAGADO A AEROLINEA Y/O HOTEL', tax: 'VALOR PAGADO A AVIATUR Y/O IVA' };
+  }
+  var m = /^TOTAL FACTURA (\d+)$/.exec(total);
+  if (!m) return { n: 0, number: '', date: '', value: f.fallback && f.fallback.valueHeader, tax: f.fallback && f.fallback.ivaHeader };
+  return { n: +m[1], number: 'FACTURA ' + m[1], date: 'FECHA FACTURA ' + m[1], value: 'VALOR FACTURA ' + m[1], tax: 'IVA FACTURA ' + m[1] };
+}
+
+/**
+ * Detalle de un viaje para el reporte. El valor que suma es el mismo del dashboard (_csComputeRowExecuted_): lo
+ * facturado; sin factura y RESERVADO, lo pagado al comprar o lo cotizado; cerrado sin factura, $0.
+ * ctx.showQuoted: lo cotizado y lo pagado junto a lo facturado es la variación (#A78): solo para quien la puede ver.
+ */
+function _csReportDetail_(row, headerMap, config, ctx) {
+  var cell = function(h) { return _csReadCell_(row, headerMap, h); };
+  var exec = _csComputeRowExecuted_(row, headerMap, config);
+  var invoices = [];
+  (config.facturas || []).forEach(function(f) {
+    var total = Number(exec.breakdown[f.name || f.totalHeader]) || 0;
+    var cols = _csReportInvoiceColumns_(f);
+    var number = _csReportInvoiceNumber_(cell(cols.number));
+    if (total <= 0 && !number) return;
+    var value = _csToNumber_(cell(cols.value)), tax = _csToNumber_(cell(cols.tax));
+    invoices.push({
+      n: cols.n || invoices.length + 1,
+      number: number,
+      date: _csReportDate_(cell(cols.date)),
+      // Si el total de la factura no es valor + IVA (p. ej. solo se escribió el total), se deja solo el total.
+      value: (value > 0 && Math.abs(value + tax - total) < 1) ? value : null,
+      tax: (value > 0 && Math.abs(value + tax - total) < 1) ? tax : null,
+      total: total
+    });
+  });
+  var status = String(cell(config.statusHeader) || '').trim().toUpperCase();
+  var source = exec.real > 0 ? 'FACTURADO'
+    : exec.isEstimated ? (exec.breakdown._estimadoConPagado ? 'PAGADO' : 'COTIZADO')
+    : 'SIN_VALOR';
+  var passengers = [];
+  for (var i = 1; i <= 5; i++) {
+    var name = String(cell('NOMBRE PERSONA ' + i) || '').replace(/\s+/g, ' ').trim();
+    if (name) passengers.push(name);
+  }
+  var requester = String(cell(config.requesterHeader) || '').toLowerCase().trim();
+  var change = _parseTripChangeInfo_(cell(TRIP_CHANGE_HEADER));
+  var kindRaw = String(cell('TIPO DE SOLICITUD') || '').trim().toUpperCase();
+  var depart = _psDateKey_(cell('FECHA IDA')), purchase = _psDateKey_(cell(config.purchaseDateHeader));
+  var fare = String(cell(FARE_TYPE_HEADER) || '').trim();
+  var fareName = String(cell(FARE_NAME_HEADER) || '').trim();
+  var out = {
+    requestDate: _csReportDate_(cell('FECHA SOLICITUD')),
+    purchaseDate: _csReportDate_(cell(config.purchaseDateHeader)),
+    departDate: _csReportDate_(cell('FECHA IDA')),
+    returnDate: _csReportDate_(cell('FECHA VUELTA')),
+    kind: change && change.comprado ? 'CAMBIO_COMPRADO' : (kindRaw === 'MODIFICACION' ? 'CAMBIO' : 'ORIGINAL'),
+    parentId: _csReportText_(cell('ID SOLICITUD PADRE'), 30),
+    replacedBy: _csReportText_(cell(REPLACED_BY_HEADER), 30),
+    onlyHotel: String(cell('MODO_SOLICITUD') || '').trim() === 'SOLO_HOSPEDAJE',
+    international: String(cell('ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI',
+    origin: _csReportText_(cell('CIUDAD ORIGEN'), 120),
+    destination: _csReportText_(cell('CIUDAD DESTINO'), 120),
+    pax: Math.round(_csToNumber_(cell('# PERSONAS QUE VIAJAN'))) || passengers.length || 1,
+    passengers: passengers,
+    requesterName: ctx.names[requester] || '',
+    requesterEmail: requester,
+    company: _csReportText_(cell(config.companyHeader), 80),
+    costCenter: _csReportText_(cell('CENTRO DE COSTOS'), 40),
+    costCenterName: _csReportText_(cell('NOMBRE CENTRO DE COSTOS (AUTOMÁTICO)'), 120),
+    costCenters: _csReportText_(cell('VARIOS CENTROS COSTOS'), 300),
+    sede: _csReportText_(cell('SEDE'), 60),
+    reason: _csReportReason_(cell('OBSERVACIONES')),
+    changeText: _csReportText_(cell('TEXTO_CAMBIO')),
+    leadJustification: _csReportText_(cell('JUSTIFICACION ANTICIPACION')),
+    policyViolation: String(cell('VIOLACION POLITICA') || '').trim().toUpperCase() === 'SI',
+    leadDays: (depart && purchase) ? _psDayNumber_(depart) - _psDayNumber_(purchase) : null,
+    hotel: String(cell('REQUIERE HOSPEDAJE') || '').trim().toLowerCase().charAt(0) === 's' || String(cell('MODO_SOLICITUD') || '').trim() === 'SOLO_HOSPEDAJE',
+    hotelName: _csReportText_(cell(PURCHASE_HOTEL_HEADER) || cell('NOMBRE HOTEL'), 120),
+    nights: Math.round(_csToNumber_(cell('# NOCHES (AUTOMÁTICO)'))) || 0,
+    hotelChannel: _csReportText_(cell(PURCHASE_HOTEL_CHANNEL_HEADER), 40),
+    airline: _csReportText_(cell(PURCHASE_AIRLINE_HEADER), 60),
+    returnAirline: _csReportText_(cell(PURCHASE_RETURN_AIRLINE_HEADER), 60),
+    channel: _csReportText_(cell(PURCHASE_CHANNEL_HEADER), 40),
+    fare: fare && fareName ? fare + ' (' + fareName + ')' : (fare || fareName),
+    pnr: _csReportText_(cell('No RESERVA'), 60),
+    penalty: _csToNumber_(cell(CHANGE_PENALTY_HEADER)) || 0,
+    invoices: invoices,
+    invoiced: exec.real,
+    counted: exec.isEstimated ? exec.estimated : exec.real,
+    source: source
+  };
+  if (ctx.showQuoted) {
+    out.quotedTickets = _csToNumber_(cell(config.estimateFallback.ticketsHeader)) || 0;
+    out.quotedHotel = _csToNumber_(cell(config.estimateFallback.hotelHeader)) || 0;
+    var paidT = _paidCellValue_(cell(PAID_TICKETS_HEADER)), paidH = _paidCellValue_(cell(PAID_HOTEL_HEADER));
+    out.paidTickets = paidT === '' ? null : paidT;
+    out.paidHotel = paidH === '' ? null : paidH;
+  }
+  return out;
+}
+
+/**
+ * Endpoint del reporte en Excel (#A132). Mismo acceso que el dashboard: un líder solo recibe sus unidades (el filtro
+ * va dentro del cálculo, #A76). Sin caché: se pide al descargar y lleva el detalle de cada viaje.
+ * filters: year, fromMonth, toMonth, businessUnits, companies (los del dashboard).
+ */
+function getCostsUnitReport(filters, currentUserEmail) {
+  var access = _csResolveAccess_(currentUserEmail);
+  if (!access.canView) throw new Error(COSTS_ACCESS_DENIED_MSG);
+  filters = filters || {};
+  var clean = {
+    year: filters.year,
+    fromMonth: filters.fromMonth,
+    toMonth: filters.toMonth,
+    businessUnits: Array.isArray(filters.businessUnits) ? filters.businessUnits.slice(0, 50).map(String) : [],
+    companies: Array.isArray(filters.companies) ? filters.companies.slice(0, 20).map(String) : [],
+    includeEstimated: true,      // lo pendiente de factura sale siempre, marcado como pendiente
+    includeNoPresupuesto: true
+  };
+  var showQuoted = _canReadCostsVariance_(access.email);
+  var data = _csBuildData_(clean, access.allUnits ? null : access.units, { detail: true, showQuoted: showQuoted });
+  delete data.meta.cache;
+  // Los pasajeros siguen como ids opacos con su nombre en meta.travelerNames (#A78): la hoja «Por pasajero» agrupa por persona.
+  data.rows.forEach(function(b) {
+    (b.requests || []).forEach(function(r) { delete r.breakdown; });
+  });
+  var cfg = _csLoadConfig_();
+  data.meta.report = {
+    showQuoted: showQuoted,
+    generatedBy: _policyUserNames_()[access.email] || access.email,
+    generatedAt: Utilities.formatDate(new Date(), 'America/Bogota', 'yyyy-MM-dd HH:mm'),
+    invoiceCount: (cfg.facturas || []).length,
+    scope: access.allUnits ? 'ALL' : 'UNITS'
+  };
+  return data;
 }
 
 /**
@@ -18731,7 +18943,7 @@ function resetCostsDashboardConfig(currentUserEmail) {
 /**
  * Reporte de VARIACIÓN entre el costo cotizado (que ingresa el área de
  * viajes al confirmar costos en el modal) y el costo facturado real
- * (suma de TOTAL FACTURA, TOTAL FACTURA 2 y 3 vía `_csComputeRowExecuted_`).
+ * (suma de las facturas 1 a 6 vía `_csComputeRowExecuted_`; la 4 a la 6 desde #A132).
  *
  * Solo la ven las personas de COSTS_VARIANCE_ALLOWED (Yurani, Diego y David)
  * que además sean administradores (#A78). Se valida en dispatch y aquí otra
@@ -19948,6 +20160,10 @@ function diagnosticarCostosDashboard(year, opts) {
 
 function costsDashboard_getData(payload) {
   return dispatch('getCostsDashboard', payload || {});
+}
+/** Reporte en Excel de los viajes que suman al presupuesto (#A132). Payload: { filters, userEmail, sessionToken }. */
+function costsDashboard_getUnitReport(payload) {
+  return dispatch('getCostsUnitReport', payload || {});
 }
 function costsDashboard_getConfig(payload) {
   return dispatch('getCostsDashboardConfig', payload || {});

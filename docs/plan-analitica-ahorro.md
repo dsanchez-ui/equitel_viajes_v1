@@ -380,6 +380,12 @@ Aviatur.
 
 ## 11. Bitácora
 
+- **2026-11-24** — Pedido de Yurani (#A132): un reporte en Excel de una unidad (la primera, POTENCIA) para que diga qué pagó la
+  fábrica, qué le reconocen con descuento o nota crédito y qué corresponde a una OT. Tarjeta «📊 Reporte en Excel de una unidad»
+  en las pestañas Año, Periodo y Mes; mismas cuentas del dashboard con el detalle de cada viaje. De paso, el dashboard suma las
+  facturas 4 a 6 (antes solo de la 1 a la 3): con la base del 19-nov, 5 viajes y $3,05 M más (POTENCIA $1,77 M, ENERGIA PROYECTOS
+  $0,88 M, ADM INVENTARIOS $0,40 M). POTENCIA queda en 131,2 % ($50,6 M por encima).
+
 - **2026-11-23** — Pedido de Yurani (19-nov) y de David (#A131): de qué está hecho el % del presupuesto y cuánto se carga a OT.
   - La torta del % usado pasa a una barra con la línea del presupuesto (100 %), lo que se pasó rayado en rojo y cada parte con su %.
   - La torta por unidad pasa a «Cada unidad frente a su presupuesto».

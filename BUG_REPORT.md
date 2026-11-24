@@ -4055,3 +4055,73 @@ lleva la prueba y los documentos (la app no cambia: no sale el aviso de versión
 
 **Después (23-nov):** Yurani lo revisó y primero pidió volver a la vista anterior («más visual; acá toca leer la letra pequeña»), con un
 selector para elegir OT o centro de costo. Se empezó y no se publicó: al rato se arrepintió y se queda con esta vista.
+
+---
+
+## **#A132 — Reporte en Excel de una unidad desde el dashboard de costos, y el dashboard suma las facturas 4 a 6**
+**Fecha:** 2026-11-24 · **Pedido por:** Yurani (chat con David: *«se podría sacar un reporte en Excel para que ellos de ese valor nos
+pongan… qué pagó fábrica, o qué nos reconocen después vía descuentos o NC… solo para lo de POTENCIA»*) y David (*«directamente desde la
+plataforma… todas las solicitudes de viaje de una unidad de negocio que aportaron al presupuesto… quién viajó, destino, origen, fechas,
+costos… lo más segregados posible… facturados y los cotizados como pendientes… regenerable… para potencia como para cualquier otra
+unidad»*; la idea es que la unidad justifique sus vuelos sin OT) · **Estado:** En el repo; falta pegar `Code.gs` y `CostsDashboard.html`.
+
+**Síntoma:**
+- POTENCIA se pasó del presupuesto (130,1 % con la base del 19-nov) y no había cómo entregarle, viaje por viaje, de qué está hecho ese
+  gasto para que diga qué pagó la fábrica, qué le reconocen o qué va a una OT. El CSV del dashboard solo trae solicitud, solicitante,
+  fecha de compra, estado y valor.
+- Al revisar las cifras: **la factura 4 no se sumaba**. La configuración del dashboard tenía tres facturas y la hoja tiene columnas para
+  seis; cinco viajes ya tenían una cuarta (SOL-000479, 553, 557, 559 y 568: $3.053.129).
+
+**Causa raíz:**
+- No existía un reporte detallado por unidad: el dashboard solo mostraba agregados y el detalle mínimo.
+- `_csDefaultConfig_` listaba las facturas 1 a 3, y una configuración guardada (Script Property) reemplaza a la de por defecto. La revisión
+  de facturas por cerrar (#A83) sí sumaba de la 2 a la 6; el dashboard, la variación y el resto no.
+
+**Fix:**
+- **Facturas 4 a 6:** `_csDefaultConfig_` las trae (`_csExtraInvoices_`), y `_csLoadConfig_` le agrega a una configuración guardada las que
+  le falten, por su columna de total (`_csWithAllInvoices_`), sin tocar lo demás. La caché por fila se recalcula sola (la configuración es
+  parte de su llave). Así suman en el dashboard, la variación, la regla del presupuesto excedido y el reporte.
+- **Servidor:** `getCostsUnitReport` (acción nueva, `costsDashboard_getUnitReport`) llama a `_csBuildData_` con `{ detail: true }`: las
+  mismas cuentas del dashboard, y cada viaje (los que suman y los de OT) con su detalle (`_csReportDetail_`):
+  - fechas de solicitud, compra, ida y regreso; tipo (viaje, cambio o cambio de un tiquete comprado) y la original;
+  - origen, destino, nacional o internacional; pasajeros por nombre y cuántos; solicitante; centro de costos, sede;
+  - motivo del viaje (OBSERVACIONES sin las notas del sistema `[…]`), qué se cambió, anticipación y su justificación;
+  - aerolínea, canal, tarifa, PNR, hotel y su canal, noches, penalidad del cambio;
+  - cada factura con su número, fecha, valor e IVA (la 1: lo pagado a la aerolínea o el hotel y el cargo de Aviatur con su IVA);
+  - el valor que suma y de dónde sale: facturado, pendiente con lo pagado al comprar, pendiente con lo cotizado o $0.
+  - Lo cotizado y lo pagado al comprar solo van a quien ve la variación (`_canReadCostsVariance_`, #A78). Un líder solo recibe sus
+    unidades (#A76). Nunca cédulas, fechas de nacimiento, celulares ni tarjetas. Sin caché: se pide al descargar.
+- **Dashboard:** tarjeta **«📊 Reporte en Excel de una unidad»** en las pestañas Año, Periodo y Mes (unidad, meses de compra desde y
+  hasta; año y empresa de los filtros). Arma un **.xlsx de verdad en el navegador**, sin librerías (un ZIP sin comprimir con sus XML y
+  su CRC), con cinco hojas:
+  - **Resumen:** facturado, pendiente (pagado y cotizado), sin factura, total, presupuesto y %, lo de OT; lo que escribe la unidad (fórmulas
+    sobre la hoja de viajes); por mes de compra; por unidad (si son todas); cómo leer el reporte.
+  - **Viajes que suman:** una fila por viaje con todo lo anterior, encabezado fijo y filtros, totales con `SUBTOTAL`, y **columnas
+    amarillas** para la unidad (¿A qué OT corresponde?, Valor que pagó la fábrica, Valor reconocido con descuento o nota crédito,
+    Justificación) más el **valor neto** calculado.
+  - **Facturas** (una fila por factura), **Por pasajero** (el valor de cada viaje en partes iguales, como el top de viajeros) y
+    **Cargados a OT (no suman)**.
+- **Guía del área de compras** §8.4.
+
+**Verificado:**
+- `tools/check-unit-report.cjs` (nuevo, en `npm run verify`), con hoja sintética:
+  - la factura 4 suma, también con una configuración guardada de tres;
+  - las cuentas del reporte son las del dashboard; el detalle de cada caso (facturado con tres facturas, pendiente pagado y cotizado,
+    cerrado sin factura, cambio de tiquete comprado, OT);
+  - líder sin lo cotizado y sin otras unidades; sin acceso, error; ninguna cédula, fecha de nacimiento, celular ni tarjeta;
+  - el .xlsx: ZIP con el CRC de cada archivo, XML bien formado, las cinco hojas, totales, columnas amarillas y fórmulas.
+- Entorno local con la exportación del 19-nov:
+  - POTENCIA, abril a diciembre: **171 viajes, $212.875.100** (igual al dashboard): facturado $176.468.242 (145), pendiente con lo
+    pagado $31.320.852 (18), con lo cotizado $5.086.006 (6), 2 cerrados sin factura; 131,2 % de $162.234.288; OT $6.541.701 (9);
+  - todas las unidades: 466 viajes, $582.076.416, 86,1 %, OT $93.767.784 (89), igual al dashboard;
+  - el archivo abre en LibreOffice (recalcula las fórmulas con los mismos totales) y en openpyxl; capturas de la hoja Resumen;
+  - descarga real desde el dashboard en Chrome (escritorio y celular): «Listo: Viajes que suman - POTENCIA (GDM - P&M) - abr a nov 2026.xlsx».
+- `npm run verify` en verde.
+
+**Cambio en las cifras:** con la factura 4, POTENCIA sube $1.772.630 (SOL-000553, 557 y 559: de 130,1 % a 131,2 %), ENERGIA PROYECTOS
+$877.072 (SOL-000568) y ADM INVENTARIOS Y BODEGA $403.427 (SOL-000479). El total del año pasa de 85,6 % a 86,1 %.
+
+**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` en Apps Script → versión nueva del web app. No hay menú que correr. El push lleva
+la prueba y los documentos (la app no cambia: no sale el aviso de versión nueva).
+- **Dashboard nuevo + `Code.gs` anterior:** el botón muestra un error (Apps Script no encuentra `costsDashboard_getUnitReport`); nada más cambia. Por eso se pegan los dos juntos.
+- **`Code.gs` nuevo + dashboard anterior:** sin la tarjeta; las cifras ya suman la factura 4.
