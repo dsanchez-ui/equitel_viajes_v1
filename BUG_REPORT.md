@@ -4052,3 +4052,6 @@ autoexplicativo… con 135.8 % no es claro que ya se pasó del 100 %, porque es 
 lleva la prueba y los documentos (la app no cambia: no sale el aviso de versión nueva).
 - **Dashboard nuevo + `Code.gs` anterior:** sin lo de OT, todo lo demás igual.
 - **`Code.gs` nuevo + dashboard anterior:** el anterior ignora lo de OT; sus cifras no cambian.
+
+**Después (23-nov):** Yurani lo revisó y primero pidió volver a la vista anterior («más visual; acá toca leer la letra pequeña»), con un
+selector para elegir OT o centro de costo. Se empezó y no se publicó: al rato se arrepintió y se queda con esta vista.

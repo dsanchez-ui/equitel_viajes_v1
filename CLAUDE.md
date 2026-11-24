@@ -377,6 +377,8 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   cuáles CC»*, *«que un pantallazo sea autoexplicativo»*). Lo de OT (número válido: empieza por OT y tiene un dígito, `_esOTValida_`)
   **nunca** se compara con el presupuesto, pero se suma aparte por unidad y mes (`monthlyOt*`, `otRequests` con el número) y se muestra:
   tarjeta «Cargado a OT · no suma», columnas en la tabla con «Total de los viajes» y fila de total, CSV.
+  - **Yurani lo revisó el 23-nov y se queda con esta vista.** Primero pidió volver a la de antes («más visual») con un selector de OT o
+    CC, y al rato se arrepintió. No volver a las tortas ni agregar ese selector sin que ella lo pida de nuevo.
   - **Nada de tortas para el presupuesto:** una torta no puede mostrar más del 100 %. Es una barra con la línea negra del presupuesto
     (100 %), lo que se pasó rayado en rojo y, debajo, cada parte con su % del presupuesto, lo que no suma y los filtros con la hora de
     los datos (`renderBudgetMeter`). La anual tiene además «Cada unidad frente a su presupuesto» (`renderUnitMeters`).
@@ -817,8 +819,11 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-23)
 
+- **Retomar en el Mac (23-nov):** todo está en `main` y desplegado hasta #A131, y no queda nada por pegar en Apps Script. En el Mac:
+  `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la exportación de la hoja.
 - **#A131 desplegado (23-nov)** (dashboard de costos: de qué está hecho el %, lo de OT aparte y una barra en vez de la torta; pedido de
-  Yurani): David pegó `Code.gs` y `CostsDashboard.html` y publicó la versión nueva del web app. Pendiente sin código: que Yurani lo revise.
+  Yurani): David pegó `Code.gs` y `CostsDashboard.html` y publicó la versión nueva del web app. Yurani lo revisó y se queda con esta vista
+  (pidió volver a la anterior con un selector de OT o CC y se arrepintió el mismo día: no se hizo).
 
 - **#A130 (20-nov): la infografía del procedimiento y los manuales dentro del portal.** Solo frontend y documentos: **no hay nada que
   pegar en Apps Script**. Lo que se le pasa a quien no usa la plataforma es `docs/infografia-procedimiento.pdf` (dos hojas). Pendientes
