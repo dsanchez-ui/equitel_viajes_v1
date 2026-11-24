@@ -4247,7 +4247,9 @@ vez… y ya después no se debe poder cambiar»*; no contar los viajes como acom
 ## **#A134 — «Cambiar mi viaje»: regresar a otra ciudad**
 **Fecha:** 2026-11-24 · **Pedido por:** Laura (chat con David, caso SOL-000801: *«El señor Simón requiere que le realice un cambio en el
 itinerario de regreso: quiere que sea de Bogotá a Pereira. ¿Cómo lo puedo ajustar en la plataforma?»*; la solicitud estaba aprobada y sin
-comprar) y David (*«hazlo para darle esa solución a Laura»*). · **Estado:** En el repo; falta pegar `Code.gs` y publicar la versión nueva.
+comprar) y David (*«hazlo para darle esa solución a Laura»*). · **Estado:** Desplegado el 24-nov (frontend `6570c9b` en producción a las 12:49;
+David pegó `Code.gs` y publicó la versión nueva). Laura había guardado la reserva de SOL-000801 por partes, así que su cambio sigue la regla de
+tiquete comprado (#A109): confirmar lo que se compró, cotizar solo el costo del cambio y la original no se anula.
 
 **Síntoma:** la plataforma no tenía cómo decir que el regreso llega a otra ciudad. «Cambiar mi viaje» cambia fechas, horas, destino, equipaje y
 hotel, y un viaje Medellín → Bogotá → Pereira solo se arma como multidestino al crear la solicitud. La salida era anular y crear de nuevo.

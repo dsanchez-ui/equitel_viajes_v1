@@ -855,18 +855,24 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-24)
 
-- **#A134 en el repo, falta pegar `Code.gs` (24-nov)** («Cambiar mi viaje» → regreso a otra ciudad, para SOL-000801 de Laura): pegar `Code.gs`,
-  versión nueva del web app (y, opcional, `Rastreo.gs` en el proyecto aparte). Después Laura registra el cambio desde el detalle de SOL-000801.
+- **Retomar en el Mac (24-nov, tarde):** todo está en `main` y desplegado hasta #A134 (frontend `6570c9b` en producción; David pegó `Code.gs`
+  y publicó la versión nueva). En el Mac: `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la exportación
+  de la hoja (la del PC se queda allá: datos personales); el entorno ya corre solo lo de los menús 17 y 18.
+- **#A134 desplegado (24-nov)** («Cambiar mi viaje» → regreso a otra ciudad). Si `Rastreo.gs` no se pegó en el proyecto aparte, el comparador busca
+  el regreso al origen en esos viajes (no afecta nada más). **SOL-000801 (Simón, Medellín → Bogotá, regreso a Pereira):** Laura guardó la reserva
+  por partes antes del cambio, así que es un cambio de tiquete comprado (#A109): primero «Confirmar lo que se compró» en «Revisar Cambio» (lo
+  pagado de verdad; «No se reservó hotel» si aplica), luego aceptar; el cambio lleva solo su costo (penalidad y diferencia de tarifa) y la
+  original no se anula. Aprueban Simón y, si aplica, Cadena de Suministro (viaje con el cambio > $1.200.000) y Alejandro (POTENCIA sobre el
+  presupuesto). Vuela el 29-nov.
 - **#A133 desplegado (24-nov)** (centro de costos de otra unidad: la unidad del viajero, la que paga y el voto del responsable de esa
   unidad; pedido de Yurani). Yurani responde por las unidades ADM y FACTURACION ADMON; MYFAL y PROLUB sin responsable. 652 personas con unidad;
   las 117 restantes (casi todas sin viajes) la registran la primera vez que son primer pasajero. Infografía para Yurani:
-  `docs/infografia-otra-unidad.pdf`. Pendiente de Yurani: quién responde por las unidades administrativas, MYFAL y PROLUB (hoy sin responsable: no
-  reciben viajes de otras unidades) y la unidad de las 117 personas que quedan (las aprueban ~12 personas sin unidad). Siguiente paso posible:
-  mostrar y editar la unidad en el panel «Gestionar usuarios».
+  `docs/infografia-otra-unidad.pdf`. Pendiente de Yurani: si alguien responde por MYFAL y PROLUB (hoy no reciben viajes de otras unidades) y, si
+  quiere, la unidad de las 117 (las aprueban ~12 personas sin unidad: con la unidad del aprobador, el menú 17 completa su equipo). En USUARIOS,
+  `aochoa@` (Ana Elvira Ochoa) tiene dos filas («… (Latam)» y «ANA KREMER (avianca)», cédula 318846610): la plataforma muestra la primera. Siguiente
+  paso posible: mostrar y editar la unidad en el panel «Gestionar usuarios».
 - **#A132 desplegado (24-nov)** (reporte en Excel de una unidad desde el dashboard de costos; el dashboard suma las facturas 4 a 6). La
   primera descarga en producción se quedó pensando y la segunda bajó en unos 10 s; #A133 le pone contador y aviso al botón.
-- **Retomar en el Mac (23-nov):** todo está en `main` y desplegado hasta #A131. En el Mac:
-  `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la exportación de la hoja.
 - **#A131 desplegado (23-nov)** (dashboard de costos: de qué está hecho el %, lo de OT aparte y una barra en vez de la torta; pedido de
   Yurani): David pegó `Code.gs` y `CostsDashboard.html` y publicó la versión nueva del web app. Yurani lo revisó y se queda con esta vista
   (pidió volver a la anterior con un selector de OT o CC y se arrepintió el mismo día: no se hizo).
