@@ -817,9 +817,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-23)
 
-- **#A131 (dashboard de costos: de qué está hecho el %, lo de OT aparte y una barra en vez de la torta; pedido de Yurani): en `main`,
-  pendiente de desplegar.** Pegar `Code.gs` y `CostsDashboard.html` → versión nueva del web app; sin menú. Después, mostrárselo a Yurani
-  (David se lo prometió para el 20-nov).
+- **#A131 desplegado (23-nov)** (dashboard de costos: de qué está hecho el %, lo de OT aparte y una barra en vez de la torta; pedido de
+  Yurani): David pegó `Code.gs` y `CostsDashboard.html` y publicó la versión nueva del web app. Pendiente sin código: que Yurani lo revise.
 
 - **#A130 (20-nov): la infografía del procedimiento y los manuales dentro del portal.** Solo frontend y documentos: **no hay nada que
   pegar en Apps Script**. Lo que se le pasa a quien no usa la plataforma es `docs/infografia-procedimiento.pdf` (dos hojas). Pendientes

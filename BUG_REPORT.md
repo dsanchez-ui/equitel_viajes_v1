@@ -3994,7 +3994,8 @@ sin nada recortado. Los 10 archivos llegan a `dist/manuales/`.
 **Fecha:** 2026-11-23 · **Pedido por:** Yurani (19-nov: *«¿este valor tiene en cuenta los tkts que van a OT?… podemos sacar cuánto en
 total se ha pagado en viajes reales por uden y cuáles son cargados a OT y cuáles CC»*) y David (*«que si tomo un pantallazo sea
 autoexplicativo… con 135.8 % no es claro que ya se pasó del 100 %, porque es una torta»*) ·
-**Estado:** En `main`; pendiente pegar `Code.gs` y `CostsDashboard.html` y publicar la versión nueva del web app.
+**Estado:** Desplegado el 2026-11-23 (David pegó `Code.gs` y `CostsDashboard.html` y publicó la versión nueva del web app; el repo en
+`539ea68`).
 
 **Síntoma:**
 - La captura de Yurani (POTENCIA (GDM - P&M), abril a diciembre) mostraba una torta con 135,8 % sin decir que ya se había pasado del 100 %
