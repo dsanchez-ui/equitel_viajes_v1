@@ -402,6 +402,9 @@ function _resetPerExecutionCaches_() {
   _TRIP_CHANGE_PENDING_INFO = null;
   _TRIP_CONTACTS_CACHE = null;
   _APPROVAL_NAMES_CACHE = null;
+  _OU_TABLE_CACHE = null; // #A133
+  _OU_USER_UNITS_CACHE = null;
+  _OU_CC_CACHE = null;
 }
 
 /**
@@ -2358,6 +2361,7 @@ function _approverRoleLabel_(role) {
     case 'CDS': return 'Dirección Cadena de Suministro';
     case 'BUDGET_OVERRUN': return 'Aprobador de Presupuesto';
     case 'POLICY_EXCEPTION': return 'CFO · excepción a la política de anticipación';
+    case 'OTHER_UNIT': return OU_ROLE_LABEL; // #A133
     case 'NORMAL': return 'Aprobador de Área';
     default: return 'Aprobador';
   }
@@ -2516,6 +2520,8 @@ function _applyApprovalDecision_(o) {
       const areaTimeColIdx = H("FECHA/HORA (AUTOMÁTICO)");
       const budgetColIdx = H("APROBADO PRESUPUESTO");
       const requiereApPptoIdx = H("REQUIERE APROB PPTO");
+      const ouColIdx = H(OU_VOTE_HEADER); // #A133
+      const ouApproversIdx = H(OU_APPROVER_HEADER);
 
       const currentStatus = currentRow[statusIdx];
       const isInternational = currentRow[internationalIdx] === "SI";
@@ -2562,6 +2568,19 @@ function _applyApprovalDecision_(o) {
           // ya enviados sigan funcionando.
           approverEmail = actor || 'desconocido';
       }
+      else if (role === OU_ROLE) {
+          // #A133: responsable de la unidad dueña del centro de costos. Solo vale para quien está en
+          // APROBADOR OTRA UNIDAD (los correos a los que se les pidió el voto al crear la solicitud).
+          const ouAssigned = _ouList_(ouApproversIdx >= 0 ? currentRow[ouApproversIdx] : '');
+          const ouActor = String(actor || '').toLowerCase().trim();
+          if (!ouAssigned.length || ouColIdx < 0) {
+              return result('closed', 'Ya no necesita su aprobación', 'La solicitud ' + escapeHtml_(id) + ' no necesita la aprobación de la unidad del centro de costos. No se registró ningún cambio.', '#374151');
+          }
+          if (!ouActor || ouAssigned.indexOf(ouActor) === -1) {
+              return result('reassigned', 'Enlace ya no válido', 'Este enlace no corresponde a quien aprueba por la unidad del centro de costos de esta solicitud. No se registró ningún cambio.', '#374151');
+          }
+          approverEmail = ouActor;
+      }
       else {
           // Etapa 2.5: leemos del array currentRow en lugar de un getRange extra.
           // Use expected approver from sheet; only use actor if it matches to prevent impersonation
@@ -2603,7 +2622,7 @@ function _applyApprovalDecision_(o) {
       // había registrado una decisión» y, con el salto de etapa, «Fecha: Desconocida».
       // Requirement: "si alguno de los dos aprueba, pues ya el proceso avanza"
       // ("first one wins"): la casilla de área es una sola para los coaprobadores.
-      const roleColIdx = role === 'CEO' ? ceoColIdx : role === 'CDS' ? cdsColIdx : role === 'BUDGET_OVERRUN' ? budgetColIdx : areaAutoColIdx;
+      const roleColIdx = role === 'CEO' ? ceoColIdx : role === 'CDS' ? cdsColIdx : role === 'BUDGET_OVERRUN' ? budgetColIdx : role === OU_ROLE ? ouColIdx : areaAutoColIdx;
       const previousVote = roleColIdx >= 0 ? _approvalVoteParse_(currentRow[roleColIdx], currentRow[areaTimeColIdx]) : null;
       if (previousVote) {
           return result('already', 'Decisión Previa Detectada', _approvalPreviousDecisionHtml_(currentRow, role, previousVote, actor), '#374151');
@@ -2627,6 +2646,8 @@ function _applyApprovalDecision_(o) {
           } else {
               sheet.getRange(rowNumber, budgetColIdx + 1).setValue(logStringFull);
           }
+      } else if (role === OU_ROLE) {
+          sheet.getRange(rowNumber, ouColIdx + 1).setValue(logStringFull); // #A133 (la columna se verificó arriba)
       } else {
           // Normal Approver
           sheet.getRange(rowNumber, areaAutoColIdx + 1).setValue(logStringArea);
@@ -2838,6 +2859,15 @@ function _applyApprovalDecision_(o) {
           isFullyApproved = false;
       }
 
+      // #A133: centro de costos de otra unidad → también hace falta su responsable (o su voto en otro rol).
+      const otherUnitState = _ouEffective_(
+          ouApproversIdx >= 0 ? rowValues[ouApproversIdx] : '',
+          ouColIdx >= 0 ? rowValues[ouColIdx] : '',
+          { area: areaVal, ceo: ceoVal, cds: cdsVal, budget: budgetVal });
+      if (isFullyApproved && otherUnitState !== 'NA' && otherUnitState !== 'APPROVED') {
+          isFullyApproved = false;
+      }
+
       if (isFullyApproved) {
           // METRICS: registrar evento de "todas las aprobaciones completas"
           _recordEvent_(id, 'fullyApproved');
@@ -3036,11 +3066,18 @@ function _approvalAskedFor_(req) {
   var budgetLower = budgetEmail.toLowerCase();
   var wantsBudget = !!req.requiresBudgetOverrunApproval && !!budgetLower;
 
+  // #A133: el responsable de la unidad dueña del centro de costos (si el viaje se carga a otra unidad).
+  // Va al final: si ya se le pide el voto con otro rol, ese voto lo cubre (_ouEffective_).
+  var otherUnit = _ouList_(req.otherUnitApproverEmail);
+
   // CASE 1 / CASE 2: el solicitante es el CEO o el director CDS → solo él (más presupuesto).
   if (requesterLower === ceoLower || requesterLower === cdsLower) {
     var execEmail = requesterLower === ceoLower ? CEO_EMAIL : DIRECTOR_EMAIL;
     var out = [{ email: execEmail, role: requesterLower === ceoLower ? 'CEO' : 'CDS' }];
     if (wantsBudget && budgetLower !== requesterLower) out.push({ email: budgetEmail, role: 'BUDGET_OVERRUN' });
+    otherUnit.forEach(function(email) {
+      if (email !== requesterLower && !out.some(function(o) { return String(o.email).toLowerCase().trim() === email; })) out.push({ email: email, role: OU_ROLE });
+    });
     return out;
   }
 
@@ -3056,6 +3093,9 @@ function _approvalAskedFor_(req) {
     var lower = email.toLowerCase();
     if (!planned.has(lower)) planned.set(lower, { email: email, role: 'NORMAL' });
   });
+  otherUnit.forEach(function(email) {
+    if (!planned.has(email)) planned.set(email, { email: email, role: OU_ROLE });
+  });
   return Array.from(planned.values());
 }
 
@@ -3065,6 +3105,7 @@ function _approvalRolePending_(role, req) {
   if (role === 'CEO') return req.effectiveApprovalCeo === 'PENDING' && req.effectiveApprovalCds !== 'APPROVED';
   if (role === 'CDS') return req.effectiveApprovalCds === 'PENDING' && req.effectiveApprovalCeo !== 'APPROVED';
   if (role === 'BUDGET_OVERRUN') return req.effectiveApprovalBudgetOverrun === 'PENDING';
+  if (role === OU_ROLE) return req.effectiveApprovalOtherUnit === 'PENDING'; // #A133
   return req.effectiveApprovalArea === 'PENDING';
 }
 
@@ -3112,6 +3153,7 @@ function _approvalTrail_(row, req, names) {
   add('CDS', req.effectiveApprovalCds, 'APROBADO CDS', DIRECTOR_EMAIL, req.effectiveApprovalCeo !== 'APPROVED');
   add('CEO', req.effectiveApprovalCeo, 'APROBADO CEO', CEO_EMAIL, req.effectiveApprovalCds !== 'APPROVED');
   add('BUDGET_OVERRUN', req.effectiveApprovalBudgetOverrun, 'APROBADO PRESUPUESTO', req.budgetApproverEmail, true);
+  add(OU_ROLE, req.effectiveApprovalOtherUnit, OU_VOTE_HEADER, req.otherUnitApproverEmail, true); // #A133
   return steps;
 }
 
@@ -3282,6 +3324,7 @@ function _approvalSummaryHtml_(req, names, row) {
     [hotelOnly ? 'Hospedaje en' : 'Viaje', hotelOnly ? String(req.destination || '') : String(req.origin || '') + ' → ' + String(req.destination || '')],
     ['Fechas', dateOf('FECHA IDA', req.departureDate) + (req.returnDate ? ' al ' + dateOf('FECHA VUELTA', req.returnDate) : '')],
     ['Empresa y unidad', [req.company, req.businessUnit].filter(Boolean).join(' · ')],
+    ['Unidad del viajero', req.otherUnitCharge ? String(req.travelerUnit || '') + ' (el viaje se carga a otra unidad)' : ''], // #A133
     ['Valor cotizado', req.totalCost ? _pesosText_(req.totalCost) : '']
   ].filter(function(r) { return String(r[1] || '').trim(); });
   return '<p style="margin:20px 0 6px; font-size:12px; font-weight:bold; color:#6b7280; text-transform:uppercase;">La solicitud</p>' +
@@ -3474,11 +3517,16 @@ function _isApproverEmail_(email, integrantes) {
   var cfg = _policyApprovalConfig_();
   if (cfg.emailLower && me === cfg.emailLower) return true;
   if ((integrantes || []).some(function(i) { return i && hasMe(i.approverEmail); })) return true;
-  // Coaprobadores (REGLAS_COAPROBADOR) y aprobadores de solicitudes anteriores: una sola columna.
+  // #A133: responsables de una unidad (tabla de MISC).
+  var ouBy = _ouApproversByUnit_();
+  if (Object.keys(ouBy).some(function(k) { return ouBy[k].emails.indexOf(me) !== -1; })) return true;
+  // Coaprobadores (REGLAS_COAPROBADOR) y aprobadores de solicitudes anteriores: una sola columna (y la de otra unidad).
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
-  var col = H('CORREO DE QUIEN APRUEBA (AUTOMÁTICO)');
-  if (!sheet || col < 0 || sheet.getLastRow() < 2) return false;
-  return sheet.getRange(2, col + 1, sheet.getLastRow() - 1, 1).getValues().some(function(r) { return hasMe(r[0]); });
+  if (!sheet || sheet.getLastRow() < 2) return false;
+  return ['CORREO DE QUIEN APRUEBA (AUTOMÁTICO)', OU_APPROVER_HEADER].some(function(h) {
+    var col = H(h);
+    return col > -1 && sheet.getRange(2, col + 1, sheet.getLastRow() - 1, 1).getValues().some(function(r) { return hasMe(r[0]); });
+  });
 }
 
 /** Imágenes de las opciones para quien tiene que aprobar (solo direcciones https). */
@@ -3504,6 +3552,7 @@ function _myApprovalItem_(row, req, steps, mine, pendingKind, myVote, names, isP
   if (req.budgetExceeded) why.push('Excede el presupuesto de la unidad');
   if (req.requiresFareApproval) why.push('Tarifa superior a la del manual');
   if (req.lateChange) why.push('Cambio pedido después del plazo'); // #A129
+  if (req.otherUnitCharge) why.push('Se carga a un centro de costos de otra unidad (el viajero es de ' + req.travelerUnit + ')'); // #A133
   var policy = null;
   if (isPolicyApprover && (pendingKind === 'policy' || policyCell)) {
     var held = _policyHeldItem_(row, names);
@@ -3528,6 +3577,7 @@ function _myApprovalItem_(row, req, steps, mine, pendingKind, myVote, names, isP
     travelers: (req.passengers || []).map(function(p) { return String(p.name || '').trim(); }).filter(Boolean),
     company: String(req.company || ''),
     unit: String(req.businessUnit || ''),
+    travelerUnit: req.otherUnitCharge ? String(req.travelerUnit || '') : '', // #A133: solo si es otra
     costCenter: [req.costCenter, req.costCenterName].map(function(x) { return String(x || '').trim(); }).filter(Boolean).join(' · '),
     hotelOnly: req.requestMode === 'HOTEL_ONLY',
     requiresHotel: !!req.requiresHotel,
@@ -3572,8 +3622,8 @@ function getMyApprovals(currentUserEmail) {
   var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
   if (!sheet || sheet.getLastRow() < 2) return out;
   var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
-  var col = { status: H('STATUS'), approver: H('CORREO DE QUIEN APRUEBA (AUTOMÁTICO)'), policy: H(POLICY_DECISION_HEADER), events: H(EVENTOS_JSON_HEADER) };
-  var voteCols = ['APROBADO POR ÁREA? (AUTOMÁTICO)', 'APROBADO CEO', 'APROBADO CDS', 'APROBADO PRESUPUESTO'].map(function(h) { return H(h); });
+  var col = { status: H('STATUS'), approver: H('CORREO DE QUIEN APRUEBA (AUTOMÁTICO)'), policy: H(POLICY_DECISION_HEADER), events: H(EVENTOS_JSON_HEADER), otherUnit: H(OU_APPROVER_HEADER) };
+  var voteCols = ['APROBADO POR ÁREA? (AUTOMÁTICO)', 'APROBADO CEO', 'APROBADO CDS', 'APROBADO PRESUPUESTO', OU_VOTE_HEADER].map(function(h) { return H(h); });
   var cell = function(row, i) { return (i > -1 && i < row.length) ? row[i] : ''; };
   var pcfg = _policyApprovalConfig_();
   var isPolicyApprover = pcfg.enabled && me === pcfg.emailLower;
@@ -3588,7 +3638,8 @@ function getMyApprovals(currentUserEmail) {
     var votesText = voteCols.map(function(i) { return String(cell(row, i) || ''); }).join(' ').toLowerCase();
     var policyCell = String(cell(row, col.policy) || '').trim();
     var policyRow = isPolicyApprover && (status === POLICY_HOLD_STATUS || !!policyCell);
-    var named = String(cell(row, col.approver) || '').toLowerCase().split(',').map(function(e) { return e.trim(); }).indexOf(me) !== -1;
+    var named = String(cell(row, col.approver) || '').toLowerCase().split(',').map(function(e) { return e.trim(); }).indexOf(me) !== -1 ||
+      _ouList_(cell(row, col.otherUnit)).indexOf(me) !== -1; // #A133
     if (!policyRow && !named && !isExecutive && votesText.indexOf(me) === -1) return;
     // Solo lo que ya llegó a aprobación: antes de confirmar costos nadie ha pedido el voto.
     var started = policyRow || status === 'PENDIENTE_APROBACION' || votesText.trim() !== '' ||
@@ -5878,6 +5929,12 @@ const HtmlTemplates = {
             alertHtml += `<div style="background-color: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>💰 PRESUPUESTO DE UNIDAD EXCEDIDO:</strong> Esta solicitud causa que la unidad de negocio <strong>${escapeHtml_(request.businessUnit || '')}</strong> exceda su presupuesto del periodo. Requiere aprobación adicional de <strong>${budgetName}</strong>.</div>`;
         }
 
+        // #A133: CENTRO DE COSTOS DE OTRA UNIDAD (el viajero es de una unidad y el viaje se carga a otra).
+        if (request.otherUnitCharge) {
+            const ouCc = escapeHtml_(String(request.costCenter || '')) + (request.costCenterName ? ' – ' + escapeHtml_(String(request.costCenterName)) : '');
+            alertHtml += `<div style="background-color: #f5f3ff; border: 1px solid #ddd6fe; color: #4c1d95; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🏷️ CENTRO DE COSTOS DE OTRA UNIDAD:</strong> El viajero es de <strong>${escapeHtml_(request.travelerUnit || '')}</strong> y el viaje se carga al centro de costos <strong>${ouCc}</strong>, de <strong>${escapeHtml_(request.businessUnit || '')}</strong>: el costo cuenta en el presupuesto de esa unidad.${request.otherUnitApproverName ? ' Por eso también lo aprueba <strong>' + escapeHtml_(request.otherUnitApproverName) + '</strong>.' : ''}</div>`;
+        }
+
         // #A100: TARIFA SUPERIOR A LA DEL MANUAL
         if (request.requiresFareApproval) {
             const fareCfoName = escapeHtml_(request.budgetApproverName || 'el CFO');
@@ -6635,6 +6692,9 @@ function getFormBootstrap(currentUserEmail) {
   // #A100: que la clave venga le dice al formulario que este servidor deja en
   // espera las solicitudes fuera de plazo (pide la justificación y lo explica).
   try { out.policyApproval = _policyApprovalPublicInfo_(currentUserEmail); } catch (e) { console.warn('getFormBootstrap: ' + e); }
+  // #A133: qué unidades reciben viajes de otras unidades y quién los aprueba. Que la clave venga le dice al
+  // formulario que este servidor ya hace la regla; si falla, no viene y el formulario sigue como antes.
+  try { out.otherUnitCharges = _ouPublicInfo_(); } catch (e) { console.warn('getFormBootstrap (#A133): ' + e); }
   return out;
 }
 
@@ -6763,18 +6823,24 @@ function _getIntegrantesDataFromUsuarios_() {
   // del sheet, aún más ganancia en serialización GAS↔hoja).
   const dataABC = sheet.getRange(2, 1, lastRow - 1, 3).getValues(); // A,B,C
   const dataHI = sheet.getRange(2, 8, lastRow - 1, 2).getValues();  // H,I
+  // #A133: la unidad de negocio de la persona (columna por nombre, al final). No es un dato sensible:
+  // el formulario la usa para ordenar los centros de costos y avisar si se elige uno de otra unidad.
+  const unitCol = _ouUserUnitCol_(sheet);
+  const dataUnit = unitCol > 0 ? sheet.getRange(2, unitCol, lastRow - 1, 1).getValues() : null;
   const out = [];
   for (var i = 0; i < dataABC.length; i++) {
     var rABC = dataABC[i];
     if (!rABC[0] || !rABC[2]) continue; // mismo filtro que antes
     var rHI = dataHI[i] || ['', ''];
-    out.push({
+    var item = {
       idNumber: String(rABC[0]).trim(),
       name: String(rABC[1]).trim(),
       email: String(rABC[2]).toLowerCase().trim(),
       approverName: String(rHI[1] || '').trim(),
       approverEmail: String(rHI[0] || '').toLowerCase().trim()
-    });
+    };
+    if (dataUnit) item.businessUnit = String(dataUnit[i][0] == null ? '' : dataUnit[i][0]).replace(/\s+/g, ' ').trim();
+    out.push(item);
   }
   return out;
 }
@@ -7036,6 +7102,24 @@ function createNewRequest(data, emailHtml, policy) {
     }
   }
 
+  // #A133: a qué unidad pertenece el viajero, a qué unidad se carga el viaje (la dueña del centro de
+  // costos) y si también vota el responsable de esa unidad. Lo decide el servidor con USUARIOS, «CDS vs
+  // UDEN» y la tabla de MISC; lanza un error claro si la unidad dueña no tiene responsable.
+  const _ouPlanRes = _ouPlan_(data);
+  data.businessUnit = _ouPlanRes.chargedUnit;
+  if (_ouPlanRes.travelerUnit && H(OU_TRAVELER_UNIT_HEADER) < 0) {
+    try {
+      _ensureRequestColumn_(OU_TRAVELER_UNIT_HEADER, OU_TRAVELER_UNIT_NOTE);
+    } catch (colErr) {
+      console.warn('createNewRequest: no se pudo crear la columna "' + OU_TRAVELER_UNIT_HEADER + '": ' + colErr);
+    }
+  }
+  if (_ouPlanRes.approvers.length) {
+    // Sin estas columnas no se puede pedir el voto: si no se pueden crear, la solicitud no se crea.
+    if (H(OU_APPROVER_HEADER) < 0) _ensureRequestColumn_(OU_APPROVER_HEADER, OU_APPROVER_NOTE);
+    if (H(OU_VOTE_HEADER) < 0) _ensureRequestColumn_(OU_VOTE_HEADER, OU_VOTE_NOTE);
+  }
+
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
   const idColIndex = H("ID RESPUESTA") + 1;
@@ -7109,6 +7193,8 @@ function createNewRequest(data, emailHtml, policy) {
   set("VARIOS CENTROS COSTOS", safeSheetValue_(data.variousCostCenters || ''));
   set("NOMBRE CENTRO DE COSTOS (AUTOMÁTICO)", costCenterName);
   set("UNIDAD DE NEGOCIO", data.businessUnit);
+  if (_ouPlanRes.travelerUnit) set(OU_TRAVELER_UNIT_HEADER, _ouPlanRes.travelerUnit); // #A133
+  if (_ouPlanRes.approvers.length) set(OU_APPROVER_HEADER, _ouPlanRes.approvers.join(','));
   set("SEDE", data.site);
   set("REQUIERE HOSPEDAJE", data.requiresHotel ? 'Sí' : 'No');
   if (_checkedBag !== null) set(CHECKED_BAG_HEADER, _checkedBag); // #A95
@@ -7121,8 +7207,11 @@ function createNewRequest(data, emailHtml, policy) {
   set("HORA LLEGADA VUELO VUELTA", data.returnTimePreference || '');
   set("ID RESPUESTA", id);
   set("STATUS", data.status || 'PENDIENTE_OPCIONES');
-  set("OBSERVACIONES", safeSheetValue_((data.comments || '') +
-      (_policyJustInObs ? (data.comments ? '\n' : '') + '[JUSTIFICACIÓN ANTICIPACIÓN]: ' + _policyJustification : '')));
+  // #A133: la marca de un centro de costos de otra unidad (las notas del sistema van entre corchetes).
+  const _obsParts = [data.comments || ''];
+  if (_policyJustInObs) _obsParts.push('[JUSTIFICACIÓN ANTICIPACIÓN]: ' + _policyJustification);
+  if (_ouPlanRes.cross) _obsParts.push(_ouNote_(_ouPlanRes, data.costCenter, costCenterName));
+  set("OBSERVACIONES", safeSheetValue_(_obsParts.filter(function(x) { return x; }).join('\n')));
   if (_policyJustification && !_policyJustInObs) set(POLICY_JUSTIFICATION_HEADER, safeSheetValue_(_policyJustification));
   if (_policyGroupKeyVal) set(POLICY_GROUP_HEADER, _policyGroupKeyVal);
 
@@ -9285,7 +9374,7 @@ function setAnalystWhitelist(emails) {
  * Returns one of: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA' for each role,
  * plus a human-readable reason when the role is NA, so the UI can explain WHY.
  */
-function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isInternational, totalCost, areaVal, ceoVal, cdsVal, requiresBudgetOverrun, budgetOverrunVal, budgetApproverEmail) {
+function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isInternational, totalCost, areaVal, ceoVal, cdsVal, requiresBudgetOverrun, budgetOverrunVal, budgetApproverEmail, otherUnitApprovers, otherUnitVal) {
   const startsWithSi = function(v) { return String(v || '').startsWith('Sí'); };
   const startsWithNo = function(v) { return String(v || '').startsWith('No'); };
 
@@ -9402,11 +9491,16 @@ function computeEffectiveApprovalStatus_(requesterEmail, approverEmail, isIntern
     budgetOverrunReason = 'La solicitud no excede el presupuesto del periodo de su unidad de negocio.';
   }
 
+  // #A133: centro de costos de otra unidad → vota también su responsable (o lo cubre su voto en otro rol).
+  var otherUnit = _ouEffective_(otherUnitApprovers, otherUnitVal, { area: areaVal, ceo: ceoVal, cds: cdsVal, budget: budgetOverrunVal });
+  var otherUnitReason = otherUnit === 'NA' ? 'El viaje se carga a un centro de costos de la unidad del viajero.' : '';
+
   return {
     area: area, areaReason: areaReason,
     ceo: ceo, ceoReason: ceoReason,
     cds: cds, cdsReason: cdsReason,
     budgetOverrun: budgetOverrun, budgetOverrunReason: budgetOverrunReason,
+    otherUnit: otherUnit, otherUnitReason: otherUnitReason,
     requesterIsCeo: requesterIsCeo,
     requesterIsCds: requesterIsCds,
     ceoIsAreaApprover: ceoIsAreaApprover,
@@ -9671,7 +9765,9 @@ function mapRowToRequest(row, lite) {
       get("APROBADO CDS"),
       requiereApPpto,
       aprobadoPptoVal,
-      budgetApproverEmailCfg
+      budgetApproverEmailCfg,
+      get(OU_APPROVER_HEADER),
+      get(OU_VOTE_HEADER)
   );
   result.effectiveApprovalArea = eff.area;
   result.effectiveApprovalAreaReason = eff.areaReason;
@@ -9682,6 +9778,15 @@ function mapRowToRequest(row, lite) {
   result.effectiveApprovalBudgetOverrun = eff.budgetOverrun;
   result.effectiveApprovalBudgetOverrunReason = eff.budgetOverrunReason;
   result.approvalStatusBudgetOverrun = aprobadoPptoVal;
+  // #A133: centro de costos de otra unidad. businessUnit es la unidad que paga (la dueña del centro de costos).
+  result.travelerUnit = String(get(OU_TRAVELER_UNIT_HEADER) || '').replace(/\s+/g, ' ').trim();
+  result.otherUnitCharge = !!(result.travelerUnit && _csNormalize_(result.travelerUnit) !== _csNormalize_(result.businessUnit));
+  result.otherUnitApproverEmail = _ouList_(get(OU_APPROVER_HEADER)).join(',');
+  result.otherUnitApproverName = result.otherUnitApproverEmail ? _approvalWho_(result.otherUnitApproverEmail) : '';
+  result.requiresOtherUnitApproval = eff.otherUnit !== 'NA';
+  result.effectiveApprovalOtherUnit = eff.otherUnit;
+  result.effectiveApprovalOtherUnitReason = eff.otherUnitReason;
+  result.approvalStatusOtherUnit = String(get(OU_VOTE_HEADER) || '');
   result.requesterIsCeo = eff.requesterIsCeo;
   result.requesterIsCds = eff.requesterIsCds;
   result.ceoIsAreaApprover = eff.ceoIsAreaApprover;
@@ -9821,6 +9926,11 @@ function reevaluarAprobacionPendiente(requestId) {
   if (isFullyApproved && !budgetSatisfied) {
     isFullyApproved = false;
     Logger.log('  → CRITERIOS BASE OK pero budget no aprobado todavía.');
+  }
+  // #A133: centro de costos de otra unidad.
+  if (isFullyApproved && req.requiresOtherUnitApproval && req.effectiveApprovalOtherUnit !== 'APPROVED') {
+    isFullyApproved = false;
+    Logger.log('  → CRITERIOS BASE OK pero falta el responsable de la unidad del centro de costos.');
   }
 
   Logger.log('¿Cumple criterio de aprobación completa? ' + isFullyApproved);
@@ -11369,6 +11479,7 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   var cdsIdx = H('APROBADO CDS');
   var ceoIdx = H('APROBADO CEO');
   var budgetIdxSkip = H('APROBADO PRESUPUESTO');
+  var ouIdxSkip = H(OU_VOTE_HEADER); // #A133
   var approvalDateIdx = H('FECHA/HORA (AUTOMÁTICO)');
 
   var rowNumber = _getRowByRequestId_(requestId);
@@ -11395,6 +11506,11 @@ function skipApprovalStage(requestId, justification, currentUserEmail) {
   if (cdsIdx > -1) sheet.getRange(rowNumber, cdsIdx + 1).setValue(approvalNote);
   if (ceoIdx > -1) sheet.getRange(rowNumber, ceoIdx + 1).setValue(approvalNote);
   if (budgetIdxSkip > -1) sheet.getRange(rowNumber, budgetIdxSkip + 1).setValue(approvalNote);
+  // #A133: la casilla de la otra unidad solo si a alguien se le pidió ese voto.
+  var ouAskedIdxSkip = H(OU_APPROVER_HEADER);
+  if (ouIdxSkip > -1 && ouAskedIdxSkip > -1 && _ouList_(sheet.getRange(rowNumber, ouAskedIdxSkip + 1).getValue()).length) {
+    sheet.getRange(rowNumber, ouIdxSkip + 1).setValue(approvalNote);
+  }
   if (approvalDateIdx > -1) sheet.getRange(rowNumber, approvalDateIdx + 1).setValue(timestampStr);
 
   // 2. OBSERVACIONES con trazabilidad
@@ -13113,6 +13229,8 @@ function onOpen() {
     .addItem('14. Aprobaciones por política: ver pendientes', 'menuVerAprobacionesPolitica')
     .addItem('15. Informe mensual de la política: prueba (solo a mí)', 'menuInformeMensualPrueba')
     .addItem('16. Contactos para cambios de viaje', 'menuContactosCambios')
+    .addItem('17. Unidad de negocio de cada persona', 'menuUnidadUsuarios')
+    .addItem('18. Responsables de cada unidad (centros de costos de otra unidad)', 'menuResponsablesUnidad')
     .addToUi();
 }
 
@@ -17953,6 +18071,11 @@ function _csReportDetail_(row, headerMap, config, ctx) {
     costCenter: _csReportText_(cell('CENTRO DE COSTOS'), 40),
     costCenterName: _csReportText_(cell('NOMBRE CENTRO DE COSTOS (AUTOMÁTICO)'), 120),
     costCenters: _csReportText_(cell('VARIOS CENTROS COSTOS'), 300),
+    // #A133: la unidad del viajero, solo si es otra (el viaje se cargó a un centro de costos de esta unidad).
+    travelerUnit: (function() {
+      var t = _csReportText_(cell(OU_TRAVELER_UNIT_HEADER), 80);
+      return t && _csNormalize_(t) !== _csNormalize_(cell(config.unitHeader)) ? t : '';
+    })(),
     sede: _csReportText_(cell('SEDE'), 60),
     reason: _csReportReason_(cell('OBSERVACIONES')),
     changeText: _csReportText_(cell('TEXTO_CAMBIO')),
@@ -20161,9 +20284,18 @@ function diagnosticarCostosDashboard(year, opts) {
 function costsDashboard_getData(payload) {
   return dispatch('getCostsDashboard', payload || {});
 }
-/** Reporte en Excel de los viajes que suman al presupuesto (#A132). Payload: { filters, userEmail, sessionToken }. */
+/**
+ * Reporte en Excel de los viajes que suman al presupuesto (#A132). Payload: { filters, userEmail, sessionToken }.
+ * #A133: la respuesta viaja como texto ({ success, json }): google.script.run lleva un texto grande mejor que un
+ * objeto con cientos de viajes. Deja en «Ejecuciones» cuánto tardó.
+ */
 function costsDashboard_getUnitReport(payload) {
-  return dispatch('getCostsUnitReport', payload || {});
+  var t0 = Date.now();
+  var res = dispatch('getCostsUnitReport', payload || {});
+  if (!res || !res.success) return res;
+  var json = JSON.stringify(res.data);
+  console.log('Reporte en Excel de una unidad: ' + (Date.now() - t0) + ' ms, ' + Math.round(json.length / 1024) + ' KB');
+  return { success: true, json: json };
 }
 function costsDashboard_getConfig(payload) {
   return dispatch('getCostsDashboardConfig', payload || {});
@@ -22673,4 +22805,481 @@ function _mrChanges_(ym) {
     top: bought.slice().sort(function (a, b) { return b.changeCost - a.changeCost; }).slice(0, 5)
       .map(function (x) { return { id: x.id, parentId: x.parentId, unit: x.unit, tipos: x.tipos, cost: x.changeCost, original: x.original }; })
   };
+}
+
+// =====================================================================
+// CENTRO DE COSTOS DE OTRA UNIDAD (#A133; pedido de Yurani, decisiones de David del 24-nov-2026)
+// =====================================================================
+// Quien viaja es de una unidad de negocio (la suya) y puede cargar el viaje a un centro de costos de
+// otra. El costo (presupuesto, dashboard de costos, informes) va a la unidad DUEÑA del centro de
+// costos: UNIDAD DE NEGOCIO de la solicitud. La solicitud queda marcada (UNIDAD DEL VIAJERO y una nota
+// en OBSERVACIONES) y, además de su aprobador de siempre, la aprueba el responsable de esa unidad.
+//   - La unidad de cada persona vive en USUARIOS, columna «Unidad de negocio» (al final, por nombre).
+//     El centro de costo de USUARIOS es un código de RR. HH. (20101, 2040305…) que no coincide con los
+//     de «CDS vs UDEN» (101, 201…): por eso la columna aparte. El menú 17 la propone a partir del
+//     historial de cada persona y de su código de RR. HH. Sin unidad registrada, el viajero la elige
+//     en el formulario, como antes.
+//   - Un responsable por unidad, en una tabla de MISC (menú 18). Si una unidad tiene varios, vota
+//     cualquiera (la casilla es una sola, como los coaprobadores).
+//   - Una unidad sin responsable no ofrece sus centros de costos a otras unidades, y el servidor
+//     rechaza la solicitud si alguien lo intenta (salvo un cambio de un viaje ya creado).
+// El servidor decide la unidad del viajero, la unidad dueña y a quién se le pide el voto: nunca
+// confía en lo que mande el navegador. Columnas nuevas, al final de la hoja: UNIDAD DEL VIAJERO,
+// APROBADOR OTRA UNIDAD (los correos a los que se les pidió el voto; vacía = no hace falta) y
+// APROBADO OTRA UNIDAD (el voto, «Sí_correo_fecha» como APROBADO PRESUPUESTO).
+// =====================================================================
+var OU_ROLE = 'OTHER_UNIT';
+var OU_ROLE_LABEL = 'Responsable de la unidad del centro de costos';
+var OU_TRAVELER_UNIT_HEADER = 'UNIDAD DEL VIAJERO';
+var OU_APPROVER_HEADER = 'APROBADOR OTRA UNIDAD';
+var OU_VOTE_HEADER = 'APROBADO OTRA UNIDAD';
+var OU_TRAVELER_UNIT_NOTE = '#A133: unidad de negocio a la que pertenece el primer pasajero (USUARIOS, o la que eligió en el formulario si no tiene). Si es distinta de UNIDAD DE NEGOCIO, el viaje se cargó a un centro de costos de otra unidad. La escribe el sistema.';
+var OU_APPROVER_NOTE = '#A133: responsables de la unidad dueña del centro de costos a los que se les pidió el voto (tabla de MISC, menú 18). Vacía = no hacía falta. La escribe el sistema.';
+var OU_VOTE_NOTE = '#A133: voto del responsable de la unidad dueña del centro de costos (Sí_correo_fecha / No_correo_fecha). La escribe el sistema.';
+var OU_USER_UNIT_HEADER = 'Unidad de negocio';
+var OU_TABLE_SHEET = 'MISC';
+var OU_TABLE_HEADERS = ['RESPONSABLE UNIDAD · UNIDAD DE NEGOCIO', 'RESPONSABLE UNIDAD · CORREO'];
+/** Unidades de «CDS vs UDEN» que no son una unidad (centros de costos generales). */
+var OU_NOT_A_UNIT = ['na', '-', ''];
+var _OU_TABLE_CACHE = null;
+var _OU_USER_UNITS_CACHE = null;
+var _OU_CC_CACHE = null;
+
+/** Lista de correos de una celda («a@x, b@x»), en minúscula y sin repetir. */
+function _ouList_(raw) {
+  var out = [];
+  String(raw || '').toLowerCase().split(/[,;\s]+/).forEach(function (e) {
+    e = e.trim();
+    if (/^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(e) && out.indexOf(e) === -1) out.push(e);
+  });
+  return out;
+}
+
+/**
+ * Centros de costos y unidades de «CDS vs UDEN» (una vez por ejecución):
+ * { byCode: { '201': ['POTENCIA (GDM - P&M)'] }, units: { norm: etiqueta } }. Un centro puede estar en
+ * dos unidades (1901: INGENERGIA e INGENERGIA- COMAP). Las filas con unidad NA no son de ninguna unidad.
+ */
+function _ouCostCenters_() {
+  if (_OU_CC_CACHE) return _OU_CC_CACHE;
+  var out = { byCode: {}, units: {} };
+  getCostCenterData().forEach(function (c) {
+    var unit = String(c.businessUnit || '').replace(/\s+/g, ' ').trim();
+    var norm = _csNormalize_(unit);
+    if (OU_NOT_A_UNIT.indexOf(norm) !== -1) return;
+    if (!out.units[norm]) out.units[norm] = unit;
+    var list = out.byCode[c.code] || (out.byCode[c.code] = []);
+    if (!list.some(function (u) { return _csNormalize_(u) === norm; })) list.push(out.units[norm]);
+  });
+  _OU_CC_CACHE = out;
+  return out;
+}
+
+/** La etiqueta de «CDS vs UDEN» de una unidad escrita de cualquier forma ('' si no es una unidad). */
+function _ouCanonicalUnit_(raw) {
+  var norm = _csNormalize_(raw);
+  return norm ? (_ouCostCenters_().units[norm] || '') : '';
+}
+
+/** Columna «Unidad de negocio» de USUARIOS (1-based), o -1. Se busca por nombre: puede estar en cualquier posición. */
+function _ouUserUnitCol_(sheet) {
+  if (!sheet || sheet.getLastColumn() < 1) return -1;
+  var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(_normalizeHeader_);
+  var idx = headers.indexOf(OU_USER_UNIT_HEADER);
+  return idx >= 0 ? idx + 1 : -1;
+}
+
+/**
+ * Unidad registrada de cada persona (una vez por ejecución): { byCedula: {}, byEmail: {} }, con la
+ * etiqueta de «CDS vs UDEN». Un valor que no es una unidad conocida se ignora (el menú 17 lo reporta).
+ */
+function _ouUserUnits_() {
+  if (_OU_USER_UNITS_CACHE) return _OU_USER_UNITS_CACHE;
+  var out = { byCedula: {}, byEmail: {}, found: false };
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+    var col = _ouUserUnitCol_(sheet);
+    if (col > 0 && sheet.getLastRow() >= 2) {
+      out.found = true;
+      var n = sheet.getLastRow() - 1;
+      var abc = sheet.getRange(2, 1, n, 3).getValues();
+      var units = sheet.getRange(2, col, n, 1).getValues();
+      for (var i = 0; i < n; i++) {
+        var unit = _ouCanonicalUnit_(units[i][0]);
+        if (!unit) continue;
+        var ced = String(abc[i][0] || '').trim();
+        var email = String(abc[i][2] || '').toLowerCase().trim();
+        if (ced && !out.byCedula[ced]) out.byCedula[ced] = unit;
+        if (email && !out.byEmail[email]) out.byEmail[email] = unit;
+      }
+    }
+  } catch (e) {
+    console.error('Unidad de cada persona (#A133): no se pudo leer USUARIOS: ' + e);
+  }
+  _OU_USER_UNITS_CACHE = out;
+  return out;
+}
+
+/** Ubica la tabla de responsables en las filas 1 a 3 de MISC. Columnas 1-based. */
+function _ouLocateTable_(sheet) {
+  var lastCol = sheet.getLastColumn(), lastRow = sheet.getLastRow();
+  if (lastCol < 1 || lastRow < 1) return { found: false, partial: false };
+  var values = sheet.getRange(1, 1, Math.min(3, lastRow), lastCol).getValues();
+  var partial = false;
+  for (var r = 0; r < values.length; r++) {
+    var cols = { unit: -1, email: -1 };
+    for (var c = 0; c < values[r].length; c++) {
+      var h = _csNormalize_(values[r][c]);
+      if (h.indexOf('responsable unidad') === -1) continue;
+      if (cols.email === -1 && h.indexOf('correo') !== -1) cols.email = c + 1;
+      else if (cols.unit === -1 && h.indexOf('negocio') !== -1) cols.unit = c + 1;
+    }
+    if (cols.unit > 0 && cols.email > 0) return { found: true, partial: false, headerRow: r + 1, unitCol: cols.unit, emailCol: cols.email };
+    if (cols.unit > 0 || cols.email > 0) partial = true;
+  }
+  return { found: false, partial: partial };
+}
+
+/** Lee la tabla (sin caché): { found, partial, loc, rows: [{row, unitRaw, unit, email}] }. */
+function _ouReadTable_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OU_TABLE_SHEET);
+  var loc = sheet ? _ouLocateTable_(sheet) : { found: false, partial: false };
+  var rows = [];
+  if (loc.found) {
+    var n = sheet.getLastRow() - loc.headerRow;
+    var data = n > 0 ? sheet.getRange(loc.headerRow + 1, 1, n, sheet.getLastColumn()).getValues() : [];
+    data.forEach(function (d, i) {
+      var unitRaw = String(d[loc.unitCol - 1] == null ? '' : d[loc.unitCol - 1]).replace(/\s+/g, ' ').trim();
+      var email = String(d[loc.emailCol - 1] == null ? '' : d[loc.emailCol - 1]).toLowerCase().trim();
+      if (unitRaw || email) rows.push({ row: loc.headerRow + 1 + i, unitRaw: unitRaw, unit: _ouCanonicalUnit_(unitRaw), email: email });
+    });
+  }
+  return { found: loc.found, partial: !!loc.partial, loc: loc, rows: rows };
+}
+
+/**
+ * Responsables por unidad (una vez por ejecución): { norm: { unit, emails: [] } }. Solo filas con una
+ * unidad conocida y un correo válido. Si la tabla no se puede leer: {} (nadie carga a otra unidad).
+ */
+function _ouApproversByUnit_() {
+  if (_OU_TABLE_CACHE) return _OU_TABLE_CACHE;
+  var out = {};
+  try {
+    _ouReadTable_().rows.forEach(function (r) {
+      if (!r.unit || _ouList_(r.email).length !== 1) return;
+      var norm = _csNormalize_(r.unit);
+      var entry = out[norm] || (out[norm] = { unit: r.unit, emails: [] });
+      if (entry.emails.indexOf(r.email) === -1) entry.emails.push(r.email);
+    });
+  } catch (e) {
+    console.error('Responsables por unidad (#A133): no se pudo leer la tabla de ' + OU_TABLE_SHEET + ': ' + e);
+    out = {};
+  }
+  _OU_TABLE_CACHE = out;
+  return out;
+}
+
+/**
+ * Lo que necesita el formulario (getFormBootstrap): las unidades que reciben viajes de otras unidades y
+ * quién los aprueba, con el nombre de USUARIOS (el correo solo si la persona no está allí; el menú 18 lo
+ * avisa). Que la clave venga le dice al formulario que este servidor ya hace la regla.
+ */
+function _ouPublicInfo_() {
+  var names = _approvalNamesMap_();
+  var by = _ouApproversByUnit_();
+  return {
+    units: Object.keys(by).map(function (k) {
+      return { unit: by[k].unit, approvers: by[k].emails.map(function (e) { return names[e] || e; }).join(' o ') };
+    }).sort(function (a, b) { return a.unit.localeCompare(b.unit, 'es'); })
+  };
+}
+
+/**
+ * Al crear una solicitud (también un cambio): la unidad del viajero, la unidad a la que se carga el viaje
+ * y a quién más se le pide el voto. data = payload de creación (costCenter, businessUnit, passengers,
+ * requesterEmail y, desde el formulario de #A133, travelerUnit). Devuelve
+ * { travelerUnit, chargedUnit, cross, approvers: [correos] }.
+ * Lanza un error para el usuario si el centro de costos es de otra unidad sin responsable registrado.
+ */
+function _ouPlan_(data) {
+  var cc = String(data.costCenter == null ? '' : data.costCenter).trim();
+  var sent = String(data.businessUnit == null ? '' : data.businessUnit).replace(/\s+/g, ' ').trim();
+  var out = { travelerUnit: '', chargedUnit: sent, cross: false, approvers: [] };
+  var owners = cc && cc.toUpperCase() !== 'VARIOS' ? (_ouCostCenters_().byCode[cc] || []) : [];
+  var ownerOf = function (unit) {
+    var n = _csNormalize_(unit);
+    return n ? owners.filter(function (u) { return _csNormalize_(u) === n; })[0] || '' : '';
+  };
+  // La unidad a la que se carga es la dueña del centro de costos (antes el formulario la mandaba aparte).
+  if (owners.length) out.chargedUnit = ownerOf(sent) || owners[0];
+  // La unidad del viajero: la de USUARIOS (primer pasajero); si no tiene, la que eligió en el formulario.
+  var p1 = data.passengers && data.passengers[0] ? data.passengers[0] : null;
+  var reg = p1 ? _ouUserUnits_().byCedula[String(p1.idNumber || '').trim()] : '';
+  out.travelerUnit = reg || (data.travelerUnit !== undefined ? _ouCanonicalUnit_(data.travelerUnit) : '');
+  if (!out.travelerUnit || !owners.length) return out;
+  var own = ownerOf(out.travelerUnit);
+  if (own) { out.chargedUnit = own; return out; } // el centro de costos es de su unidad
+  out.cross = true;
+  var entry = _ouApproversByUnit_()[_csNormalize_(out.chargedUnit)];
+  if (!entry || !entry.emails.length) {
+    // Un cambio de un viaje ya creado no se bloquea: el viaje original ya estaba cargado allá.
+    if (String(data.requestType || '').toUpperCase() === 'MODIFICACION' || data.relatedRequestId) return out;
+    throw new Error('El centro de costos ' + cc + ' es de ' + out.chargedUnit + ', y esa unidad todavía no tiene registrado quién aprueba ' +
+      'los viajes que le cargan otras unidades. Elija un centro de costos de su unidad (' + out.travelerUnit + ') o pídale al área de compras ' +
+      'que registre al responsable de ' + out.chargedUnit + '.');
+  }
+  // Nadie aprueba su propio viaje: si el viajero o quien pide es el responsable, ese voto no se pide.
+  var self = [String(data.requesterEmail || '').toLowerCase().trim(), String(p1 && p1.email || '').toLowerCase().trim()];
+  var p1Email = p1 ? _ouEmailForCedula_(p1.idNumber) : '';
+  if (p1Email) self.push(p1Email);
+  out.approvers = entry.emails.filter(function (e) { return self.indexOf(e) === -1; });
+  return out;
+}
+
+/** Correo de USUARIOS de una cédula ('' si no está). */
+function _ouEmailForCedula_(ced) {
+  var map = _getRequesterCedulaMap_(); // correo → cédula
+  var target = String(ced || '').trim();
+  for (var email in map) { if (Object.prototype.hasOwnProperty.call(map, email) && map[email] === target) return email; }
+  return '';
+}
+
+/**
+ * Estado del voto de la unidad dueña del centro de costos: 'NA' | 'APPROVED' | 'DENIED' | 'PENDING'.
+ * Lo cubre el voto directo y, si un responsable ya votó con otro rol (aprobador de área, Gerencia
+ * General, Cadena de Suministro o presupuesto), ese voto: a cada persona se le pide un solo voto.
+ * votes = { area, ceo, cds, budget } (las casillas tal como están en la hoja).
+ */
+function _ouEffective_(approversRaw, ouVal, votes) {
+  var list = _ouList_(approversRaw);
+  if (!list.length) return 'NA';
+  var direct = _approvalVoteParse_(ouVal, '');
+  if (direct && (direct.decision === 'approved' || direct.decision === 'skipped')) return 'APPROVED';
+  if (direct && direct.decision === 'denied') return 'DENIED';
+  var other = 'PENDING';
+  ['area', 'ceo', 'cds', 'budget'].forEach(function (k) {
+    var v = _approvalVoteParse_(votes && votes[k], '');
+    if (!v || other !== 'PENDING') return;
+    if (v.decision === 'skipped') { other = 'APPROVED'; return; }
+    var voters = _ouList_(v.email);
+    if (!voters.some(function (e) { return list.indexOf(e) !== -1; })) return;
+    if (v.decision === 'approved') other = 'APPROVED';
+    else if (v.decision === 'denied') other = 'DENIED';
+  });
+  return other;
+}
+
+/** Nota de OBSERVACIONES con la que queda marcada la solicitud. */
+function _ouNote_(plan, cc, ccName) {
+  return '[OTRA UNIDAD]: el viajero es de ' + plan.travelerUnit + ' y el viaje se carga al centro de costos ' + cc +
+    (ccName ? ' (' + ccName + ')' : '') + ', de ' + plan.chargedUnit + '.' +
+    (plan.approvers.length ? ' Lo aprueba también ' + _approvalWho_(plan.approvers.join(',')) + '.' : '');
+}
+
+// ---------- Menú 17: la unidad de cada persona en USUARIOS ----------
+
+/**
+ * Propone la unidad de quien no la tiene. Primero su historial (las solicitudes donde es el primer
+ * pasajero o quien pide: al menos 2 y el 80 % en una unidad); si no, la de su código de RR. HH. (el 85 %
+ * o más de las solicitudes de las personas con ese código, con al menos 3). Nunca cambia una celda
+ * escrita. Devuelve { col, created, proposals: [{row, name, unit, from}], pending: [nombres], invalid: [] }.
+ */
+function _ouProposeUserUnits_() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var users = ss.getSheetByName(SHEET_NAME_USUARIOS);
+  if (!users || users.getLastRow() < 2) throw new Error('La hoja USUARIOS no existe o está vacía.');
+  var col = _ouUserUnitCol_(users);
+  var n = users.getLastRow() - 1;
+  var base = users.getRange(2, 1, n, 6).getValues(); // A cédula, B nombre, C correo, F código de RR. HH.
+  var current = col > 0 ? users.getRange(2, col, n, 1).getValues() : null;
+  var reqSheet = ss.getSheetByName(SHEET_NAME_REQUESTS);
+  var hist = {}; // correo → { norm: cuántas }
+  if (reqSheet && reqSheet.getLastRow() >= 2) {
+    var rows = reqSheet.getRange(2, 1, reqSheet.getLastRow() - 1, reqSheet.getLastColumn()).getValues();
+    var iUnit = H('UNIDAD DE NEGOCIO'), iCed = H('CÉDULA PERSONA 1'), iReq = H('CORREO ENCUESTADO'), iType = H('TIPO DE SOLICITUD');
+    var byCed = {};
+    base.forEach(function (r) { var c = String(r[0] || '').trim(); if (c) byCed[c] = String(r[2] || '').toLowerCase().trim(); });
+    rows.forEach(function (r) {
+      if (!r[0] || String(r[iType] || '').toUpperCase() === 'MODIFICACION') return;
+      var unit = _ouCanonicalUnit_(r[iUnit]);
+      if (!unit) return;
+      var who = {};
+      var p1 = byCed[String(r[iCed] || '').trim()];
+      if (p1) who[p1] = true;
+      var req = String(r[iReq] || '').toLowerCase().trim();
+      if (req) who[req] = true;
+      Object.keys(who).forEach(function (e) {
+        var h = hist[e] || (hist[e] = {});
+        h[_csNormalize_(unit)] = (h[_csNormalize_(unit)] || 0) + 1;
+      });
+    });
+  }
+  var top = function (counts) {
+    var total = 0, best = '', bestN = 0;
+    Object.keys(counts || {}).forEach(function (k) { total += counts[k]; if (counts[k] > bestN) { best = k; bestN = counts[k]; } });
+    return { unit: best, n: bestN, total: total };
+  };
+  var code = function (v) { return String(v === null || v === undefined ? '' : (typeof v === 'number' ? Math.round(v) : v)).trim(); };
+  var byCode = {};
+  base.forEach(function (r) {
+    var e = String(r[2] || '').toLowerCase().trim(), k = code(r[5]);
+    if (!k || !hist[e]) return;
+    var agg = byCode[k] || (byCode[k] = {});
+    Object.keys(hist[e]).forEach(function (u) { agg[u] = (agg[u] || 0) + hist[e][u]; });
+  });
+  var units = _ouCostCenters_().units;
+  var out = { col: col, proposals: [], pending: [], invalid: [], already: 0 };
+  base.forEach(function (r, i) {
+    var name = String(r[1] || '').trim(), email = String(r[2] || '').toLowerCase().trim();
+    if (!r[0] || !email) return;
+    var cur = current ? String(current[i][0] == null ? '' : current[i][0]).trim() : '';
+    if (cur) {
+      if (_ouCanonicalUnit_(cur)) out.already++;
+      else out.invalid.push('Fila ' + (i + 2) + ' (' + name + '): «' + cur + '» no es una unidad de «CDS vs UDEN».');
+      return;
+    }
+    var h = top(hist[email]);
+    var c = top(byCode[code(r[5])]);
+    if (h.total >= 2 && h.n / h.total >= 0.8) out.proposals.push({ row: i + 2, name: name, unit: units[h.unit], from: 'historial' });
+    else if (c.total >= 3 && c.n / c.total >= 0.85) out.proposals.push({ row: i + 2, name: name, unit: units[c.unit], from: 'código ' + code(r[5]) });
+    else out.pending.push(name);
+  });
+  return out;
+}
+
+/** Escribe las propuestas (crea la columna al final de USUARIOS si falta). Solo celdas vacías. */
+function _ouWriteUserUnits_(proposals) {
+  var users = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  var col = _ouUserUnitCol_(users), created = false;
+  if (col < 0) {
+    col = users.getLastColumn() + 1;
+    if (users.getMaxColumns() < col) users.insertColumnsAfter(users.getMaxColumns(), col - users.getMaxColumns());
+    users.getRange(1, col).setValue(OU_USER_UNIT_HEADER).setFontWeight('bold')
+      .setNote('#A133: unidad de negocio a la que pertenece la persona, como está en «CDS vs UDEN». Decide si un centro de costos es de otra unidad. Vacía: la persona la elige en el formulario.');
+    created = true;
+  }
+  var written = 0;
+  proposals.forEach(function (p) {
+    var cell = users.getRange(p.row, col);
+    if (String(cell.getValue() || '').trim()) return; // nunca se pisa lo escrito
+    cell.setValue(p.unit);
+    written++;
+  });
+  SpreadsheetApp.flush();
+  _OU_USER_UNITS_CACHE = null;
+  return { col: col, created: created, written: written };
+}
+
+function menuUnidadUsuarios() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    var p = _ouProposeUserUnits_();
+    var fromHist = p.proposals.filter(function (x) { return x.from === 'historial'; }).length;
+    var lines = [
+      'Columna «' + OU_USER_UNIT_HEADER + '» de USUARIOS' + (p.col > 0 ? ' (' + _csColumnLetter_(p.col) + ')' : ' (se crea al final)') + '.',
+      'Ya tienen unidad: ' + p.already + '.',
+      'Se propone para ' + p.proposals.length + ': ' + fromHist + ' por su historial de solicitudes y ' + (p.proposals.length - fromHist) + ' por su código de RR. HH.',
+      'Quedan sin unidad ' + p.pending.length + ': no hay datos claros. Eligen su unidad en el formulario, o escríbala en la hoja.'
+    ];
+    if (p.invalid.length) { lines.push(''); lines.push('Revisar (' + p.invalid.length + '):'); p.invalid.slice(0, 15).forEach(function (w) { lines.push('• ' + w); }); }
+    if (!p.proposals.length) { ui.alert('Unidad de negocio de cada persona', lines.join('\n'), ui.ButtonSet.OK); return; }
+    lines.push('');
+    lines.push('¿Escribir las ' + p.proposals.length + ' propuestas? Solo se llenan celdas vacías; lo escrito no se toca. Después se puede corregir cualquiera en la hoja.');
+    if (ui.alert('Unidad de negocio de cada persona', lines.join('\n'), ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+    var w = _ouWriteUserUnits_(p.proposals);
+    var done = 'Listo: ' + w.written + ' personas con su unidad en la columna ' + _csColumnLetter_(w.col) + (w.created ? ' (nueva)' : '') + '.';
+    if (p.pending.length) done += '\n\nSin unidad (' + p.pending.length + '), por si quiere completarlas:\n' + p.pending.slice(0, 60).join(', ') + (p.pending.length > 60 ? '…' : '');
+    ui.alert('Unidad de negocio de cada persona', done, ui.ButtonSet.OK);
+  } catch (e) {
+    console.error('menuUnidadUsuarios: ' + (e && e.stack ? e.stack : e));
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
+}
+
+// ---------- Menú 18: responsables de cada unidad ----------
+
+/**
+ * Crea la tabla en MISC si falta (fila 1, al final de lo usado y con una columna libre de separación) y
+ * la arranca con los líderes que ya ven una unidad en el dashboard de costos (#A76; no «TODAS» ni
+ * «COMPLETO»). Idempotente: si ya existe, no toca nada.
+ */
+function prepararTablaResponsablesUnidad() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OU_TABLE_SHEET);
+  if (!sheet) throw new Error('No existe la hoja "' + OU_TABLE_SHEET + '".');
+  var loc = _ouLocateTable_(sheet);
+  if (loc.found) return { created: false, loc: loc, seeded: 0 };
+  if (loc.partial) {
+    throw new Error('En ' + OU_TABLE_SHEET + ' (filas 1 a 3) está solo uno de los encabezados de la tabla de responsables. Deje los dos ("' +
+      OU_TABLE_HEADERS.join('", "') + '") o borre el que quedó para que el menú los cree.');
+  }
+  var seed = [], seen = {};
+  var allNorm = _csNormalize_(COSTS_ACCESS_ALL_UNITS), fullNorm = _csNormalize_(COSTS_ACCESS_FULL);
+  _csLoadAccessTable_().entries.forEach(function (e) {
+    var norm = _csNormalize_(e.unit);
+    var unit = _ouCanonicalUnit_(e.unit);
+    if (!unit || norm === allNorm || norm === fullNorm || _ouList_(e.email).length !== 1) return;
+    var key = _csNormalize_(unit) + '|' + e.email;
+    if (seen[key]) return;
+    seen[key] = true;
+    seed.push([unit, e.email]);
+  });
+  var col = sheet.getLastColumn() + 2;
+  if (sheet.getMaxColumns() < col + 1) sheet.insertColumnsAfter(sheet.getMaxColumns(), col + 1 - sheet.getMaxColumns());
+  sheet.getRange(1, col, 1, 2).setValues([OU_TABLE_HEADERS]).setFontWeight('bold');
+  if (seed.length) sheet.getRange(2, col, seed.length, 2).setValues(seed);
+  SpreadsheetApp.flush();
+  _OU_TABLE_CACHE = null;
+  return { created: true, loc: { found: true, headerRow: 1, unitCol: col, emailCol: col + 1 }, seeded: seed.length };
+}
+
+/** Revisa la tabla: quién responde por cada unidad, qué unidades no reciben viajes de otras y qué falta. No escribe. */
+function revisarResponsablesUnidad() {
+  _OU_TABLE_CACHE = null;
+  var t = _ouReadTable_();
+  var names = _approvalNamesMap_();
+  var res = { found: t.found, loc: t.loc, units: [], without: [], warnings: [] };
+  if (!t.found) return res;
+  t.rows.forEach(function (r) {
+    var where = 'Fila ' + r.row + ': ';
+    if (!r.unitRaw) { res.warnings.push(where + 'falta la unidad.'); return; }
+    if (!r.unit) { res.warnings.push(where + '«' + r.unitRaw + '» no es una unidad de «CDS vs UDEN»; la fila no cuenta.'); return; }
+    if (_ouList_(r.email).length !== 1) { res.warnings.push(where + 'el correo «' + r.email + '» no es válido (uno por fila); la fila no cuenta.'); return; }
+    if (!names[r.email]) res.warnings.push(where + r.email + ' no está en USUARIOS: se muestra su correo en vez del nombre.');
+  });
+  var by = _ouApproversByUnit_();
+  var all = _ouCostCenters_().units;
+  Object.keys(all).sort(function (a, b) { return all[a].localeCompare(all[b], 'es'); }).forEach(function (k) {
+    if (by[k]) res.units.push(all[k] + ': ' + by[k].emails.map(function (e) { return names[e] || e; }).join(' o '));
+    else res.without.push(all[k]);
+  });
+  return res;
+}
+
+function menuResponsablesUnidad() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    _requireAnalyst_();
+    var prep = prepararTablaResponsablesUnidad();
+    var rev = revisarResponsablesUnidad();
+    var where = OU_TABLE_SHEET + ', columnas ' + _csColumnLetter_(prep.loc.unitCol) + ' y ' + _csColumnLetter_(prep.loc.emailCol) + ' (encabezados en la fila ' + prep.loc.headerRow + ')';
+    var lines = [];
+    lines.push(prep.created ? 'Tabla creada en ' + where + ', con ' + prep.seeded + ' filas: los líderes que ya ven cada unidad en el dashboard de costos. Revísela.' : 'Tabla en ' + where + '.');
+    lines.push('Una fila por persona: la unidad (como en «CDS vs UDEN») y su correo de USUARIOS. Si una unidad tiene varias, aprueba cualquiera.');
+    lines.push('');
+    lines.push('Aprueban los viajes que otras unidades cargan a sus centros de costos (' + rev.units.length + '):');
+    rev.units.forEach(function (u) { lines.push('• ' + u); });
+    if (rev.without.length) {
+      lines.push('');
+      lines.push('Sin responsable (' + rev.without.length + '): sus centros de costos no se ofrecen a otras unidades.');
+      lines.push(rev.without.join(', '));
+    }
+    if (rev.warnings.length) { lines.push(''); lines.push('Revisar (' + rev.warnings.length + '):'); rev.warnings.forEach(function (w) { lines.push('• ' + w); }); }
+    lines.push('');
+    lines.push('El formulario lee la tabla cada vez que se abre: un cambio se ve de inmediato.');
+    ui.alert('Responsables de cada unidad', lines.join('\n'), ui.ButtonSet.OK);
+  } catch (e) {
+    console.error('menuResponsablesUnidad: ' + (e && e.stack ? e.stack : e));
+    ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
+  }
 }

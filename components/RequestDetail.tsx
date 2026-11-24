@@ -706,6 +706,14 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                     </div>
                                 )}
 
+                                {/* #A133: centro de costos de otra unidad */}
+                                {request.otherUnitCharge && (
+                                    <div className="bg-violet-50 border border-violet-200 text-violet-900 px-4 py-3 rounded-md text-sm">
+                                        <strong>🏷️ CENTRO DE COSTOS DE OTRA UNIDAD:</strong> El viajero es de <strong>{request.travelerUnit}</strong> y el viaje se carga al centro de costos <strong>{request.costCenter}{request.costCenterName ? ` – ${request.costCenterName}` : ''}</strong>, de <strong>{request.businessUnit}</strong>: el costo cuenta en el presupuesto de esa unidad.
+                                        {request.otherUnitApproverName ? <> Por eso también la aprueba <strong>{request.otherUnitApproverName}</strong>.</> : null}
+                                    </div>
+                                )}
+
                                 {/* #A100: tarifa superior a la del manual → aprobación del CFO antes de comprar */}
                                 {request.requiresFareApproval && (
                                     <div className="bg-orange-50 border border-orange-200 text-orange-900 px-4 py-3 rounded-md text-sm">
@@ -1057,13 +1065,24 @@ export const RequestDetail = ({ request, integrantes, onClose, onRefresh, onModi
                                                 comment={request.approverComments?.find(c => c.role === 'BUDGET_OVERRUN')?.comment}
                                             />
                                         )}
+                                        {/* #A133: centro de costos de otra unidad → vota también su responsable */}
+                                        {request.requiresOtherUnitApproval && (
+                                            <ApprovalStatusRow
+                                                label={`Unidad del centro de costos · ${request.businessUnit}${request.otherUnitApproverName ? ` (${request.otherUnitApproverName})` : ''}`}
+                                                effectiveStatus={request.effectiveApprovalOtherUnit}
+                                                rawStatusString={request.approvalStatusOtherUnit}
+                                                naReason={request.effectiveApprovalOtherUnitReason}
+                                                comment={request.approverComments?.find(c => c.role === 'OTHER_UNIT')?.comment}
+                                            />
+                                        )}
                                     </div>
 
                                     {/* Comentarios cuyo rol no tiene fila visible (ej. BUDGET_OVERRUN
                                         cuando la exención por OT apagó esa fila) — no deben perderse. */}
                                     {(request.approverComments || [])
                                         .filter(c => !['NORMAL', 'CEO', 'CDS'].includes(c.role) &&
-                                                     !(c.role === 'BUDGET_OVERRUN' && request.requiresBudgetOverrunApproval))
+                                                     !(c.role === 'BUDGET_OVERRUN' && request.requiresBudgetOverrunApproval) &&
+                                                     !(c.role === 'OTHER_UNIT' && request.requiresOtherUnitApproval))
                                         .map((c, i) => (
                                             <div key={`orphan-comment-${i}`} className="mt-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 italic whitespace-pre-wrap break-words">
                                                 💬 <strong>{APPROVER_ROLE_LABELS[c.role] || c.role}:</strong> "{c.comment}"

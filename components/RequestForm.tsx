@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster, PassportStatus, BirthdateStatus, PolicyApprovalInfo } from '../types';
+import { TravelRequest, Passenger, RequestStatus, CostCenterMaster, Integrant, CityMaster, PassportStatus, BirthdateStatus, PolicyApprovalInfo, OtherUnitChargesInfo } from '../types';
 import { COMPANIES, MAX_PASSENGERS } from '../constants';
 import { gasService } from '../services/gasService';
 import { formatToYYYYMMDD, formatToDDMMYYYY, parseDate } from '../utils/dateUtils';
@@ -10,6 +10,7 @@ import { PassportUploadModal } from './PassportUploadModal';
 import { validateWorkOrder, WORK_ORDER_PLACEHOLDER } from '../utils/workOrder';
 import { validateBirthdate, todayIsoLocal } from '../utils/birthdate';
 import { validateOptionalPhone } from '../utils/phone';
+import { planCharge, otherUnitGroups, matchUnit, unitKey, isRealUnit } from '../utils/otherUnit';
 // #A96: import ESTÁTICO a propósito. Antes se cargaba bajo demanda (import()) y cada
 // publicación le cambiaba el nombre al archivo: quien tenía la app abierta desde antes
 // no podía enviar la solicitud ("Failed to fetch dynamically imported module").
@@ -242,6 +243,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   const [masterData, setMasterData] = useState<CostCenterMaster[]>([]);
   const [availableBusinessUnits, setAvailableBusinessUnits] = useState<string[]>([]);
   const [filteredCostCenters, setFilteredCostCenters] = useState<CostCenterMaster[]>([]);
+  // #A133: centros de costos de otra unidad. null = servidor anterior: el formulario sigue como antes.
+  const [otherUnitInfo, setOtherUnitInfo] = useState<OtherUnitChargesInfo | null>(null);
+  const ouOn = !!otherUnitInfo;
 
   // Cities Data
   const [cities, setCities] = useState<CityMaster[]>([]);
@@ -291,16 +295,18 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         setMasterData(data.costCenters || []);
         setCities(data.cities || []);
         setPolicyApproval(data.policyApproval && data.policyApproval.enabled ? data.policyApproval : null);
+        setOtherUnitInfo(data.otherUnitCharges && Array.isArray(data.otherUnitCharges.units) ? data.otherUnitCharges : null);
 
         const uniqueUnits = Array.from(new Set((data.costCenters || []).map(item => item.businessUnit)))
-          .filter(u => u && u !== 'NA')
+          .filter(u => isRealUnit(u)) // ni NA ni «-» (la fila VARIOS de «CDS vs UDEN»), #A133
           .sort();
         setAvailableBusinessUnits(uniqueUnits);
 
         // Pre-filter if modification
-        if (initialData?.businessUnit) {
-          const filtered = (data.costCenters || []).filter(item => item.businessUnit === initialData.businessUnit);
-          const variosOption = { code: 'VARIOS', name: 'Múltiples Centros de Costo', businessUnit: initialData.businessUnit };
+        const initialUnit = initialData?.travelerUnit || initialData?.businessUnit;
+        if (initialUnit) {
+          const filtered = (data.costCenters || []).filter(item => unitKey(item.businessUnit) === unitKey(initialUnit));
+          const variosOption = { code: 'VARIOS', name: 'Múltiples Centros de Costo', businessUnit: initialUnit };
           setFilteredCostCenters([...filtered, variosOption]);
         }
       } catch (err: any) {
@@ -413,7 +419,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
   const [formData, setFormData] = useState<Partial<TravelRequest>>({
     company: initialData?.company || '',
-    businessUnit: initialData?.businessUnit || '',
+    // #A133: el campo es la unidad del viajero; en una solicitud cargada a otra unidad, businessUnit es la que paga.
+    businessUnit: initialData?.travelerUnit || initialData?.businessUnit || '',
     site: initialData?.site || '',
     costCenter: initialData?.costCenter || '',
     origin: initialData?.origin || '',
@@ -434,13 +441,57 @@ export const RequestForm: React.FC<RequestFormProps> = ({
   // Filter Cost Centers when Business Unit Changes
   useEffect(() => {
     if (formData.businessUnit) {
-      const filtered = masterData.filter(item => item.businessUnit === formData.businessUnit);
+      // #A133: por la clave de la unidad (la hoja trae espacios raros, p. ej. «ADM AUDITORIA»).
+      const filtered = masterData.filter(item => unitKey(item.businessUnit) === unitKey(formData.businessUnit));
       const variosOption: CostCenterMaster = { code: 'VARIOS', name: 'Múltiples Centros de Costo', businessUnit: formData.businessUnit };
       setFilteredCostCenters([...filtered, variosOption]);
     } else {
       setFilteredCostCenters([]);
     }
   }, [formData.businessUnit, masterData]);
+
+  // #A133: la unidad del viajero es la registrada en USUARIOS para el primer pasajero (no se elige) o, si no
+  // tiene, la que se elige en el campo. El viaje se carga a la unidad dueña del centro de costos; si es otra,
+  // se avisa y la aprueba también su responsable. El servidor vuelve a decidir todo al crear la solicitud.
+  const registeredUnit = useMemo(() => {
+    if (!ouOn || !passengers[0]?.idNumber) return '';
+    const p1 = integrantes.find(i => i.idNumber === passengers[0].idNumber);
+    return p1?.businessUnit ? matchUnit(p1.businessUnit, availableBusinessUnits) : '';
+  }, [ouOn, passengers, integrantes, availableBusinessUnits]);
+  const travelerUnit = registeredUnit || formData.businessUnit || '';
+  const chargePlan = useMemo(
+    () => (ouOn ? planCharge(formData.costCenter, travelerUnit, masterData) : { chargedUnit: formData.businessUnit || '', cross: false }),
+    [ouOn, formData.costCenter, formData.businessUnit, travelerUnit, masterData]
+  );
+  const otherGroups = useMemo(
+    () => (ouOn && otherUnitInfo && travelerUnit
+      ? otherUnitGroups(masterData, travelerUnit, otherUnitInfo.units, isModification ? initialData?.costCenter : undefined)
+      : []),
+    [ouOn, otherUnitInfo, travelerUnit, masterData, isModification, initialData]
+  );
+  const chargedApprovers = chargePlan.cross
+    ? (otherGroups.find(g => unitKey(g.unit) === unitKey(chargePlan.chargedUnit))?.approvers || '')
+    : '';
+  useEffect(() => {
+    if (!registeredUnit || unitKey(registeredUnit) === unitKey(formData.businessUnit)) return;
+    if (formData.costCenter === 'VARIOS') setVariousCCList([]);
+    setFormData(prev => ({ ...prev, businessUnit: registeredUnit, costCenter: prev.costCenter === 'VARIOS' ? '' : prev.costCenter }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registeredUnit]);
+  // Un centro de costos que ya no se ofrece (cambió la unidad del viajero) se quita.
+  useEffect(() => {
+    const code = String(formData.costCenter || '');
+    if (!ouOn || !code || code === 'VARIOS' || masterData.length === 0) return;
+    const offered = filteredCostCenters.some(c => c.code === code) || otherGroups.some(g => g.centers.some(c => String(c.code).trim() === code));
+    if (!offered) setFormData(prev => ({ ...prev, costCenter: '' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ouOn, filteredCostCenters, otherGroups]);
+  // La cadena de aprobación que se muestra: la de siempre y, con un centro de costos de otra unidad, su responsable.
+  const approverPreviewShown = useMemo(() => (
+    chargePlan.cross && chargedApprovers
+      ? [...approverPreview, { name: chargedApprovers, email: '', roles: [`Unidad del centro de costos · ${chargePlan.chargedUnit}`] }]
+      : approverPreview
+  ), [approverPreview, chargePlan, chargedApprovers]);
 
   // Handle Trip Type Change
   useEffect(() => {
@@ -1268,6 +1319,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           const note = `[MULTIDESTINO] Tramo ${i + 1}/${legs.length} · Itinerario: ${itinerary}`;
           const legPayload: Partial<TravelRequest> = {
             ...formData,
+            // #A133: la unidad que paga (la dueña del centro de costos) y la del viajero.
+            ...(ouOn ? { businessUnit: chargePlan.chargedUnit, travelerUnit } : {}),
             workOrder: normalizedWorkOrder,
             requestMode: 'FLIGHT' as const,
             origin: leg.origin,
@@ -1323,6 +1376,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
       const payload: Partial<TravelRequest> = {
         ...formData,
+        // #A133: la unidad que paga (la dueña del centro de costos) y la del viajero.
+        ...(ouOn ? { businessUnit: chargePlan.chargedUnit, travelerUnit } : {}),
         workOrder: normalizedWorkOrder,
         requestMode: requestMode,
         departureDate: formatToDDMMYYYY(formData.departureDate),
@@ -1461,23 +1516,51 @@ export const RequestForm: React.FC<RequestFormProps> = ({
           </div>
 
           {/* Recordatorio pedido en la reunión Tiquetes/Aviatur (2026-09-10): el
-              viaje se carga a la unidad y centro de costos elegidos aquí, y el
-              aprobador NO cambia por esa elección (sale de USUARIOS, por el
-              primer pasajero). */}
+              viaje se carga al centro de costos elegido aquí, y el aprobador de
+              área sale de USUARIOS, por el primer pasajero. Desde #A133, con un
+              centro de costos de otra unidad aprueba también su responsable. */}
           <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <span className="font-bold">⚠️ Verifique la unidad de negocio y el centro de costos.</span>{' '}
-            El costo del viaje se cargará exactamente a los que seleccione aquí. El aprobador no cambia por
-            esta elección: es el que tiene asignado en el sistema el primer pasajero.
+            {ouOn ? (
+              <>
+                La unidad de negocio es la del viajero (a la que pertenece). El centro de costos es al que se carga el viaje:
+                primero salen los de su unidad y debajo los de otras unidades. El aprobador es el que tiene asignado el
+                primer pasajero; si elige un centro de costos de otra unidad, la solicitud la aprueba también el responsable
+                de esa unidad.
+              </>
+            ) : (
+              <>
+                El costo del viaje se cargará exactamente a los que seleccione aquí. El aprobador no cambia por
+                esta elección: es el que tiene asignado en el sistema el primer pasajero.
+              </>
+            )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Unidad de Negocio *</label>
-                <select name="businessUnit" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.businessUnit} onChange={handleInputChange} disabled={availableBusinessUnits.length === 0}>
-                  <option value="">{availableBusinessUnits.length === 0 ? 'Cargando...' : 'Seleccione...'}</option>
-                  {availableBusinessUnits.map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
-                <BudgetUsageBar empresa={formData.company} unidad={formData.businessUnit} />
+                <label className="block text-sm font-medium text-gray-700">{ouOn ? 'Unidad de negocio del viajero *' : 'Unidad de Negocio *'}</label>
+                {ouOn && registeredUnit ? (
+                  // #A133: la unidad registrada del primer pasajero no se elige.
+                  <>
+                    <div className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 p-2 text-sm font-medium text-gray-900">{registeredUnit}</div>
+                    <p className="text-[10px] text-gray-500 mt-1 italic">
+                      Es la unidad a la que pertenece el primer pasajero, según su registro en la plataforma. Si no es la correcta, avísele al área de compras.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <select name="businessUnit" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.businessUnit} onChange={handleInputChange} disabled={availableBusinessUnits.length === 0}>
+                      <option value="">{availableBusinessUnits.length === 0 ? 'Cargando...' : 'Seleccione...'}</option>
+                      {availableBusinessUnits.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                    {ouOn && (
+                      <p className="text-[10px] text-gray-500 mt-1 italic">
+                        La unidad a la que pertenece el primer pasajero. Si la tiene registrada en la plataforma, se toma de allí al escribir su cédula.
+                      </p>
+                    )}
+                  </>
+                )}
+                <BudgetUsageBar empresa={formData.company} unidad={ouOn ? chargePlan.chargedUnit : formData.businessUnit} />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Orden de Trabajo (Opcional)</label>
@@ -1514,13 +1597,43 @@ export const RequestForm: React.FC<RequestFormProps> = ({
 
             <div className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Centro de Costos *</label>
+                <label className="block text-sm font-medium text-gray-700">{ouOn ? 'Centro de costos al que se carga el viaje *' : 'Centro de Costos *'}</label>
                 <select name="costCenter" required className="mt-1 block w-full bg-white rounded-md border-gray-300 shadow-sm focus:border-brand-red focus:ring-brand-red sm:text-sm border p-2 text-gray-900" value={formData.costCenter} onChange={handleInputChange} disabled={!formData.businessUnit || filteredCostCenters.length === 0}>
                   <option value="">{!formData.businessUnit ? 'Seleccione Unidad Primero' : 'Seleccione...'}</option>
-                  {filteredCostCenters.map(c => (
-                    <option key={c.code} value={c.code}>{c.code === 'VARIOS' ? 'VARIOS' : `${c.code} - ${c.name || ''}`}</option>
-                  ))}
+                  {ouOn && otherGroups.length > 0 ? (
+                    <>
+                      <optgroup label={`De su unidad: ${formData.businessUnit}`}>
+                        {filteredCostCenters.map(c => (
+                          <option key={c.code} value={c.code}>{c.code === 'VARIOS' ? 'VARIOS' : `${c.code} - ${c.name || ''}`}</option>
+                        ))}
+                      </optgroup>
+                      {otherGroups.map(g => (
+                        <optgroup key={g.unit} label={`De otra unidad: ${g.unit}`}>
+                          {g.centers.map(c => (
+                            <option key={g.unit + c.code} value={c.code}>{`${c.code} - ${c.name || ''}`}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </>
+                  ) : (
+                    filteredCostCenters.map(c => (
+                      <option key={c.code} value={c.code}>{c.code === 'VARIOS' ? 'VARIOS' : `${c.code} - ${c.name || ''}`}</option>
+                    ))
+                  )}
                 </select>
+                {/* #A133: centro de costos de otra unidad */}
+                {chargePlan.cross && (
+                  <div className="mt-2 rounded-md border border-violet-300 bg-violet-50 px-3 py-2 text-xs text-violet-900" role="alert">
+                    <p className="font-bold">🏷️ Este centro de costos no es de su unidad</p>
+                    <p className="mt-1 leading-relaxed">
+                      Es de <strong>{chargePlan.chargedUnit}</strong> y el viajero es de <strong>{travelerUnit}</strong>. El costo del viaje
+                      se cargará a {chargePlan.chargedUnit} y contará en su presupuesto.{' '}
+                      {chargedApprovers
+                        ? <>Además de su aprobador de siempre, la solicitud la aprueba <strong>{chargedApprovers}</strong>.</>
+                        : <>La solicitud queda marcada como cargada a otra unidad.</>}
+                    </p>
+                  </div>
+                )}
                 {formData.costCenter === 'VARIOS' && (
                   <div className="mt-3 bg-gray-50 p-3 rounded-md border border-gray-200">
                     <div className="flex gap-2 mb-2">
@@ -2116,11 +2229,11 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         {/* ACTIONS & ALERTS */}
         <div className="pt-4 space-y-4">
 
-          {approverPreview.length > 0 && (
+          {approverPreviewShown.length > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
               <p className="text-xs font-semibold text-blue-700 uppercase mb-2">Cadena de aprobación estimada</p>
               <div className="space-y-2">
-                {approverPreview.map((a, i) => {
+                {approverPreviewShown.map((a, i) => {
                   const isExecutive = a.roles.some(r => r.startsWith('Ejecutivo') || r === 'Aprobación única');
                   return (
                     <div key={i} className={`flex flex-col gap-1 px-3 py-2 rounded ${isExecutive ? 'bg-amber-50 border border-amber-200' : 'bg-white border border-blue-100'}`}>

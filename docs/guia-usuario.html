@@ -193,10 +193,11 @@
 <ul>
 <li><strong>Empresa:</strong> Cumandes, Equitel, Ingenergía o LAP. Selecciona la que corresponda a ti (o al viajero principal si es para otra persona).</li>
 <li><strong>Sede:</strong> tu sede de trabajo (Bogotá, Medellín, Cali, Barranquilla, Urabá, etc.). Selecciona de la lista.</li>
-<li><strong>Unidad de negocio:</strong> dropdown que se llena según los centros de costo disponibles. Selecciona la tuya.</li>
-<li><strong>Centro de costos:</strong> se filtra según la unidad de negocio. Selecciona el que cubre este viaje.
+<li><strong>Unidad de negocio del viajero:</strong> la unidad a la que <strong>pertenece</strong> el primer pasajero. Si la tiene registrada en la plataforma, sale sola al escribir su cédula y no se cambia (si no es la correcta, avísale al área de compras). Si no la tiene, elígela de la lista.</li>
+<li><strong>Centro de costos al que se carga el viaje:</strong> el que va a <strong>pagar</strong> el viaje. Primero salen los de tu unidad y debajo, agrupados, los de otras unidades.
 <ul>
-<li>Si el viaje se reparte entre varios CC, hay una opción <strong>“VARIOS”</strong> al final del listado. Al seleccionarla, el portal te muestra un campo donde puedes escribir los CC separados por coma (ej: <code>12345 - Proyecto A, 67890 - Proyecto B</code>).</li>
+<li>Si eliges uno de <strong>otra unidad</strong>, el portal te avisa: el costo se carga a esa unidad (cuenta en su presupuesto) y, además de tu aprobador de siempre, la solicitud la aprueba el <strong>responsable de esa unidad</strong>. Ver <a href="#98-cargar-el-viaje-a-otra-unidad">9.8</a>.</li>
+<li>Si el viaje se reparte entre varios CC de tu unidad, hay una opción <strong>“VARIOS”</strong> en tu grupo. Al seleccionarla, el portal te muestra un campo donde puedes escribir los CC separados por coma (ej: <code>12345 - Proyecto A, 67890 - Proyecto B</code>).</li>
 </ul>
 </li>
 <li><strong>Orden de trabajo (OT):</strong> opcional. Si tu viaje está asociado a una OT específica, escríbela.</li>
@@ -280,6 +281,10 @@ PROCESADO (ya viajaste y cerraste el ciclo)
 <td>Internacional (cualquier monto)</td>
 <td>Tu aprobador de área <strong>+</strong> el CDS y la <strong>Gerencia General (CEO)</strong>. Basta con que apruebe <strong>uno</strong> de los dos ejecutivos (CEO o CDS), además del aprobador de área.</td>
 </tr>
+<tr>
+<td>Cargada a un centro de costos de <strong>otra unidad</strong> (cualquier monto)</td>
+<td>Además de los anteriores, el <strong>responsable de la unidad dueña del centro de costos</strong>. Si esa unidad tiene varios responsables, basta con uno.</td>
+</tr>
 </tbody>
 </table>
 <p>Cada aprobador recibe un correo con botones <strong><code>APROBAR</code></strong> y <strong><code>DENEGAR</code></strong>. Hace click directamente desde el correo — no necesita entrar al portal — o aprueba desde <strong>Mis aprobaciones</strong> en el portal (ver abajo). Cuando todos los que debían aprobar hayan aprobado, te llega un correo de <strong>“Solicitud Aprobada”</strong> y el proceso continúa.</p>
@@ -287,7 +292,7 @@ PROCESADO (ya viajaste y cerraste el ciclo)
 <h3>Qué pasa si un aprobador no responde</h3>
 <p>Si alguna aprobación se demora más de 3 días hábiles, el sistema <strong>escala automáticamente a los superadmins</strong> (David o Yurani) para que intervengan. Se detienen los recordatorios al aprobador original para no saturarlo. Los superadmins pueden contactar al aprobador, saltar la etapa manualmente (si ya hay autorización verbal fuera del sistema) o anular la solicitud. Tú no tienes que hacer nada — se gestiona internamente.</p>
 <h3>Si tú eres aprobador: «Mis aprobaciones»</h3>
-<p>Si apruebas solicitudes de otras personas (eres jefe de alguien, o eres de Gerencia General, de Cadena de Suministro o quien aprueba el presupuesto), en la barra de arriba del portal tienes el botón <strong>MIS APROBACIONES</strong>, con el número de solicitudes que esperan tu voto.</p>
+<p>Si apruebas solicitudes de otras personas (eres jefe de alguien, eres de Gerencia General, de Cadena de Suministro o quien aprueba el presupuesto, o eres el responsable de una unidad a la que otras unidades le cargan viajes), en la barra de arriba del portal tienes el botón <strong>MIS APROBACIONES</strong>, con el número de solicitudes que esperan tu voto.</p>
 <ul>
 <li><strong>Por aprobar:</strong> cada solicitud con el viaje, quién viaja, el costo, por qué necesita tu aprobación, lo que eligió el viajero y las opciones. También el <strong>soporte del costo</strong>: cuándo lo confirmó el área de compras y la cotización de ese momento (el mismo recuadro va en el correo). Si apruebas días después, el precio puede haber subido. Abajo, <strong>cómo va cada aprobación</strong> (quién ya aprobó y a qué hora, y a quién le falta). Puedes <strong>Aprobar</strong> o <strong>Denegar</strong> ahí mismo, con un comentario opcional; es lo mismo que hacerlo desde el correo.</li>
 <li><strong>Historial:</strong> lo que ya decidiste y cómo terminó cada solicitud (aprobada, denegada, anulada, o aprobada sin tu voto porque se saltó la etapa, con quién la saltó y por qué).</li>
@@ -497,6 +502,15 @@ En tu panel ese viaje dice <strong>IDA VENCIDA · SE PUEDE CAMBIAR</strong> (no 
 54321 - Proyecto Gamma
 </code></pre>
 <p>El área de compras los contabilizará por separado al momento de facturar.</p>
+<h3>9.8 Cargar el viaje a otra unidad</h3>
+<p>A veces viajas para otra unidad (por ejemplo, eres de Energía Postventa y el viaje es un trabajo para Potencia). En ese caso, en <strong>Centro de costos al que se carga el viaje</strong> elige el de esa unidad: están debajo de los de tu unidad, en el grupo <strong>«De otra unidad: …»</strong>.</p>
+<ul>
+<li>El portal te avisa que el centro de costos no es de tu unidad y quién más va a aprobar.</li>
+<li>El costo del viaje se carga a la otra unidad: cuenta en <strong>su</strong> presupuesto y en su reporte, no en el de tu unidad.</li>
+<li>Además de tu aprobador de siempre, la solicitud la aprueba el <strong>responsable de esa unidad</strong>. Si uno de los dos la deniega, se detiene.</li>
+<li>La solicitud queda marcada: en el detalle dice de qué unidad eres tú y a cuál se cargó.</li>
+<li>Si la unidad que buscas <strong>no aparece</strong>, todavía no tiene registrado quién aprueba los viajes de otras unidades. Pídele al área de compras que lo registre o elige un centro de costos de tu unidad.</li>
+</ul>
 <hr>
 <h2>10. Preguntas frecuentes</h2>
 <h3>No me llega el PIN por correo</h3>

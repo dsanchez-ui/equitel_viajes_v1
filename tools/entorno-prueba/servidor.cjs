@@ -498,6 +498,16 @@ function seed(ctx, ss) {
   trips.push([id, 'Solo hospedaje, reservado: cambio de fechas del hotel']);
   // #A106: la tabla de a quién llamar después del plazo, como la deja el menú 16 en producción.
   if (typeof ctx.prepararTablaContactosCambios === 'function' && ss._sheets['MISC']) ctx.prepararTablaContactosCambios();
+  // #A133: los responsables de cada unidad y la unidad de cada persona, como los dejan los menús 18 y 17.
+  if (typeof ctx.prepararTablaResponsablesUnidad === 'function' && ss._sheets['MISC']) {
+    ctx._resetPerExecutionCaches_();
+    const t = ctx.prepararTablaResponsablesUnidad();
+    ctx._resetPerExecutionCaches_();
+    const p = ctx._ouProposeUserUnits_();
+    const w = ctx._ouWriteUserUnits_(p.proposals);
+    log('Centros de costos de otra unidad (menús 17 y 18): ' + (t.created ? t.seeded + ' responsables tomados del dashboard de costos' : 'tabla de responsables de la copia') +
+      '; unidad de ' + w.written + ' personas propuesta (' + p.already + ' ya la tenían, ' + p.pending.length + ' sin datos claros).');
+  }
   ctx._resetPerExecutionCaches_();
   outbox.length = 0; // los avisos de crear los viajes de prueba no interesan
   return trips;

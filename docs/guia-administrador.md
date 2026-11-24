@@ -66,7 +66,8 @@ No es necesario memorizar las 75, pero estas son las más relevantes día a día
 | `SOPORTES (JSON)` | Array de archivos (factura reserva, etc.) con sus URLs de Drive. |
 | `APROBADO POR ÁREA? (AUTOMÁTICO)`, `APROBADO CDS`, `APROBADO CEO` | Log de quién aprobó y cuándo. Si una etapa se saltó, queda marcada como `Sí (ETAPA SALTADA por correo@…)`. |
 | `EVENTOS_JSON` | Timestamps de cada evento del ciclo (creación, opciones, selección, costos, aprobaciones, reserva, cancelaciones, enmiendas). Usado por métricas y por el semáforo del detalle de cada solicitud (#A121). Desde el 5-nov también guarda cuándo se aceptó o rechazó un cambio (`changeStudied`, `changeRejected`), la reserva guardada por partes (`reservationDraftSaved`), el cierre (`closed`), la original anulada por su cambio (`cancelledByChange`) y **quién hizo cada paso** (`…By`: `{ email, at }`), #A123. |
-| `OBSERVACIONES` | Texto libre. Puede tener marcadores internos como `[CONSULTA_USUARIO_PENDIENTE]`, `[ETAPA SALTADA por …]` o `[RESERVA]: Registrada sin notificación al usuario`. |
+| `OBSERVACIONES` | Texto libre. Puede tener marcadores internos como `[CONSULTA_USUARIO_PENDIENTE]`, `[ETAPA SALTADA por …]`, `[RESERVA]: Registrada sin notificación al usuario` o `[OTRA UNIDAD]: …` (#A133). |
+| `UNIDAD DE NEGOCIO`, `UNIDAD DEL VIAJERO`, `APROBADOR OTRA UNIDAD`, `APROBADO OTRA UNIDAD` | #A133: la unidad que paga (la dueña del centro de costos, la decide el servidor con «CDS vs UDEN»), la del primer pasajero (columna `Unidad de negocio` de USUARIOS, o la que eligió si no tiene), a quién se le pidió el voto por la unidad del centro de costos (tabla `RESPONSABLE UNIDAD` de MISC, sin el propio viajero ni quien pide) y su decisión. Rol `OTHER_UNIT` en los enlaces firmados, «Mis aprobaciones» y la línea de tiempo; un voto de la misma persona en otro rol lo cubre (`_ouEffective_`). |
 
 ---
 ## 3. Sidebars (paneles laterales)

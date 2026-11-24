@@ -31,7 +31,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + desglose del presupuesto con OT + reporte en Excel de una unidad + enlaces con dominio + manuales publicados + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + desglose del presupuesto con OT + reporte en Excel de una unidad + centros de costos de otra unidad + enlaces con dominio + manuales publicados + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
    Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
    (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -62,7 +62,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + desglose con OT + reporte de unidad + manuales + build + un solo .js y version.json  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + desglose con OT + reporte de unidad + centros de costos de otra unidad + manuales + build + un solo .js y version.json  ← antes de cualquier push
 npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
@@ -115,6 +115,8 @@ anterior del web app (~30 s).
    - Viaje internacional o costo alto → CEO y/o Dirección de Cadena de Suministro.
    - La solicitud haría exceder el presupuesto de la unidad → aprobador de
      presupuesto (#A64).
+   - El viaje se carga a un centro de costos de otra unidad → el responsable de
+     esa unidad (#A133).
 5. El **analista** sube imágenes de las opciones de vuelo/hotel.
 6. El **solicitante** revisa las imágenes y describe **por escrito** cuál eligió.
 7. El **analista** confirma los costos finales (tiquetes + hotel).
@@ -394,6 +396,19 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   se quiera: no guarda nada.
   - **El dashboard suma las facturas 1 a 6** (#A132; antes solo de la 1 a la 3: la cuarta de 5 viajes, $3,05 M, no contaba).
     `_csLoadConfig_` le agrega a una configuración guardada las que le falten (`_csWithAllInvoices_`).
+- **Centro de costos de otra unidad** (#A133; pedido de Yurani, decisiones de David del 24-nov). El viajero es de una unidad (la suya) y
+  puede cargar el viaje a un centro de costos de otra: **`UNIDAD DE NEGOCIO` es la unidad que paga** (la dueña del centro de costos, la decide
+  el servidor con «CDS vs UDEN») y ahí cuenta en presupuesto, dashboard e informes; `UNIDAD DEL VIAJERO` guarda la suya, y la solicitud queda
+  marcada (`[OTRA UNIDAD]` en OBSERVACIONES, recuadro morado en el detalle y en el correo).
+  - **La unidad de cada persona** está en USUARIOS, columna `Unidad de negocio` (al final, por nombre). El `Centro de Costo` de USUARIOS es un
+    código de RR. HH. que **no** coincide con «CDS vs UDEN». El **menú 17** la propone (historial o código de RR. HH.) sin pisar nada; sin unidad
+    registrada, el viajero la elige. El servidor usa la de USUARIOS, nunca la que mande el navegador.
+  - **Vota también el responsable de la unidad dueña** (rol `OTHER_UNIT`, columnas `APROBADOR OTRA UNIDAD` y `APROBADO OTRA UNIDAD`), además del
+    aprobador de siempre. Responsables: tabla `RESPONSABLE UNIDAD · UNIDAD DE NEGOCIO / · CORREO` de MISC (**menú 18**, arranca con los líderes del
+    dashboard de costos). Varios por unidad: vota cualquiera. Nadie vota su propio viaje; si la persona ya vota con otro rol, ese voto lo cubre
+    (`_ouEffective_`). Una sola regla de «a quién se le pide» (`_approvalAskedFor_`): correo, recordatorios, avisos, «Mis aprobaciones», línea de tiempo.
+  - **Una unidad sin responsable no recibe viajes de otras**: el formulario no ofrece sus centros de costos y el servidor rechaza la solicitud (un
+    cambio de un viaje ya cargado allá sí pasa). Gemelo `utils/otherUnit.ts` ↔ `_ouPlan_`; la app solo cambia si el servidor manda `otherUnitCharges`.
 - **Dashboard de costos por pestañas** (#A117, David, 28-oct: *«está demasiado largo»*): Año · Periodo · Mes · Mes a mes · Cotizado vs
   facturado · Cambios de viaje · Comparador de precios · Proyección de ahorro, al final de la tarjeta de filtros. Se ve una sección a la
   vez. **Los datos se siguen pidiendo todos en paralelo** (#A89): lo que ahorra es el dibujo, porque solo se dibuja la pestaña que se ve
@@ -638,13 +653,13 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 
 | Hoja | Contenido |
 |---|---|
-| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, lo pagado al comprar; no son la factura 1), `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO` (#A100), `CAMBIO PEDIDO (JSON)`, `PENALIDAD CAMBIO` y `REEMPLAZADA POR` (#A103), y `SOPORTE COSTO (JSON)` (#A128, cada confirmación de costos con su soporte) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
-| **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Ninguna de las dos viaja al directorio que recibe cada usuario. |
+| **Nueva Base Solicitudes** | Tabla principal de solicitudes. Columnas leídas por nombre en runtime, así que el orden puede cambiar. `FECHAS NACIMIENTO PASAJEROS (JSON)` guarda `{cédula: AAAA-MM-DD}` de los pasajeros externos (#A70). `CELULARES PASAJEROS (JSON)` guarda `{cédula: celular}` de externos (#A75); la crea el menú 8 (o el sistema, la primera vez que la necesita). `AEROLINEA`, `CANAL DE COMPRA` (#A82), `AVISO FACTURAS OMITIDO` (#A83), `AEROLINEA REGRESO` (#A85, solo si el regreso es con otra aerolínea), `HOTEL RESERVADO` y `CANAL DE COMPRA HOTEL` (#A94), y `TARIFA RECOMENDADA`, `TARIFA NOMBRE`, `TARIFA JUSTIFICACION` y `MALETA DE BODEGA` (#A95; la tarifa comprada sigue en `TIPO DE COMPRA DE TKT`), `VALOR COMPRA TIQUETES` y `VALOR COMPRA HOTEL` (#A102, lo pagado al comprar; no son la factura 1), `JUSTIFICACION ANTICIPACION`, `APROBACION CFO ANTICIPACION`, `REQUIERE APROB TARIFA` y `GRUPO MULTIDESTINO` (#A100), `CAMBIO PEDIDO (JSON)`, `PENALIDAD CAMBIO` y `REEMPLAZADA POR` (#A103), `SOPORTE COSTO (JSON)` (#A128, cada confirmación de costos con su soporte), y `UNIDAD DEL VIAJERO`, `APROBADOR OTRA UNIDAD` y `APROBADO OTRA UNIDAD` (#A133, las crea el sistema la primera vez) van al final; las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). |
+| **USUARIOS** | Directorio de empleados y su aprobador. **Única fuente de verdad** desde 2026-04-24. ⚠️ A diferencia de la hoja principal, se lee y escribe **por posición** (PIN en la col 10, aprobadores 7–9): columnas nuevas **solo al final**. La columna `Fecha Nacimiento` (#A68) va después de las existentes y se accede **por nombre**: en producción quedó en la O (un valor suelto en N233 corrió la migración) y puede moverse a cualquier posición desde la M sin tocar código. La columna `Celular` (#A74, texto de 10 dígitos) sigue la misma regla: al final y por nombre. Igual `Unidad de negocio` (#A133, la unidad a la que pertenece, como en «CDS vs UDEN»; menú 17), que **sí** viaja al directorio (no es sensible). Ninguna de las dos viaja al directorio que recibe cada usuario. |
 | ~~INTEGRANTES~~ | **Eliminada en producción (2026-04-24).** El cableado legacy sigue en el código (#A50, limpieza pendiente). |
 | **MAESTROS** | Centros de costo. |
 | **CDS vs UDEN** | Relación centro de costo ↔ unidad de negocio. |
 | **CIUDADES DEL MUNDO** | Ciudad/país para el autocompletado. |
-| **MISC** | Tarjetas de crédito (A:B), sedes (D), la tabla de accesos al dashboard de costos (#A76) y la de a quién llamar después del plazo de un cambio (`CONTACTO CAMBIOS · CORREO / NOMBRE / CARGO`, #A106; la crea el menú 16, encabezados buscados por nombre en las filas 1 a 3). Los encabezados están en la fila 2 y los datos empiezan en la fila 3. Los encabezados de la tabla de accesos (`DASHBOARD COSTOS · CORREO` / `· UNIDAD DE NEGOCIO`) los crea el menú 9 en la **fila 1** (celdas normales, sin tablas de Google ni listas desplegables) y se buscan por nombre en las filas 1 a 3, así que pueden moverse de columna. |
+| **MISC** | Tarjetas de crédito (A:B), sedes (D), la tabla de accesos al dashboard de costos (#A76) la de a quién llamar después del plazo de un cambio (`CONTACTO CAMBIOS · CORREO / NOMBRE / CARGO`, #A106; la crea el menú 16, encabezados buscados por nombre en las filas 1 a 3) y la de responsables de cada unidad (`RESPONSABLE UNIDAD · UNIDAD DE NEGOCIO / · CORREO`, #A133; menú 18). Los encabezados están en la fila 2 y los datos empiezan en la fila 3. Los encabezados de la tabla de accesos (`DASHBOARD COSTOS · CORREO` / `· UNIDAD DE NEGOCIO`) los crea el menú 9 en la **fila 1** (celdas normales, sin tablas de Google ni listas desplegables) y se buscan por nombre en las filas 1 a 3, así que pueden moverse de columna. |
 | **REGLAS_COAPROBADOR** | Reglas de co-aprobación. |
 | **COMPARATIVO PRECIOS** / **COMPARATIVO ESTADO** | Ocultas. Las escribe el proyecto aparte del rastreo de precios (#A84): una fila por búsqueda y el estado del rastreo. Desde #A95 cada búsqueda guarda `TARIFA` y `MALETA DE MANO`. Las lee el dashboard de costos. No editarlas. |
 | **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
@@ -739,6 +754,7 @@ utils/phone.ts             Validación de celular opcional (gemelo de Code.gs, #
 utils/money.ts             Costos en pesos: formato, mínimo y valor pagado (gemelo de Code.gs, #A79, #A102)
 utils/purchase.ts          Aerolínea, canal de compra y hotel reservado (gemelo de Code.gs, #A82, #A94)
 utils/fare.ts              Tarifa del tiquete por noches y su justificación (gemelo de Code.gs, #A95)
+utils/otherUnit.ts         Centro de costos de otra unidad: qué unidad paga y la lista agrupada del formulario (gemelo de Code.gs, #A133)
 utils/changeWindow.ts      Plazo para pedir un cambio de viaje (gemelo de Code.gs, #A103; sin tiquete comprado, #A120)
 utils/stageTimeline.ts     Etapas de la solicitud con su hora, lo que tardó cada una y quién la tuvo (#A121)
 utils/approvalLog.ts       Filas de Métricas → Aprobaciones a partir de la línea de tiempo (#A125)
@@ -770,6 +786,7 @@ tools/check-approvals.cjs            Avisos a los aprobadores (caso SOL-000695),
 tools/check-cost-evidence.cjs        Soporte del costo: subir, confirmar, correo, «Mis aprobaciones» y las validaciones del servidor (#A128)
 tools/check-costs-ot.cjs             Desglose del presupuesto: lo cargado a OT aparte, la barra del 100 % y cada unidad frente a su presupuesto (#A131)
 tools/check-unit-report.cjs          Reporte en Excel de una unidad: facturas 4 a 6, mismas cuentas del dashboard, permisos y el .xlsx armado (#A132)
+tools/check-other-unit.cjs           Centro de costos de otra unidad: responsables, unidad del viajero, la que paga, el voto extra, menú 17 y el gemelo del formulario (#A133)
 tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.gs real sobre una copia de la base; correos a una bandeja local (#A103)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
@@ -830,9 +847,13 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-24)
 
-- **#A132 en `main`, falta pegarlo (24-nov)** (reporte en Excel de una unidad desde el dashboard de costos, pedido de Yurani para POTENCIA; el
-  dashboard suma las facturas 4 a 6): pegar `Code.gs` y `CostsDashboard.html` juntos y publicar la versión nueva del web app. Las cifras
-  suben un poco (POTENCIA de 130,1 % a 131,2 %; el año de 85,6 % a 86,1 %).
+- **#A133 en el repo, falta desplegarlo (24-nov)** (centro de costos de otra unidad: la unidad del viajero, la que paga y el voto del
+  responsable de esa unidad; pedido de Yurani): pegar `Code.gs` y `CostsDashboard.html` → **menú 18** (revisar la tabla de responsables) →
+  **menú 17** (unidad de cada persona; pregunta antes de escribir) → versión nueva del web app; push del frontend el mismo día. Pendiente de
+  Yurani: quién responde por las unidades administrativas, MYFAL y PROLUB (hoy sin responsable: no reciben viajes de otras unidades) y la
+  unidad de las 216 personas sin datos claros. Siguiente paso posible: mostrar y editar la unidad en el panel «Gestionar usuarios».
+- **#A132 desplegado (24-nov)** (reporte en Excel de una unidad desde el dashboard de costos; el dashboard suma las facturas 4 a 6). La
+  primera descarga en producción se quedó pensando y la segunda bajó en unos 10 s; #A133 le pone contador y aviso al botón.
 - **Retomar en el Mac (23-nov):** todo está en `main` y desplegado hasta #A131. En el Mac:
   `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la exportación de la hoja.
 - **#A131 desplegado (23-nov)** (dashboard de costos: de qué está hecho el %, lo de OT aparte y una barra en vez de la torta; pedido de

@@ -1,5 +1,5 @@
 
-import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo, PolicyApprovalInfo, PolicyNotice, PolicyHeldResponse, MyApprovalsResponse, ApprovalDecisionResult, TripChangeConfig, TripChangeRequestChanges, ChangeControl } from '../types';
+import { ApiResponse, TravelRequest, CostCenterMaster, SupportData, Integrant, Option, CityMaster, MetricsFilters, MetricsResponse, PurchaseStats, PurchaseStatsFilters, InvoiceReview, PassportStatus, BirthdateStatus, PassengerAdminInfo, PolicyApprovalInfo, PolicyNotice, PolicyHeldResponse, MyApprovalsResponse, ApprovalDecisionResult, TripChangeConfig, TripChangeRequestChanges, ChangeControl, OtherUnitChargesInfo } from '../types';
 import { API_BASE_URL } from '../constants';
 
 // Global handler so the App can react when the backend reports an expired session.
@@ -391,6 +391,8 @@ class GasService {
     cities: CityMaster[];
     /** #A100: solo con un servidor que deja en espera las solicitudes fuera de plazo. */
     policyApproval?: PolicyApprovalInfo;
+    /** #A133: solo con un servidor que hace la regla de los centros de costos de otra unidad. */
+    otherUnitCharges?: OtherUnitChargesInfo;
   }> {
     return this._bootstrapFetch('getFormBootstrap', 'los datos del formulario', null, false);
   }

@@ -133,6 +133,8 @@ export interface MyApprovalItem {
   travelers: string[];
   company: string;
   unit: string;
+  /** #A133: la unidad del viajero, solo si el viaje se carga a un centro de costos de otra unidad. */
+  travelerUnit?: string;
   costCenter: string;
   hotelOnly: boolean;
   requiresHotel: boolean;
@@ -214,6 +216,8 @@ export interface Integrant {
   email: string;
   approverName: string;
   approverEmail: string;
+  /** #A133: unidad de negocio a la que pertenece (columna «Unidad de negocio» de USUARIOS). undefined = backend anterior. */
+  businessUnit?: string;
 }
 
 export interface FlightDetails {
@@ -419,6 +423,16 @@ export interface TravelRequest {
   budgetApproverEmail?: string;
   budgetApproverName?: string;
   budgetApproverIsAreaApprover?: boolean;
+  // #A133: centro de costos de otra unidad. businessUnit es la unidad que paga (la dueña del centro de
+  // costos); travelerUnit, la del viajero. Lo decide el servidor. undefined = backend anterior.
+  travelerUnit?: string;
+  otherUnitCharge?: boolean;
+  otherUnitApproverEmail?: string;
+  otherUnitApproverName?: string;
+  requiresOtherUnitApproval?: boolean;
+  effectiveApprovalOtherUnit?: 'APPROVED' | 'DENIED' | 'PENDING' | 'NA';
+  effectiveApprovalOtherUnitReason?: string;
+  approvalStatusOtherUnit?: string;
   // #A100: requiresBudgetOverrunApproval = «el CFO vota». Por qué: presupuesto
   // excedido y/o tarifa superior a la del manual. undefined = backend anterior.
   budgetExceeded?: boolean;
@@ -632,7 +646,13 @@ export const APPROVER_ROLE_LABELS: Record<string, string> = {
   CDS: 'Dirección Cadena de Suministro',
   BUDGET_OVERRUN: 'Aprobador de Presupuesto',
   POLICY_EXCEPTION: 'CFO · excepción a la política de anticipación',
+  OTHER_UNIT: 'Responsable de la unidad del centro de costos', // #A133
 };
+
+/** #A133: lo que manda getFormBootstrap. Las unidades que reciben viajes de otras unidades y quién los aprueba. */
+export interface OtherUnitChargesInfo {
+  units: { unit: string; approvers: string }[];
+}
 
 export interface CostCenterMaster {
   code: string;

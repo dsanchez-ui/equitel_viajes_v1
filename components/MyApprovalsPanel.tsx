@@ -96,6 +96,10 @@ const PendingCard: React.FC<CardProps> = ({ it, onDecided }) => {
           {' · '}La pidió: <span className="text-gray-900">{it.requesterName || it.requesterEmail}</span>
         </p>
         <p className="text-xs text-gray-600">{[it.company, it.unit, it.costCenter].filter(Boolean).join(' · ')}</p>
+        {/* #A133: centro de costos de otra unidad */}
+        {it.travelerUnit && (
+          <p className="text-xs text-violet-800">🏷️ Se carga a un centro de costos de {it.unit}; el viajero es de {it.travelerUnit}.</p>
+        )}
         {(it.ticketsCost > 0 || it.hotelCost > 0) && (
           <p className="text-xs text-gray-600">
             {it.ticketsCost > 0 && <>Tiquetes {pesos(it.ticketsCost)}</>}

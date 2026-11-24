@@ -30,9 +30,10 @@
     "check:cost-evidence": "node tools/check-cost-evidence.cjs",
     "check:costs-ot": "node tools/check-costs-ot.cjs",
     "check:unit-report": "node tools/check-unit-report.cjs",
+    "check:other-unit": "node tools/check-other-unit.cjs",
     "prueba:local": "node tools/entorno-prueba/servidor.cjs",
     "check:bundle": "node tools/check-single-bundle.cjs",
-    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:fare && npm run check:invoices && npm run check:policy && npm run check:monthly && npm run check:price-tracking && npm run check:savings && npm run check:trip-change && npm run check:approvals && npm run check:cost-evidence && npm run check:costs-ot && npm run check:unit-report && npm run check:links && npm run check:manuales && npm run build && npm run check:bundle"
+    "verify": "npm run typecheck && npm run check:gas && npm run check:ot && npm run check:birthdate && npm run check:phone && npm run check:cost && npm run check:purchase && npm run check:purchase-info && npm run check:fare && npm run check:invoices && npm run check:policy && npm run check:monthly && npm run check:price-tracking && npm run check:savings && npm run check:trip-change && npm run check:approvals && npm run check:cost-evidence && npm run check:costs-ot && npm run check:unit-report && npm run check:other-unit && npm run check:links && npm run check:manuales && npm run build && npm run check:bundle"
   },
   "dependencies": {
     "react": "^19.2.4",

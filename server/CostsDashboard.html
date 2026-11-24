@@ -5990,6 +5990,8 @@ function rpColumns(showQuoted, kind, multiUnit) {
       return t.d.costCenters ? (cc ? cc + ' · ' : '') + 'varios: ' + t.d.costCenters : cc;
     } },
     { h: 'Sede', w: 12, v: function(t) { return t.d.sede; } },
+    // #A133: el viajero es de otra unidad y el viaje se cargó a un centro de costos de esta.
+    { h: 'Unidad del viajero (si es de otra unidad)', w: 22, v: function(t) { return t.d.travelerUnit || ''; } },
     { h: 'Días entre la compra y la ida', w: 10, int: true, v: function(t) { return t.d.leadDays === null || t.d.leadDays === undefined ? '' : t.d.leadDays; } },
     { h: 'Pedido con menos anticipación de la que pide la política', w: 13, v: function(t) { return t.d.policyViolation ? 'Sí' : 'No'; } },
     { h: 'Justificación de la anticipación', w: 28, v: function(t) { return rpOneLine(t.d.leadJustification); } },
@@ -6308,6 +6310,11 @@ function rpPopulateControls(evt) {
 }
 
 /** Pide los datos y descarga el Excel. */
+// #A133: el botón dice cuántos segundos lleva y, si Google no responde, lo dice en vez de quedarse
+// pensando (24-nov: la primera vez en producción se quedó en «Armando el reporte…»). Google corta cada
+// llamada a los 6 minutos.
+var RP_TIMEOUT_S = 330;
+var rpSeq = 0;
 function downloadUnitReport() {
   if (!session) { showLogin(); return; }
   var btn = document.getElementById('btnUnitReport');
@@ -6328,10 +6335,33 @@ function downloadUnitReport() {
     rangeShort: from === to ? MONTHS[from - 1].toLowerCase() + ' ' + year : MONTHS[from - 1].toLowerCase() + ' a ' + MONTHS[to - 1].toLowerCase() + ' ' + year
   };
   btn.disabled = true;
-  showStatus('unitReportStatus', 'Armando el reporte de ' + ctx.unitLabel + '… (puede tardar unos segundos)', 'info');
+  var seq = ++rpSeq, t0 = Date.now(), done = false;
+  var label = 'Armando el reporte de ' + ctx.unitLabel + '…';
+  showStatus('unitReportStatus', label + ' (suele tardar unos 10 segundos)', 'info');
+  var tick = setInterval(function() {
+    if (done || seq !== rpSeq) { clearInterval(tick); return; }
+    var sec = Math.round((Date.now() - t0) / 1000);
+    if (sec >= RP_TIMEOUT_S) {
+      done = true; clearInterval(tick); btn.disabled = false;
+      showStatus('unitReportStatus', 'Google no respondió en ' + Math.round(sec / 60) + ' minutos. Vuelva a intentarlo en un momento.', 'error');
+      return;
+    }
+    if (sec >= 3) showStatus('unitReportStatus', label + ' ' + sec + ' s', 'info');
+  }, 1000);
+  // Solo la respuesta del último clic cuenta (una que llega después del aviso de tiempo igual se descarga).
+  var finish = function() {
+    if (seq !== rpSeq) return false;
+    done = true; clearInterval(tick); btn.disabled = false;
+    return true;
+  };
+  var onFailure = function(err) {
+    if (!finish()) return;
+    showStatus('unitReportStatus', (err && err.message) || 'Error de conexión.', 'error');
+  };
+  try {
   google.script.run
     .withSuccessHandler(function(res) {
-      btn.disabled = false;
+      if (!finish()) return;
       if (!res || !res.success) {
         var msg = (res && res.error) || 'No se pudo armar el reporte.';
         showStatus('unitReportStatus', msg, 'error');
@@ -6339,7 +6369,9 @@ function downloadUnitReport() {
         return;
       }
       try {
-        var data = res.data, rep = (data.meta && data.meta.report) || {};
+        // El servidor lo manda como texto (#A133); uno anterior, como objeto.
+        var data = typeof res.json === 'string' ? JSON.parse(res.json) : res.data;
+        var rep = (data.meta && data.meta.report) || {};
         ctx.generatedBy = rep.generatedBy || session.email;
         ctx.generatedText = rpDateText(String(rep.generatedAt || '').substring(0, 10)) + ' ' + String(rep.generatedAt || '').substring(11, 16);
         var out = rpBuildWorkbook(data, ctx);
@@ -6356,15 +6388,15 @@ function downloadUnitReport() {
         showStatus('unitReportStatus', 'No se pudo armar el archivo: ' + (e && e.message ? e.message : e), 'error');
       }
     })
-    .withFailureHandler(function(err) {
-      btn.disabled = false;
-      showStatus('unitReportStatus', (err && err.message) || 'Error de conexión.', 'error');
-    })
+    .withFailureHandler(onFailure)
     .costsDashboard_getUnitReport({
       filters: { year: year, fromMonth: from, toMonth: to, businessUnits: unit ? [unit] : [], companies: company ? [company] : [] },
       userEmail: session.email,
       sessionToken: session.token
     });
+  } catch (e) {
+    onFailure(e);
+  }
 }
 
 // =====================================================================

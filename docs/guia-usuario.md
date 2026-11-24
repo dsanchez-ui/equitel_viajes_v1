@@ -139,9 +139,10 @@ Para solicitudes **"Solo Hospedaje"**, el hospedaje es obligatorio (es lo único
 
 - **Empresa:** Cumandes, Equitel, Ingenergía o LAP. Selecciona la que corresponda a ti (o al viajero principal si es para otra persona).
 - **Sede:** tu sede de trabajo (Bogotá, Medellín, Cali, Barranquilla, Urabá, etc.). Selecciona de la lista.
-- **Unidad de negocio:** dropdown que se llena según los centros de costo disponibles. Selecciona la tuya.
-- **Centro de costos:** se filtra según la unidad de negocio. Selecciona el que cubre este viaje.
-  - Si el viaje se reparte entre varios CC, hay una opción **"VARIOS"** al final del listado. Al seleccionarla, el portal te muestra un campo donde puedes escribir los CC separados por coma (ej: `12345 - Proyecto A, 67890 - Proyecto B`).
+- **Unidad de negocio del viajero:** la unidad a la que **pertenece** el primer pasajero. Si la tiene registrada en la plataforma, sale sola al escribir su cédula y no se cambia (si no es la correcta, avísale al área de compras). Si no la tiene, elígela de la lista.
+- **Centro de costos al que se carga el viaje:** el que va a **pagar** el viaje. Primero salen los de tu unidad y debajo, agrupados, los de otras unidades.
+  - Si eliges uno de **otra unidad**, el portal te avisa: el costo se carga a esa unidad (cuenta en su presupuesto) y, además de tu aprobador de siempre, la solicitud la aprueba el **responsable de esa unidad**. Ver [9.8](#98-cargar-el-viaje-a-otra-unidad).
+  - Si el viaje se reparte entre varios CC de tu unidad, hay una opción **"VARIOS"** en tu grupo. Al seleccionarla, el portal te muestra un campo donde puedes escribir los CC separados por coma (ej: `12345 - Proyecto A, 67890 - Proyecto B`).
 - **Orden de trabajo (OT):** opcional. Si tu viaje está asociado a una OT específica, escríbela.
 
 ### 2.7 Observaciones / motivo del viaje
@@ -229,6 +230,7 @@ El correo de aprobación se envía **una sola vez**, justo después de que el á
 | Nacional ≤ $1.200.000 | Tu **aprobador de área** (tu jefe directo, o quien figure en tu ficha). |
 | Nacional > $1.200.000 | Tu aprobador de área **+** el **Director de Cadena de Suministro (CDS)**. Ambos deben aprobar. |
 | Internacional (cualquier monto) | Tu aprobador de área **+** el CDS y la **Gerencia General (CEO)**. Basta con que apruebe **uno** de los dos ejecutivos (CEO o CDS), además del aprobador de área. |
+| Cargada a un centro de costos de **otra unidad** (cualquier monto) | Además de los anteriores, el **responsable de la unidad dueña del centro de costos**. Si esa unidad tiene varios responsables, basta con uno. |
 
 Cada aprobador recibe un correo con botones **`APROBAR`** y **`DENEGAR`**. Hace click directamente desde el correo — no necesita entrar al portal — o aprueba desde **Mis aprobaciones** en el portal (ver abajo). Cuando todos los que debían aprobar hayan aprobado, te llega un correo de **"Solicitud Aprobada"** y el proceso continúa.
 
@@ -240,7 +242,7 @@ Si alguna aprobación se demora más de 3 días hábiles, el sistema **escala au
 
 ### Si tú eres aprobador: «Mis aprobaciones»
 
-Si apruebas solicitudes de otras personas (eres jefe de alguien, o eres de Gerencia General, de Cadena de Suministro o quien aprueba el presupuesto), en la barra de arriba del portal tienes el botón **MIS APROBACIONES**, con el número de solicitudes que esperan tu voto.
+Si apruebas solicitudes de otras personas (eres jefe de alguien, eres de Gerencia General, de Cadena de Suministro o quien aprueba el presupuesto, o eres el responsable de una unidad a la que otras unidades le cargan viajes), en la barra de arriba del portal tienes el botón **MIS APROBACIONES**, con el número de solicitudes que esperan tu voto.
 
 - **Por aprobar:** cada solicitud con el viaje, quién viaja, el costo, por qué necesita tu aprobación, lo que eligió el viajero y las opciones. También el **soporte del costo**: cuándo lo confirmó el área de compras y la cotización de ese momento (el mismo recuadro va en el correo). Si apruebas días después, el precio puede haber subido. Abajo, **cómo va cada aprobación** (quién ya aprobó y a qué hora, y a quién le falta). Puedes **Aprobar** o **Denegar** ahí mismo, con un comentario opcional; es lo mismo que hacerlo desde el correo.
 - **Historial:** lo que ya decidiste y cómo terminó cada solicitud (aprobada, denegada, anulada, o aprobada sin tu voto porque se saltó la etapa, con quién la saltó y por qué).
@@ -497,6 +499,16 @@ Formato recomendado:
 ```
 
 El área de compras los contabilizará por separado al momento de facturar.
+
+### 9.8 Cargar el viaje a otra unidad
+
+A veces viajas para otra unidad (por ejemplo, eres de Energía Postventa y el viaje es un trabajo para Potencia). En ese caso, en **Centro de costos al que se carga el viaje** elige el de esa unidad: están debajo de los de tu unidad, en el grupo **«De otra unidad: …»**.
+
+- El portal te avisa que el centro de costos no es de tu unidad y quién más va a aprobar.
+- El costo del viaje se carga a la otra unidad: cuenta en **su** presupuesto y en su reporte, no en el de tu unidad.
+- Además de tu aprobador de siempre, la solicitud la aprueba el **responsable de esa unidad**. Si uno de los dos la deniega, se detiene.
+- La solicitud queda marcada: en el detalle dice de qué unidad eres tú y a cuál se cargó.
+- Si la unidad que buscas **no aparece**, todavía no tiene registrado quién aprueba los viajes de otras unidades. Pídele al área de compras que lo registre o elige un centro de costos de tu unidad.
 
 ---
 

@@ -153,10 +153,17 @@ export const RequestTripCorporateInfo: React.FC<{ request: TravelRequest }> = ({
                                                 <span className="text-gray-500 text-xs">Sede</span>
                                                 <span className="font-medium text-right">{request.site}</span>
                                             </div>
+                                            {/* #A133: con un centro de costos de otra unidad, la que paga y la del viajero. */}
                                             <div className="flex justify-between border-b border-gray-50 pb-1">
-                                                <span className="text-gray-500 text-xs">Unidad de Negocio</span>
+                                                <span className="text-gray-500 text-xs">{request.otherUnitCharge ? 'Unidad que paga' : 'Unidad de Negocio'}</span>
                                                 <span className="font-medium text-right text-xs max-w-[60%]">{request.businessUnit}</span>
                                             </div>
+                                            {request.otherUnitCharge && (
+                                                <div className="flex justify-between border-b border-gray-50 pb-1">
+                                                    <span className="text-gray-500 text-xs">Unidad del viajero</span>
+                                                    <span className="font-medium text-right text-xs max-w-[60%]">{request.travelerUnit}</span>
+                                                </div>
+                                            )}
                                             <div className="flex justify-between border-b border-gray-50 pb-1">
                                                 <span className="text-gray-500 text-xs">Centro de Costos</span>
                                                 <div className="text-right max-w-[70%]">

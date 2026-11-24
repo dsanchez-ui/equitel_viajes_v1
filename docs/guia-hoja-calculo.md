@@ -44,9 +44,10 @@ Directorio de todas las personas que pueden usar el portal. Cada fila es una per
 - Correo corporativo
 - Empresa (Cumandes, Equitel, Ingenergía, LAP)
 - Sede
-- Centro de costo
+- Centro de costo (el código de RR. HH., p. ej. `20101` o `2040305`: **no** es el de «CDS vs UDEN»)
 - Aprobadores asignados (quiénes le aprueban las solicitudes)
 - PIN (automático — no se edita a mano)
+- `Unidad de negocio` (#A133, al final): la unidad a la que **pertenece** la persona, escrita como en «CDS vs UDEN» (p. ej. `POTENCIA (GDM - P&M)`). El formulario la toma para el primer pasajero y decide con ella si un centro de costos es de otra unidad. Vacía = la persona la elige en el formulario. La llena el **menú 17**; se corrige a mano escribiéndola igual que en «CDS vs UDEN» (el menú 17 avisa si alguna está mal escrita).
 
 **Tip:** puedes convertir esta hoja a una **tabla de Google Sheets** (menú Formato → Convertir a tabla) para tener filtros por columna, formato bonito, y poder referenciar columnas por nombre en otras fórmulas. No afecta el portal.
 
@@ -84,6 +85,7 @@ Hoja con dos catálogos pequeños y dos tablas:
 - Sedes (para el formulario de nueva solicitud)
 - Accesos al dashboard de costos: quién puede verlo y de qué unidad de negocio (ver abajo)
 - A quién llama el viajero cuando ya pasó el plazo para cambiar su viaje (ver abajo)
+- Quién aprueba los viajes que otras unidades le cargan a cada unidad (ver abajo)
 
 **Lo que SÍ puedes hacer:** agregar sedes o tarjetas nuevas al final.
 
@@ -110,6 +112,15 @@ Tres columnas con los encabezados `CONTACTO CAMBIOS · CORREO`, `CONTACTO CAMBIO
 - **Solo se muestra cuando ya no se puede pedir el cambio en el portal** (pasó el plazo) y es urgente. Antes, el portal pide que todo se haga por la plataforma.
 - **Si alguien cambia de rol**, se cambia su fila. Si cambia el celular, se corrige en USUARIOS (sidebar o panel móvil). La app lo muestra en unos 10 minutos, o de inmediato al volver a correr el menú 16.
 - Sin la tabla, el portal muestra el correo del área de compras, como antes.
+
+#### Responsables de cada unidad (#A133)
+
+Dos columnas con los encabezados `RESPONSABLE UNIDAD · UNIDAD DE NEGOCIO` y `RESPONSABLE UNIDAD · CORREO` en la **fila 1**. Las crea **Equitel Viajes → 18. Responsables de cada unidad**, al final de MISC y dejando una columna libre, con los líderes que ya ven una unidad en la tabla de accesos al dashboard de costos (no `TODAS` ni `COMPLETO`).
+
+- **Una fila por persona:** la unidad escrita como en «CDS vs UDEN» y el correo con el que la persona está en USUARIOS. Si una unidad tiene varias personas, aprueba cualquiera de ellas.
+- **Para qué sirve:** cuando un viajero de otra unidad carga su viaje a un centro de costos de esta unidad, la solicitud le pide el voto a su responsable, además del aprobador de siempre.
+- **Una unidad sin filas no recibe viajes de otras unidades:** sus centros de costos no aparecen en el formulario para los viajeros de otras unidades.
+- El formulario lee la tabla cada vez que se abre: un cambio se ve de inmediato. Las solicitudes ya creadas conservan a quién se le pidió el voto.
 
 ### REGLAS_COAPROBADOR
 
@@ -382,9 +393,11 @@ La única vez que algo espera es si otro admin está creando otro usuario al mis
 - `PENALIDAD CAMBIO` (#A103): de lo que costó un cambio, cuánto es penalidad y cargos (pesos). La escribe el área de compras al confirmar el costo del cambio.
 - `REEMPLAZADA POR` (#A103): en la solicitud original, el ID del cambio que la reemplazó («Cambiada»). La original comprada no se anula: su tiquete se pagó y su costo sigue contando.
 - `SOPORTE COSTO (JSON)` (#A128): cada confirmación de costos, con cuándo, quién, cuánto y los soportes que adjuntó el área de compras (los archivos `SoporteCosto_…` de la carpeta de la solicitud). La escribe el sistema: **no editar**. Si se confirmó más de una vez, la última es la que ven el aprobador y el viajero.
+- `UNIDAD DEL VIAJERO` (#A133): la unidad a la que pertenece el primer pasajero. Si es distinta de `UNIDAD DE NEGOCIO` (la que paga, la dueña del centro de costos), el viaje se cargó a otra unidad. La escribe el sistema.
+- `APROBADOR OTRA UNIDAD` y `APROBADO OTRA UNIDAD` (#A133): a quién se le pidió el voto por la unidad del centro de costos (correos) y su decisión (`Sí_correo_fecha` / `No_correo_fecha`). Vacías = no hacía falta. Las escribe el sistema: **no editar**.
 - Estado `PENDIENTE_APROBACION_POLITICA` (#A100): la solicitud espera la aprobación del CFO por la política de anticipación; el área de compras no la ve hasta que se apruebe.
 
-Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita).
+Todas las crea el menú *12. Columnas de compra y resumen de facturas* (o el sistema, la primera vez que las necesita). Las tres de #A133 las crea el sistema con la primera solicitud que las necesita.
 
 ### 12. Columnas de compra y resumen de facturas
 
@@ -425,6 +438,20 @@ También dice cuándo sale el próximo informe mensual y cuál fue el último en
 El informe mensual de cumplimiento (#A101) sale solo: la pasada de `procesarAprobacionesPolitica` lo envía **el primer día hábil de cada mes**, en horario laboral, con las cifras del mes anterior. Le llega a quien aprueba en la configuración del dashboard de costos (hoy Alejandro Gómez), con copia a Yurani Prieto y David Sánchez. El primero es el de octubre de 2026, el **martes 3 de noviembre** (el lunes 2 es festivo).
 
 Este menú pide un mes (`AAAA-MM`; vacío = el mes anterior) y te envía ese informe **solo a ti**, sin copia y sin dejar constancia. Sirve para revisarlo antes o para ver un mes cualquiera. Al final te dice cuándo sale el próximo automático y para quién.
+
+### 17. Unidad de negocio de cada persona
+
+Llena la columna `Unidad de negocio` de USUARIOS (#A133; la crea al final si no existe). Para quien no la tiene, la propone así:
+
+1. Por su **historial**: las solicitudes donde es el primer pasajero o quien pide; si tiene al menos 2 y el 80 % es de una unidad, esa.
+2. Si no, por su **código de RR. HH.** (la columna *Centro de Costo*): la unidad del 85 % o más de las solicitudes de las personas con ese código (con al menos 3).
+3. Si no hay datos claros, la deja vacía: esa persona elige su unidad en el formulario.
+
+Antes de escribir, muestra cuántas propone por cada camino y cuántas quedan vacías, y **pregunta**. **Nunca cambia una celda escrita** y avisa las que no son una unidad de «CDS vs UDEN». Se puede correr cuantas veces se quiera (por ejemplo, después de crear usuarios nuevos).
+
+### 18. Responsables de cada unidad (centros de costos de otra unidad)
+
+Crea la tabla `RESPONSABLE UNIDAD` en MISC si no existe (con los líderes del dashboard de costos) y la revisa: quién aprueba por cada unidad, qué unidades no tienen a nadie (no reciben viajes de otras unidades) y qué filas tienen errores (unidad mal escrita, correo inválido o que no está en USUARIOS). No cambia nada si la tabla ya existe. Ver [Responsables de cada unidad](#responsables-de-cada-unidad-a133).
 
 ### Modo activo: ⚡ USUARIOS (o 📋 INTEGRANTES legacy)
 

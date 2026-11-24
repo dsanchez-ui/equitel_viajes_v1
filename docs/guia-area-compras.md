@@ -275,6 +275,21 @@ Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), **toda de
 
 Lleva un PDF con lo mismo y un CSV con el detalle de cada solicitud del mes (sin cédulas). Cada viaje cuenta en el mes en que se pidió. Lo envía la misma pasada del resumen cada 2 horas, así que no necesita otro activador. El **menú 15** te lo manda solo a ti para revisarlo.
 
+### 3.16 Centros de costos de otra unidad (#A133)
+
+Desde noviembre de 2026 (pedido de Yurani) el viajero dice **a qué unidad pertenece** y elige **a qué centro de costos se carga el viaje**, que puede ser de otra unidad. Cuando lo es:
+
+- **El costo va a la unidad dueña del centro de costos**: `UNIDAD DE NEGOCIO` de la solicitud es esa unidad, y así cuenta en su presupuesto, en el dashboard de costos, en su reporte en Excel y en la aprobación de presupuesto excedido.
+- **La solicitud queda marcada:** en el detalle sale el recuadro morado **🏷️ CENTRO DE COSTOS DE OTRA UNIDAD** (de qué unidad es el viajero y a cuál se cargó), la información corporativa dice *Unidad que paga* y *Unidad del viajero*, y en OBSERVACIONES queda la nota `[OTRA UNIDAD]`.
+- **La aprueba también el responsable de esa unidad**, además del aprobador de siempre (y de Cadena de Suministro, Gerencia o el CFO si aplican). Su voto sale en *Aprobaciones* como **Unidad del centro de costos**. Si la unidad tiene varios responsables, basta con uno. Si el responsable es la misma persona que ya aprueba por otro motivo (por ejemplo, el jefe del viajero), su voto cubre los dos. Nadie aprueba su propio viaje.
+- **Recordatorios, «Mis aprobaciones», avisos y la línea de tiempo** incluyen ese voto como cualquier otro. Saltar la etapa de aprobación también lo salta.
+
+**De dónde sale cada cosa** (lo administra el área de compras desde la hoja; ver la guía de la hoja de cálculo):
+- **La unidad del viajero:** columna `Unidad de negocio` de USUARIOS (**menú 17**). Si el primer pasajero la tiene, el formulario la muestra y no se cambia; si no, el viajero la elige. Al crear la solicitud el servidor vuelve a mirar USUARIOS: no vale lo que diga el navegador.
+- **Quién responde por cada unidad:** la tabla `RESPONSABLE UNIDAD` de MISC (**menú 18**). **Una unidad sin responsable no aparece** entre los centros de costos de otras unidades, y si alguien intenta cargarle un viaje, la solicitud no se crea y le dice por qué. Un cambio de un viaje que ya estaba cargado allá sí pasa (marcado, sin el voto extra).
+
+Si un viajero dice que su unidad está mal, se corrige en la columna `Unidad de negocio` de USUARIOS; las solicitudes nuevas ya salen con la correcta.
+
 ---
 ## 4. Capacidades exclusivas de SUPERADMIN
 
@@ -481,13 +496,13 @@ Pestaña **🔄 Cambios**: cada cambio pedido con «Cambiar mi viaje», con filt
 Para llevarle a una unidad (por ejemplo, POTENCIA) el detalle de lo que suma a su presupuesto y que ella diga qué pagó la fábrica, qué le reconocen con descuento o nota crédito y qué corresponde a una OT. Está en el **dashboard de costos**, pestañas *Año*, *Periodo* y *Mes*, al final: tarjeta **📊 Reporte en Excel de una unidad**.
 
 1. Elige la **unidad de negocio** (o *Todas las unidades*) y los meses de compra (**desde** y **hasta**). El año y la empresa son los de los filtros de arriba.
-2. Toca **📥 Descargar Excel**. En unos segundos baja el archivo *Viajes que suman - UNIDAD - meses.xlsx*.
+2. Toca **📥 Descargar Excel**. Suele tardar unos 10 segundos; mientras tanto el botón dice cuántos lleva. Baja el archivo *Viajes que suman - UNIDAD - meses.xlsx*. Si Google no responde en unos minutos, la tarjeta lo dice y se puede volver a intentar.
 
 Se puede generar cuantas veces se quiera: cada archivo es una foto del momento en que se generó.
 
 **Qué trae** (las mismas cifras del dashboard para esos filtros):
 - **Resumen:** lo facturado, lo pendiente de factura (con lo pagado al comprar o lo cotizado), el total que suma, el presupuesto y el % usado, lo cargado a OT, cada mes de compra y cómo leer el archivo.
-- **Viajes que suman:** una fila por viaje: solicitante, pasajeros, servicio, origen y destino, fechas de ida y regreso, motivo del viaje, centro de costos, anticipación, aerolínea, tarifa, hotel, cada factura (número y fecha), el valor que suma y si ya está facturado o pendiente. Al final, **columnas amarillas** para que la unidad escriba a qué OT corresponde el viaje, cuánto pagó la fábrica, cuánto le reconocen con descuento o nota crédito y su justificación; el **valor neto** y el resumen se calculan solos.
+- **Viajes que suman:** una fila por viaje: solicitante, pasajeros, servicio, origen y destino, fechas de ida y regreso, motivo del viaje, centro de costos, la unidad del viajero si es de otra unidad (#A133), anticipación, aerolínea, tarifa, hotel, cada factura (número y fecha), el valor que suma y si ya está facturado o pendiente. Al final, **columnas amarillas** para que la unidad escriba a qué OT corresponde el viaje, cuánto pagó la fábrica, cuánto le reconocen con descuento o nota crédito y su justificación; el **valor neto** y el resumen se calculan solos.
 - **Facturas:** cada factura por separado (en la factura 1, lo pagado a la aerolínea o el hotel y el cargo de la agencia con su IVA; en las demás, el valor y el IVA).
 - **Por pasajero:** cuántos viajes y cuánto suma cada persona (el valor de cada viaje se reparte en partes iguales entre sus pasajeros).
 - **Cargados a OT (no suman):** los viajes con número de OT, aparte.

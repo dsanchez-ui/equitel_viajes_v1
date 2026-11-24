@@ -4063,7 +4063,9 @@ selector para elegir OT o centro de costo. Se empezó y no se publicó: al rato 
 pongan… qué pagó fábrica, o qué nos reconocen después vía descuentos o NC… solo para lo de POTENCIA»*) y David (*«directamente desde la
 plataforma… todas las solicitudes de viaje de una unidad de negocio que aportaron al presupuesto… quién viajó, destino, origen, fechas,
 costos… lo más segregados posible… facturados y los cotizados como pendientes… regenerable… para potencia como para cualquier otra
-unidad»*; la idea es que la unidad justifique sus vuelos sin OT) · **Estado:** En el repo; falta pegar `Code.gs` y `CostsDashboard.html`.
+unidad»*; la idea es que la unidad justifique sus vuelos sin OT) · **Estado:** Desplegado el 24-nov (David pegó `Code.gs` y
+`CostsDashboard.html` y publicó la versión nueva). La primera descarga en producción se quedó en «Armando el reporte…»; la segunda bajó en
+unos 10 segundos. No se supo la causa (en local tarda medio segundo con la base del 24-nov); #A133 hace el botón más robusto.
 
 **Síntoma:**
 - POTENCIA se pasó del presupuesto (130,1 % con la base del 19-nov) y no había cómo entregarle, viaje por viaje, de qué está hecho ese
@@ -4125,3 +4127,81 @@ $877.072 (SOL-000568) y ADM INVENTARIOS Y BODEGA $403.427 (SOL-000479). El total
 la prueba y los documentos (la app no cambia: no sale el aviso de versión nueva).
 - **Dashboard nuevo + `Code.gs` anterior:** el botón muestra un error (Apps Script no encuentra `costsDashboard_getUnitReport`); nada más cambia. Por eso se pegan los dos juntos.
 - **`Code.gs` nuevo + dashboard anterior:** sin la tarjeta; las cifras ya suman la factura 4.
+
+---
+
+## **#A133 — Centro de costos de otra unidad: el viajero dice a qué unidad pertenece, carga el viaje a la que paga y la aprueba también su responsable**
+**Fecha:** 2026-11-24 · **Pedido por:** Yurani, por medio de David (*«que puedan elegir su unidad de negocios, la unidad a la que
+pertenecen, pero que puedan marcar otro centro de costos… que sea muy claro… los primeros que me aparezcan son los de mi unidad… debajo los
+de otras unidades… un aviso… quedaría la anotación… impactaría a la unidad de negocio dueña de ese centro de costos… las aprobaciones
+dependan de ese centro de costos: mi aprobador normal y adicionalmente el aprobador que se encarga de esos centros de costos»*). Decisiones
+de David del 24-nov: la unidad de cada persona en una columna de USUARIOS que se prellena y revisa Yurani; un responsable por unidad en
+una tabla de MISC; una unidad sin responsable no ofrece sus centros de costos. · **Estado:** En el repo; falta pegar `Code.gs` y
+`CostsDashboard.html`, correr los menús 18 y 17 y publicar la versión nueva.
+
+**Síntoma:**
+- El formulario dejaba elegir cualquier unidad y después un centro de costos de esa unidad. Quien viajaba para otra unidad elegía esa
+  unidad como si fuera la suya: no quedaba registrado de qué unidad era el viajero y la otra unidad no se enteraba ni aprobaba nada (el
+  aprobador era siempre el del primer pasajero, #A68).
+
+**Causa raíz:**
+- La plataforma no sabía a qué unidad pertenece cada persona: el `Centro de Costo` de USUARIOS es un código de RR. HH. (`20101`,
+  `2040302`…) que no coincide con los de «CDS vs UDEN» (`101`, `201`, `401`…; `102` es GARANTIAS en uno y bodega en el otro). No son dos
+  centros pegados: es otra numeración.
+- No había a quién pedirle el voto por una unidad: en el historial cada centro de costos lo aprueban los jefes de cada viajero (el 201 de
+  POTENCIA, seis personas distintas), no un responsable de la unidad.
+
+**Fix:**
+- **Datos:**
+  - Columna `Unidad de negocio` al final de USUARIOS, leída por nombre (#A68). El **menú 17** la propone sin pisar nada: por el historial de
+    la persona (al menos 2 solicitudes y el 80 % en una unidad) o por su código de RR. HH. (el 85 % de las solicitudes de ese código, al menos
+    3). Con la base del 24-nov: 553 de 769 personas; 216 sin datos claros eligen su unidad en el formulario.
+  - Tabla `RESPONSABLE UNIDAD · UNIDAD DE NEGOCIO / · CORREO` en MISC. El **menú 18** la crea con los líderes de la tabla de accesos al
+    dashboard de costos (#A76; no `TODAS` ni `COMPLETO`) y la revisa. Con la base del 24-nov: 10 filas para 7 unidades (POTENCIA, las tres
+    de energía, INGENERGIA, COMAP, LAP y CPK). Las 22 restantes (todas las ADM, MYFAL, PROLUB, FACTURACION ADMON) quedan sin responsable.
+- **Al crear (`_ouPlan_`, también en los cambios):** el servidor decide con USUARIOS, «CDS vs UDEN» y la tabla, nunca con lo que mande el
+  navegador:
+  - la unidad del viajero: la de USUARIOS del primer pasajero; si no tiene, la que eligió (`travelerUnit`, clave nueva del formulario);
+  - la unidad que paga (`UNIDAD DE NEGOCIO`): la dueña del centro de costos (el 1901 es de dos; si el viajero es de una, es la suya);
+  - si es otra: `UNIDAD DEL VIAJERO`, `APROBADOR OTRA UNIDAD` (los responsables, sin el viajero ni quien pide) y la nota `[OTRA UNIDAD]`
+    en OBSERVACIONES. Sin responsable registrado, la solicitud no se crea y dice por qué; un cambio de un viaje ya cargado allá sí pasa.
+- **Aprobación:** rol nuevo `OTHER_UNIT` («Responsable de la unidad del centro de costos»), columna `APROBADO OTRA UNIDAD`. Entra en la
+  misma regla de siempre: a quién se le pide (`_approvalAskedFor_`, al final: si la persona ya vota con otro rol, ese voto lo cubre,
+  `_ouEffective_`), el enlace firmado (solo para los responsables de esa solicitud), la aprobación completa, la denegación, recordatorios,
+  avisos de decisión final, «Mis aprobaciones», la línea de tiempo, saltar la etapa y `reevaluarAprobacionPendiente`. El correo al
+  aprobador trae el recuadro **🏷️ CENTRO DE COSTOS DE OTRA UNIDAD**.
+- **Formulario:** «Unidad de negocio del viajero» (fija si está en USUARIOS) y «Centro de costos al que se carga el viaje», con los de su
+  unidad primero y debajo un grupo por cada otra unidad **con responsable**. Al elegir uno de otra unidad, aviso morado con quién más
+  aprueba; la barra de presupuesto y la cadena de aprobación son las de la unidad que paga. Regla gemela `utils/otherUnit.ts` ↔
+  `_ouPlan_`. Con un servidor anterior (sin `otherUnitCharges` en `getFormBootstrap`) el formulario sigue igual que antes. Ya no sale la
+  unidad «-» (la fila VARIOS de «CDS vs UDEN»).
+- **Detalle y «Mis aprobaciones»:** el recuadro, *Unidad que paga* y *Unidad del viajero*, y la fila del voto de la unidad.
+- **Reporte en Excel (#A132):** columna «Unidad del viajero (si es de otra unidad)». El botón dice los segundos que lleva y, si Google no
+  responde en 5,5 minutos, lo dice y se puede volver a intentar; la respuesta viaja como texto (`{ success, json }`) y queda en
+  «Ejecuciones» cuánto tardó.
+- **Entorno de prueba:** después de sembrar los viajes de prueba corre lo mismo que los menús 18 y 17.
+- **Guías:** usuario (§2.6, quién aprueba, «Mis aprobaciones», §9.8), área de compras (§3.16 y §8.4), hoja de cálculo (USUARIOS, MISC,
+  columnas, menús 17 y 18) y la técnica.
+
+**Verificado:**
+- `tools/check-other-unit.cjs` (nuevo, en `npm run verify`), con hoja sintética: la tabla y su revisión; al crear, la unidad de USUARIOS
+  manda (también con un formulario anterior o si el navegador dice otra), sin unidad registrada vale la elegida, la unidad que paga es la
+  dueña, espacios raros en el nombre, VARIOS, el 1901, el viajero o quien pide nunca vota por su viaje, unidad sin responsable (error y
+  ninguna fila; el cambio sí pasa); el voto pedido, el correo, un enlace ajeno, aprobado, denegado, cubierto por el voto de jefe, saltado,
+  recordatorios, «Mis aprobaciones» (también decidir) y la línea de tiempo; el menú 17 (historial, código, vacías, mal escritas, sin pisar);
+  y el formulario igual que el servidor en 88 combinaciones.
+- Entorno local con la exportación del 24-nov y Chrome: Víctor Agudelo (ENERGIA POSTVENTA) ve su unidad fija, sus 12 centros de costos y
+  debajo los de CPK, ENERGIA PROYECTOS, INGENERGIA, COMAP, LAP y POTENCIA; al elegir el 201 sale el aviso y Simón García en la cadena.
+- `npm run verify` en verde, con las pruebas de aprobaciones, política, cambios y reporte de antes sin cambios.
+
+**Despliegue:** pegar `Code.gs` y `CostsDashboard.html` → Guardar → **menú 18** (revisar la tabla: agregar o cambiar responsables) →
+**menú 17** (propone y pregunta antes de escribir) → versión nueva del web app. Push del frontend antes o después.
+- **Frontend nuevo + `Code.gs` anterior:** el formulario sigue como antes (no llega `otherUnitCharges`).
+- **`Code.gs` nuevo + frontend anterior:** el servidor aplica la regla con la unidad de USUARIOS: un viajero que elija como suya otra
+  unidad igual queda marcado y con el voto extra; si esa unidad no tiene responsable, ve el error que explica por qué. Sin aviso previo en
+  el formulario: por eso conviene publicar los dos el mismo día.
+- **Antes de correr los menús:** sin columna ni tabla, nadie tiene unidad registrada ni hay responsables: todo funciona como hoy.
+- Rollback: versión anterior del web app; las columnas nuevas se quedan (nadie más las lee).
+
+**Pendiente (sin código):** que Yurani revise la tabla de responsables (¿quién aprueba por las unidades administrativas, MYFAL y PROLUB?) y
+complete la unidad de las 216 personas sin datos claros. El panel «Gestionar usuarios» todavía no muestra la unidad: se corrige en la hoja.

@@ -210,7 +210,11 @@ sí se publica en <code>/manuales/</code>.</p>
 </tr>
 <tr>
 <td><code>OBSERVACIONES</code></td>
-<td>Texto libre. Puede tener marcadores internos como <code>[CONSULTA_USUARIO_PENDIENTE]</code>, <code>[ETAPA SALTADA por …]</code> o <code>[RESERVA]: Registrada sin notificación al usuario</code>.</td>
+<td>Texto libre. Puede tener marcadores internos como <code>[CONSULTA_USUARIO_PENDIENTE]</code>, <code>[ETAPA SALTADA por …]</code>, <code>[RESERVA]: Registrada sin notificación al usuario</code> o <code>[OTRA UNIDAD]: …</code> (#A133).</td>
+</tr>
+<tr>
+<td><code>UNIDAD DE NEGOCIO</code>, <code>UNIDAD DEL VIAJERO</code>, <code>APROBADOR OTRA UNIDAD</code>, <code>APROBADO OTRA UNIDAD</code></td>
+<td>#A133: la unidad que paga (la dueña del centro de costos, la decide el servidor con «CDS vs UDEN»), la del primer pasajero (columna <code>Unidad de negocio</code> de USUARIOS, o la que eligió si no tiene), a quién se le pidió el voto por la unidad del centro de costos (tabla <code>RESPONSABLE UNIDAD</code> de MISC, sin el propio viajero ni quien pide) y su decisión. Rol <code>OTHER_UNIT</code> en los enlaces firmados, «Mis aprobaciones» y la línea de tiempo; un voto de la misma persona en otro rol lo cubre (<code>_ouEffective_</code>).</td>
 </tr>
 </tbody>
 </table>
