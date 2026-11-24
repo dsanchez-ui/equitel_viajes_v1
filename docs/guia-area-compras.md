@@ -277,7 +277,7 @@ Lleva un PDF con lo mismo y un CSV con el detalle de cada solicitud del mes (sin
 
 ### 3.16 Centros de costos de otra unidad (#A133)
 
-Desde noviembre de 2026 (pedido de Yurani) el viajero dice **a qué unidad pertenece** y elige **a qué centro de costos se carga el viaje**, que puede ser de otra unidad. Cuando lo es:
+Desde noviembre de 2026 (pedido de Yurani) la plataforma sabe **a qué unidad pertenece el primer pasajero** (el que también decide el aprobador), y la unidad y el centro de costos del formulario son **a los que se carga el viaje**, como siempre. Si no coinciden, el viaje se carga a otra unidad:
 
 - **El costo va a la unidad dueña del centro de costos**: `UNIDAD DE NEGOCIO` de la solicitud es esa unidad, y así cuenta en su presupuesto, en el dashboard de costos, en su reporte en Excel y en la aprobación de presupuesto excedido.
 - **La solicitud queda marcada:** en el detalle sale el recuadro morado **🏷️ CENTRO DE COSTOS DE OTRA UNIDAD** (de qué unidad es el viajero y a cuál se cargó), la información corporativa dice *Unidad que paga* y *Unidad del viajero*, y en OBSERVACIONES queda la nota `[OTRA UNIDAD]`.
@@ -285,7 +285,7 @@ Desde noviembre de 2026 (pedido de Yurani) el viajero dice **a qué unidad perte
 - **Recordatorios, «Mis aprobaciones», avisos y la línea de tiempo** incluyen ese voto como cualquier otro. Saltar la etapa de aprobación también lo salta.
 
 **De dónde sale cada cosa** (lo administra el área de compras desde la hoja; ver la guía de la hoja de cálculo):
-- **La unidad del viajero:** columna `Unidad de negocio` de USUARIOS (**menú 17**, que la propone por el historial, el código de RR. HH. o el aprobador de cada persona). Si el primer pasajero la tiene, el formulario la muestra y no se cambia; si no, el viajero la elige. Al crear la solicitud el servidor vuelve a mirar USUARIOS: no vale lo que diga el navegador.
+- **La unidad del viajero:** columna `Unidad de negocio` de USUARIOS (**menú 17**, que la propone por el historial, el código de RR. HH. o el aprobador de cada persona). Si el primer pasajero no la tiene, el formulario le pregunta una sola vez y queda guardada (nunca cambia una ya escrita); la solicitud lleva la nota `[UNIDAD REGISTRADA]` y al aprobador le llega el aviso **🆕 UNIDAD REGISTRADA POR PRIMERA VEZ**. Al crear la solicitud el servidor vuelve a mirar USUARIOS: no vale lo que diga el navegador.
 - **Quién responde por cada unidad:** la tabla `RESPONSABLE UNIDAD` de MISC (**menú 18**). **Una unidad sin responsable no aparece** entre los centros de costos de otras unidades, y si alguien intenta cargarle un viaje, la solicitud no se crea y le dice por qué. Un cambio de un viaje que ya estaba cargado allá sí pasa (marcado, sin el voto extra).
 
 Si un viajero dice que su unidad está mal, se corrige en la columna `Unidad de negocio` de USUARIOS; las solicitudes nuevas ya salen con la correcta.

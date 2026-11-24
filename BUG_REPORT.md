@@ -4218,3 +4218,24 @@ cuántas propone por cada camino, por unidad y aprobador, y a quién aprueban la
 la O de USUARIOS con 553 personas y ninguna mal escrita; la tabla de responsables en MISC Q:R con sus 10 filas. Ana Elvira Ochoa
 (`aochoa@`) tiene dos filas en USUARIOS con su correo: «OCHOA PACHECO ANA ELVIRA (Latam)» y «ANA KREMER (avianca)» (cédula 318846610);
 la plataforma muestra la primera. Prueba en `tools/check-other-unit.cjs` (equipo, aprobador, cascada y equipo mixto).
+
+**Ajuste del formulario (24-nov, David: *«el flujo de llenado no se altere… que se vea lo del presupuesto sin importar en qué orden se
+llene… la unidad de negocio que se toma en cuenta siempre va a ser la del primer pasajero… preguntar a qué unidad pertenece una primera
+vez… y ya después no se debe poder cambiar»*; no contar los viajes como acompañante en el menú 17):**
+- **Arriba, como siempre:** «Unidad de Negocio» y «Centro de Costos» son a los que se carga el viaje, con la barra de su presupuesto debajo
+  de la unidad (se ve apenas se elige la unidad, sin depender del pasajero). La unidad del primer pasajero se marca en la lista (*· unidad
+  del viajero*). Ya no hay lista agrupada ni unidad fija arriba: con el primer pasajero más abajo, el orden de llenado lo confundía.
+- **En el bloque del primer pasajero:** su unidad registrada o, si no la tiene, la pregunta **una sola vez** («¿A qué unidad de negocio
+  pertenece …?», `passengerUnit`). El servidor la guarda en USUARIOS al crear la solicitud (`_ouSaveUserUnit_`, solo celdas vacías: después
+  no se cambia desde el formulario) y deja `[UNIDAD REGISTRADA]` en OBSERVACIONES; el correo al aprobador trae **🆕 UNIDAD REGISTRADA POR
+  PRIMERA VEZ** para que su jefe vea si está bien, y el detalle y «Mis aprobaciones» lo dicen. `travelerUnit` de la primera versión del
+  formulario se sigue aceptando sin guardarse.
+- **El aviso de otra unidad** sale arriba (junto al centro de costos) y junto al primer pasajero: se ve en el orden en que se llene. En rojo
+  si la unidad que paga no tiene responsable (el formulario no deja enviar y el servidor tampoco).
+- **VARIOS** de otra unidad también cuenta como otra unidad (antes no pedía el voto).
+- Responsables: David decide que **Yurani responde por las unidades administrativas** (las ADM y FACTURACION ADMON; las 19 personas con
+  viajes en varias unidades casi nunca viajan). Se agregan a mano en la tabla de MISC. MYFAL y PROLUB siguen sin responsable.
+- Verificado: la prueba (unidad registrada y guardada una vez, una inventada no se guarda, `travelerUnit` no se guarda, VARIOS, aviso en el
+  correo, la regla gemela con la unidad elegida) y en el entorno local con Chrome: Víctor (llenando arriba primero) y Andrea Murillo, sin
+  unidad (llenando el pasajero primero: registra ADM MERCADEO y carga a POTENCIA), con los dos avisos, la barra del presupuesto y Simón en la
+  cadena; la solicitud se creó, su unidad quedó en USUARIOS y una segunda solicitud no la cambió. Bloqueo con ADM GENERAL sin responsable.

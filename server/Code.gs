@@ -3553,6 +3553,7 @@ function _myApprovalItem_(row, req, steps, mine, pendingKind, myVote, names, isP
   if (req.requiresFareApproval) why.push('Tarifa superior a la del manual');
   if (req.lateChange) why.push('Cambio pedido después del plazo'); // #A129
   if (req.otherUnitCharge) why.push('Se carga a un centro de costos de otra unidad (el viajero es de ' + req.travelerUnit + ')'); // #A133
+  if (req.travelerUnitDeclared && req.travelerUnit) why.push('El viajero registró su unidad por primera vez en esta solicitud: ' + req.travelerUnit);
   var policy = null;
   if (isPolicyApprover && (pendingKind === 'policy' || policyCell)) {
     var held = _policyHeldItem_(row, names);
@@ -5935,6 +5936,11 @@ const HtmlTemplates = {
             alertHtml += `<div style="background-color: #f5f3ff; border: 1px solid #ddd6fe; color: #4c1d95; padding: 15px; margin-bottom: 20px; border-radius: 6px;"><strong>🏷️ CENTRO DE COSTOS DE OTRA UNIDAD:</strong> El viajero es de <strong>${escapeHtml_(request.travelerUnit || '')}</strong> y el viaje se carga al centro de costos <strong>${ouCc}</strong>, de <strong>${escapeHtml_(request.businessUnit || '')}</strong>: el costo cuenta en el presupuesto de esa unidad.${request.otherUnitApproverName ? ' Por eso también lo aprueba <strong>' + escapeHtml_(request.otherUnitApproverName) + '</strong>.' : ''}</div>`;
         }
 
+        // #A133: el primer pasajero registró su unidad por primera vez en esta solicitud (su jefe puede ver si está bien).
+        if (request.travelerUnitDeclared && request.travelerUnit) {
+            alertHtml += `<div style="background-color: #f0f9ff; border: 1px solid #bae6fd; color: #075985; padding: 12px 15px; margin-bottom: 20px; border-radius: 6px; font-size: 13px;"><strong>🆕 UNIDAD REGISTRADA POR PRIMERA VEZ:</strong> el primer pasajero registró en esta solicitud que es de <strong>${escapeHtml_(request.travelerUnit)}</strong>. Desde ahora queda así en la plataforma; si no es su unidad, avísele al área de compras.</div>`;
+        }
+
         // #A100: TARIFA SUPERIOR A LA DEL MANUAL
         if (request.requiresFareApproval) {
             const fareCfoName = escapeHtml_(request.budgetApproverName || 'el CFO');
@@ -7210,6 +7216,7 @@ function createNewRequest(data, emailHtml, policy) {
   // #A133: la marca de un centro de costos de otra unidad (las notas del sistema van entre corchetes).
   const _obsParts = [data.comments || ''];
   if (_policyJustInObs) _obsParts.push('[JUSTIFICACIÓN ANTICIPACIÓN]: ' + _policyJustification);
+  if (_ouPlanRes.declared) _obsParts.push(_ouDeclaredNote_(_ouPlanRes, data.passengers && data.passengers[0] ? String(data.passengers[0].name || '').trim() : ''));
   if (_ouPlanRes.cross) _obsParts.push(_ouNote_(_ouPlanRes, data.costCenter, costCenterName));
   set("OBSERVACIONES", safeSheetValue_(_obsParts.filter(function(x) { return x; }).join('\n')));
   if (_policyJustification && !_policyJustInObs) set(POLICY_JUSTIFICATION_HEADER, safeSheetValue_(_policyJustification));
@@ -7339,6 +7346,14 @@ function createNewRequest(data, emailHtml, policy) {
     _fillUsuariosPhones_(_phonePlan && _phonePlan.registered);
   } catch (phoneErr) {
     console.warn('createNewRequest: no se pudo completar el celular en USUARIOS para ' + id + ': ' + phoneErr);
+  }
+  // #A133: la unidad que el primer pasajero registró por primera vez (solo si la celda está vacía).
+  if (_ouPlanRes.declared) {
+    try {
+      _ouSaveUserUnit_(data.passengers[0].idNumber, _ouPlanRes.travelerUnit);
+    } catch (unitErr) {
+      console.warn('createNewRequest: no se pudo guardar la unidad del primer pasajero en USUARIOS para ' + id + ': ' + unitErr);
+    }
   }
 
   // Rate-limit counter (solo tras éxito). Si falló validación o inserción,
@@ -9781,6 +9796,7 @@ function mapRowToRequest(row, lite) {
   // #A133: centro de costos de otra unidad. businessUnit es la unidad que paga (la dueña del centro de costos).
   result.travelerUnit = String(get(OU_TRAVELER_UNIT_HEADER) || '').replace(/\s+/g, ' ').trim();
   result.otherUnitCharge = !!(result.travelerUnit && _csNormalize_(result.travelerUnit) !== _csNormalize_(result.businessUnit));
+  result.travelerUnitDeclared = String(get('OBSERVACIONES') || '').indexOf(OU_DECLARED_MARK) !== -1;
   result.otherUnitApproverEmail = _ouList_(get(OU_APPROVER_HEADER)).join(',');
   result.otherUnitApproverName = result.otherUnitApproverEmail ? _approvalWho_(result.otherUnitApproverEmail) : '';
   result.requiresOtherUnitApproval = eff.otherUnit !== 'NA';
@@ -22997,25 +23013,34 @@ function _ouPublicInfo_() {
 /**
  * Al crear una solicitud (también un cambio): la unidad del viajero, la unidad a la que se carga el viaje
  * y a quién más se le pide el voto. data = payload de creación (costCenter, businessUnit, passengers,
- * requesterEmail y, desde el formulario de #A133, travelerUnit). Devuelve
- * { travelerUnit, chargedUnit, cross, approvers: [correos] }.
+ * requesterEmail y, del formulario de #A133, passengerUnit o travelerUnit). Devuelve
+ * { travelerUnit, chargedUnit, cross, approvers: [correos], declared }.
+ *   - La unidad que paga es la dueña del centro de costos; con VARIOS, la unidad elegida en el formulario.
+ *   - La unidad del viajero es la de USUARIOS del primer pasajero. Si no la tiene, la que se le preguntó
+ *     en el formulario (passengerUnit, David 24-nov: «si no está guardada todavía, ya después no se debe
+ *     poder cambiar»): declared = true y createNewRequest la guarda en USUARIOS. travelerUnit (la primera
+ *     versión del formulario de #A133) se usa sin guardarla.
  * Lanza un error para el usuario si el centro de costos es de otra unidad sin responsable registrado.
  */
 function _ouPlan_(data) {
   var cc = String(data.costCenter == null ? '' : data.costCenter).trim();
   var sent = String(data.businessUnit == null ? '' : data.businessUnit).replace(/\s+/g, ' ').trim();
-  var out = { travelerUnit: '', chargedUnit: sent, cross: false, approvers: [] };
+  var out = { travelerUnit: '', chargedUnit: sent, cross: false, approvers: [], declared: false };
   var owners = cc && cc.toUpperCase() !== 'VARIOS' ? (_ouCostCenters_().byCode[cc] || []) : [];
+  // VARIOS (los centros son de la unidad elegida) o un centro que no está en el catálogo: la unidad elegida.
+  if (!owners.length && _ouCanonicalUnit_(sent)) owners = [_ouCanonicalUnit_(sent)];
   var ownerOf = function (unit) {
     var n = _csNormalize_(unit);
     return n ? owners.filter(function (u) { return _csNormalize_(u) === n; })[0] || '' : '';
   };
-  // La unidad a la que se carga es la dueña del centro de costos (antes el formulario la mandaba aparte).
+  // La unidad a la que se carga es la dueña del centro de costos.
   if (owners.length) out.chargedUnit = ownerOf(sent) || owners[0];
-  // La unidad del viajero: la de USUARIOS (primer pasajero); si no tiene, la que eligió en el formulario.
+  // La unidad del viajero: la de USUARIOS (primer pasajero); si no tiene, la que se le preguntó en el formulario.
   var p1 = data.passengers && data.passengers[0] ? data.passengers[0] : null;
   var reg = p1 ? _ouUserUnits_().byCedula[String(p1.idNumber || '').trim()] : '';
-  out.travelerUnit = reg || (data.travelerUnit !== undefined ? _ouCanonicalUnit_(data.travelerUnit) : '');
+  var declared = !reg && data.passengerUnit !== undefined ? _ouCanonicalUnit_(data.passengerUnit) : '';
+  out.declared = !!declared;
+  out.travelerUnit = reg || declared || (data.travelerUnit !== undefined ? _ouCanonicalUnit_(data.travelerUnit) : '');
   if (!out.travelerUnit || !owners.length) return out;
   var own = ownerOf(out.travelerUnit);
   if (own) { out.chargedUnit = own; return out; } // el centro de costos es de su unidad
@@ -23034,6 +23059,42 @@ function _ouPlan_(data) {
   if (p1Email) self.push(p1Email);
   out.approvers = entry.emails.filter(function (e) { return self.indexOf(e) === -1; });
   return out;
+}
+
+/**
+ * Guarda en USUARIOS la unidad que el primer pasajero registró en el formulario (#A133). Solo celdas vacías:
+ * nunca cambia una unidad escrita (la corrige el área de compras en la hoja). Devuelve cuántas filas escribió.
+ */
+function _ouSaveUserUnit_(cedula, unit) {
+  var ced = String(cedula == null ? '' : cedula).trim();
+  var canon = _ouCanonicalUnit_(unit);
+  if (!ced || !canon) return 0;
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var col = _ouEnsureUserUnitCol_(sheet);
+  var n = sheet.getLastRow() - 1;
+  var ceds = sheet.getRange(2, 1, n, 1).getValues();
+  var vals = sheet.getRange(2, col, n, 1).getValues();
+  var written = 0;
+  for (var i = 0; i < n; i++) {
+    if (String(ceds[i][0] == null ? '' : ceds[i][0]).trim() !== ced) continue;
+    if (String(vals[i][0] == null ? '' : vals[i][0]).trim()) continue;
+    sheet.getRange(i + 2, col).setValue(canon);
+    written++;
+  }
+  _OU_USER_UNITS_CACHE = null;
+  return written;
+}
+
+/** Columna «Unidad de negocio» de USUARIOS (1-based); si no existe, la crea al final. */
+function _ouEnsureUserUnitCol_(sheet) {
+  var col = _ouUserUnitCol_(sheet);
+  if (col > 0) return col;
+  col = sheet.getLastColumn() + 1;
+  if (sheet.getMaxColumns() < col) sheet.insertColumnsAfter(sheet.getMaxColumns(), col - sheet.getMaxColumns());
+  sheet.getRange(1, col).setValue(OU_USER_UNIT_HEADER).setFontWeight('bold')
+    .setNote('#A133: unidad de negocio a la que pertenece la persona, como está en «CDS vs UDEN». Decide si un centro de costos es de otra unidad. Vacía: se le pregunta en el formulario la primera vez y se guarda aquí.');
+  return col;
 }
 
 /** Correo de USUARIOS de una cédula ('' si no está). */
@@ -23067,6 +23128,12 @@ function _ouEffective_(approversRaw, ouVal, votes) {
     else if (v.decision === 'denied') other = 'DENIED';
   });
   return other;
+}
+
+/** Nota de OBSERVACIONES cuando el primer pasajero registró su unidad en esta solicitud (la lee mapRowToRequest). */
+var OU_DECLARED_MARK = '[UNIDAD REGISTRADA]';
+function _ouDeclaredNote_(plan, name) {
+  return OU_DECLARED_MARK + ': ' + (name ? name + ' registró' : 'el primer pasajero registró') + ' por primera vez en esta solicitud que es de ' + plan.travelerUnit + '.';
 }
 
 /** Nota de OBSERVACIONES con la que queda marcada la solicitud. */
@@ -23195,14 +23262,8 @@ function _ouProposeUserUnits_() {
 /** Escribe las propuestas (crea la columna al final de USUARIOS si falta). Solo celdas vacías. */
 function _ouWriteUserUnits_(proposals) {
   var users = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_USUARIOS);
-  var col = _ouUserUnitCol_(users), created = false;
-  if (col < 0) {
-    col = users.getLastColumn() + 1;
-    if (users.getMaxColumns() < col) users.insertColumnsAfter(users.getMaxColumns(), col - users.getMaxColumns());
-    users.getRange(1, col).setValue(OU_USER_UNIT_HEADER).setFontWeight('bold')
-      .setNote('#A133: unidad de negocio a la que pertenece la persona, como está en «CDS vs UDEN». Decide si un centro de costos es de otra unidad. Vacía: la persona la elige en el formulario.');
-    created = true;
-  }
+  var created = _ouUserUnitCol_(users) < 0;
+  var col = _ouEnsureUserUnitCol_(users);
   var written = 0;
   proposals.forEach(function (p) {
     var cell = users.getRange(p.row, col);

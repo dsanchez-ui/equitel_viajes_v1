@@ -77,6 +77,7 @@ function load() {
     user('115', 'NUEVO SIN HISTORIAL', 'nuevo@p.co', 20101, ''),
     user('116', 'SIN DATOS', 'sindatos@p.co', 999, ''),
     user('117', 'UNIDAD MAL ESCRITA', 'mal@p.co', 20101, 'POTENCIAS'),
+    user('118', 'NUEVA DECLARA', 'decl@p.co', 999, ''),
     user('120', 'GARCIA SIMON', 'sigarcia@p.co', 20101, POT),
     user('130', 'OCHOA ANA ELVIRA', 'aochoa@p.co', 20401, EP),
     user('150', 'TORRES MARIA', 'maria@p.co', 125, 'ADM AUDITORIA'),
@@ -277,6 +278,25 @@ function main() {
   eq('Luis elige POTENCIA: su unidad', [cell(r.data, 'UNIDAD DEL VIAJERO'), cell(r.data, 'APROBADOR OTRA UNIDAD')], [POT, '']);
   r = create(strip(base(Object.assign({ costCenter: '201', businessUnit: 'ADM GENERAL' }, luis))));
   eq('formulario anterior sin unidad registrada: como antes, y paga la dueña del centro de costos', [cell(r.data, 'UNIDAD DE NEGOCIO'), cell(r.data, 'UNIDAD DEL VIAJERO'), cell(r.data, 'APROBADOR OTRA UNIDAD')], [POT, '', '']);
+  const unitOfUser = (ced) => users.find((u) => String(u[0]) === ced)[14];
+  eq('travelerUnit (la primera versión del formulario) no se guarda en USUARIOS', unitOfUser('110'), '');
+
+  // La unidad que se le pregunta una sola vez al primer pasajero que no la tiene (David, 24-nov).
+  const decl = { passengers: pax('118', 'NUEVA DECLARA', 'decl@p.co'), requesterEmail: 'decl@p.co' };
+  r = create(base(Object.assign({ costCenter: '201', businessUnit: POT, passengerUnit: 'energia  postventa', travelerUnit: EPV }, decl)));
+  const D1 = r.data;
+  eq('quien no tiene unidad la registra: cuenta para esta solicitud (otra unidad) y se guarda en USUARIOS',
+    [cell(D1, 'UNIDAD DEL VIAJERO'), cell(D1, 'APROBADOR OTRA UNIDAD'), unitOfUser('118')], [EPV, 'sigarcia@p.co,resp2@p.co', EPV]);
+  ok('queda la nota de la unidad registrada (antes de la de otra unidad)', /\[UNIDAD REGISTRADA\]: NUEVA DECLARA registró por primera vez en esta solicitud que es de ENERGIA POSTVENTA\.\n\[OTRA UNIDAD\]/.test(cell(D1, 'OBSERVACIONES')));
+  ok('la app sabe que la registró en esta solicitud', mapped(D1).travelerUnitDeclared === true && mapped(D1).travelerUnit === EPV);
+  r = create(base(Object.assign({ costCenter: '201', businessUnit: POT, passengerUnit: POT }, decl)));
+  eq('después ya no se cambia: vale la guardada aunque el formulario mande otra', [cell(r.data, 'UNIDAD DEL VIAJERO'), cell(r.data, 'APROBADOR OTRA UNIDAD'), unitOfUser('118'), /UNIDAD REGISTRADA/.test(cell(r.data, 'OBSERVACIONES'))],
+    [EPV, 'sigarcia@p.co,resp2@p.co', EPV, false]);
+  r = create(strip(base({ passengers: pax('116', 'SIN DATOS', 'sindatos@p.co'), requesterEmail: 'sindatos@p.co', costCenter: '503', businessUnit: EPV, passengerUnit: 'UNIDAD INVENTADA' })));
+  eq('una unidad que no existe no se guarda', [cell(r.data, 'UNIDAD DEL VIAJERO'), unitOfUser('116')], ['', '']);
+  r = create(base({ costCenter: 'VARIOS', businessUnit: POT, variousCostCenters: '101 - SERVICIO-GDM, 201 - PARTES Y MOTORES' }));
+  eq('VARIOS de otra unidad: paga esa unidad y vota su responsable', [cell(r.data, 'UNIDAD DE NEGOCIO'), cell(r.data, 'UNIDAD DEL VIAJERO'), cell(r.data, 'APROBADOR OTRA UNIDAD')],
+    [POT, EPV, 'sigarcia@p.co,resp2@p.co']);
 
   const rowsBefore = req.length;
   r = create(base({ costCenter: '9015', businessUnit: 'ADM GENERAL' }));
@@ -297,7 +317,7 @@ function main() {
   eq('VARIOS: la unidad del viajero, sin marca', [cell(r.data, 'UNIDAD DE NEGOCIO'), cell(r.data, 'APROBADOR OTRA UNIDAD')], [EPV, '']);
   reset();
   eq('1901 es de dos unidades: si el viajero es de una, es la suya', ctx._ouPlan_({ costCenter: '1901', businessUnit: 'INGENERGIA', travelerUnit: 'INGENERGIA- COMAP', passengers: [{ idNumber: 'x' }] }),
-    { travelerUnit: 'INGENERGIA- COMAP', chargedUnit: 'INGENERGIA- COMAP', cross: false, approvers: [] });
+    { travelerUnit: 'INGENERGIA- COMAP', chargedUnit: 'INGENERGIA- COMAP', cross: false, approvers: [], declared: false });
   reset();
   eq('una unidad mal escrita en USUARIOS no cuenta: vale la que se eligió', ctx._ouPlan_({ costCenter: '201', businessUnit: POT, travelerUnit: POT, passengers: [{ idNumber: '117' }] }).travelerUnit, POT);
 
@@ -317,6 +337,12 @@ function main() {
   log.mails.length = 0;
   ask(X1);
   eq('correos de aprobación', log.mails.map((m) => m.to).sort(), ['jefe@p.co', 'resp2@p.co', 'sigarcia@p.co']);
+  toApproval(D1);
+  log.mails.length = 0;
+  ask(D1);
+  ok('el correo al jefe dice que el viajero registró su unidad por primera vez', /UNIDAD REGISTRADA POR PRIMERA VEZ:<\/strong> el primer pasajero registró en esta solicitud que es de <strong>ENERGIA POSTVENTA/.test((mailsTo('jefe@p.co')[0] || {}).html || ''));
+  log.mails.length = 0;
+  ask(X1);
   ok('el correo explica la otra unidad', /CENTRO DE COSTOS DE OTRA UNIDAD:<\/strong> El viajero es de <strong>ENERGIA POSTVENTA<\/strong>.*PARTES Y MOTORES.*POTENCIA \(GDM - P&amp;M\)/.test(mailsTo('sigarcia@p.co')[0].html));
   ok('el enlace del responsable va con su rol', /role=OTHER_UNIT&actor=sigarcia%40p\.co/.test(mailsTo('sigarcia@p.co')[0].html));
 
@@ -418,21 +444,23 @@ function main() {
     const units = ['', POT, EPV, 'INGENERGIA', 'INGENERGIA- COMAP', 'ADM AUDITORIA', 'ADM AUDITORIA', 'adm general'];
     const k = (s) => cli.unitKey(s);
     codes.forEach((code) => units.forEach((unit) => {
-      const c = cli.planCharge(code, unit, master);
-      let s;
-      reset();
-      try {
-        s = ctx._ouPlan_({ costCenter: code, businessUnit: c.chargedUnit, travelerUnit: unit, passengers: [{ idNumber: 'nadie' }], requesterEmail: 'x@p.co' });
-      } catch (e) { s = { cross: true, chargedUnit: c.chargedUnit, threw: true }; }
-      if (k(s.chargedUnit) !== k(c.chargedUnit) || !!s.cross !== c.cross) {
-        failures.push(`formulario y servidor no coinciden en ${code} con «${unit}»: servidor ${JSON.stringify([s.chargedUnit, s.cross])}, formulario ${JSON.stringify([c.chargedUnit, c.cross])}`);
-      }
+      [POT, 'ADM GENERAL', 'INGENERGIA'].forEach((sent) => {
+        const c = cli.planCharge(code, sent, unit, master);
+        let s;
+        reset();
+        try {
+          s = ctx._ouPlan_({ costCenter: code, businessUnit: sent, travelerUnit: unit, passengers: [{ idNumber: 'nadie' }], requesterEmail: 'x@p.co' });
+        } catch (e) { s = { cross: true, chargedUnit: c.chargedUnit, threw: true }; }
+        if (k(s.chargedUnit) !== k(c.chargedUnit) || !!s.cross !== c.cross) {
+          failures.push(`formulario y servidor no coinciden en ${code} (unidad elegida ${sent}) con «${unit}»: servidor ${JSON.stringify([s.chargedUnit, s.cross])}, formulario ${JSON.stringify([c.chargedUnit, c.cross])}`);
+        }
+      });
     }));
     reset();
-    const groups = cli.otherUnitGroups(master, EPV, ctx._ouPublicInfo_().units);
-    eq('formulario: solo las otras unidades con responsable', groups.map((g) => g.unit + ':' + g.centers.map((c) => c.code).join(',')), [EP + ':401', POT + ':101,201']);
-    eq('formulario: en una modificación se conserva su centro de costos aunque la unidad no tenga responsable',
-      cli.otherUnitGroups(master, EPV, ctx._ouPublicInfo_().units, '9015').map((g) => g.unit), ['ADM GENERAL', EP, POT]);
+    const respInfo = ctx._ouPublicInfo_().units;
+    eq('formulario: quién aprueba por la unidad que paga, y nadie si no tiene responsable',
+      [cli.responsibleFor('potencia (gdm - p&m)', respInfo), cli.responsibleFor('ADM GENERAL', respInfo)], ['GARCIA SIMON o ROJAS RESPONSABLE', '']);
+    eq('formulario: VARIOS de otra unidad paga la elegida', cli.planCharge('VARIOS', POT, EPV, master), { chargedUnit: POT, cross: true });
     eq('formulario: la unidad del directorio contra la lista', cli.matchUnit('adm  auditoria', ['ADM AUDITORIA', POT]), 'ADM AUDITORIA');
   }
 

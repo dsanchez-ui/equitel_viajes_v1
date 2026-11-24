@@ -426,6 +426,10 @@ export interface TravelRequest {
   // #A133: centro de costos de otra unidad. businessUnit es la unidad que paga (la dueña del centro de
   // costos); travelerUnit, la del viajero. Lo decide el servidor. undefined = backend anterior.
   travelerUnit?: string;
+  /** Payload: la unidad que se le preguntó al primer pasajero porque no la tenía (se guarda en USUARIOS). */
+  passengerUnit?: string;
+  /** El primer pasajero registró su unidad por primera vez en esta solicitud (lo ven los aprobadores). */
+  travelerUnitDeclared?: boolean;
   otherUnitCharge?: boolean;
   otherUnitApproverEmail?: string;
   otherUnitApproverName?: string;

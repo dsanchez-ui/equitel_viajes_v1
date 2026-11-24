@@ -6,10 +6,11 @@
  * al crear la solicitud con USUARIOS, «CDS vs UDEN» y la tabla de responsables de MISC (nunca confía en lo
  * que mande el navegador).
  *
- * - La unidad que paga es la dueña del centro de costos (un centro puede estar en dos: 1901).
- * - Si el viajero es de otra unidad, el centro de costos «es de otra unidad»: el costo cuenta en el
- *   presupuesto de la dueña y la aprueba también su responsable.
- * - Solo se ofrecen centros de costos de las unidades que tienen responsable registrado.
+ * - La unidad que paga es la dueña del centro de costos (un centro puede estar en dos: 1901); con VARIOS, la
+ *   unidad elegida en el formulario.
+ * - La unidad del viajero es la del primer pasajero (USUARIOS, o la que se le pregunta una sola vez).
+ * - Si son distintas, el viaje se carga a otra unidad: cuenta en el presupuesto de la que paga y la aprueba
+ *   también su responsable. Una unidad sin responsable no recibe viajes de otras unidades.
  */
 import { CostCenterMaster } from '../types';
 
@@ -48,53 +49,31 @@ export function ownerUnits(code: unknown, master: CostCenterMaster[]): string[] 
 }
 
 /**
- * A qué unidad se carga el viaje y si es otra unidad (la misma cuenta de `_ouPlan_`). Sin unidad del
- * viajero no hay «otra unidad»: el viaje va a la dueña del centro de costos.
+ * A qué unidad se carga el viaje y si es otra unidad (la misma cuenta de `_ouPlan_`). La unidad que paga es la
+ * dueña del centro de costos; con VARIOS, la unidad elegida (`sentUnit`). Sin unidad del viajero no hay «otra
+ * unidad».
  */
-export function planCharge(code: unknown, travelerUnit: unknown, master: CostCenterMaster[]): { chargedUnit: string; cross: boolean } {
-  const owners = ownerUnits(code, master);
+export function planCharge(
+  code: unknown,
+  sentUnit: unknown,
+  travelerUnit: unknown,
+  master: CostCenterMaster[]
+): { chargedUnit: string; cross: boolean } {
+  let owners = ownerUnits(code, master);
+  const sent = cleanLabel(sentUnit);
+  if (!owners.length && unitKey(sent) && isRealUnit(sent)) owners = [sent];
   const traveler = cleanLabel(travelerUnit);
-  if (!owners.length) return { chargedUnit: traveler, cross: false };
+  if (!owners.length) return { chargedUnit: sent, cross: false };
   const own = owners.find(u => unitKey(u) === unitKey(traveler));
   if (own) return { chargedUnit: own, cross: false };
-  return { chargedUnit: owners[0], cross: !!unitKey(traveler) };
+  return { chargedUnit: owners.find(u => unitKey(u) === unitKey(sent)) || owners[0], cross: !!unitKey(traveler) };
 }
 
-export interface OtherUnitGroup {
-  unit: string;
-  /** Quién aprueba los viajes que otras unidades le cargan (nombres, «A o B»). '' = sin responsable. */
-  approvers: string;
-  centers: CostCenterMaster[];
-}
-
-/**
- * Los centros de costos de las OTRAS unidades que se pueden elegir: solo las que tienen responsable, en
- * orden alfabético, cada centro una vez. `keepCode` (el centro de costos de una solicitud que se está
- * modificando) se ofrece aunque su unidad no tenga responsable: el viaje ya estaba cargado allá.
- */
-export function otherUnitGroups(
-  master: CostCenterMaster[],
-  travelerUnit: unknown,
-  responsibles: { unit: string; approvers: string }[],
-  keepCode?: string
-): OtherUnitGroup[] {
-  const travelerKey = unitKey(travelerUnit);
-  const who = new Map<string, string>();
-  responsibles.forEach(r => { if (unitKey(r.unit)) who.set(unitKey(r.unit), String(r.approvers || '')); });
-  const keepOwners = keepCode ? ownerUnits(keepCode, master).map(unitKey) : [];
-  const groups = new Map<string, OtherUnitGroup>();
-  master.forEach(m => {
-    const key = unitKey(m.businessUnit);
-    if (!isRealUnit(m.businessUnit) || key === travelerKey) return;
-    const code = String(m.code ?? '').trim();
-    if (!code || code.toUpperCase() === 'VARIOS') return;
-    const offered = who.has(key) || (keepCode !== undefined && code === String(keepCode).trim() && keepOwners.includes(key));
-    if (!offered) return;
-    let g = groups.get(key);
-    if (!g) { g = { unit: cleanLabel(m.businessUnit), approvers: who.get(key) || '', centers: [] }; groups.set(key, g); }
-    if (!g.centers.some(c => String(c.code).trim() === code)) g.centers.push(m);
-  });
-  return Array.from(groups.values()).sort((a, b) => a.unit.localeCompare(b.unit, 'es'));
+/** Quién aprueba los viajes que otras unidades le cargan a `unit` («A o B»), o '' si no tiene responsable. */
+export function responsibleFor(unit: unknown, responsibles: { unit: string; approvers: string }[]): string {
+  const k = unitKey(unit);
+  const r = k ? responsibles.find(x => unitKey(x.unit) === k) : undefined;
+  return r ? String(r.approvers || '') : '';
 }
 
 /** La etiqueta de la lista de unidades que corresponde a `unit` (escrita de cualquier forma), o ''. */

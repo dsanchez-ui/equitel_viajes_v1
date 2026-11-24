@@ -396,19 +396,24 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   se quiera: no guarda nada.
   - **El dashboard suma las facturas 1 a 6** (#A132; antes solo de la 1 a la 3: la cuarta de 5 viajes, $3,05 M, no contaba).
     `_csLoadConfig_` le agrega a una configuración guardada las que le falten (`_csWithAllInvoices_`).
-- **Centro de costos de otra unidad** (#A133; pedido de Yurani, decisiones de David del 24-nov). El viajero es de una unidad (la suya) y
-  puede cargar el viaje a un centro de costos de otra: **`UNIDAD DE NEGOCIO` es la unidad que paga** (la dueña del centro de costos, la decide
-  el servidor con «CDS vs UDEN») y ahí cuenta en presupuesto, dashboard e informes; `UNIDAD DEL VIAJERO` guarda la suya, y la solicitud queda
-  marcada (`[OTRA UNIDAD]` en OBSERVACIONES, recuadro morado en el detalle y en el correo).
+- **Centro de costos de otra unidad** (#A133; pedido de Yurani, decisiones de David del 24-nov). La unidad que cuenta es la del **primer
+  pasajero** (la misma que decide su aprobador). «Unidad de Negocio» y «Centro de Costos» del formulario son, como siempre, **a los que se carga
+  el viaje**, con la barra del presupuesto: **`UNIDAD DE NEGOCIO` es la unidad que paga** (la dueña del centro de costos; con VARIOS, la
+  elegida) y ahí cuenta en presupuesto, dashboard e informes. Si no es la del primer pasajero, la solicitud queda marcada (`UNIDAD DEL VIAJERO`,
+  `[OTRA UNIDAD]`, recuadro morado arriba, junto al pasajero, en el detalle y en el correo). No volver a una lista agrupada ni a fijar la unidad
+  arriba: el primer pasajero va más abajo y el orden de llenado confundía (David: *«que el flujo de llenado no se altere»*).
   - **La unidad de cada persona** está en USUARIOS, columna `Unidad de negocio` (al final, por nombre). El `Centro de Costo` de USUARIOS es un
-    código de RR. HH. que **no** coincide con «CDS vs UDEN». El **menú 17** la propone (historial, código de RR. HH. o el equipo de su aprobador) sin pisar nada; sin unidad
-    registrada, el viajero la elige. El servidor usa la de USUARIOS, nunca la que mande el navegador.
+    código de RR. HH. que **no** coincide con «CDS vs UDEN». El **menú 17** la propone (historial como primer pasajero o solicitante, código de
+    RR. HH. o el equipo de su aprobador; nunca los viajes como acompañante) sin pisar nada. Si falta, el formulario la pregunta **una sola vez**
+    en el bloque del primer pasajero (`passengerUnit`) y el servidor la guarda (`_ouSaveUserUnit_`, solo celdas vacías); la solicitud lleva
+    `[UNIDAD REGISTRADA]` y el aprobador ve «registró su unidad por primera vez». El servidor usa la de USUARIOS, nunca la que mande el navegador.
   - **Vota también el responsable de la unidad dueña** (rol `OTHER_UNIT`, columnas `APROBADOR OTRA UNIDAD` y `APROBADO OTRA UNIDAD`), además del
     aprobador de siempre. Responsables: tabla `RESPONSABLE UNIDAD · UNIDAD DE NEGOCIO / · CORREO` de MISC (**menú 18**, arranca con los líderes del
     dashboard de costos). Varios por unidad: vota cualquiera. Nadie vota su propio viaje; si la persona ya vota con otro rol, ese voto lo cubre
     (`_ouEffective_`). Una sola regla de «a quién se le pide» (`_approvalAskedFor_`): correo, recordatorios, avisos, «Mis aprobaciones», línea de tiempo.
-  - **Una unidad sin responsable no recibe viajes de otras**: el formulario no ofrece sus centros de costos y el servidor rechaza la solicitud (un
-    cambio de un viaje ya cargado allá sí pasa). Gemelo `utils/otherUnit.ts` ↔ `_ouPlan_`; la app solo cambia si el servidor manda `otherUnitCharges`.
+  - **Una unidad sin responsable no recibe viajes de otras**: aviso en rojo, el formulario no deja enviar y el servidor rechaza la solicitud (un
+    cambio de un viaje ya cargado allá sí pasa). Yurani responde por las unidades administrativas (David, 24-nov). Gemelo `utils/otherUnit.ts` ↔
+    `_ouPlan_`; la app solo cambia si el servidor manda `otherUnitCharges`.
 - **Dashboard de costos por pestañas** (#A117, David, 28-oct: *«está demasiado largo»*): Año · Periodo · Mes · Mes a mes · Cotizado vs
   facturado · Cambios de viaje · Comparador de precios · Proyección de ahorro, al final de la tarjeta de filtros. Se ve una sección a la
   vez. **Los datos se siguen pidiendo todos en paralelo** (#A89): lo que ahorra es el dibujo, porque solo se dibuja la pestaña que se ve
@@ -848,9 +853,10 @@ autorización) y verificar antes de crear una versión nueva del web app.
 ### Para retomar (estado al 2026-11-24)
 
 - **#A133 a medio desplegar (24-nov)** (centro de costos de otra unidad: la unidad del viajero, la que paga y el voto del responsable de esa
-  unidad; pedido de Yurani). Frontend en producción (11:32). David pegó `Code.gs` y `CostsDashboard.html` y corrió los menús 18 y 17 (553
-  personas con unidad). Falta: pegar el `Code.gs` con el tercer camino del menú 17 (por el aprobador), correrlo otra vez (99 más) y **publicar
-  la versión nueva del web app**. Pendiente de Yurani: quién responde por las unidades administrativas, MYFAL y PROLUB (hoy sin responsable: no
+  unidad; pedido de Yurani). David pegó `Code.gs` y `CostsDashboard.html` y corrió los menús 18 y 17 (553 personas con unidad). Después se
+  ajustó el formulario (la unidad de arriba vuelve a ser la que paga; la del primer pasajero se pregunta una vez y se guarda) y el menú 17
+  (por el aprobador). Falta: pegar el `Code.gs` de `main`, agregar a Yurani como responsable de las unidades ADM y FACTURACION ADMON en la tabla
+  de MISC, correr los menús 18 y 17 otra vez y **publicar la versión nueva del web app**. Pendiente de Yurani: quién responde por las unidades administrativas, MYFAL y PROLUB (hoy sin responsable: no
   reciben viajes de otras unidades) y la unidad de las 117 personas que quedan (las aprueban ~12 personas sin unidad). Siguiente paso posible:
   mostrar y editar la unidad en el panel «Gestionar usuarios».
 - **#A132 desplegado (24-nov)** (reporte en Excel de una unidad desde el dashboard de costos; el dashboard suma las facturas 4 a 6). La

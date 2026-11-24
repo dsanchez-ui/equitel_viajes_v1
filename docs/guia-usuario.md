@@ -88,6 +88,8 @@ Si viajan varias personas en el mismo itinerario, haz click en **`+ Agregar Pasa
 
 **Pasajeros 2 al 5:** no tienen que estar registrados obligatoriamente. Si la cédula que escribes no aparece en el directorio, el portal te habilita los campos de **Nombre** y **Correo** para que los escribas manualmente. Útil para pasajeros externos (consultores, invitados, clientes).
 
+**La unidad de negocio del primer pasajero.** Debajo de su nombre ves la unidad a la que pertenece, la registrada en la plataforma. Si todavía no la tiene, el portal pregunta **«¿A qué unidad de negocio pertenece …?»** una sola vez: es la unidad donde trabaja, aunque este viaje lo pague otra. Se guarda en su perfil y ya no se vuelve a preguntar ni se puede cambiar desde el formulario; si se registró mal, avísale al área de compras. Al aprobador le llega el aviso de que la registró en esa solicitud.
+
 ### 2.3 Origen y destino
 
 - **Ciudad origen:** desde dónde sales. Empieza a escribir y el portal te sugiere opciones (Bogotá, Medellín, Cali, etc.). **Selecciona una de la lista** — no escribas a mano completo.
@@ -139,10 +141,10 @@ Para solicitudes **"Solo Hospedaje"**, el hospedaje es obligatorio (es lo único
 
 - **Empresa:** Cumandes, Equitel, Ingenergía o LAP. Selecciona la que corresponda a ti (o al viajero principal si es para otra persona).
 - **Sede:** tu sede de trabajo (Bogotá, Medellín, Cali, Barranquilla, Urabá, etc.). Selecciona de la lista.
-- **Unidad de negocio del viajero:** la unidad a la que **pertenece** el primer pasajero. Si la tiene registrada en la plataforma, sale sola al escribir su cédula y no se cambia (si no es la correcta, avísale al área de compras). Si no la tiene, elígela de la lista.
-- **Centro de costos al que se carga el viaje:** el que va a **pagar** el viaje. Primero salen los de tu unidad y debajo, agrupados, los de otras unidades.
-  - Si eliges uno de **otra unidad**, el portal te avisa: el costo se carga a esa unidad (cuenta en su presupuesto) y, además de tu aprobador de siempre, la solicitud la aprueba el **responsable de esa unidad**. Ver [9.8](#98-cargar-el-viaje-a-otra-unidad).
-  - Si el viaje se reparte entre varios CC de tu unidad, hay una opción **"VARIOS"** en tu grupo. Al seleccionarla, el portal te muestra un campo donde puedes escribir los CC separados por coma (ej: `12345 - Proyecto A, 67890 - Proyecto B`).
+- **Unidad de negocio:** la unidad a la que **se carga el viaje** (la que lo paga). Debajo ves cuánto de su presupuesto lleva usado. En la lista, la unidad del primer pasajero dice *· unidad del viajero*.
+- **Centro de costos:** se filtra según la unidad de negocio. Selecciona el que cubre este viaje.
+  - Si el viaje se reparte entre varios CC, hay una opción **"VARIOS"** al final del listado. Al seleccionarla, el portal te muestra un campo donde puedes escribir los CC separados por coma (ej: `12345 - Proyecto A, 67890 - Proyecto B`).
+  - Si la unidad que eliges **no es la del primer pasajero**, el portal te avisa: el costo se carga a esa unidad y, además del aprobador de siempre, la solicitud la aprueba el **responsable de esa unidad**. Ver [9.8](#98-cargar-el-viaje-a-otra-unidad).
 - **Orden de trabajo (OT):** opcional. Si tu viaje está asociado a una OT específica, escríbela.
 
 ### 2.7 Observaciones / motivo del viaje
@@ -502,13 +504,13 @@ El área de compras los contabilizará por separado al momento de facturar.
 
 ### 9.8 Cargar el viaje a otra unidad
 
-A veces viajas para otra unidad (por ejemplo, eres de Energía Postventa y el viaje es un trabajo para Potencia). En ese caso, en **Centro de costos al que se carga el viaje** elige el de esa unidad: están debajo de los de tu unidad, en el grupo **«De otra unidad: …»**.
+A veces viajas para otra unidad (por ejemplo, eres de Energía Postventa y el viaje es un trabajo para Potencia). En ese caso, en **Unidad de negocio** elige la que paga el viaje (Potencia) y su centro de costos, como siempre.
 
-- El portal te avisa que el centro de costos no es de tu unidad y quién más va a aprobar.
+- El portal te avisa, arriba y junto al primer pasajero, que el viaje se carga a otra unidad y quién más va a aprobar. La unidad que cuenta como tuya es la del **primer pasajero**.
 - El costo del viaje se carga a la otra unidad: cuenta en **su** presupuesto y en su reporte, no en el de tu unidad.
 - Además de tu aprobador de siempre, la solicitud la aprueba el **responsable de esa unidad**. Si uno de los dos la deniega, se detiene.
 - La solicitud queda marcada: en el detalle dice de qué unidad eres tú y a cuál se cargó.
-- Si la unidad que buscas **no aparece**, todavía no tiene registrado quién aprueba los viajes de otras unidades. Pídele al área de compras que lo registre o elige un centro de costos de tu unidad.
+- Si el aviso sale en rojo (**«… no recibe viajes de otras unidades»**), esa unidad todavía no tiene registrado quién aprueba los viajes que le cargan otras unidades: elige la unidad del viajero o pídele al área de compras que registre al responsable.
 
 ---
 

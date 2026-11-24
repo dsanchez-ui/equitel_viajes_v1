@@ -47,7 +47,7 @@ Directorio de todas las personas que pueden usar el portal. Cada fila es una per
 - Centro de costo (el código de RR. HH., p. ej. `20101` o `2040305`: **no** es el de «CDS vs UDEN»)
 - Aprobadores asignados (quiénes le aprueban las solicitudes)
 - PIN (automático — no se edita a mano)
-- `Unidad de negocio` (#A133, al final): la unidad a la que **pertenece** la persona, escrita como en «CDS vs UDEN» (p. ej. `POTENCIA (GDM - P&M)`). El formulario la toma para el primer pasajero y decide con ella si un centro de costos es de otra unidad. Vacía = la persona la elige en el formulario. La llena el **menú 17**; se corrige a mano escribiéndola igual que en «CDS vs UDEN» (el menú 17 avisa si alguna está mal escrita).
+- `Unidad de negocio` (#A133, al final): la unidad a la que **pertenece** la persona, escrita como en «CDS vs UDEN» (p. ej. `POTENCIA (GDM - P&M)`). El formulario la toma para el primer pasajero y decide con ella si un centro de costos es de otra unidad. Vacía = el formulario le pregunta a la persona la primera vez que es el primer pasajero y la guarda aquí (nunca cambia una escrita). La llena también el **menú 17**; se corrige a mano escribiéndola igual que en «CDS vs UDEN» (el menú 17 avisa si alguna está mal escrita).
 
 **Tip:** puedes convertir esta hoja a una **tabla de Google Sheets** (menú Formato → Convertir a tabla) para tener filtros por columna, formato bonito, y poder referenciar columnas por nombre en otras fórmulas. No afecta el portal.
 
