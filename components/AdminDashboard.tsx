@@ -706,6 +706,7 @@ const AdminDashboardImpl: React.FC<AdminDashboardProps> = ({ requests, integrant
                                 <span className="text-gray-400 mx-1">➝</span>
                                 <span>{req.destination}</span>
                               </div>
+                              {req.returnCity && <div className="text-xs text-orange-700 font-semibold">Regresa a {req.returnCity}</div>}
                               <div className="text-xs text-gray-500">{req.passengers.length} Pasajero(s)</div>
                             </td>
                             <td className="whitespace-nowrap px-1 py-3 text-sm text-gray-500">

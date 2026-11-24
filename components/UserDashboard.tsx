@@ -206,6 +206,7 @@ export const UserDashboard: React.FC<UserDashboardProps> = ({
                  <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mt-2">
                     <span>{req.origin}</span><span className="text-brand-red text-xl">➝</span><span>{req.destination}</span>
                  </h3>
+                 {req.returnCity && <p className="text-xs font-semibold text-orange-700 mt-0.5">Regresa a {req.returnCity}</p>}
                  <p className="text-sm text-gray-500 mt-1">Salida: <span className="font-medium text-gray-700">{formatToDDMMYYYY(req.departureDate)}</span></p>
                  {req.workOrder && <p className="text-sm text-gray-500 mt-1">OT: <span className="font-medium text-gray-700">{req.workOrder}</span></p>}
                  

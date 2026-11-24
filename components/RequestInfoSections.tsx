@@ -114,6 +114,10 @@ export const RequestTripCorporateInfo: React.FC<{ request: TravelRequest }> = ({
                                                     <span className="block text-xs text-gray-500">{request.requestMode === 'HOTEL_ONLY' ? 'Check-out' : 'Fecha Regreso'}</span>
                                                     <span className="font-medium">{request.returnDate ? formatToDDMMYYYY(request.returnDate) : (request.requestMode === 'HOTEL_ONLY' ? 'N/A' : 'Solo Ida')}</span>
                                                     {request.requestMode !== 'HOTEL_ONLY' && <span className="text-xs text-gray-400 block">{request.returnTimePreference}</span>}
+                                                    {/* #A134: el regreso llega a otra ciudad */}
+                                                    {request.requestMode !== 'HOTEL_ONLY' && request.returnCity && request.returnDate && (
+                                                        <span className="text-xs font-bold text-orange-700 block" data-return-city>Regresa a {request.returnCity}</span>
+                                                    )}
                                                 </div>
                                             </div>
                                             <div className="grid grid-cols-2 gap-2 bg-white p-2 rounded border border-gray-100">

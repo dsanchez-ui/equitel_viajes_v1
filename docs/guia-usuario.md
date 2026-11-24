@@ -343,6 +343,7 @@ Si necesitas cambiar algo de un viaje que ya pediste, **no crees una solicitud n
 - **Fechas** (ida o regreso; en solo hospedaje, entrada o salida). Si el viaje lleva hotel, las noches se ajustan solas.
 - **Horas** de los vuelos.
 - **Destino** (se elige de la lista de ciudades).
+- **Regreso a otra ciudad**: si al terminar no vuelves a la ciudad de origen (por ejemplo, fuiste de Medellín a Bogotá y regresas a Pereira), elige de la lista la ciudad a la que regresas. También con el viaje en curso, antes del plazo.
 - **Equipaje**: agregar o quitar la maleta de bodega.
 
 Puedes elegir varias cosas a la vez. Para algo distinto (por ejemplo, quitar el hotel) escríbelo en el motivo. Para cambiar a quien viaja, pide una solicitud nueva.

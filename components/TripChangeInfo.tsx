@@ -19,6 +19,8 @@ export const tripChangeRows = (info: TripChangeInfo | null | undefined): [string
   if (c.departureTimePreference) out.push(['Hora del vuelo de ida', fmtTime(c.departureTimePreference.antes), fmtTime(c.departureTimePreference.ahora)]);
   if (c.returnTimePreference) out.push(['Hora del vuelo de regreso', fmtTime(c.returnTimePreference.antes), fmtTime(c.returnTimePreference.ahora)]);
   if (c.destination) out.push(['Destino', c.destination.antes || '—', c.destination.ahora]);
+  if (c.hotelName) out.push(['Hospedaje', c.hotelName.antes || '—', c.hotelName.ahora]);
+  if (c.returnCity) out.push(['Ciudad de regreso', c.returnCity.antes || '—', c.returnCity.ahora]); // #A134
   if (c.checkedBaggage) out.push(['Maleta de bodega', c.checkedBaggage.antes ? 'Sí' : 'No', c.checkedBaggage.ahora ? 'Sí' : 'No']);
   return out;
 };

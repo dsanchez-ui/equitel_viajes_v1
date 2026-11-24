@@ -4241,3 +4241,43 @@ vez… y ya después no se debe poder cambiar»*; no contar los viajes como acom
   correo, la regla gemela con la unidad elegida) y en el entorno local con Chrome: Víctor (llenando arriba primero) y Andrea Murillo, sin
   unidad (llenando el pasajero primero: registra ADM MERCADEO y carga a POTENCIA), con los dos avisos, la barra del presupuesto y Simón en la
   cadena; la solicitud se creó, su unidad quedó en USUARIOS y una segunda solicitud no la cambió. Bloqueo con ADM GENERAL sin responsable.
+
+---
+
+## **#A134 — «Cambiar mi viaje»: regresar a otra ciudad**
+**Fecha:** 2026-11-24 · **Pedido por:** Laura (chat con David, caso SOL-000801: *«El señor Simón requiere que le realice un cambio en el
+itinerario de regreso: quiere que sea de Bogotá a Pereira. ¿Cómo lo puedo ajustar en la plataforma?»*; la solicitud estaba aprobada y sin
+comprar) y David (*«hazlo para darle esa solución a Laura»*). · **Estado:** En el repo; falta pegar `Code.gs` y publicar la versión nueva.
+
+**Síntoma:** la plataforma no tenía cómo decir que el regreso llega a otra ciudad. «Cambiar mi viaje» cambia fechas, horas, destino, equipaje y
+hotel, y un viaje Medellín → Bogotá → Pereira solo se arma como multidestino al crear la solicitud. La salida era anular y crear de nuevo.
+
+**Causa raíz:** el viaje de ida y vuelta asume que el regreso llega al origen (CIUDAD DESTINO → CIUDAD ORIGEN); no había dónde guardar otra ciudad.
+
+**Fix:**
+- Columna nueva `CIUDAD REGRESO` (al final; la crea el sistema la primera vez): vacía = regresa al origen. Solo la escribe un cambio armado en el
+  servidor (`requestTripChange`), nunca un dato del navegador.
+- «Cambiar mi viaje» tiene la opción **«Regreso a otra ciudad · Hoy regresa a …»** (vuelos con regreso; también con el viaje en curso; no después
+  del plazo, que solo deja alargar el viaje, #A129). La ciudad se elige de la lista; regresar al origen no es un cambio; si es de otro país, el viaje
+  queda internacional. El cambio la guarda en `CAMBIO PEDIDO (JSON)` (`campos.returnCity`) y la fila «Ciudad de regreso» sale en el antes y el ahora
+  (app, «Revisar Cambio», correo, Métricas → Cambios). Un cambio posterior la conserva.
+- Se ve en el detalle («Regresa a …»), los paneles del analista y del viajero, «Mis aprobaciones», los correos (resumen y aprobación) y el
+  reporte en Excel de una unidad (destino «… (regresa a …)»).
+- Rastreo de precios (`Rastreo.gs`, proyecto aparte): el tramo de regreso se busca hacia esa ciudad, y con ella no se busca el tiquete redondo
+  internacional.
+
+**Verificado:** `tools/check-trip-change.cjs` (regreso a otra ciudad registrado por el área de compras, el antes y el ahora, el correo, el mismo
+origen no es un cambio, ciudad fuera de la lista, otro país = internacional, solo de ida y solo hospedaje no, otro cambio la conserva, el navegador
+no la pone en una solicitud nueva) y `npm run verify` en verde. En el entorno local con la exportación del 24-nov y Chrome: Laura abre SOL-000801,
+«Solicitar Cambio» → «Regreso a otra ciudad» → PEREIRA; se crea el cambio (Medellín → Bogotá, regresa a Pereira) y al aceptarlo queda en
+«buscar opciones», como todo cambio sin tiquete comprado.
+
+**Despliegue:** pegar `Code.gs` → versión nueva del web app; push del frontend. Opcional: pegar `Rastreo.gs` en el proyecto aparte (sin él, el
+rastreo de ese viaje busca el regreso al origen).
+- **Frontend nuevo + `Code.gs` anterior:** la opción se ve, pero el servidor responde «No cambió nada»: publicar los dos el mismo día.
+- **`Code.gs` nuevo + frontend anterior:** sin la opción; nada más cambia.
+
+**Para Laura (SOL-000801):** en el detalle, «Solicitar Cambio» → «Regreso a otra ciudad» → PEREIRA, motivo → Enviar; después «Revisar Cambio» →
+aceptar y cotizar. Sigue el flujo de un cambio sin comprar: opciones nuevas, selección, costos y aprobación (Simón y, si POTENCIA sigue por
+encima del presupuesto, Alejandro); al aprobarse, la SOL-000801 se anula sola.
+

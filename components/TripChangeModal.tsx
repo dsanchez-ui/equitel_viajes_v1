@@ -28,7 +28,7 @@ interface TripChangeModalProps {
 }
 
 type Step = 'pick' | 'form' | 'done';
-type Toggle = 'fechas' | 'horas' | 'destino' | 'equipaje' | 'hospedaje';
+type Toggle = 'fechas' | 'horas' | 'destino' | 'equipaje' | 'hospedaje' | 'regreso';
 
 const TERMINAL = ['ANULADO', 'DENEGADO', 'PROCESADO'];
 const BLOCKED: Record<string, string> = {
@@ -127,6 +127,8 @@ interface FormState {
   bag: boolean;
   /** #A111: dónde se hospeda. */
   hotel: string;
+  /** #A134: ciudad a la que llega el regreso («CIUDAD, PAÍS»). */
+  retCity: string;
   reason: string;
   tried: boolean;
 }
@@ -138,7 +140,9 @@ const baseOf = (r: TravelRequest) => ({
   retTime: timeKey(r.returnTimePreference),
   dest: String(r.destination || '').trim().toUpperCase(),
   bag: r.checkedBaggage === true,
-  hotel: String(r.hotelName || '').replace(/\s+/g, ' ').trim().toUpperCase()
+  hotel: String(r.hotelName || '').replace(/\s+/g, ' ').trim().toUpperCase(),
+  // #A134: a qué ciudad llega hoy el regreso (la registrada o, si no hay, el origen).
+  retCity: String(r.returnCity || r.origin || '').replace(/\s+/g, ' ').trim().toUpperCase()
 });
 
 /**
@@ -167,7 +171,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   useEffect(() => {
     if (req && !form) {
       const b = baseOf(req);
-      setForm({ t: { fechas: false, horas: false, destino: false, equipaje: false, hospedaje: false }, ...b, reason: '', tried: false });
+      setForm({ t: { fechas: false, horas: false, destino: false, equipaje: false, hospedaje: false, regreso: false }, ...b, reason: '', tried: false });
     }
   }, [req, form]);
 
@@ -205,6 +209,8 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
   // #A109: la reserva guardada por partes (APROBADO) también es tiquete comprado.
   const bought = isTripBought(req);
   const base = req ? baseOf(req) : null;
+  // #A134: regresar a otra ciudad: vuelos con regreso, antes del plazo (también con la ida ya volada).
+  const canReturnCity = !!req && !hotelOnly && !!base?.ret && !late;
 
   const changes: TripChangeRequestChanges = {};
   const rows: [string, string, string][] = [];
@@ -226,6 +232,12 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
       changes.destination = form.dest;
       rows.push([hotelOnly ? 'Ciudad del hotel' : 'Destino', base.dest || '—', form.dest]);
       tipos.push('Destino');
+    }
+    // #A134: el regreso llega a otra ciudad (no al origen).
+    if (form.t.regreso && canReturnCity && form.retCity && form.retCity !== base.retCity) {
+      changes.returnCity = form.retCity;
+      rows.push(['Ciudad de regreso', base.retCity || '—', form.retCity]);
+      tipos.push('Ciudad de regreso');
     }
     if (form.t.equipaje && !hotelOnly && form.bag !== base.bag) {
       changes.checkedBaggage = form.bag;
@@ -277,6 +289,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
     }
     if (form.t.destino && mode === 'full' && !form.dest) problems.push('Elija el destino nuevo de la lista.');
     if (form.t.hospedaje && canHotel && !form.hotel.trim()) problems.push('Escriba dónde se quiere hospedar (hotel, apartamento, Airbnb…).');
+    if (form.t.regreso && canReturnCity && (!form.retCity || form.retCity === base.retCity)) problems.push('Elija de la lista la ciudad a la que regresa.');
     if (form.tried) {
       if (!rows.length) problems.push('Elija qué quiere cambiar y escriba el valor nuevo.');
       if (form.reason.trim().length < config.reasonMin) problems.push(`Escriba el motivo del cambio (mínimo ${config.reasonMin} caracteres).`);
@@ -296,7 +309,8 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
     if (req.requiresHotel && !hotelOnly && (nb !== na || (form.t.destino && form.dest !== base.dest))) {
       derived.push(<li key="h"><strong>Hotel:</strong> {form.t.destino && form.dest && form.dest !== base.dest ? `en ${form.dest}, ` : ''}{na} {na === 1 ? 'noche' : 'noches'}, ajustado a las fechas nuevas.</li>);
     }
-    if (form.t.destino && form.dest && form.dest !== base.dest && countryOf(form.dest) && countryOf(form.dest) !== 'COLOMBIA') {
+    if (((form.t.destino && form.dest && form.dest !== base.dest && countryOf(form.dest) && countryOf(form.dest) !== 'COLOMBIA') ||
+         (form.t.regreso && form.retCity && form.retCity !== base.retCity && countryOf(form.retCity) && countryOf(form.retCity) !== 'COLOMBIA'))) {
       derived.push(<li key="i"><strong>Viaje internacional:</strong> necesita el pasaporte de cada pasajero cargado y lo aprueban también Gerencia o Cadena de Suministro.</li>);
     }
   }
@@ -307,7 +321,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
     if (!form) return;
     const on = !form.t[k];
     setF({ t: { ...form.t, [k]: on } });
-    if (k === 'destino' && on && citiesState === 'idle') loadCities();
+    if ((k === 'destino' || k === 'regreso') && on && citiesState === 'idle') loadCities();
   };
 
   const submit = async () => {
@@ -354,7 +368,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
           <div>
             <h2 id="trip-change-title" className="text-lg font-bold text-amber-950 flex items-center gap-2"><span aria-hidden="true">😕</span> Cambiar mi viaje</h2>
             <p className="text-xs text-amber-900 mt-0.5">
-              {step === 'pick' ? 'Elija el viaje que quiere cambiar.' : step === 'form' && req ? `${req.requestId} · ${req.requestMode === 'HOTEL_ONLY' ? 'Hospedaje en ' + req.destination : req.origin + ' → ' + req.destination}` : 'Listo'}
+              {step === 'pick' ? 'Elija el viaje que quiere cambiar.' : step === 'form' && req ? `${req.requestId} · ${req.requestMode === 'HOTEL_ONLY' ? 'Hospedaje en ' + req.destination : req.origin + ' → ' + req.destination + (req.returnCity ? ' → ' + req.returnCity : '')}` : 'Listo'}
             </p>
           </div>
           <button type="button" onClick={onClose} disabled={sending} className="text-gray-500 hover:text-gray-800 text-2xl leading-none" aria-label="Cerrar">×</button>
@@ -473,7 +487,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
               {mode === 'return' && !late && (
                 <div className="bg-blue-50 border-l-4 border-blue-400 rounded-md p-3 text-blue-950">
                   <strong>{hotelOnly ? `El hospedaje ya empezó (${fmtDayLong(base.dep)}).` : `La ida ya voló (${fmtDayLong(base.dep)}).`}</strong>{' '}
-                  {hotelOnly ? 'Puede cambiar la salida o el hospedaje.' : 'Puede cambiar el regreso: fecha, hora o equipaje.'}
+                  {hotelOnly ? 'Puede cambiar la salida o el hospedaje.' : 'Puede cambiar el regreso: fecha, hora, ciudad o equipaje.'}
                 </div>
               )}
 
@@ -485,6 +499,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                   {choice('destino', hotelOnly ? 'Ciudad' : 'Destino', late ? 'No, después del plazo' : mode === 'return' ? 'No, con el viaje en curso' : `Actual: ${(base.dest.split(',')[0] || '').trim()}`, mode === 'return')}
                   {!hotelOnly && choice('equipaje', 'Equipaje', late ? 'No, después del plazo' : 'Maleta de bodega', late)}
                   {canHotel && choice('hospedaje', 'Hospedaje', hotelOnly ? 'Hotel, apartamento, Airbnb…' : 'Cambiar el hotel')}
+                  {!hotelOnly && !!base.ret && choice('regreso', 'Regreso a otra ciudad', late ? 'No, después del plazo' : `Hoy regresa a ${(base.retCity.split(',')[0] || '').trim()}`, late)}
                 </div>
                 <p className="text-xs text-gray-500 mt-2">Si necesita cambiar algo más (por ejemplo, quitar el hospedaje), escríbalo en el motivo. Para cambiar a quien viaja, pida una solicitud nueva.</p>
               </div>
@@ -542,6 +557,21 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
                     <>
                       <CityCombobox name="dest" value={form.dest === base.dest ? '' : form.dest} cities={cities} isLoading={citiesState === 'loading'} onChange={(_n, v) => setF({ dest: v || base.dest })} />
                       <p className="text-xs text-gray-400 mt-1">Destino actual: {base.dest}{req.origin && !hotelOnly ? ` · Origen: ${req.origin}` : ''}</p>
+                    </>
+                  )}
+                </fieldset>
+              )}
+
+              {form.t.regreso && canReturnCity && (
+                <fieldset className="border border-gray-200 rounded-md p-3">
+                  <legend className="text-xs font-bold text-gray-700 px-1">Regreso a otra ciudad</legend>
+                  {citiesState === 'error' ? (
+                    <p className="text-xs text-red-700">No se pudo cargar la lista de ciudades. <button type="button" className="underline font-semibold" onClick={loadCities}>Reintentar</button></p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-gray-600 mb-1">¿A qué ciudad regresa? El vuelo de regreso sale de {(form.t.destino && form.dest ? form.dest : base.dest).split(',')[0]}.</p>
+                      <CityCombobox name="retCity" value={form.retCity === base.retCity ? '' : form.retCity} cities={cities} isLoading={citiesState === 'loading'} onChange={(_n, v) => setF({ retCity: v || base.retCity })} />
+                      <p className="text-xs text-gray-400 mt-1">Hoy el regreso llega a {base.retCity}.</p>
                     </>
                   )}
                 </fieldset>

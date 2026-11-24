@@ -45,7 +45,7 @@ const Trail: React.FC<{ steps: ApprovalStep[] }> = ({ steps }) => {
 
 const Trip: React.FC<{ it: MyApprovalItem }> = ({ it }) => (
   <p className="text-sm text-gray-900">
-    {it.hotelOnly ? <>🏨 Hospedaje en <strong>{city(it.destination)}</strong></> : <><strong>{city(it.origin)}</strong> → <strong>{city(it.destination)}</strong></>}
+    {it.hotelOnly ? <>🏨 Hospedaje en <strong>{city(it.destination)}</strong></> : <><strong>{city(it.origin)}</strong> → <strong>{city(it.destination)}</strong>{it.returnCity ? <> → regresa a <strong>{city(it.returnCity)}</strong></> : null}</>}
     {it.international && <span className="ml-1 text-[10px] font-bold text-blue-700 align-middle">INTERNACIONAL</span>}
     <span className="text-gray-600"> · {dmy(it.depDate)}{it.depTime ? ` ${it.depTime}` : ''}{it.retDate ? ` al ${dmy(it.retDate)}${it.retTime ? ` ${it.retTime}` : ''}` : ''}</span>
   </p>

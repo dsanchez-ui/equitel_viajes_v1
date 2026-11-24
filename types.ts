@@ -141,6 +141,8 @@ export interface MyApprovalItem {
   hotelName: string;
   origin: string;
   destination: string;
+  /** #A134: ciudad a la que llega el regreso, si no es el origen. */
+  returnCity?: string;
   depDate: string;
   retDate: string;
   depTime: string;
@@ -317,6 +319,8 @@ export interface TravelRequest {
   isInternational: boolean;
   origin: string;
   destination: string;
+  /** #A134: ciudad a la que llega el regreso si no es el origen ('' = regresa al origen). La escribe un cambio de viaje. */
+  returnCity?: string;
   departureDate: string;
   returnDate?: string;
   departureTimePreference: string;
@@ -547,6 +551,9 @@ export interface TripChangeInfo {
     returnTimePreference?: TripChangeField;
     destination?: TripChangeField;
     checkedBaggage?: TripChangeField<boolean>;
+    hotelName?: TripChangeField;
+    /** #A134: ciudad a la que llega el regreso. */
+    returnCity?: TripChangeField;
   };
   /** Lo que costó la original (lo pagado si se registró; si no, lo cotizado). 0 para el solicitante si era lo pagado. */
   costoOriginal: number;
@@ -573,6 +580,8 @@ export interface TripChangeRequestChanges {
   checkedBaggage?: boolean;
   /** #A111: dónde se hospeda (hotel, apartamento, Airbnb…). Solo si la solicitud ya incluye hospedaje. */
   hotelName?: string;
+  /** #A134: ciudad a la que llega el regreso, si no es el origen («CIUDAD, PAÍS» de la lista). */
+  returnCity?: string;
 }
 
 /** #A103: lo que manda el servidor en bootstrap. Que llegue activa «Cambiar mi viaje». */

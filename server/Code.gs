@@ -3321,7 +3321,7 @@ function _approvalSummaryHtml_(req, names, row) {
   var rows = [
     ['Solicitante', names[requester] || requester],
     ['Viajeros', (req.passengers || []).map(function(p) { return String(p.name || '').trim(); }).filter(Boolean).join(', ')],
-    [hotelOnly ? 'Hospedaje en' : 'Viaje', hotelOnly ? String(req.destination || '') : String(req.origin || '') + ' → ' + String(req.destination || '')],
+    [hotelOnly ? 'Hospedaje en' : 'Viaje', hotelOnly ? String(req.destination || '') : String(req.origin || '') + ' → ' + String(req.destination || '') + (req.returnCity ? ' · regreso a ' + req.returnCity : '')],
     ['Fechas', dateOf('FECHA IDA', req.departureDate) + (req.returnDate ? ' al ' + dateOf('FECHA VUELTA', req.returnDate) : '')],
     ['Empresa y unidad', [req.company, req.businessUnit].filter(Boolean).join(' · ')],
     ['Unidad del viajero', req.otherUnitCharge ? String(req.travelerUnit || '') + ' (el viaje se carga a otra unidad)' : ''], // #A133
@@ -3585,6 +3585,7 @@ function _myApprovalItem_(row, req, steps, mine, pendingKind, myVote, names, isP
     hotelName: String(req.hotelName || ''),
     origin: String(req.origin || ''),
     destination: String(req.destination || ''),
+    returnCity: String(req.returnCity || ''), // #A134
     depDate: _psDateKey_(cell('FECHA IDA')) || String(req.departureDate || ''),
     retDate: _psDateKey_(cell('FECHA VUELTA')) || String(req.returnDate || ''),
     depTime: _approvalClock_(cell('HORA LLEGADA VUELO IDA')),
@@ -5599,6 +5600,7 @@ const HtmlTemplates = {
             <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; margin-bottom: 5px;">${isHotelOnlyEmail ? 'CHECK-OUT' : 'FECHA REGRESO'}</div>
             <div style="font-weight: bold; color: ${headerColor}; font-size: 14px;">📅 ${data.returnDate || 'N/A'}</div>
             <div style="font-size: 12px; color: #6b7280; margin-top: 2px;">${(!isHotelOnlyEmail && data.returnTimePreference) ? '('+data.returnTimePreference+')' : ''}</div>
+            ${(!isHotelOnlyEmail && data.returnCity) ? `<div style="font-size: 12px; color: #7c2d12; font-weight: bold; margin-top: 4px;">Regresa a ${escapeHtml_(data.returnCity)}</div>` : ''}
           </div>
         </div>
 
@@ -7120,6 +7122,9 @@ function createNewRequest(data, emailHtml, policy) {
       console.warn('createNewRequest: no se pudo crear la columna "' + OU_TRAVELER_UNIT_HEADER + '": ' + colErr);
     }
   }
+  // #A134: el regreso a otra ciudad solo lo trae un cambio de viaje armado en el servidor (nunca un dato del navegador).
+  const _returnCity = _TRIP_CHANGE_PENDING_INFO && data.returnCity ? String(data.returnCity).replace(/\s+/g, ' ').trim().toUpperCase() : '';
+  if (_returnCity && H(RETURN_CITY_HEADER) < 0) _ensureRequestColumn_(RETURN_CITY_HEADER, RETURN_CITY_NOTE);
   if (_ouPlanRes.approvers.length) {
     // Sin estas columnas no se puede pedir el voto: si no se pueden crear, la solicitud no se crea.
     if (H(OU_APPROVER_HEADER) < 0) _ensureRequestColumn_(OU_APPROVER_HEADER, OU_APPROVER_NOTE);
@@ -7201,6 +7206,7 @@ function createNewRequest(data, emailHtml, policy) {
   set("UNIDAD DE NEGOCIO", data.businessUnit);
   if (_ouPlanRes.travelerUnit) set(OU_TRAVELER_UNIT_HEADER, _ouPlanRes.travelerUnit); // #A133
   if (_ouPlanRes.approvers.length) set(OU_APPROVER_HEADER, _ouPlanRes.approvers.join(','));
+  if (_returnCity) set(RETURN_CITY_HEADER, safeSheetValue_(_returnCity)); // #A134
   set("SEDE", data.site);
   set("REQUIERE HOSPEDAJE", data.requiresHotel ? 'Sí' : 'No');
   if (_checkedBag !== null) set(CHECKED_BAG_HEADER, _checkedBag); // #A95
@@ -9655,6 +9661,8 @@ function mapRowToRequest(row, lite) {
     company: String(get("EMPRESA")),
     origin: String(get("CIUDAD ORIGEN")),
     destination: String(get("CIUDAD DESTINO")),
+    // #A134: ciudad a la que llega el regreso si no es el origen ('' = regresa al origen).
+    returnCity: String(get(RETURN_CITY_HEADER) || ''),
     requesterEmail: String(get("CORREO ENCUESTADO")),
     status: String(get("STATUS")),
     departureDate: safeDate(get("FECHA IDA")),
@@ -18078,7 +18086,7 @@ function _csReportDetail_(row, headerMap, config, ctx) {
     onlyHotel: String(cell('MODO_SOLICITUD') || '').trim() === 'SOLO_HOSPEDAJE',
     international: String(cell('ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI',
     origin: _csReportText_(cell('CIUDAD ORIGEN'), 120),
-    destination: _csReportText_(cell('CIUDAD DESTINO'), 120),
+    destination: _csReportText_(cell('CIUDAD DESTINO'), 120) + (cell(RETURN_CITY_HEADER) ? ' (regresa a ' + _csReportText_(cell(RETURN_CITY_HEADER), 120) + ')' : ''), // #A134
     pax: Math.round(_csToNumber_(cell('# PERSONAS QUE VIAJAN'))) || passengers.length || 1,
     passengers: passengers,
     requesterName: ctx.names[requester] || '',
@@ -21938,7 +21946,11 @@ var TRIP_CHANGE_NOTICE_ID = 'cambios-de-viaje-2026-10';
 // #A111: `hotelName` permite cambiar DÓNDE se hospeda (hotel, apartamento, Airbnb…).
 // Sin él, una solicitud de solo hospedaje no tenía nada que cambiar salvo fechas y
 // ciudad, y el viajero quedaba sin salida (caso SOL-000668, Laura 27-oct).
-var TRIP_CHANGE_KEYS = ['departureDate', 'returnDate', 'departureTimePreference', 'returnTimePreference', 'destination', 'checkedBaggage', 'hotelName'];
+var TRIP_CHANGE_KEYS = ['departureDate', 'returnDate', 'departureTimePreference', 'returnTimePreference', 'destination', 'checkedBaggage', 'hotelName', 'returnCity'];
+// #A134 (David y Laura, 24-nov, caso SOL-000801: Simón regresa de Bogotá a Pereira y no a Medellín): el regreso puede
+// llegar a otra ciudad. Vacía = regresa al origen, como siempre. La escribe solo un cambio de viaje armado en el servidor.
+var RETURN_CITY_HEADER = 'CIUDAD REGRESO';
+var RETURN_CITY_NOTE = 'Ciudad a la que llega el vuelo de regreso cuando no es el origen (#A134). Vacía = regresa a la ciudad de origen. La escribe un cambio de viaje: no editar.';
 
 // Estado por ejecución: la OT de la padre se copia tal cual (no se revalida con la
 // regla de OT nueva, #A66) y el JSON del cambio se escribe en createNewRequest.
@@ -22173,14 +22185,14 @@ function _tripChangeTimeKey_(v) {
  */
 function _normalizeTripChanges_(parent, changes, mode, isHotelOnly) {
   if (!changes || typeof changes !== 'object') throw new Error('No llegó qué quiere cambiar.');
-  var next = { dep: parent.dep, ret: parent.ret, depTime: parent.depTime, retTime: parent.retTime, dest: parent.dest, bag: parent.bag, hotel: parent.hotel };
+  var next = { dep: parent.dep, ret: parent.ret, depTime: parent.depTime, retTime: parent.retTime, dest: parent.dest, bag: parent.bag, hotel: parent.hotel, retCity: parent.retCity || '' };
   // #A111: el hospedaje también se puede cambiar con el viaje en curso — es justo
   // cuando más se necesita (el hotel no tenía cupo y hay que mover al viajero).
-  var allowed = mode === 'return' ? ['returnDate', 'returnTimePreference', 'checkedBaggage', 'hotelName'] : TRIP_CHANGE_KEYS;
+  var allowed = mode === 'return' ? ['returnDate', 'returnTimePreference', 'checkedBaggage', 'hotelName', 'returnCity'] : TRIP_CHANGE_KEYS;
   Object.keys(changes).forEach(function (k) {
     var v = changes[k];
     if (TRIP_CHANGE_KEYS.indexOf(k) === -1) return;
-    if (allowed.indexOf(k) === -1) throw new Error('Con el viaje en curso solo se puede cambiar el regreso (fecha, hora o equipaje) o el hospedaje.');
+    if (allowed.indexOf(k) === -1) throw new Error('Con el viaje en curso solo se puede cambiar el regreso (fecha, hora, ciudad o equipaje) o el hospedaje.');
     if (k === 'departureDate' || k === 'returnDate') {
       var key = _normalizeBirthdate_(v);
       if (!key) throw new Error('La fecha nueva no es válida.');
@@ -22212,6 +22224,13 @@ function _normalizeTripChanges_(parent, changes, mode, isHotelOnly) {
       if (!hn) throw new Error('Escriba dónde se quiere hospedar (hotel, apartamento, Airbnb…).');
       if (hn.length > 200) throw new Error('El nombre del hospedaje es demasiado largo (máximo 200 caracteres).');
       next.hotel = hn;
+    } else if (k === 'returnCity') {
+      // #A134: el regreso llega a otra ciudad (no al origen).
+      if (isHotelOnly) throw new Error('Una solicitud de solo hospedaje no tiene vuelo de regreso.');
+      if (!parent.ret) throw new Error('Este viaje es solo de ida: no tiene regreso.');
+      var rc = String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toUpperCase();
+      if (!rc || rc.length > 200) throw new Error('Elija de la lista la ciudad a la que regresa.');
+      next.retCity = rc;
     }
   });
   if (next.ret && next.dep && next.ret < next.dep) throw new Error('El regreso no puede ser antes de la ida.');
@@ -22228,6 +22247,7 @@ function _normalizeTripChanges_(parent, changes, mode, isHotelOnly) {
   add('returnTimePreference', parent.retTime, next.retTime, 'Hora');
   add('destination', parent.dest, next.dest, 'Destino');
   add('hotelName', parent.hotel, next.hotel, 'Hospedaje');
+  add('returnCity', parent.retCity || '', next.retCity || '', 'Ciudad de regreso');
   if (next.bag !== parent.bag && typeof next.bag === 'boolean') add('checkedBaggage', parent.bag === true, next.bag, 'Equipaje');
   if (!tipos.length) throw new Error('No cambió nada: elija qué quiere cambiar y escriba el valor nuevo.');
   return { next: next, campos: campos, tipos: tipos };
@@ -22269,7 +22289,9 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
     depTime: _tripChangeTimeKey_(row[H('HORA LLEGADA VUELO IDA')]), retTime: _tripChangeTimeKey_(row[H('HORA LLEGADA VUELO VUELTA')]),
     dest: String(p.destination || '').trim().toUpperCase(), bag: p.checkedBaggage === true ? true : (p.checkedBaggage === false ? false : null),
     // #A111: hospedaje actual, para poder cambiarlo y para comparar antes/ahora.
-    hotel: String(p.hotelName || '').replace(/\s+/g, ' ').trim().toUpperCase(), requiresHotel: p.requiresHotel === true
+    hotel: String(p.hotelName || '').replace(/\s+/g, ' ').trim().toUpperCase(), requiresHotel: p.requiresHotel === true,
+    // #A134: a qué ciudad llega el regreso (la de la columna o, si está vacía, el origen).
+    retCity: isHotelOnly ? '' : (String(p.returnCity || '').trim() || String(p.origin || '').trim()).replace(/\s+/g, ' ').toUpperCase()
   };
   var nowMs = Date.now();
   // #A109: la reserva guardada por partes (APROBADO con el PNR y sus archivos) también es tiquete comprado.
@@ -22334,13 +22356,15 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
         _changeDeadlineText_(dlNew.dayKey, dlNew.hour) + '. Si es urgente, ' + _tripContactsText_(_tripContacts_()) + '.');
     }
   }
-  // El destino nuevo tiene que estar en la lista de ciudades (define si el viaje es internacional).
+  // El destino nuevo y la ciudad de regreso tienen que estar en la lista de ciudades (definen si el viaje es internacional).
   var intl = p.isInternational === true;
-  if (norm.campos.destination) {
-    var known = getCitiesList().some(function (c) { return (c.city + ', ' + c.country) === next.dest; });
-    if (!known) throw new Error('El destino «' + next.dest + '» no está en la lista de ciudades. Elíjalo de la lista.');
-    var oc = _tripChangeCountry_(p.origin), dc = _tripChangeCountry_(next.dest);
-    intl = (isHotelOnly ? false : (oc && oc !== 'COLOMBIA')) || (dc && dc !== 'COLOMBIA') ? true : false;
+  if (norm.campos.destination || norm.campos.returnCity) {
+    var cityList = getCitiesList();
+    var inList = function (city) { return cityList.some(function (c) { return (c.city + ', ' + c.country) === city; }); };
+    if (norm.campos.destination && !inList(next.dest)) throw new Error('El destino «' + next.dest + '» no está en la lista de ciudades. Elíjalo de la lista.');
+    if (norm.campos.returnCity && !inList(next.retCity)) throw new Error('La ciudad de regreso «' + next.retCity + '» no está en la lista de ciudades. Elíjala de la lista.');
+    var oc = _tripChangeCountry_(p.origin), dc = _tripChangeCountry_(next.dest), rcc = _tripChangeCountry_(next.retCity);
+    intl = (isHotelOnly ? false : ((oc && oc !== 'COLOMBIA') || (rcc && rcc !== 'COLOMBIA'))) || (dc && dc !== 'COLOMBIA') ? true : false;
   }
 
   var cost = _tripChangeOriginalCost_(p);
@@ -22368,7 +22392,9 @@ function requestTripChange(requestId, changes, changeReason, currentUserEmail) {
     departureTimePreference: isHotelOnly ? '' : next.depTime, returnTimePreference: isHotelOnly ? '' : next.retTime,
     // Los cambios no se miden con la anticipación (#A100): su regla es el plazo de #A103.
     isInternational: intl, policyViolation: false,
-    requestMode: p.requestMode, comments: _tripChangeCleanComments_(p.comments)
+    requestMode: p.requestMode, comments: _tripChangeCleanComments_(p.comments),
+    // #A134: si el regreso llega a otra ciudad (la nueva, o la que ya tenía la original).
+    returnCity: !isHotelOnly && next.ret && next.retCity && next.retCity !== String(p.origin || '').replace(/\s+/g, ' ').trim().toUpperCase() ? next.retCity : ''
   };
   if (!isHotelOnly && typeof next.bag === 'boolean') data.checkedBaggage = next.bag;
 
@@ -22407,6 +22433,7 @@ function _tripChangeRows_(info) {
   if (c.returnTimePreference) out.push(['Hora del vuelo de regreso', hour(c.returnTimePreference.antes), hour(c.returnTimePreference.ahora)]);
   if (c.destination) out.push([soloHosp ? 'Ciudad del hospedaje' : 'Destino', c.destination.antes || '—', c.destination.ahora]);
   if (c.hotelName) out.push(['Hospedaje', c.hotelName.antes || '—', c.hotelName.ahora]);
+  if (c.returnCity) out.push(['Ciudad de regreso', c.returnCity.antes || '—', c.returnCity.ahora]); // #A134
   if (c.checkedBaggage) out.push(['Maleta de bodega', c.checkedBaggage.antes ? 'Sí' : 'No', c.checkedBaggage.ahora ? 'Sí' : 'No']);
   return out;
 }

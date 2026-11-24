@@ -867,12 +867,59 @@ function main() {
     eq('#A129 app: con un cambio en curso → no', e3.ok, false);
   } catch (e) { failures.push('#A129: no se pudo probar la ventana en la app: ' + e.message); }
 
+  // ---------------------------------------------------------------------------
+  // #A134: regresar a otra ciudad (caso SOL-000801: Simón vuelve de Bogotá a Pereira y no a Medellín).
+  {
+    at('2026-11-10T15:00:00Z');
+    const R1 = create(base({ departureDate: '29-11-2026', returnDate: '01-12-2026' })).data;
+    setCell(R1, 'STATUS', 'APROBADO');
+    log.mails.length = 0;
+    let rr = change(R1, { returnCity: 'CALI, COLOMBIA' }, 'Regresa a Cali por una visita a cliente.', 'admin@p.co');
+    ok('#A134 el área de compras registra el regreso a otra ciudad: ' + (rr.error || ''), rr.success === true);
+    const C = rr.success ? rr.data.id : '';
+    if (C) {
+      eq('#A134 la solicitud de cambio regresa a Cali; lo demás igual',
+        [cell(C, 'CIUDAD REGRESO'), cell(C, 'CIUDAD ORIGEN'), cell(C, 'CIUDAD DESTINO'), key(cell(C, 'FECHA VUELTA')), info(C).campos.returnCity, info(C).tipos],
+        ['CALI, COLOMBIA', 'BOGOTA, COLOMBIA', 'MEDELLIN, COLOMBIA', '2026-12-01', { antes: 'BOGOTA, COLOMBIA', ahora: 'CALI, COLOMBIA' }, ['Ciudad de regreso']]);
+      eq('#A134 la fila «Ciudad de regreso» del antes y el ahora', ctx._tripChangeRows_(info(C)).filter((x) => x[0] === 'Ciudad de regreso'), [['Ciudad de regreso', 'BOGOTA, COLOMBIA', 'CALI, COLOMBIA']]);
+      reset();
+      eq('#A134 la app la lee', ctx.mapRowToRequest(rowOf(C)).returnCity, 'CALI, COLOMBIA');
+      ok('#A134 el correo del cambio dice a dónde regresa', log.mails.some((m) => /Ciudad de regreso/.test(m.html) && /Regresa a CALI, COLOMBIA/.test(m.html)));
+    }
+    const R2 = create(base({ departureDate: '29-11-2026', returnDate: '01-12-2026' })).data;
+    setCell(R2, 'STATUS', 'APROBADO');
+    rr = change(R2, { returnCity: 'BOGOTA, COLOMBIA' });
+    ok('#A134 regresar al mismo origen no es un cambio', !rr.success && /No cambió nada/.test(rr.error));
+    rr = change(R2, { returnCity: 'PEREIRA, COLOMBIA' });
+    ok('#A134 una ciudad que no está en la lista: error', !rr.success && /no está en la lista de ciudades/.test(rr.error));
+    rr = change(R2, { returnCity: 'PANAMA, PANAMA' });
+    ok('#A134 regresar a otro país vuelve internacional el viaje', rr.success && cell(rr.data.id, 'ES INTERNACIONAL') === 'SI');
+    const R3 = create(base({ departureDate: '29-11-2026', returnDate: '' })).data;
+    setCell(R3, 'STATUS', 'APROBADO');
+    rr = change(R3, { returnCity: 'CALI, COLOMBIA' });
+    ok('#A134 un viaje solo de ida no tiene regreso', !rr.success && /solo de ida/.test(rr.error));
+    const R4 = create(base({ requestMode: 'HOTEL_ONLY', origin: '', departureDate: '29-11-2026', returnDate: '01-12-2026', requiresHotel: true, hotelName: 'PORTON', nights: 2 })).data;
+    setCell(R4, 'STATUS', 'APROBADO');
+    rr = change(R4, { returnCity: 'CALI, COLOMBIA' });
+    ok('#A134 solo hospedaje no tiene vuelo de regreso', !rr.success && /solo hospedaje/.test(rr.error));
+    // Un cambio de un viaje que ya regresa a otra ciudad la conserva.
+    const R5 = create(base({ departureDate: '29-11-2026', returnDate: '01-12-2026' })).data;
+    setCell(R5, 'STATUS', 'APROBADO');
+    setCell(R5, 'CIUDAD REGRESO', 'CALI, COLOMBIA');
+    rr = change(R5, { returnDate: '2026-12-02' });
+    ok('#A134 otro cambio conserva la ciudad de regreso', rr.success && cell(rr.data.id, 'CIUDAD REGRESO') === 'CALI, COLOMBIA' && !info(rr.data.id).campos.returnCity);
+    // El navegador no la puede poner en una solicitud nueva.
+    const R6 = create(base({ departureDate: '29-11-2026', returnDate: '01-12-2026', returnCity: 'CALI, COLOMBIA' })).data;
+    eq('#A134 una solicitud nueva no toma la ciudad de regreso del navegador', cell(R6, 'CIUDAD REGRESO') || '', '');
+    at(NOW);
+  }
+
   if (failures.length) {
     console.error('✗ Cambios de viaje (#A103): ' + failures.length + ' problema(s):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard), cambiar el hospedaje en solo hospedaje y en vuelo + hotel (#A111) y la hora en 24 h (#A112); la ida vencida sin comprar se puede cambiar y no sale como abandonada (#A126); el área de compras registra una ida que ya pasó si el viaje no ha terminado, y al viajero se le dice que la fecha ya pasó (#A127); después del plazo, el viajero solo alarga el viaje y lo aprueba también el CFO (#A129).');
+  console.log('✓ Cambios de viaje (#A103, #A106, #A109): plazo igual en la app y en el servidor (2026–2031), cambio con y sin tiquete comprado, solo el regreso con el viaje en curso, el área de compras sin plazo, costo y penalidad, presupuesto, Cadena de Suministro, la original comprada no se anula y queda «Cambiada», estadísticas, control, informe, a quién llamar después del plazo y la reserva por partes (cuenta como comprada, se confirma antes de cotizar, nunca se anula; sin hotel no suma hotel en el dashboard), cambiar el hospedaje en solo hospedaje y en vuelo + hotel (#A111) y la hora en 24 h (#A112); la ida vencida sin comprar se puede cambiar y no sale como abandonada (#A126); el área de compras registra una ida que ya pasó si el viaje no ha terminado, y al viajero se le dice que la fecha ya pasó (#A127); después del plazo, el viajero solo alarga el viaje y lo aprueba también el CFO (#A129); regresar a otra ciudad (#A134).');
 }
 
 main();

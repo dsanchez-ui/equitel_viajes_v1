@@ -287,6 +287,8 @@ function rpCandidatos_(valores, hechas, cfg, ahoraMs) {
         pasajeros: String(Math.max(1, Math.round(rpNumero_(celda(fila, '# PERSONAS QUE VIAJAN'))) || 1)),
         horaIda: rpHora_(celda(fila, 'HORA LLEGADA VUELO IDA')),
         horaRegreso: rpHora_(celda(fila, 'HORA LLEGADA VUELO VUELTA')),
+        // #A134: el regreso puede llegar a otra ciudad (vacía = al origen).
+        ciudadRegreso: cpCiudad(celda(fila, 'CIUDAD REGRESO')) || '',
         internacional: String(celda(fila, 'ES INTERNACIONAL') || '').trim().toUpperCase() === 'SI'
       },
       cotizado: rpNumero_(celda(fila, 'COSTO_FINAL_TIQUETES')),
@@ -467,7 +469,7 @@ function rpTramos_(cand) {
   var v = cand.viaje;
   var t = [{ tramo: 'IDA', origen: v.origen, destino: v.destino, fecha: v.ida, hora: v.horaIda, aerolinea: cand.aerolinea }];
   if (v.regreso) {
-    t.push({ tramo: 'REGRESO', origen: v.destino, destino: v.origen, fecha: v.regreso, hora: v.horaRegreso,
+    t.push({ tramo: 'REGRESO', origen: v.destino, destino: v.ciudadRegreso || v.origen, fecha: v.regreso, hora: v.horaRegreso,
       aerolinea: cand.aerolineaRegreso || cand.aerolinea });
   }
   return t;
@@ -475,7 +477,7 @@ function rpTramos_(cand) {
 
 /** Consultas que gasta una búsqueda (sin vendedores): una por tramo y la del tiquete redondo internacional. */
 function rpConsultasNecesarias_(cand) {
-  return rpTramos_(cand).length + (cand.viaje.regreso && cand.viaje.internacional ? 1 : 0);
+  return rpTramos_(cand).length + (cand.viaje.regreso && cand.viaje.internacional && !cand.viaje.ciudadRegreso ? 1 : 0);
 }
 
 /**
@@ -630,7 +632,8 @@ function rpBuscar_(cand, cfg) {
 
   // Internacional de ida y vuelta: el tiquete redondo suele costar menos que dos
   // tiquetes de solo ida. Se busca también y la referencia es el más barato.
-  if (v.regreso && v.internacional) {
+  // Con el regreso a otra ciudad (#A134) no hay tiquete redondo que buscar.
+  if (v.regreso && v.internacional && !v.ciudadRegreso) {
     try {
       var pr = cpParametros(v, cfg.clave, {});
       if (cand.maletas) pr.bags = String(cand.maletas);
