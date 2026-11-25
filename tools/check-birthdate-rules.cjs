@@ -116,7 +116,8 @@ const CASES = [
 function checkCalendarOverlay() {
   const problems = [];
   const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
-  for (const f of ['server/AdminSidebar.html', 'server/AdminMobile.html']) {
+  // El panel móvil es la misma página del sidebar desde #A135 (antes era AdminMobile.html).
+  for (const f of ['server/AdminSidebar.html']) {
     const src = read(f);
     const fn = (src.match(/function attachDmyDateField\(id\) \{[\s\S]*?\n\s*txt\.value = toDmy/) || [''])[0];
     if (!fn) { problems.push(f + ': no se encontró attachDmyDateField'); continue; }

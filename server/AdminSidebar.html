@@ -568,13 +568,117 @@
       padding: 3px 8px;
       white-space: nowrap;
     }
+    /* UNIDADES: RESPONSABLES DE CADA UNIDAD (#A135) */
+    .unit-card {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+    }
+    .unit-card.none { border-color: #fecaca; background: #fffafa; }
+    .unit-card .uhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+    .unit-card .uname { font-weight: 600; color: #111827; font-size: 12px; }
+    .unit-card .uresp { font-size: 12px; margin-top: 3px; color: #1f2937; }
+    .unit-card .unone { font-size: 11px; margin-top: 3px; color: #b91c1c; font-weight: 500; }
+    .unit-card .umeta { font-size: 10px; color: #6b7280; margin-top: 3px; line-height: 1.4; }
+    .unit-card button.uedit { font-size: 11px; padding: 3px 8px; flex-shrink: 0; }
+    .unit-editor { margin-top: 8px; padding-top: 8px; border-top: 1px dashed #e5e7eb; }
+    .unit-editor .sub { font-size: 10px; font-weight: 600; color: #374151; text-transform: uppercase; letter-spacing: 0.3px; margin: 8px 0 3px; }
+    .sugg { display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 5px 0; border-bottom: 1px solid #f3f4f6; font-size: 11px; }
+    .sugg:last-child { border-bottom: none; }
+    .sugg .who { min-width: 0; }
+    .sugg .n { color: #6b7280; }
+    .sugg button { font-size: 10px; padding: 2px 8px; flex-shrink: 0; }
+    .unit-toolbar { display: flex; gap: 6px; margin-bottom: 8px; }
+    .unit-toolbar input { flex: 1; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
+    .notice { font-size: 11px; padding: 7px 9px; border-radius: 4px; margin-bottom: 8px; line-height: 1.4; }
+    .notice.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; }
+    .notice.warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    /* PANEL MÓVIL (#A135): la misma página, con su propio inicio de sesión y letra para el celular */
+    #mobileLogin, #mobileBar { display: none; }
+    body[data-mode="mobile"] { font-size: 15px; padding: 14px 16px 40px; max-width: 640px; margin: 0 auto; }
+    body[data-mode="mobile"].logged-out #app { display: none; }
+    body[data-mode="mobile"].logged-out #mobileLogin { display: block; }
+    body[data-mode="mobile"] #mobileBar {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      background: linear-gradient(135deg, #D71920 0%, #9a0f14 100%); color: white;
+      padding: 12px 14px; border-radius: 8px; margin-bottom: 12px;
+    }
+    #mobileBar .t, .mobile-head .t { font-weight: 700; font-size: 15px; }
+    #mobileBar .s, .mobile-head .s { font-size: 11px; opacity: 0.9; margin-top: 1px; word-break: break-all; }
+    #mobileBar button { background: rgba(255,255,255,0.15); color: white; border-color: rgba(255,255,255,0.5); font-size: 12px; padding: 6px 10px; flex-shrink: 0; }
+    .mobile-head { background: linear-gradient(135deg, #D71920 0%, #9a0f14 100%); color: white; padding: 16px; border-radius: 8px; margin-bottom: 12px; }
+    body[data-mode="mobile"] #app > h2 { display: none; }
+    body[data-mode="mobile"] .tab { font-size: 13px; padding: 11px 4px; }
+    body[data-mode="mobile"] .field input,
+    body[data-mode="mobile"] .field select,
+    body[data-mode="mobile"] .toolbar input,
+    body[data-mode="mobile"] .unit-toolbar input,
+    body[data-mode="mobile"] .approver-search input { padding: 10px 12px; }
+    /* 16 px: con menos, el iPhone agranda la página al tocar el campo */
+    body[data-mode="mobile"] input,
+    body[data-mode="mobile"] select { font-size: 16px !important; }
+    body[data-mode="mobile"] button { font-size: 14px; padding: 9px 12px; }
+    body[data-mode="mobile"] .chip { font-size: 13px; padding: 4px 8px; }
+    body[data-mode="mobile"] .chip button { font-size: 20px; padding: 0 4px; }
+    body[data-mode="mobile"] .field label { font-size: 12px; }
+    body[data-mode="mobile"] .help-text { font-size: 12px; }
+    body[data-mode="mobile"] .list { max-height: none; }
+    body[data-mode="mobile"] .list-item { padding: 11px 12px; }
+    body[data-mode="mobile"] .list-item .meta { font-size: 12px; }
+    body[data-mode="mobile"] .approver-results { max-height: 280px; }
+    body[data-mode="mobile"] .approver-results .result { padding: 10px; font-size: 14px; }
+    body[data-mode="mobile"] .approver-results .result .ced { font-size: 12px; }
+    body[data-mode="mobile"] .unit-card .uname,
+    body[data-mode="mobile"] .unit-card .uresp { font-size: 14px; }
+    body[data-mode="mobile"] .unit-card .umeta,
+    body[data-mode="mobile"] .unit-card .unone,
+    body[data-mode="mobile"] .sugg,
+    body[data-mode="mobile"] .notice { font-size: 12px; }
+    body[data-mode="mobile"] .sugg button,
+    body[data-mode="mobile"] .unit-card button.uedit { font-size: 13px; padding: 6px 10px; }
+    body[data-mode="mobile"] #btnClearPin,
+    body[data-mode="mobile"] #btnClearPassport { font-size: 13px !important; padding: 6px 10px !important; }
+    body[data-mode="mobile"] .bulk-filter-btn { padding: 8px 4px; font-size: 12px; flex: 1; }
   </style>
 </head>
 <body>
+  <!-- Panel móvil (#A135): Code.gs sirve esta misma página en ?action=admin con data-mode="mobile" en <body>.
+       Allí primero se entra con correo y PIN de administrador. En el sidebar de la hoja esto no se ve. -->
+  <div id="mobileLogin" data-mobile-ready="1">
+    <div class="mobile-head">
+      <div class="t">Usuarios · Equitel Viajes</div>
+      <div class="s">Panel móvil del administrador</div>
+    </div>
+    <div class="form">
+      <div class="field">
+        <label for="loginEmail">Correo de administrador *</label>
+        <input type="email" id="loginEmail" placeholder="tu.correo@equitel.com.co" autocomplete="username" autocapitalize="none" />
+      </div>
+      <div class="field">
+        <label for="loginPin">PIN (8 dígitos) *</label>
+        <input type="password" id="loginPin" inputmode="numeric" maxlength="8" autocomplete="current-password" />
+        <div class="help-text">El mismo PIN que usas en el portal con el botón «Administrador».</div>
+      </div>
+      <button id="btnLogin" class="primary" style="width:100%;">Ingresar</button>
+      <div id="loginStatus" class="status"></div>
+    </div>
+  </div>
+
+  <div id="app">
+  <div id="mobileBar">
+    <div style="min-width:0;">
+      <div class="t">Usuarios · Equitel Viajes</div>
+      <div class="s" id="mobileEmail">—</div>
+    </div>
+    <button id="btnLogout" type="button">Cerrar sesión</button>
+  </div>
   <h2>Gestión de Usuarios</h2>
 
   <div class="tabs">
     <button class="tab active" data-tab="users">Usuarios</button>
+    <button class="tab" data-tab="units">Unidades</button>
     <button class="tab" data-tab="anomalies">Anomalías<span id="anomalyBadge" class="badge" style="display:none;">0</span></button>
     <button class="tab" data-tab="replace">Reemplazar</button>
     <button class="tab" data-tab="bulk">Ed. Masiva</button>
@@ -637,6 +741,13 @@
           <label>Centro de Costo</label>
           <input type="text" id="f_cc" placeholder="Ej: 12345" />
         </div>
+        <div class="field">
+          <label for="f_unidad">Unidad de negocio</label>
+          <select id="f_unidad">
+            <option value="">— Sin unidad —</option>
+          </select>
+          <div id="help_unidad" class="help-text">A la que pertenece la persona (como en «CDS vs UDEN»). Si un viaje suyo se carga a un centro de costos de otra unidad, lo aprueba también el responsable de esa unidad.</div>
+        </div>
 
         <div class="field">
           <label>Aprobadores</label>
@@ -683,6 +794,22 @@
 
         <div id="status" class="status"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- ============ TAB: UNIDADES (#A135) ============ -->
+  <div id="tab-units" class="tab-content">
+    <div class="help-text" style="font-size:11px;margin:0 0 8px;">
+      Quién aprueba, además del aprobador de siempre, los viajes que una persona de otra unidad le carga a esta unidad.
+      Si hay varios, basta el voto de uno. Una unidad sin responsable no recibe viajes de otras unidades.
+    </div>
+    <div class="unit-toolbar">
+      <input type="text" id="unitSearch" placeholder="Buscar unidad o persona..." />
+      <button id="btnRefreshUnits" type="button" title="Recargar">↻</button>
+    </div>
+    <div id="unitsNotice"></div>
+    <div id="unitsContainer">
+      <div class="loading">Cargando unidades...</div>
     </div>
   </div>
 
@@ -769,6 +896,7 @@
           <button class="bulk-filter-btn active" data-mode="noApprover">Sin aprob.</button>
           <button class="bulk-filter-btn" data-mode="byApprover">Por aprob.</button>
           <button class="bulk-filter-btn" data-mode="search">Búsqueda</button>
+          <button class="bulk-filter-btn" data-mode="noUnit">Sin unidad</button>
         </div>
       </div>
 
@@ -825,6 +953,7 @@
             <option value="empresa">Cambiar empresa</option>
             <option value="sede">Cambiar sede</option>
             <option value="centroCosto">Cambiar centro de costo</option>
+            <option value="unidadNegocio">Cambiar unidad de negocio</option>
           </select>
         </div>
 
@@ -839,6 +968,8 @@
       </div>
     </div>
   </div>
+
+  </div><!-- #app -->
 
   <script>
     // ============ STATE ============
@@ -865,11 +996,121 @@
     var bulkSelectedApprovers = [];
     // Duplicates state
     var duplicates = null;
+    // Unidad de negocio de cada persona y responsables de cada unidad (#A135)
+    var unidades = [];
+    var unidadDirty = false;
+    var unitsData = null;      // lo que devuelve usuarios_getResponsables
+    var unitEditing = null;    // { unit, emails: [] } mientras se cambia una unidad
+    var catalogsLoaded = false;
+
+    // ============ PANEL MÓVIL (#A135) ============
+    // Code.gs sirve esta página en ?action=admin con data-mode="mobile": allí se entra con correo y PIN de
+    // administrador y cada llamada va por mobileAdmin_run (valida la sesión y solo deja estas funciones).
+    // En el sidebar de la hoja, gsRun() es google.script.run de siempre.
+    var IS_MOBILE = document.body.getAttribute('data-mode') === 'mobile';
+    var MOBILE_SESSION_KEY = 'equitel_mobile_admin_session'; // la misma del panel móvil anterior: la sesión sigue
+    var mobileSession = null;
+    var MOBILE_FNS = ['usuarios_listAll', 'usuarios_getUserDetail', 'usuarios_getCatalogoOrg', 'usuarios_getSedes',
+      'usuarios_getEmpresas', 'usuarios_getUnidades', 'usuarios_create', 'usuarios_update', 'usuarios_delete',
+      'usuarios_deleteByRow', 'usuarios_clearPin', 'usuarios_clearPassport', 'usuarios_getAnomalias',
+      'usuarios_findDuplicates', 'usuarios_findUsersWithApprover', 'usuarios_replaceApprover', 'usuarios_bulkUpdate',
+      'reevaluarAprobadoresPendientes', 'usuarios_getResponsables', 'usuarios_setResponsables'];
+
+    function gsRun() {
+      if (!IS_MOBILE) return google.script.run;
+      var ok = null, fail = null, r = {};
+      r.withSuccessHandler = function(f) { ok = f; return r; };
+      r.withFailureHandler = function(f) { fail = f; return r; };
+      MOBILE_FNS.forEach(function(name) {
+        r[name] = function() {
+          var args = Array.prototype.slice.call(arguments);
+          if (!mobileSession) { mobileLogout('Inicia sesión para continuar.'); return; }
+          google.script.run
+            .withSuccessHandler(function(res) { if (ok) ok(res); })
+            .withFailureHandler(function(err) {
+              var msg = String(err && err.message ? err.message : err);
+              if (/Sesi[oó]n inv|No autorizado/i.test(msg)) mobileLogout('Tu sesión expiró o no es de administrador. Vuelve a ingresar.');
+              if (fail) fail(err);
+            })
+            .mobileAdmin_run(mobileSession.email, mobileSession.token, name, args);
+        };
+      });
+      return r;
+    }
+
+    function initMobile() {
+      attachDigitsOnly('loginPin');
+      attachLowerCase('loginEmail');
+      document.getElementById('btnLogin').addEventListener('click', mobileLogin);
+      document.getElementById('loginPin').addEventListener('keydown', function(e) { if (e.key === 'Enter') mobileLogin(); });
+      document.getElementById('btnLogout').addEventListener('click', function() { mobileLogout(''); });
+      try {
+        var s = JSON.parse(localStorage.getItem(MOBILE_SESSION_KEY) || 'null');
+        if (s && s.email && s.token && s.expiresAt && Date.now() < Number(s.expiresAt)) mobileSession = s;
+        else localStorage.removeItem(MOBILE_SESSION_KEY);
+      } catch (e) { mobileSession = null; }
+      if (mobileSession) mobileEnter();
+      else document.body.classList.add('logged-out');
+    }
+
+    function mobileLogin() {
+      var email = document.getElementById('loginEmail').value.trim().toLowerCase();
+      var pin = document.getElementById('loginPin').value.trim();
+      var st = document.getElementById('loginStatus');
+      var say = function(msg) { st.textContent = msg; st.className = 'status error'; };
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { say('Correo inválido.'); return; }
+      if (!/^\d{8}$/.test(pin)) { say('El PIN debe tener 8 dígitos.'); return; }
+      var btn = document.getElementById('btnLogin');
+      btn.disabled = true;
+      btn.textContent = 'Verificando...';
+      st.className = 'status';
+      google.script.run
+        .withSuccessHandler(function(result) {
+          btn.disabled = false;
+          btn.textContent = 'Ingresar';
+          if (!result || !result.success || !result.token) { say('PIN incorrecto.'); return; }
+          mobileSession = { email: email, token: result.token, expiresAt: result.expiresAt || (Date.now() + 30 * 24 * 60 * 60 * 1000) };
+          try { localStorage.setItem(MOBILE_SESSION_KEY, JSON.stringify(mobileSession)); } catch (e) { /* solo esta pestaña */ }
+          document.getElementById('loginPin').value = '';
+          mobileEnter();
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.textContent = 'Ingresar';
+          say(err && err.message ? err.message : 'No se pudo verificar.');
+        })
+        .verifyAdminPin(pin, email);
+    }
+
+    function mobileEnter() {
+      // Lo de la sesión anterior no se reutiliza: la pestaña «Unidades» dice qué puede hacer quien entró.
+      unitsData = null;
+      unitEditing = null;
+      document.body.classList.remove('logged-out');
+      document.getElementById('mobileEmail').textContent = mobileSession.email;
+      startApp();
+    }
+
+    function mobileLogout(msg) {
+      mobileSession = null;
+      try { localStorage.removeItem(MOBILE_SESSION_KEY); } catch (e) { /* noop */ }
+      document.body.classList.add('logged-out');
+      var st = document.getElementById('loginStatus');
+      st.textContent = msg || '';
+      st.className = msg ? 'status error' : 'status';
+    }
+
+    // Carga los datos y, en el celular, abre «Nuevo usuario»: crear usuarios es lo principal allí.
+    function startApp() {
+      loadAll();
+      if (IS_MOBILE) {
+        switchTab('users');
+        startCreate();
+      }
+    }
 
     // ============ INIT ============
     function init() {
-      loadAll();
-
       // Tabs
       Array.prototype.forEach.call(document.querySelectorAll('.tab'), function(t) {
         t.addEventListener('click', function() { switchTab(t.dataset.tab); });
@@ -886,6 +1127,14 @@
       document.getElementById('f_fechaNac').addEventListener('change', function() { fechaNacDirty = true; });
       // Igual con el celular: al editar solo se envía si se tocó.
       document.getElementById('f_celular').addEventListener('input', function() { celularDirty = true; });
+      // Y con la unidad de negocio (#A135).
+      document.getElementById('f_unidad').addEventListener('change', function() { unidadDirty = true; });
+      // Unidades (#A135)
+      document.getElementById('unitSearch').addEventListener('input', renderUnits);
+      document.getElementById('btnRefreshUnits').addEventListener('click', loadUnits);
+      document.getElementById('unitsContainer').addEventListener('click', onUnitsClick);
+      document.getElementById('unitsContainer').addEventListener('input', function(e) { if (e.target.id === 'unitPick') searchUnitPick(); });
+      document.getElementById('unitsContainer').addEventListener('focusin', function(e) { if (e.target.id === 'unitPick') searchUnitPick(); });
       document.getElementById('btnCancel').addEventListener('click', cancelForm);
       document.getElementById('btnSave').addEventListener('click', saveForm);
       document.getElementById('btnDelete').addEventListener('click', deleteUser);
@@ -949,8 +1198,13 @@
           document.getElementById('bulkFilterApproverResults').style.display = 'none';
           var bulkPickResults = document.getElementById('bulkApproverPickResults');
           if (bulkPickResults) bulkPickResults.style.display = 'none';
+          var unitPickResults = document.getElementById('unitPickResults');
+          if (unitPickResults) unitPickResults.style.display = 'none';
         }
       });
+
+      if (IS_MOBILE) initMobile();
+      else startApp();
     }
 
     function switchTab(name) {
@@ -974,6 +1228,11 @@
       if (name === 'bulk') {
         bulkApplyFilter();
       }
+      // Unidades (#A135): se carga la primera vez que se abre
+      if (name === 'units') {
+        if (unitsData === null) loadUnits();
+        else renderUnits();
+      }
     }
 
     // ============ LOAD ALL ============
@@ -989,7 +1248,8 @@
     }
 
     function loadAll(onListReady) {
-      google.script.run
+      loadCatalogsOnce();
+      gsRun()
         .withSuccessHandler(function(users) {
           allUsers = users || [];
           recomputeApproverSet();
@@ -1015,7 +1275,7 @@
         })
         .usuarios_listAll();
 
-      google.script.run
+      gsRun()
         .withSuccessHandler(function(c) {
           catalogo = c || [];
           repopulateCatalogoDatalist();
@@ -1051,32 +1311,41 @@
         opt.dataset.cedula = item.cedula;
         dl.appendChild(opt);
       });
+    }
 
-      google.script.run
-        .withSuccessHandler(function(s) {
-          sedes = s || [];
-          var sel = document.getElementById('f_sede');
-          sedes.forEach(function(sede) {
-            var opt = document.createElement('option');
-            opt.value = sede;
-            opt.textContent = sede;
-            sel.appendChild(opt);
-          });
-        })
+    // Listas de los formularios: sedes, empresas y unidades de negocio. Una sola vez (antes se pedían en cada
+    // recarga y las opciones se repetían en la lista).
+    function loadCatalogsOnce() {
+      if (catalogsLoaded) return;
+      catalogsLoaded = true;
+      gsRun()
+        .withSuccessHandler(function(s) { sedes = s || []; fillSelect('f_sede', sedes); })
         .usuarios_getSedes();
-
-      google.script.run
-        .withSuccessHandler(function(e) {
-          empresas = e || [];
-          var sel = document.getElementById('f_empresa');
-          empresas.forEach(function(emp) {
-            var opt = document.createElement('option');
-            opt.value = emp;
-            opt.textContent = emp;
-            sel.appendChild(opt);
-          });
-        })
+      gsRun()
+        .withSuccessHandler(function(e) { empresas = e || []; fillSelect('f_empresa', empresas); })
         .usuarios_getEmpresas();
+      gsRun()
+        .withSuccessHandler(function(u) {
+          unidades = u || [];
+          var keep = document.getElementById('f_unidad').value;
+          fillSelect('f_unidad', unidades);
+          if (keep) document.getElementById('f_unidad').value = keep;
+        })
+        .withFailureHandler(function() { catalogsLoaded = false; })
+        .usuarios_getUnidades();
+    }
+
+    // Deja solo la primera opción (— Seleccionar — / — Sin unidad —) y agrega los valores.
+    function fillSelect(id, values) {
+      var sel = document.getElementById(id);
+      if (!sel) return;
+      while (sel.options.length > 1) sel.remove(1);
+      (values || []).forEach(function(v) {
+        var opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        sel.appendChild(opt);
+      });
     }
 
     // ============ USERS LIST ============
@@ -1086,7 +1355,8 @@
         if (!query) return true;
         return u.nombre.toLowerCase().indexOf(query) > -1
           || u.cedula.toLowerCase().indexOf(query) > -1
-          || u.correo.toLowerCase().indexOf(query) > -1;
+          || u.correo.toLowerCase().indexOf(query) > -1
+          || String(u.unidadNegocio || '').toLowerCase().indexOf(query) > -1;
       });
 
       var container = document.getElementById('listContainer');
@@ -1106,6 +1376,7 @@
         html += '<div class="list-item" data-cedula="' + escapeAttr(u.cedula) + '">'
           + '<div class="name">' + escapeHtml(u.nombre) + passBadge + '</div>'
           + '<div class="meta">' + escapeHtml(u.cedula) + ' · ' + escapeHtml(u.correo) + '</div>'
+          + '<div class="meta">' + (u.unidadNegocio ? escapeHtml(u.unidadNegocio) : '<span style="color:#b45309;">Sin unidad de negocio</span>') + '</div>'
           + '</div>';
       });
       html += '</div>';
@@ -1185,6 +1456,9 @@
       document.getElementById('f_cc').value = u.centroCosto || '';
       prepareFechaNacField(u.fechaNacimiento, false);
       prepareCelularField(u.celular);
+      prepareUnidadField(u.unidadNegocio);
+      // En el celular la lista no trae fechas de nacimiento ni celulares (#A135): se piden para esta persona.
+      if (IS_MOBILE) loadUserDetail(u.cedula);
 
       var cedulas = (u.cedulasAprobadores || '').split(',').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
       var nombres = (u.nombresAprobadores || '').split(',').map(function(n) { return n.trim(); });
@@ -1323,12 +1597,73 @@
       }
     }
 
+    // Unidad de negocio (#A135). Al editar solo se envía si se cambió: una unidad mal escrita en la hoja no se
+    // borra por guardar otro dato. Si no es una de «CDS vs UDEN», se avisa para corregirla.
+    function prepareUnidadField(storedValue) {
+      var sel = document.getElementById('f_unidad');
+      var help = document.getElementById('help_unidad');
+      var raw = String(storedValue || '').replace(/\s+/g, ' ').trim();
+      var match = '';
+      unidades.forEach(function(x) { if (!match && unitKey(x) === unitKey(raw)) match = x; });
+      sel.value = match;
+      unidadDirty = false;
+      help.style.color = '';
+      if (raw && !match && unidades.length) {
+        help.textContent = 'Valor guardado no reconocido: «' + raw + '». Elija la unidad correcta de la lista.';
+        help.style.color = '#b91c1c';
+      } else if (!raw && currentEditing) {
+        help.textContent = 'Sin unidad: se le preguntará en el formulario la primera vez que viaje. Puede elegirla aquí.';
+        help.style.color = '#b45309';
+      } else {
+        help.textContent = 'A la que pertenece la persona (como en «CDS vs UDEN»). Si un viaje suyo se carga a un centro de costos de otra unidad, lo aprueba también el responsable de esa unidad.';
+      }
+    }
+
+    // Igual que _csNormalize_ del servidor: sin tildes, espacios de más ni mayúsculas.
+    function unitKey(s) {
+      return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    // Panel móvil: la fecha de nacimiento y el celular de la persona que se abre. Mientras llegan, esos campos
+    // quedan bloqueados; si no llegan, siguen bloqueados y no se envían (lo demás se puede guardar).
+    function loadUserDetail(cedula) {
+      setDetailLoading(true);
+      gsRun()
+        .withSuccessHandler(function(d) {
+          if (currentEditing !== cedula) return;
+          prepareFechaNacField(d && d.fechaNacimiento, false);
+          prepareCelularField(d && d.celular);
+          setDetailLoading(false);
+        })
+        .withFailureHandler(function(err) {
+          if (currentEditing !== cedula) return;
+          document.getElementById('help_fechaNac').textContent = 'No se pudo cargar: ' + (err && err.message ? err.message : err) + '. Lo demás se puede guardar.';
+          document.getElementById('help_fechaNac').style.color = '#b91c1c';
+        })
+        .usuarios_getUserDetail(cedula);
+    }
+
+    function setDetailLoading(loading) {
+      ['f_fechaNac', 'f_fechaNac_dmy', 'f_celular'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.disabled = !!loading;
+      });
+      if (loading) {
+        document.getElementById('help_fechaNac').textContent = 'Cargando...';
+        document.getElementById('help_fechaNac').style.color = '';
+        document.getElementById('help_celular').textContent = 'Cargando...';
+        document.getElementById('help_celular').style.color = '';
+      }
+    }
+
     function clearForm() {
       ['f_cedula', 'f_nombre', 'f_correo', 'f_cc'].forEach(function(id) {
         document.getElementById(id).value = '';
       });
+      setDetailLoading(false);
       prepareFechaNacField('', true);
       prepareCelularField('');
+      prepareUnidadField('');
       document.getElementById('f_empresa').value = '';
       document.getElementById('f_sede').value = '';
       // Limpiar alertas de duplicados y desbloquear botón Guardar
@@ -1345,6 +1680,12 @@
     function showForm() {
       document.getElementById('formContainer').style.display = 'block';
       hideStatus();
+      // En el celular el formulario ocupa la pantalla: la lista se esconde mientras tanto.
+      if (IS_MOBILE) {
+        document.querySelector('#tab-users .toolbar').style.display = 'none';
+        document.getElementById('listContainer').style.display = 'none';
+        window.scrollTo(0, 0);
+      }
     }
 
     function cancelForm() {
@@ -1352,6 +1693,10 @@
       currentEditing = null;
       selectedApprovers = [];
       clearForm();
+      if (IS_MOBILE) {
+        document.querySelector('#tab-users .toolbar').style.display = '';
+        document.getElementById('listContainer').style.display = '';
+      }
     }
 
     function saveForm() {
@@ -1410,6 +1755,9 @@
       // se tocó el campo (vacío = quitarlo). El backend lo valida.
       var celularRaw = String(document.getElementById('f_celular').value || '').trim();
       if (currentEditing ? celularDirty : !!celularRaw) data.celular = celularRaw;
+      // Unidad de negocio (#A135): al crear, si se eligió; al editar, solo si se cambió (vacía = sin unidad).
+      var unidadRaw = document.getElementById('f_unidad').value;
+      if (currentEditing ? unidadDirty : !!unidadRaw) data.unidadNegocio = unidadRaw;
 
       // Auto-completar cédula+correo desde catálogo si están vacíos
       if (data.nombre) {
@@ -1446,9 +1794,9 @@
       };
 
       if (currentEditing) {
-        google.script.run.withSuccessHandler(handler).withFailureHandler(errHandler).usuarios_update(currentEditing, data);
+        gsRun().withSuccessHandler(handler).withFailureHandler(errHandler).usuarios_update(currentEditing, data);
       } else {
-        google.script.run.withSuccessHandler(handler).withFailureHandler(errHandler).usuarios_create(data);
+        gsRun().withSuccessHandler(handler).withFailureHandler(errHandler).usuarios_create(data);
       }
     }
 
@@ -1472,7 +1820,7 @@
       if (!confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.')) return;
       var btn = document.getElementById('btnDelete');
       btn.disabled = true;
-      google.script.run
+      gsRun()
         .withSuccessHandler(function() {
           showStatus('Eliminado.', 'success');
           loadAll();
@@ -1490,7 +1838,7 @@
       if (!confirm('¿Borrar el PIN de este usuario?\n\nEn su próximo login se le enviará uno nuevo automáticamente.')) return;
       var btn = document.getElementById('btnClearPin');
       btn.disabled = true;
-      google.script.run
+      gsRun()
         .withSuccessHandler(function() {
           showStatus('PIN borrado.', 'success');
           var u = allUsers.find(function(x) { return x.cedula === currentEditing; });
@@ -1515,7 +1863,7 @@
       if (!confirm('¿Limpiar el estado del pasaporte de este usuario?\n\nEn su próxima solicitud internacional tendrá que volver a cargar el pasaporte. El archivo NO se borra del Drive — queda como respaldo.')) return;
       var btn = document.getElementById('btnClearPassport');
       btn.disabled = true;
-      google.script.run
+      gsRun()
         .withSuccessHandler(function() {
           showStatus('Pasaporte limpiado.', 'success');
           var u = allUsers.find(function(x) { return x.cedula === currentEditing; });
@@ -1699,7 +2047,7 @@
 
     // ============ ANOMALIES ============
     function loadAnomaliesSilently() {
-      google.script.run
+      gsRun()
         .withSuccessHandler(function(data) {
           anomalies = data;
           updateAnomalyBadge();
@@ -1708,7 +2056,7 @@
         .usuarios_getAnomalias();
 
       // Duplicados tambien (para badge)
-      google.script.run
+      gsRun()
         .withSuccessHandler(function(data) {
           duplicates = data;
           updateDuplicateBadge();
@@ -1720,7 +2068,7 @@
     function loadAnomalies() {
       var container = document.getElementById('anomaliesContainer');
       container.innerHTML = '<div class="loading">Escaneando USUARIOS...</div>';
-      google.script.run
+      gsRun()
         .withSuccessHandler(function(data) {
           anomalies = data;
           renderAnomalies();
@@ -1835,7 +2183,7 @@
     function loadDuplicates() {
       var container = document.getElementById('duplicatesContainer');
       container.innerHTML = '<div class="loading">Escaneando USUARIOS...</div>';
-      google.script.run
+      gsRun()
         .withSuccessHandler(function(data) {
           duplicates = data;
           renderDuplicates();
@@ -1902,7 +2250,7 @@
           if (!confirm(confirmMsg)) return;
           btn.disabled = true;
           btn.textContent = '...';
-          google.script.run
+          gsRun()
             .withSuccessHandler(function() {
               // Recarga tanto users como duplicates para reflejar el shift de filas
               loadAll();
@@ -2050,7 +2398,7 @@
       btn.disabled = true;
       btn.textContent = 'Buscando...';
 
-      google.script.run
+      gsRun()
         .withSuccessHandler(function(rows) {
           btn.disabled = false;
           btn.textContent = 'Vista previa';
@@ -2094,7 +2442,7 @@
       btn.disabled = true;
       btn.textContent = 'Reemplazando...';
 
-      google.script.run
+      gsRun()
         .withSuccessHandler(function(result) {
           btn.textContent = 'Confirmar reemplazo';
           showReplStatus('Reemplazo completado: ' + result.affected + ' usuario(s) actualizados.', 'success');
@@ -2126,7 +2474,7 @@
       statusEl.textContent = '';
       resultEl.style.display = 'none';
 
-      google.script.run
+      gsRun()
         .withSuccessHandler(function(s) {
           btn.disabled = false;
           btn.textContent = 'Reevaluar solicitudes pendientes';
@@ -2200,6 +2548,12 @@
         bulkFilteredList = allUsers.filter(function(u) {
           return !u.cedulasAprobadores || !u.cedulasAprobadores.trim();
         });
+      } else if (bulkFilterMode === 'noUnit') {
+        // #A135: sin unidad de negocio, o con una que no es de «CDS vs UDEN»
+        bulkFilteredList = allUsers.filter(function(u) {
+          var k = unitKey(u.unidadNegocio);
+          return !k || (unidades.length && !unidades.some(function(x) { return unitKey(x) === k; }));
+        });
       } else if (bulkFilterMode === 'byApprover') {
         if (!bulkFilterApprover) { bulkFilteredList = []; bulkRenderList(); return; }
         var targetCed = bulkFilterApprover.cedula;
@@ -2214,7 +2568,8 @@
         bulkFilteredList = allUsers.filter(function(u) {
           return u.nombre.toLowerCase().indexOf(q) > -1
             || u.cedula.toLowerCase().indexOf(q) > -1
-            || u.correo.toLowerCase().indexOf(q) > -1;
+            || u.correo.toLowerCase().indexOf(q) > -1
+            || String(u.unidadNegocio || '').toLowerCase().indexOf(q) > -1;
         });
       }
       bulkRenderList();
@@ -2224,6 +2579,7 @@
       var container = document.getElementById('bulkUserList');
       if (bulkFilteredList.length === 0) {
         var msg = bulkFilterMode === 'noApprover' ? 'Todos los usuarios tienen aprobador asignado.'
+          : bulkFilterMode === 'noUnit' ? 'Todos los usuarios tienen unidad de negocio.'
           : bulkFilterMode === 'byApprover' && !bulkFilterApprover ? 'Selecciona un aprobador arriba.'
           : 'Sin resultados.';
         container.innerHTML = '<div class="empty">' + msg + '</div>';
@@ -2240,6 +2596,7 @@
           + '<div class="name">' + escapeHtml(u.nombre) + '</div>'
           + '<div class="meta">' + escapeHtml(u.cedula) + ' · ' + escapeHtml(u.correo)
           + (u.nombresAprobadores ? ' · Aprob: ' + escapeHtml(u.nombresAprobadores) : '')
+          + ' · ' + (u.unidadNegocio ? escapeHtml(u.unidadNegocio) : 'sin unidad')
           + '</div></div></div>';
       });
       if (bulkFilteredList.length > 200) {
@@ -2410,6 +2767,13 @@
           + '<input type="text" id="bulkPropertyValue" placeholder="Ej: 12345" /></div>';
         document.getElementById('bulkPropertyValue').addEventListener('input', bulkUpdateApplyButton);
         bulkUpdateApplyButton();
+      } else if (action === 'unidadNegocio') {
+        var uopts = unidades.map(function(x) { return '<option value="' + escapeAttr(x) + '">' + escapeHtml(x) + '</option>'; }).join('');
+        area.innerHTML = '<div class="field"><label>Nueva unidad de negocio</label>'
+          + '<select id="bulkPropertyValue"><option value="">— Seleccionar —</option>' + uopts + '</select>'
+          + '<div class="help-text">La unidad a la que pertenecen (como en «CDS vs UDEN»).</div></div>';
+        document.getElementById('bulkPropertyValue').addEventListener('change', bulkUpdateApplyButton);
+        bulkUpdateApplyButton();
       }
     }
 
@@ -2527,7 +2891,7 @@
       } else {
         var el = document.getElementById('bulkPropertyValue');
         value = el ? el.value.trim() : '';
-        var labels = { empresa: 'Empresa', sede: 'Sede', centroCosto: 'Centro de Costo' };
+        var labels = { empresa: 'Empresa', sede: 'Sede', centroCosto: 'Centro de Costo', unidadNegocio: 'Unidad de negocio' };
         actionLabel = 'Cambiar ' + (labels[action] || action) + ' a: ' + value;
       }
 
@@ -2537,7 +2901,7 @@
       btn.disabled = true;
       btn.textContent = 'Aplicando...';
 
-      google.script.run
+      gsRun()
         .withSuccessHandler(function(result) {
           btn.textContent = 'Aplicar cambios';
           showBulkStatus(result.affected + ' usuario' + (result.affected !== 1 ? 's' : '') + ' actualizado' + (result.affected !== 1 ? 's' : '') + '.', 'success');
@@ -2564,6 +2928,220 @@
       var s = document.getElementById('bulkStatus');
       s.className = 'status';
       s.textContent = '';
+    }
+
+    // ============ UNIDADES: RESPONSABLES DE CADA UNIDAD (#A135) ============
+    // Quién aprueba los viajes que otras unidades le cargan a cada unidad (tabla de MISC, #A133). Se ve aquí y,
+    // quien puede (el servidor lo decide: canEdit), lo cambia con las personas que más aprobaron sus viajes
+    // como sugerencia. El servidor valida todo otra vez y deja constancia del cambio.
+    var unitsFlash = '';
+
+    function loadUnits() {
+      var container = document.getElementById('unitsContainer');
+      container.innerHTML = '<div class="loading">Cargando unidades...</div>';
+      unitEditing = null;
+      gsRun()
+        .withSuccessHandler(function(data) {
+          unitsData = data || { units: [] };
+          renderUnits();
+        })
+        .withFailureHandler(function(err) {
+          container.innerHTML = '<div class="empty">Error: ' + escapeHtml(err && err.message ? err.message : err) + '</div>';
+        })
+        .usuarios_getResponsables();
+    }
+
+    function personLabel(p) { return p.name || p.email; }
+
+    function nameForEmail(email) {
+      var u = allUsers.find(function(x) { return x.correo === email; });
+      if (u) return u.nombre;
+      var found = '';
+      ((unitsData && unitsData.units) || []).forEach(function(x) {
+        x.responsables.concat(x.suggestions).forEach(function(p) { if (!found && p.email === email && p.name) found = p.name; });
+      });
+      return found || email;
+    }
+
+    function findUnit(name) {
+      return ((unitsData && unitsData.units) || []).find(function(x) { return x.unit === name; });
+    }
+
+    function renderUnits() {
+      if (!unitsData) return;
+      var nh = '';
+      if (unitsFlash) nh += '<div class="status success" style="margin:0 0 8px;">' + escapeHtml(unitsFlash) + '</div>';
+      if (!unitsData.found) nh += '<div class="notice warn">Todavía no existe la tabla de responsables en MISC. Se crea con el primer cambio (como el menú 18).</div>';
+      if (!unitsData.canEdit) nh += '<div class="notice info">Aquí se ve quién responde por cada unidad. Cambiarlo está reservado a ' + escapeHtml(unitsData.editors || '') + '.</div>';
+      if (unitsData.warnings && unitsData.warnings.length) {
+        nh += '<div class="notice warn"><strong>Revisar en MISC:</strong><br>' + unitsData.warnings.map(escapeHtml).join('<br>') + '</div>';
+      }
+      document.getElementById('unitsNotice').innerHTML = nh;
+
+      var q = unitKey(document.getElementById('unitSearch').value);
+      var list = (unitsData.units || []).filter(function(u) {
+        if (!q) return true;
+        if (unitEditing && unitEditing.unit === u.unit) return true;
+        if (unitKey(u.unit).indexOf(q) > -1) return true;
+        return u.responsables.concat(u.suggestions).some(function(p) {
+          return unitKey(p.name).indexOf(q) > -1 || unitKey(p.email).indexOf(q) > -1;
+        });
+      });
+      var container = document.getElementById('unitsContainer');
+      if (!list.length) { container.innerHTML = '<div class="empty">Sin resultados.</div>'; return; }
+      var months = Math.round((unitsData.days || 180) / 30);
+      var html = '';
+      list.forEach(function(u) {
+        var none = !u.responsables.length;
+        var editing = !!(unitEditing && unitEditing.unit === u.unit);
+        html += '<div class="unit-card' + (none ? ' none' : '') + '" data-unit="' + escapeAttr(u.unit) + '">';
+        html += '<div class="uhead"><div style="min-width:0;"><div class="uname">' + escapeHtml(u.unit) + '</div>';
+        if (none) {
+          html += '<div class="unone">Sin responsable: no recibe viajes de otras unidades.</div>';
+        } else {
+          html += '<div class="uresp">' + u.responsables.map(function(p) {
+            return escapeHtml(personLabel(p)) + (p.inUsers ? '' : ' <span style="color:#b91c1c;">(no está en USUARIOS)</span>');
+          }).join(' o ') + '</div>';
+        }
+        html += '</div>';
+        if (unitsData.canEdit && !editing) html += '<button type="button" class="uedit" data-act="edit">Cambiar</button>';
+        html += '</div>';
+        var meta = [];
+        meta.push(u.trips ? u.trips + ' viaje' + (u.trips !== 1 ? 's' : '') + ' en los últimos ' + months + ' meses' : 'Sin viajes en los últimos ' + months + ' meses');
+        if (u.suggestions.length) {
+          meta.push('Más aprobaron sus viajes: ' + u.suggestions.slice(0, 2).map(function(p) {
+            return escapeHtml(personLabel(p)) + ' (' + p.count + ')';
+          }).join(', '));
+        }
+        if (u.lastChange) meta.push('Último cambio: ' + escapeHtml(u.lastChange));
+        html += '<div class="umeta">' + meta.join('<br>') + '</div>';
+        if (editing) html += renderUnitEditor(u, months);
+        html += '</div>';
+      });
+      container.innerHTML = html;
+    }
+
+    function renderUnitEditor(u, months) {
+      var sel = unitEditing.emails;
+      var h = '<div class="unit-editor">';
+      h += '<div class="sub">Responsables</div>';
+      h += '<div class="approver-chips">';
+      if (sel.length) {
+        sel.forEach(function(e, i) {
+          h += '<span class="chip">' + escapeHtml(nameForEmail(e)) + ' <button type="button" data-act="rm" data-idx="' + i + '" aria-label="Quitar">×</button></span>';
+        });
+      } else {
+        h += '<span style="color:#b91c1c;font-size:11px;">Ninguno: la unidad no recibirá viajes de otras unidades.</span>';
+      }
+      h += '</div>';
+      if (u.suggestions.length) {
+        h += '<div class="sub">Sugeridos: más aprobaron sus viajes (' + months + ' meses)</div>';
+        u.suggestions.forEach(function(p) {
+          var inSel = sel.indexOf(p.email) > -1;
+          h += '<div class="sugg"><div class="who">' + escapeHtml(personLabel(p)) + ' <span class="n">· ' + p.count + ' viaje' + (p.count !== 1 ? 's' : '') + '</span></div>'
+            + (inSel ? '<span class="n">ya está</span>' : '<button type="button" data-act="add" data-email="' + escapeAttr(p.email) + '">Agregar</button>')
+            + '</div>';
+        });
+      } else {
+        h += '<div class="help-text">No hay aprobaciones de sus viajes en los últimos ' + months + ' meses para sugerir a alguien.</div>';
+      }
+      h += '<div class="sub">Agregar a otra persona</div>';
+      h += '<div class="approver-search" style="margin-top:0;"><input type="text" id="unitPick" placeholder="Buscar por nombre, cédula o correo..." autocomplete="off" />'
+        + '<div class="approver-results" id="unitPickResults" style="display:none;"></div></div>';
+      h += '<div class="form-actions"><button type="button" data-act="cancel">Cancelar</button><button type="button" class="primary" data-act="save">Guardar</button></div>';
+      h += '<div id="unitStatus" class="status"></div>';
+      h += '</div>';
+      return h;
+    }
+
+    function onUnitsClick(e) {
+      var pick = e.target.closest('.result[data-email]');
+      if (pick) { addUnitEmail(pick.getAttribute('data-email')); return; }
+      var btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      var card = btn.closest('.unit-card');
+      var unit = card ? card.getAttribute('data-unit') : '';
+      var act = btn.getAttribute('data-act');
+      if (act === 'edit') {
+        var u = findUnit(unit);
+        if (!u) return;
+        unitEditing = { unit: unit, emails: u.responsables.map(function(p) { return p.email; }) };
+        unitsFlash = '';
+        renderUnits();
+        var open = document.querySelector('.unit-card[data-unit="' + cssEscape(unit) + '"]');
+        if (open) { try { open.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { open.scrollIntoView(); } }
+      } else if (act === 'rm' && unitEditing) {
+        unitEditing.emails.splice(Number(btn.getAttribute('data-idx')), 1);
+        renderUnits();
+      } else if (act === 'add') {
+        addUnitEmail(btn.getAttribute('data-email'));
+      } else if (act === 'cancel') {
+        unitEditing = null;
+        renderUnits();
+      } else if (act === 'save') {
+        saveUnit();
+      }
+    }
+
+    function cssEscape(s) { return String(s).replace(/["\\]/g, '\\$&'); }
+
+    function addUnitEmail(email) {
+      if (!unitEditing || !email) return;
+      if (unitEditing.emails.indexOf(email) === -1) {
+        var max = (unitsData && unitsData.max) || 5;
+        if (unitEditing.emails.length >= max) { alert('Máximo ' + max + ' responsables por unidad.'); return; }
+        unitEditing.emails.push(email);
+      }
+      renderUnits();
+    }
+
+    function searchUnitPick() {
+      var input = document.getElementById('unitPick');
+      var results = document.getElementById('unitPickResults');
+      if (!input || !results) return;
+      var q = input.value.toLowerCase().trim();
+      if (!q || !unitEditing) { results.style.display = 'none'; return; }
+      var seen = {};
+      var matches = allUsers.filter(function(u) {
+        if (!u.correo || seen[u.correo] || unitEditing.emails.indexOf(u.correo) > -1) return false;
+        var hit = u.nombre.toLowerCase().indexOf(q) > -1 || u.cedula.toLowerCase().indexOf(q) > -1 || u.correo.toLowerCase().indexOf(q) > -1;
+        if (hit) seen[u.correo] = true;
+        return hit;
+      }).slice(0, 12);
+      results.innerHTML = matches.length
+        ? matches.map(function(u) {
+            return '<div class="result" data-email="' + escapeAttr(u.correo) + '"><div class="name">' + escapeHtml(u.nombre) + '</div>'
+              + '<div class="ced">' + escapeHtml(u.correo) + (u.unidadNegocio ? ' · ' + escapeHtml(u.unidadNegocio) : '') + '</div></div>';
+          }).join('')
+        : '<div class="result"><span class="ced">Sin resultados</span></div>';
+      results.style.display = 'block';
+    }
+
+    function saveUnit() {
+      if (!unitEditing) return;
+      var unit = unitEditing.unit;
+      var emails = unitEditing.emails.slice();
+      var msg = emails.length
+        ? '¿Guardar?\n\nResponsable' + (emails.length > 1 ? 's' : '') + ' de ' + unit + ': ' + emails.map(nameForEmail).join(' o ') + '.\n\n'
+          + 'Cuenta para las solicitudes que se creen desde ahora; las que ya existen conservan a quien se le pidió el voto.'
+        : '¿Dejar ' + unit + ' sin responsable?\n\nSus centros de costos ya no se podrán elegir para viajes de personas de otras unidades.';
+      if (!confirm(msg)) return;
+      var btn = document.querySelector('.unit-editor button[data-act="save"]');
+      if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+      gsRun()
+        .withSuccessHandler(function(data) {
+          if (data) unitsData = data;
+          unitEditing = null;
+          unitsFlash = unit + ': guardado. Cuenta desde la siguiente solicitud.';
+          renderUnits();
+          setTimeout(function() { unitsFlash = ''; if (!unitEditing) renderUnits(); }, 6000);
+        })
+        .withFailureHandler(function(err) {
+          if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+          var st = document.getElementById('unitStatus');
+          if (st) { st.textContent = 'Error: ' + (err && err.message ? err.message : err); st.className = 'status error'; }
+        })
+        .usuarios_setResponsables(unit, emails);
     }
 
     // ============ INPUT VALIDATORS ============

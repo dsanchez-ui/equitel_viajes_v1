@@ -17,7 +17,7 @@ Para probar la app **tal cual se va a publicar** antes de hacer push, sin tocar 
    npm run prueba:local -- --base "/ruta/Sistema Tiquetes Equitel V2.xlsx"
    ```
 
-3. Abrir <http://127.0.0.1:8787>: la página de inicio tiene los enlaces (la app, el dashboard de costos y la bandeja de correos), los usuarios de prueba y un recorrido sugerido.
+3. Abrir <http://127.0.0.1:8787>: la página de inicio tiene los enlaces (la app, el dashboard de costos, el panel móvil de usuarios y la bandeja de correos), los usuarios de prueba y un recorrido sugerido.
 
 Requisitos: `npm install` hecho y Python 3 con `openpyxl` (`pip install --user openpyxl`) para leer el `.xlsx`.
 

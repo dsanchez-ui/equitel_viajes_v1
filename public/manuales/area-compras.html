@@ -446,7 +446,11 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 <tbody>
 <tr>
 <td><strong>Usuarios</strong></td>
-<td>CRUD básico. Buscar, crear, editar, eliminar, borrar PIN.</td>
+<td>CRUD básico. Buscar, crear, editar, eliminar, borrar PIN. Incluye la <strong>unidad de negocio</strong> de la persona (#A135).</td>
+</tr>
+<tr>
+<td><strong>Unidades</strong></td>
+<td>Quién responde por cada unidad de negocio (aprueba los viajes que otras unidades le cargan, #A133), con las personas que más aprobaron sus viajes como sugerencia. Lo ven todos los administradores; lo cambian solo Yurani Prieto y David Sánchez (#A135).</td>
 </tr>
 <tr>
 <td><strong>Anomalías</strong></td>
@@ -458,7 +462,7 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 </tr>
 <tr>
 <td><strong>Ed. Masiva</strong></td>
-<td>Cambios masivos: asignar/agregar aprobador, cambiar empresa/sede/CC a un grupo filtrado de usuarios.</td>
+<td>Cambios masivos: asignar/agregar aprobador, cambiar empresa/sede/CC o unidad de negocio a un grupo filtrado de usuarios (filtro «Sin unidad» para los que no la tienen).</td>
 </tr>
 <tr>
 <td><strong>Duplicados</strong></td>
@@ -481,9 +485,12 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 <li>
 <p><strong>Confirmación visual tras crear</strong> — Después de guardar un usuario nuevo, el listado se refresca automáticamente, hace scroll hasta la fila del nuevo usuario y la resalta con un fondo amarillo durante 3 segundos. Te indica visualmente que quedó registrado.</p>
 </li>
+<li>
+<p><strong>Unidad de negocio</strong> (#A135) — Lista con las unidades de «CDS vs UDEN». Al editar solo se guarda si la cambias; si la escrita en la hoja no es una de la lista, el formulario lo avisa en rojo. Vacía, el portal se la pregunta a la persona la primera vez que es primer pasajero.</p>
+</li>
 </ul>
 <h2>6. Validaciones en los formularios</h2>
-<p>Tanto el sidebar como el módulo móvil (§7) aplican validaciones “en vivo” mientras el admin escribe:</p>
+<p>Tanto el sidebar como el panel móvil (§7) aplican validaciones “en vivo” mientras el admin escribe:</p>
 <table>
 <thead>
 <tr>
@@ -513,42 +520,32 @@ setScriptProperty('SUPER_ADMIN_EMAILS', '[&quot;dsanchez@equitel.com.co&quot;,&q
 <p>Las validaciones se ejecutan también en el <code>Guardar</code>, por si el admin pega un valor con copy-paste que saltó los filtros. Si algo no cumple, no se envía al backend y se muestra el error.</p>
 <p><strong>Sobre caracteres especiales (tildes, Ñ, Ü):</strong> son <strong>100% seguros</strong> en el sistema. Los nombres se usan en correos, PDFs de reporte, nombres de archivos Drive y comparaciones — en todos los casos el código maneja UTF-8 correctamente. Escribir <code>BRICEÑO</code> o <code>BRICENO</code> es indiferente para el backend, pero el primero respeta la ortografía real del nombre.</p>
 <hr>
-<h2>7. Módulo Admin Móvil</h2>
-<p><strong>Para qué sirve:</strong> crear usuarios nuevos rápidamente desde el celular sin tener que abrir el Sheet en el escritorio.</p>
-<p><strong>Caso de uso típico:</strong> llega RRHH con un empleado nuevo que necesita acceso al portal YA. Desde el celular el admin ingresa cédula, nombre, correo, empresa, sede y aprobador — un minuto y listo.</p>
+<h2>7. Panel móvil de usuarios</h2>
+<p><strong>Para qué sirve:</strong> gestionar usuarios desde el celular sin abrir el Sheet. Desde el 25-nov-2026 (#A135) es <strong>la misma Gestión de Usuarios del sidebar (§5)</strong>, con letra y botones para el celular: todo lo que hace el sidebar se hace también aquí.</p>
+<p><strong>Caso de uso típico:</strong> llega RRHH con un empleado nuevo que necesita acceso al portal YA. Al entrar se abre directamente «Nuevo usuario»: cédula, nombre, fecha de nacimiento, correo, empresa, sede, CC, unidad de negocio y aprobador — un minuto y listo.</p>
 <h3>Quién puede usarlo</h3>
-<p>Únicamente los correos registrados como administradores. El módulo usa el mismo PIN de administrador de 8 dígitos que el portal. Cualquier otra persona ve la pantalla de ingreso, pero su PIN siempre falla.</p>
+<p>Únicamente los correos registrados como administradores. El panel usa el mismo PIN de administrador de 8 dígitos que el portal. Cualquier otra persona ve la pantalla de ingreso, pero su PIN siempre falla.</p>
 <h3>Cómo se entra</h3>
-<p>Con un enlace propio del módulo, que pide quien administra el sistema (<a href="mailto:dsanchez@equitel.com.co">dsanchez@equitel.com.co</a>). Conviene guardarlo en la pantalla de inicio del celular: en iPhone, Safari → compartir → «Añadir a pantalla de inicio»; en Android, Chrome → menú → «Añadir a pantalla de inicio». Queda como si fuera una aplicación.</p>
+<p>Con un enlace propio del panel, que pide quien administra el sistema (<a href="mailto:dsanchez@equitel.com.co">dsanchez@equitel.com.co</a>). Conviene guardarlo en la pantalla de inicio del celular: en iPhone, Safari → compartir → «Añadir a pantalla de inicio»; en Android, Chrome → menú → «Añadir a pantalla de inicio». Queda como si fuera una aplicación.</p>
 <h3>Qué hace</h3>
 <ul>
-<li><strong>Login</strong>: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 7 días en ese navegador.</li>
-<li><strong>Crear usuario</strong>: formulario idéntico al del sidebar (cédula, nombre, correo, empresa, sede, CC, aprobadores) con las mismas validaciones y el mismo picker de aprobador.</li>
-<li><strong>Checkbox “Esta persona es su propio aprobador”</strong> — mismo comportamiento que en el sidebar: al marcarlo, oculta el picker y registra al usuario como autoaprobador (cols G, H, I) al guardar. Pensado para registrar directivos urgentes desde el celular.</li>
-<li><strong>Detector de duplicados</strong> — mientras escribes cédula/correo/nombre, te avisa si ya existe alguien registrado. Cédula y correo bloquean el botón Crear; nombre solo advierte (homónimos posibles). El módulo móvil no tiene botón “Editar este usuario” porque no permite editar; si detectas un duplicado, anota la cédula y abre el sidebar del Sheet para corregir.</li>
-<li>Al crear, el usuario aparece inmediatamente en la hoja USUARIOS y puede iniciar sesión en el portal.</li>
+<li><strong>Login</strong>: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. La sesión queda recordada en ese navegador; <strong>Cerrar sesión</strong> está arriba a la derecha.</li>
+<li><strong>Crear usuario</strong> (lo que abre primero): el mismo formulario del sidebar, con autoaprobador, detector de duplicados (con «→ Ver / editar este usuario») y sugerencias del Maestro RH.</li>
+<li><strong>Usuarios</strong>: buscar (también por unidad), editar, eliminar, borrar PIN y limpiar pasaporte. La fecha de nacimiento y el celular de una persona se cargan al abrirla.</li>
+<li><strong>Unidades</strong>: quién responde por cada unidad y, para Yurani y David, cambiarlo con las sugerencias.</li>
+<li><strong>Anomalías, Reemplazar</strong> (con «Reevaluar solicitudes pendientes»), <strong>Ed. Masiva</strong> y <strong>Duplicados</strong>, como en el sidebar.</li>
 </ul>
-<h3>Qué NO hace (limitaciones por diseño)</h3>
-<p>El módulo está enfocado en <strong>creación</strong>, que es la operación urgente más común fuera de oficina. No incluye:</p>
-<ul>
-<li>Editar usuarios existentes (usar sidebar del Sheet)</li>
-<li>Eliminar usuarios (usar sidebar)</li>
-<li>Detectar anomalías/duplicados</li>
-<li>Reemplazar aprobador masivo</li>
-<li>Edición masiva</li>
-<li>Reorganizar la base principal</li>
-<li>Ver métricas</li>
-</ul>
-<p>Si necesitas cualquiera de esas, abre el Sheet en tu computadora y usa el sidebar.</p>
+<p>No incluye lo que no es de usuarios: reorganizar la base principal ni ver métricas (eso sigue en el Sheet y en el portal).</p>
 <h3>Seguridad</h3>
 <ul>
 <li>La URL es pública pero la página es inútil sin PIN.</li>
-<li>Cada operación del backend (<code>mobileAdmin_getBootstrap</code>, <code>mobileAdmin_createUser</code>) valida el token de sesión y confirma que el correo esté en <code>ANALYST_EMAILS</code> antes de ejecutarse. Sin auth válida, cualquier intento de API retorna error.</li>
+<li>Cada acción pasa por una sola puerta del backend (<code>mobileAdmin_run</code>) que valida el token de sesión y confirma que el correo sea administrador antes de ejecutarse, y solo deja las funciones del sidebar. Sin auth válida, cualquier intento retorna error y la página vuelve al ingreso.</li>
+<li>La lista de usuarios llega sin fechas de nacimiento ni celulares: los de cada persona se piden al abrirla.</li>
+<li>Cambiar los responsables de una unidad lo decide el servidor con el correo de la sesión: solo Yurani y David.</li>
 <li>Si el admin es removido de <code>ANALYST_EMAILS</code> mientras tiene sesión activa, la siguiente llamada falla automáticamente y lo manda al login.</li>
-<li>Sesión expira a los 7 días o si el admin cierra sesión manualmente.</li>
 </ul>
 <h3>Impacto en la operación mientras se usa</h3>
-<p><strong>Ninguno para aprobadores ni solicitantes.</strong> El módulo móvil escribe solo en la hoja USUARIOS, mientras que las solicitudes y aprobaciones viven en la hoja Nueva Base Solicitudes. Apps Script soporta ejecuciones concurrentes (hasta 30 por script). Un admin creando un usuario no bloquea:</p>
+<p><strong>Ninguno para aprobadores ni solicitantes.</strong> El panel móvil escribe en la hoja USUARIOS (y, al cambiar responsables, en la tabla de MISC), mientras que las solicitudes y aprobaciones viven en la hoja Nueva Base Solicitudes. Apps Script soporta ejecuciones concurrentes (hasta 30 por script). Un admin creando un usuario no bloquea:</p>
 <ul>
 <li>Aprobadores clickeando correos de aprobación</li>
 <li>Usuarios haciendo login y generando su PIN por primera vez</li>

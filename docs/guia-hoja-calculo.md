@@ -47,7 +47,7 @@ Directorio de todas las personas que pueden usar el portal. Cada fila es una per
 - Centro de costo (el código de RR. HH., p. ej. `20101` o `2040305`: **no** es el de «CDS vs UDEN»)
 - Aprobadores asignados (quiénes le aprueban las solicitudes)
 - PIN (automático — no se edita a mano)
-- `Unidad de negocio` (#A133, al final): la unidad a la que **pertenece** la persona, escrita como en «CDS vs UDEN» (p. ej. `POTENCIA (GDM - P&M)`). El formulario la toma para el primer pasajero y decide con ella si un centro de costos es de otra unidad. Vacía = el formulario le pregunta a la persona la primera vez que es el primer pasajero y la guarda aquí (nunca cambia una escrita). La llena también el **menú 17**; se corrige a mano escribiéndola igual que en «CDS vs UDEN» (el menú 17 avisa si alguna está mal escrita).
+- `Unidad de negocio` (#A133, al final): la unidad a la que **pertenece** la persona, escrita como en «CDS vs UDEN» (p. ej. `POTENCIA (GDM - P&M)`). El formulario la toma para el primer pasajero y decide con ella si un centro de costos es de otra unidad. Vacía = el formulario le pregunta a la persona la primera vez que es el primer pasajero y la guarda aquí (nunca cambia una escrita). La llena también el **menú 17**. Se ve y se corrige en **Gestionar Usuarios** (pestaña Usuarios, o Ed. Masiva para varias personas) o en el panel móvil, eligiéndola de la lista (#A135); a mano también se puede, escribiéndola igual que en «CDS vs UDEN» (el menú 17 avisa si alguna está mal escrita).
 
 **Tip:** puedes convertir esta hoja a una **tabla de Google Sheets** (menú Formato → Convertir a tabla) para tener filtros por columna, formato bonito, y poder referenciar columnas por nombre en otras fórmulas. No afecta el portal.
 
@@ -121,6 +121,7 @@ Dos columnas con los encabezados `RESPONSABLE UNIDAD · UNIDAD DE NEGOCIO` y `RE
 - **Para qué sirve:** cuando un viajero de otra unidad carga su viaje a un centro de costos de esta unidad, la solicitud le pide el voto a su responsable, además del aprobador de siempre.
 - **Una unidad sin filas no recibe viajes de otras unidades:** sus centros de costos no aparecen en el formulario para los viajeros de otras unidades.
 - El formulario lee la tabla cada vez que se abre: un cambio se ve de inmediato. Las solicitudes ya creadas conservan a quién se le pidió el voto.
+- **Se cambia desde la pestaña «Unidades» de Gestionar Usuarios o del panel móvil** (#A135), con sugerencias de quién más ha aprobado los viajes de cada unidad. Solo Yurani Prieto y David Sánchez pueden cambiarla desde ahí; los demás administradores la ven. Cada cambio queda en la hoja oculta `CAMBIOS RESPONSABLES`.
 
 ### REGLAS_COAPROBADOR
 
@@ -155,6 +156,10 @@ La crea la app (#A100) la primera vez que alguien toca **«Entendido»** en la v
 
 Desde el 20-oct también guarda, con el aviso `cambios-de-viaje-2026-10` (#A103), quién leyó la explicación de «Cambiar mi viaje», que sale la primera vez que el viajero toca el botón de cambio.
 
+### CAMBIOS RESPONSABLES (oculta)
+
+La crea el sistema la primera vez que alguien cambia los responsables de una unidad desde la pestaña «Unidades» (#A135): una fila por cambio con la fecha, quién lo hizo, la unidad, los correos de antes y los de ahora. Es la constancia de quién dio el poder de aprobar. **No editar.**
+
 ### INFORMES ENVIADOS
 
 La crea el sistema (#A101) la primera vez que envía el informe mensual de cumplimiento de la política. Está oculta. Una fila por informe enviado: `FECHA`, `INFORME`, `MES`, `PARA` y `COPIA`. Sirve de constancia y evita que el informe de un mes salga dos veces. No la edites; si se borra la fila de un mes, ese informe se vuelve a enviar en la siguiente pasada del mismo mes.
@@ -171,19 +176,21 @@ Arriba del sheet, al lado de los menús estándar (Archivo, Editar, Ver…), apa
 
 ### Gestionar Usuarios (Sidebar)
 
-Abre un panel lateral a la derecha con **5 pestañas**. Esta es la herramienta principal para manejar la lista de empleados sin tener que tocar la hoja directamente.
+Abre un panel lateral a la derecha con **6 pestañas**. Esta es la herramienta principal para manejar la lista de empleados sin tener que tocar la hoja directamente.
 
 #### Pestaña "Usuarios"
 
 **Para qué sirve:** ver, crear, editar o eliminar usuarios.
 
 **Botones y qué hacen:**
-- **Buscar** (arriba): escribe un nombre, cédula o correo y filtra en tiempo real.
+- **Buscar** (arriba): escribe un nombre, cédula, correo o unidad de negocio y filtra en tiempo real. Debajo de cada persona sale su unidad (o «Sin unidad de negocio»).
 - **+ Nuevo** (botón rojo): abre el formulario para crear un usuario nuevo.
 - **Click en un usuario de la lista**: abre el formulario con sus datos para editar.
 - **Eliminar** (solo cuando estás editando): borra al usuario.
 - **Borrar PIN** (solo cuando estás editando): borra el PIN del usuario para forzarle a generar uno nuevo en su próximo login.
 - **Cancelar / Guardar**: descartar o guardar los cambios.
+
+**Unidad de negocio** (#A135): la lista tiene las unidades de «CDS vs UDEN». Al editar, solo se guarda si la cambias: si la que estaba escrita en la hoja no es una de la lista, el formulario lo avisa en rojo para que elijas la correcta. «— Sin unidad —» la borra (el portal se la preguntará a la persona la primera vez que sea primer pasajero).
 
 **Cómo agregar aprobadores a un usuario:**
 1. Edita el usuario
@@ -219,6 +226,16 @@ El campo "Nombre" autocompleta con empleados del Maestro RH (la fuente externa d
 
 Después de guardar un usuario nuevo, el listado se refresca solo, hace scroll hasta la fila del nuevo usuario y la resalta con un fondo amarillo durante 3 segundos. Te indica visualmente que quedó registrado y puedes verlo en su lugar.
 
+#### Pestaña "Unidades"
+
+**Para qué sirve (#A135):** ver y cambiar quién responde por cada unidad de negocio: la persona que aprueba, además del aprobador de siempre, los viajes que alguien de otra unidad le carga a un centro de costos de esa unidad (#A133).
+
+- Cada unidad muestra a sus responsables (o, en rojo, «Sin responsable: no recibe viajes de otras unidades»), cuántos viajes tuvo en los últimos 6 meses, **quién más aprobó esos viajes** y el último cambio (cuándo y quién).
+- **Cambiar** abre la unidad: quitas a alguien con la «×», agregas a una de las personas sugeridas (las que más aprobaron sus viajes como aprobador de área en 6 meses, sin contar cambios de viaje ni viajes cargados desde otra unidad) o buscas a cualquier persona de USUARIOS. Hasta 5 por unidad; con varios, basta el voto de uno.
+- **Guardar** pide confirmación. Cuenta desde la siguiente solicitud; las que ya existen conservan a quien se le pidió el voto. Dejar una unidad sin nadie hace que sus centros de costos ya no se ofrezcan a viajeros de otras unidades.
+- **Solo Yurani Prieto y David Sánchez pueden cambiarlos** (da poder de aprobar; la lista está en el código, como saltar la aprobación). Los demás administradores ven la pestaña sin el botón «Cambiar».
+- Se guarda en la tabla `RESPONSABLE UNIDAD` de MISC (solo esas dos columnas; lo demás de MISC no se toca) y cada cambio queda en la hoja oculta `CAMBIOS RESPONSABLES`.
+
 #### Pestaña "Anomalías"
 
 **Para qué sirve:** diagnóstico rápido de problemas en la hoja USUARIOS.
@@ -251,7 +268,7 @@ Si el badge al lado de "Anomalías" muestra un número rojo (ej: "3"), son probl
 **Cómo usarlo:**
 
 **Paso 1 — Seleccionar usuarios:**
-- Escoge un filtro: "Sin aprob." (los que no tienen aprobador asignado), "Por aprob." (busca por aprobador específico), o "Búsqueda" (por nombre/cédula/correo)
+- Escoge un filtro: "Sin aprob." (los que no tienen aprobador asignado), "Por aprob." (busca por aprobador específico), "Búsqueda" (por nombre/cédula/correo/unidad) o "Sin unidad" (sin unidad de negocio, o con una que no está en «CDS vs UDEN»; #A135)
 - Marca los checkboxes de los usuarios que quieres cambiar (o usa "Todos" / "Ninguno")
 - **Siguiente →**
 
@@ -260,6 +277,7 @@ Si el badge al lado de "Anomalías" muestra un número rojo (ej: "3"), son probl
   - *Asignar aprobador(es)* — reemplaza los aprobadores actuales por los que selecciones
   - *Agregar aprobador* — suma un aprobador sin borrar los que ya tenían
   - *Cambiar empresa / sede / centro de costo*
+  - *Cambiar unidad de negocio* (#A135): la elige de la lista de «CDS vs UDEN»
 - Completa el valor nuevo
 - **Aplicar cambios**
 
@@ -302,9 +320,9 @@ Si el badge al lado de "Anomalías" muestra un número rojo (ej: "3"), son probl
 
 ---
 
-## 📱 Crear usuarios desde el celular (Módulo Móvil)
+## 📱 Gestionar usuarios desde el celular (panel móvil)
 
-Cuando llega alguien nuevo y necesita acceso inmediato al portal, y tú no estás frente al computador, **no hace falta abrir el Google Sheets**. Hay una página web pensada para el celular que te deja crear usuarios en un minuto.
+Cuando llega alguien nuevo y necesita acceso inmediato al portal, o hay que corregir a alguien, y tú no estás frente al computador, **no hace falta abrir el Google Sheets**. Desde el 25-nov-2026 (#A135) el panel móvil es **la misma Gestión de Usuarios del sidebar**, con letra y botones para el celular: todo lo que se hace en el sidebar se hace también aquí.
 
 ### ¿Cómo accedes?
 
@@ -327,38 +345,16 @@ La primera vez te pide:
 - Tu correo de administrador.
 - El PIN de 8 dígitos (el mismo que usas en el portal normal con el botón negro "Administrador", o tu PIN personal si tienes fila propia en USUARIOS).
 
-Una vez que entras, el teléfono recuerda tu sesión **por 7 días**. No tienes que volver a meter el PIN cada vez. Si cambias de celular o borras datos del navegador, sí hay que volver a ingresar.
+Una vez que entras, el teléfono recuerda tu sesión. No tienes que volver a meter el PIN cada vez. Si cambias de celular, borras datos del navegador o tocas **Cerrar sesión** (arriba a la derecha), sí hay que volver a ingresar.
 
 ### ¿Qué puedes hacer?
 
-**Solo una cosa: crear usuarios.** El módulo móvil tiene un formulario simple con los mismos campos que el sidebar del Sheets:
-- Cédula
-- Nombre completo
-- Correo
-- Empresa (dropdown)
-- Sede (dropdown)
-- Centro de costo
-- Aprobadores (buscador)
+**Lo principal, crear usuarios:** al entrar se abre directamente el formulario «Nuevo usuario» (cédula, nombre, fecha de nacimiento, celular, correo, empresa, sede, centro de costo, **unidad de negocio** y aprobadores), con el autoaprobador, el detector de duplicados y las sugerencias del Maestro RH. **Cancelar** lleva a la lista.
 
-Llenas los campos, presionas "Crear usuario" y listo — el usuario queda en la hoja USUARIOS y puede iniciar sesión en el portal de inmediato.
-
-**Mismas ayudas que el sidebar:**
-- ☑️ **Checkbox "Esta persona es su propio aprobador"** — para registrar directivos autoaprobadores en un solo paso desde el celular.
-- 🔴 **Detector de duplicados** — si escribes una cédula o correo que ya existe, el botón "Crear usuario" se bloquea y aparece un mensaje con el nombre del usuario existente. Si solo el nombre coincide, se muestra una advertencia pero deja crear (homónimos posibles).
-
-Si detectas un duplicado y necesitas corregirlo, anota la cédula y abre el Sheet en el computador para editarlo desde el sidebar — el módulo móvil solo crea, no edita.
-
-### ¿Qué NO puedes hacer desde el móvil?
-
-El móvil está pensado para la acción más urgente fuera de oficina: **agregar gente nueva**. Todo lo demás se hace desde el sidebar del Google Sheets:
-- Editar un usuario existente
-- Eliminar un usuario
-- Ver anomalías o duplicados
-- Reemplazar aprobador masivo
-- Cambios masivos (empresa/sede/CC)
-- Borrar un PIN
-
-Si necesitas cualquiera de esas, abre el Sheets en el computador y usa el sidebar.
+**Y todo lo demás, en las mismas pestañas del sidebar** (ver [Gestionar Usuarios](#gestionar-usuarios-sidebar)):
+- **Usuarios:** buscar, editar (también la unidad de negocio), eliminar, borrar el PIN o limpiar el pasaporte. La fecha de nacimiento y el celular de una persona se cargan al abrirla («Cargando...» un momento).
+- **Unidades:** quién responde por cada unidad y, para Yurani y David, cambiarlo con las sugerencias.
+- **Anomalías, Reemplazar** (incluida «Reevaluar solicitudes pendientes»), **Ed. Masiva** y **Duplicados**.
 
 ### ¿Es seguro?
 
@@ -366,13 +362,15 @@ Sí. Aunque el enlace sea público, **sin el PIN nadie puede hacer nada**. Adem�
 - Solo correos que están en la lista `ANALYST_EMAILS` (los administradores autorizados) pueden usar el módulo. El resto verá la pantalla de login pero su PIN siempre fallará.
 - Después de 5 intentos fallidos, el sistema bloquea **a ese correo específico** por 15 minutos (no afecta a los demás administradores).
 - Si el login falla por red y no por PIN, el sistema lo detecta y **no** consume intentos del rate-limit.
-- Cada acción (cargar datos, crear usuario) re-verifica que tu sesión siga siendo válida. Si te quitaron de la lista de administradores mientras estabas logueado, la siguiente acción te saca automáticamente.
+- Cada acción (cargar datos, crear, editar, cambiar responsables…) re-verifica que tu sesión siga siendo válida y que seas administrador. Si te quitaron de la lista de administradores mientras estabas logueado, la siguiente acción te saca automáticamente.
+- El servidor solo deja hacer desde el celular lo que hace el sidebar (nada más), y la lista de usuarios llega sin fechas de nacimiento ni celulares: los de cada persona se piden al abrirla.
+- Cambiar los responsables de una unidad sigue reservado a Yurani y David también desde el celular: el servidor lo decide con el correo con el que entraste.
 
 ### ¿Afecta a las demás personas mientras yo lo uso?
 
 **No.** Los aprobadores pueden seguir aprobando desde sus correos, los solicitantes pueden seguir creando solicitudes, los usuarios nuevos pueden seguir generando su PIN por primera vez — todo al mismo tiempo que tú creas un usuario desde el celular, sin conflictos.
 
-La única vez que algo espera es si otro admin está creando otro usuario al mismo segundo desde el sidebar del Sheets. En ese caso, tu creación espera 2-3 segundos al otro admin y luego procede. Nada grave.
+La única vez que algo espera es si otro admin está creando otro usuario (o cambiando responsables) al mismo segundo desde el sidebar del Sheets. En ese caso, tu cambio espera 2-3 segundos al otro admin y luego procede. Nada grave.
 
 ---
 
@@ -477,7 +475,7 @@ Las otras dos (Crear / Migrar) ya se ejecutaron. No las corras de nuevo a menos 
 
 ## Cómo funcionan los campos del formulario de usuarios
 
-Tanto en el sidebar (pestaña Usuarios) como en el módulo móvil, los campos tienen reglas automáticas que te ayudan a escribir datos bien formateados sin pensar:
+Tanto en el sidebar (pestaña Usuarios) como en el panel móvil, los campos tienen reglas automáticas que te ayudan a escribir datos bien formateados sin pensar:
 
 | Campo | Qué pasa mientras escribes |
 |---|---|

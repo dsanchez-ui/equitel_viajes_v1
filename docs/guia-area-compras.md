@@ -320,10 +320,11 @@ El cambio aplica **inmediatamente** (no requiere redeploy). Si quitas a alguien,
 
 | Tab | Para qué |
 |---|---|
-| **Usuarios** | CRUD básico. Buscar, crear, editar, eliminar, borrar PIN. |
+| **Usuarios** | CRUD básico. Buscar, crear, editar, eliminar, borrar PIN. Incluye la **unidad de negocio** de la persona (#A135). |
+| **Unidades** | Quién responde por cada unidad de negocio (aprueba los viajes que otras unidades le cargan, #A133), con las personas que más aprobaron sus viajes como sugerencia. Lo ven todos los administradores; lo cambian solo Yurani Prieto y David Sánchez (#A135). |
 | **Anomalías** | Diagnóstico: correos no corporativos, usuarios sin aprobador, aprobadores huérfanos (cédula no existe en USUARIOS). |
 | **Reemplazar** | Si un aprobador sale de la empresa: reemplazar su cédula por la de otro en TODOS los usuarios que lo tienen como aprobador. Vista previa antes de aplicar. |
-| **Ed. Masiva** | Cambios masivos: asignar/agregar aprobador, cambiar empresa/sede/CC a un grupo filtrado de usuarios. |
+| **Ed. Masiva** | Cambios masivos: asignar/agregar aprobador, cambiar empresa/sede/CC o unidad de negocio a un grupo filtrado de usuarios (filtro «Sin unidad» para los que no la tienen). |
 | **Duplicados** | Detecta filas con cédula, correo, o nombre repetido. Compara cada grupo lado-a-lado (datos + estado del PIN) y elimina las que sobran. |
 
 #### 6.1.bis Comportamiento del formulario "Nuevo / Editar usuario"
@@ -337,9 +338,11 @@ El formulario tiene tres ayudas integradas para evitar errores típicos al gesti
 - **Sugerencias de nombre filtradas por Maestro RH** — El campo "Nombre" autocompleta con personas del Maestro RH, pero excluye automáticamente a las que ya están en USUARIOS. Así, al crear un nuevo usuario, las sugerencias muestran solo empleados aún no registrados.
 
 - **Confirmación visual tras crear** — Después de guardar un usuario nuevo, el listado se refresca automáticamente, hace scroll hasta la fila del nuevo usuario y la resalta con un fondo amarillo durante 3 segundos. Te indica visualmente que quedó registrado.
+
+- **Unidad de negocio** (#A135) — Lista con las unidades de «CDS vs UDEN». Al editar solo se guarda si la cambias; si la escrita en la hoja no es una de la lista, el formulario lo avisa en rojo. Vacía, el portal se la pregunta a la persona la primera vez que es primer pasajero.
 ## 6. Validaciones en los formularios
 
-Tanto el sidebar como el módulo móvil (§7) aplican validaciones "en vivo" mientras el admin escribe:
+Tanto el sidebar como el panel móvil (§7) aplican validaciones "en vivo" mientras el admin escribe:
 
 | Campo | Restricción |
 |---|---|
@@ -353,51 +356,41 @@ Las validaciones se ejecutan también en el `Guardar`, por si el admin pega un v
 **Sobre caracteres especiales (tildes, Ñ, Ü):** son **100% seguros** en el sistema. Los nombres se usan en correos, PDFs de reporte, nombres de archivos Drive y comparaciones — en todos los casos el código maneja UTF-8 correctamente. Escribir `BRICEÑO` o `BRICENO` es indiferente para el backend, pero el primero respeta la ortografía real del nombre.
 
 ---
-## 7. Módulo Admin Móvil
+## 7. Panel móvil de usuarios
 
-**Para qué sirve:** crear usuarios nuevos rápidamente desde el celular sin tener que abrir el Sheet en el escritorio.
+**Para qué sirve:** gestionar usuarios desde el celular sin abrir el Sheet. Desde el 25-nov-2026 (#A135) es **la misma Gestión de Usuarios del sidebar (§5)**, con letra y botones para el celular: todo lo que hace el sidebar se hace también aquí.
 
-**Caso de uso típico:** llega RRHH con un empleado nuevo que necesita acceso al portal YA. Desde el celular el admin ingresa cédula, nombre, correo, empresa, sede y aprobador — un minuto y listo.
+**Caso de uso típico:** llega RRHH con un empleado nuevo que necesita acceso al portal YA. Al entrar se abre directamente «Nuevo usuario»: cédula, nombre, fecha de nacimiento, correo, empresa, sede, CC, unidad de negocio y aprobador — un minuto y listo.
 
 ### Quién puede usarlo
 
-Únicamente los correos registrados como administradores. El módulo usa el mismo PIN de administrador de 8 dígitos que el portal. Cualquier otra persona ve la pantalla de ingreso, pero su PIN siempre falla.
+Únicamente los correos registrados como administradores. El panel usa el mismo PIN de administrador de 8 dígitos que el portal. Cualquier otra persona ve la pantalla de ingreso, pero su PIN siempre falla.
 
 ### Cómo se entra
 
-Con un enlace propio del módulo, que pide quien administra el sistema (dsanchez@equitel.com.co). Conviene guardarlo en la pantalla de inicio del celular: en iPhone, Safari → compartir → «Añadir a pantalla de inicio»; en Android, Chrome → menú → «Añadir a pantalla de inicio». Queda como si fuera una aplicación.
+Con un enlace propio del panel, que pide quien administra el sistema (dsanchez@equitel.com.co). Conviene guardarlo en la pantalla de inicio del celular: en iPhone, Safari → compartir → «Añadir a pantalla de inicio»; en Android, Chrome → menú → «Añadir a pantalla de inicio». Queda como si fuera una aplicación.
 
 ### Qué hace
 
-- **Login**: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. Sesión dura 7 días en ese navegador.
-- **Crear usuario**: formulario idéntico al del sidebar (cédula, nombre, correo, empresa, sede, CC, aprobadores) con las mismas validaciones y el mismo picker de aprobador.
-- **Checkbox "Esta persona es su propio aprobador"** — mismo comportamiento que en el sidebar: al marcarlo, oculta el picker y registra al usuario como autoaprobador (cols G, H, I) al guardar. Pensado para registrar directivos urgentes desde el celular.
-- **Detector de duplicados** — mientras escribes cédula/correo/nombre, te avisa si ya existe alguien registrado. Cédula y correo bloquean el botón Crear; nombre solo advierte (homónimos posibles). El módulo móvil no tiene botón "Editar este usuario" porque no permite editar; si detectas un duplicado, anota la cédula y abre el sidebar del Sheet para corregir.
-- Al crear, el usuario aparece inmediatamente en la hoja USUARIOS y puede iniciar sesión en el portal.
+- **Login**: correo admin + PIN (mismo del portal). Rate-limit de 5 intentos por 15 min. La sesión queda recordada en ese navegador; **Cerrar sesión** está arriba a la derecha.
+- **Crear usuario** (lo que abre primero): el mismo formulario del sidebar, con autoaprobador, detector de duplicados (con «→ Ver / editar este usuario») y sugerencias del Maestro RH.
+- **Usuarios**: buscar (también por unidad), editar, eliminar, borrar PIN y limpiar pasaporte. La fecha de nacimiento y el celular de una persona se cargan al abrirla.
+- **Unidades**: quién responde por cada unidad y, para Yurani y David, cambiarlo con las sugerencias.
+- **Anomalías, Reemplazar** (con «Reevaluar solicitudes pendientes»), **Ed. Masiva** y **Duplicados**, como en el sidebar.
 
-### Qué NO hace (limitaciones por diseño)
-
-El módulo está enfocado en **creación**, que es la operación urgente más común fuera de oficina. No incluye:
-- Editar usuarios existentes (usar sidebar del Sheet)
-- Eliminar usuarios (usar sidebar)
-- Detectar anomalías/duplicados
-- Reemplazar aprobador masivo
-- Edición masiva
-- Reorganizar la base principal
-- Ver métricas
-
-Si necesitas cualquiera de esas, abre el Sheet en tu computadora y usa el sidebar.
+No incluye lo que no es de usuarios: reorganizar la base principal ni ver métricas (eso sigue en el Sheet y en el portal).
 
 ### Seguridad
 
 - La URL es pública pero la página es inútil sin PIN.
-- Cada operación del backend (`mobileAdmin_getBootstrap`, `mobileAdmin_createUser`) valida el token de sesión y confirma que el correo esté en `ANALYST_EMAILS` antes de ejecutarse. Sin auth válida, cualquier intento de API retorna error.
+- Cada acción pasa por una sola puerta del backend (`mobileAdmin_run`) que valida el token de sesión y confirma que el correo sea administrador antes de ejecutarse, y solo deja las funciones del sidebar. Sin auth válida, cualquier intento retorna error y la página vuelve al ingreso.
+- La lista de usuarios llega sin fechas de nacimiento ni celulares: los de cada persona se piden al abrirla.
+- Cambiar los responsables de una unidad lo decide el servidor con el correo de la sesión: solo Yurani y David.
 - Si el admin es removido de `ANALYST_EMAILS` mientras tiene sesión activa, la siguiente llamada falla automáticamente y lo manda al login.
-- Sesión expira a los 7 días o si el admin cierra sesión manualmente.
 
 ### Impacto en la operación mientras se usa
 
-**Ninguno para aprobadores ni solicitantes.** El módulo móvil escribe solo en la hoja USUARIOS, mientras que las solicitudes y aprobaciones viven en la hoja Nueva Base Solicitudes. Apps Script soporta ejecuciones concurrentes (hasta 30 por script). Un admin creando un usuario no bloquea:
+**Ninguno para aprobadores ni solicitantes.** El panel móvil escribe en la hoja USUARIOS (y, al cambiar responsables, en la tabla de MISC), mientras que las solicitudes y aprobaciones viven en la hoja Nueva Base Solicitudes. Apps Script soporta ejecuciones concurrentes (hasta 30 por script). Un admin creando un usuario no bloquea:
 - Aprobadores clickeando correos de aprobación
 - Usuarios haciendo login y generando su PIN por primera vez
 - Usuarios creando solicitudes nuevas

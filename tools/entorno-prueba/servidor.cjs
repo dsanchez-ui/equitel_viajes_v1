@@ -664,7 +664,7 @@ function homePage(ctx, ss, trips) {
     '<h1>🧪 Entorno de prueba · Equitel Viajes</h1>' +
     '<div class="warn"><b>Copia local de la base exportada.</b> Nada de lo que haga aquí llega a producción ni a Google: la hoja vive en la memoria de este PC, ' +
     'los archivos en un Drive simulado y <b>los correos no se envían</b> (quedan en la bandeja de abajo). Al cerrar el servidor todo vuelve a la copia original.</div>' +
-    '<h2>Entrar</h2><p><a class="btn" href="' + APP + '" target="_blank">Abrir la app</a><a class="btn alt" href="' + EXEC + '?action=costs-dashboard" target="_blank">Dashboard de costos</a>' +
+    '<h2>Entrar</h2><p><a class="btn" href="' + APP + '" target="_blank">Abrir la app</a><a class="btn alt" href="' + EXEC + '?action=costs-dashboard" target="_blank">Dashboard de costos</a><a class="btn alt" href="' + EXEC + '?action=admin" target="_blank">Panel móvil de usuarios</a>' +
     '<a class="btn alt" href="' + API + '/correos" target="_blank">Bandeja de correos (' + outbox.length + ')</a></p>' +
     '<p>El PIN de <b>todos</b> los usuarios y el de administrador es <code>' + esc(PIN) + '</code>.</p>' +
     '<table><tr><th>Quién</th><th>Correo</th><th>Cómo entra</th></tr>' +

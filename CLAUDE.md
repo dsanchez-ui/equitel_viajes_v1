@@ -31,7 +31,7 @@ archivos; Gmail para notificaciones.
    sintaxis del backend + paridad del validador de OT + reglas de fecha de
    nacimiento, de celular, de costos, de aerolínea/canal y de tarifa + estadísticas de compra +
    facturas por cerrar y por revisar + aprobación del CFO por la política + informe mensual +
-   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + desglose del presupuesto con OT + reporte en Excel de una unidad + centros de costos de otra unidad + enlaces con dominio + manuales publicados + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
+   rastreo de precios + velocidad y análisis de ahorro + cambios de viaje + avisos a los aprobadores, «Mis aprobaciones» y la línea de tiempo + soporte del costo + desglose del presupuesto con OT + reporte en Excel de una unidad + centros de costos de otra unidad + administración de usuarios y panel móvil + enlaces con dominio + manuales publicados + build + un solo archivo JavaScript con su `version.json`). Debe salir en verde.
    Para probar la app tal cual quedará, antes del push: `npm run prueba:local -- --base "<exportación .xlsx>"`
    (entorno local con el `Code.gs` real y una copia en memoria; ningún correo sale; ver `tools/entorno-prueba/README.md`).
 3. **Revisión de bugs y seguridad al final** de cada cambio, no al principio.
@@ -62,7 +62,7 @@ archivos; Gmail para notificaciones.
 ```bash
 npm install          # regenerar SIEMPRE por máquina — ver MIGRACION.md
 npm run dev          # servidor de desarrollo, puerto 3000
-npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + desglose con OT + reporte de unidad + centros de costos de otra unidad + manuales + build + un solo .js y version.json  ← antes de cualquier push
+npm run verify       # typecheck + sintaxis backend + OT + fecha nac. + celular + costos + compras + aerolínea/canal + tarifa + facturas por cerrar + aprobación del CFO + informe mensual + rastreo de precios + caché y análisis de ahorro + cambios de viaje + aprobaciones y línea de tiempo + soporte del costo + desglose con OT + reporte de unidad + centros de costos de otra unidad + administración de usuarios + manuales + build + un solo .js y version.json  ← antes de cualquier push
 npm run prueba:local -- --base "/ruta/exportación.xlsx"   # entorno de prueba local: app de producción + Code.gs real sobre una copia; correos a una bandeja local
 npm run build        # build de producción a dist/
 npm run build:guia   # regenera los PDF de docs/ (requiere Chrome instalado)
@@ -409,11 +409,24 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     `[UNIDAD REGISTRADA]` y el aprobador ve «registró su unidad por primera vez». El servidor usa la de USUARIOS, nunca la que mande el navegador.
   - **Vota también el responsable de la unidad dueña** (rol `OTHER_UNIT`, columnas `APROBADOR OTRA UNIDAD` y `APROBADO OTRA UNIDAD`), además del
     aprobador de siempre. Responsables: tabla `RESPONSABLE UNIDAD · UNIDAD DE NEGOCIO / · CORREO` de MISC (**menú 18**, arranca con los líderes del
-    dashboard de costos). Varios por unidad: vota cualquiera. Nadie vota su propio viaje; si la persona ya vota con otro rol, ese voto lo cubre
+    dashboard de costos; desde #A135 se cambia en la pestaña «Unidades»). Varios por unidad: vota cualquiera. Nadie vota su propio viaje; si la persona ya vota con otro rol, ese voto lo cubre
     (`_ouEffective_`). Una sola regla de «a quién se le pide» (`_approvalAskedFor_`): correo, recordatorios, avisos, «Mis aprobaciones», línea de tiempo.
   - **Una unidad sin responsable no recibe viajes de otras**: aviso en rojo, el formulario no deja enviar y el servidor rechaza la solicitud (un
     cambio de un viaje ya cargado allá sí pasa). Yurani responde por las unidades administrativas (David, 24-nov). Gemelo `utils/otherUnit.ts` ↔
     `_ouPlan_`; la app solo cambia si el servidor manda `otherUnitCharges`.
+- **Responsables y unidad desde «Gestión de Usuarios»; el panel móvil es el mismo sidebar** (#A135, David, 25-nov: *«que el sistema muestre
+  fácilmente quién es el responsable… y que se pueda cambiar desde ahí»*, *«que esa aplicación móvil tuviera… todo lo que se puede modificar en
+  la sidebar»*).
+  - **Unidad de cada persona:** campo en el formulario de usuario, filtro «Sin unidad» y acción en Ed. Masiva. Solo la etiqueta de «CDS vs UDEN»
+    (`_usuarioUnitFromPayload_`); clave `unidadNegocio` presente = se toca.
+  - **Pestaña «Unidades»:** responsables de cada unidad con sugerencias (quién más aprobó sus viajes como aprobador de área, 180 días, sin cambios
+    ni viajes cargados desde otra unidad). **Cambiarlos da poder: lista fija `OU_RESPONSABLES_EDIT_ALLOWED` (Yurani, David) + administrador**; los
+    demás administradores solo ven. Sidebar: `Session.getActiveUser()`, **nunca** `getEffectiveUser()` (en el web app es el dueño, P0). Cada
+    cambio queda en la hoja oculta `CAMBIOS RESPONSABLES`; se reescriben solo las dos columnas de la tabla.
+  - **Panel móvil (`?action=admin`) = `AdminSidebar.html` con `data-mode="mobile"`** (`_adminMobilePage_`): ingreso con PIN de administrador y
+    cada llamada por `gsRun()` → `mobileAdmin_run` (valida la sesión; solo las funciones de `_adminMobileApi_`). `AdminMobile.html` se borró.
+    **Una llamada nueva del sidebar va en `MOBILE_FNS` y en `_adminMobileApi_`** (`tools/check-user-admin.cjs` lo exige). En el móvil la lista no
+    lleva fechas de nacimiento ni celulares: se piden al abrir a la persona (`_usuariosGetUserDetail_`, privada: solo por `mobileAdmin_run`).
 - **Dashboard de costos por pestañas** (#A117, David, 28-oct: *«está demasiado largo»*): Año · Periodo · Mes · Mes a mes · Cotizado vs
   facturado · Cambios de viaje · Comparador de precios · Proyección de ahorro, al final de la tarjeta de filtros. Se ve una sección a la
   vez. **Los datos se siguen pidiendo todos en paralelo** (#A89): lo que ahorra es el dibujo, porque solo se dibuja la pestaña que se ve
@@ -672,6 +685,7 @@ Detalle completo en `BUG_REPORT.md`. Lo que importa no volver a romper:
 | **COMPARATIVO PRECIOS** / **COMPARATIVO ESTADO** | Ocultas. Las escribe el proyecto aparte del rastreo de precios (#A84): una fila por búsqueda y el estado del rastreo. Desde #A95 cada búsqueda guarda `TARIFA` y `MALETA DE MANO`. Las lee el dashboard de costos. No editarlas. |
 | **PPTOS UNIDADES** | Presupuestos por unidad de negocio (dashboard de costos). |
 | **INFORMES ENVIADOS** | Oculta. La crea el sistema (#A101): una fila (fecha, informe, mes, para, copia) por cada informe mensual de la política enviado. Evita enviarlo dos veces. No editar. |
+| **CAMBIOS RESPONSABLES** | Oculta. La crea el sistema (#A135): una fila (fecha, quién, unidad, antes, ahora) por cada cambio de responsables desde la pestaña «Unidades». No editar. |
 | **CONSTANCIA AVISOS** | La crea la app (#A100): una fila (fecha, correo, aviso) por cada solicitante que tocó «Entendido» en la ventana de las reglas nuevas. Es la evidencia de que lo leyó. No editar. |
 
 ## Script Properties (Apps Script)
@@ -769,8 +783,7 @@ utils/approvalLog.ts       Filas de Métricas → Aprobaciones a partir de la l�
 utils/datePresets.ts       Rangos de fecha de Métricas (Hoy, Últimos 7 y 30 días, Todo, Personalizado)
 server/
   Code.gs                  Backend completo (~14.400 líneas)
-  AdminSidebar.html        Sidebar de administración del Sheets
-  AdminMobile.html         Panel móvil (público, protegido por sesión)
+  AdminSidebar.html        «Gestión de Usuarios»: sidebar del Sheets y, con data-mode="mobile", el panel móvil (?action=admin, #A135)
   CostsDashboard.html      Dashboard de costos por unidad (incluye el comparador de precios, #A84)
   ReorgSidebar.html        Workflow de reorganización de columnas
 tools/check-gas-syntax.cjs Verifica sintaxis de Code.gs y del JS de los HTML
@@ -795,6 +808,7 @@ tools/check-cost-evidence.cjs        Soporte del costo: subir, confirmar, correo
 tools/check-costs-ot.cjs             Desglose del presupuesto: lo cargado a OT aparte, la barra del 100 % y cada unidad frente a su presupuesto (#A131)
 tools/check-unit-report.cjs          Reporte en Excel de una unidad: facturas 4 a 6, mismas cuentas del dashboard, permisos y el .xlsx armado (#A132)
 tools/check-other-unit.cjs           Centro de costos de otra unidad: responsables, unidad del viajero, la que paga, el voto extra, menú 17 y el gemelo del formulario (#A133)
+tools/check-user-admin.cjs           Unidad de cada persona, pestaña «Unidades» (sugerencias, quién cambia, la tabla y la constancia) y el panel móvil con todo el sidebar (#A135)
 tools/entorno-prueba/      Entorno de prueba local: build de producción + Code.gs real sobre una copia de la base; correos a una bandeja local (#A103)
 tools/comparador-precios/  Comparador de precios (Google Flights vía SerpApi): prueba local y núcleo (comparador.cjs);
                            ignav.cjs + README-ignav.md: prueba de Ignav del 9-oct (descartada: no da las tarifas ni el equipaje bien)
@@ -853,8 +867,14 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-24)
+### Para retomar (estado al 2026-11-25)
 
+- **#A135 listo, pendiente de desplegar (25-nov):** responsables de cada unidad (pestaña «Unidades», con sugerencias; solo Yurani y David los
+  cambian), unidad de cada persona en el formulario y en Ed. Masiva, y el panel móvil con todo el sidebar. Para David, en este orden: pegar
+  `Code.gs` y `AdminSidebar.html` → Guardar → versión nueva del web app → probar el panel móvil → borrar `AdminMobile.html` del proyecto de Apps
+  Script (opcional; ya no se usa). Sin cambios en el frontend. El 25-nov David cambió a mano en MISC lo que pidió Yurani: Diana Hernández en
+  POTENCIA, Ana Ochoa fuera (se pensiona) y responsables propios para 7 unidades administrativas; falta lo que Yurani diga del resto de la lista.
+  Ana Ochoa también está en los accesos al dashboard de costos y es aprobadora de área de algunas personas: pendiente de David.
 - **Retomar en el Mac (24-nov, tarde):** todo está en `main` y desplegado hasta #A134 (frontend `6570c9b` en producción; David pegó `Code.gs`
   y publicó la versión nueva). En el Mac: `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la exportación
   de la hoja (la del PC se queda allá: datos personales); el entorno ya corre solo lo de los menús 17 y 18.

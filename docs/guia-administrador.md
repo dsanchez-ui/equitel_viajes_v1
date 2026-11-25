@@ -93,6 +93,16 @@ Siempre con `/a/macros/equitel.com.co/`: sin el dominio, un celular con varias c
 abre así desde el botón *Costos por Unidad*.
 
 Recomendación: agregarlo a la pantalla de inicio del celular (iOS Safari → compartir → "Añadir a pantalla de inicio"; Chrome Android → menú → "Añadir a pantalla de inicio") para acceso de un toque, como si fuera una app nativa.
+
+### Cómo funciona por dentro (#A135, 25-nov-2026)
+
+- **Es el sidebar «Gestión de Usuarios» en modo móvil.** `doGet` (`?action=admin`) → `_adminMobilePage_()` lee `AdminSidebar.html` y le pone `data-mode="mobile"` en `<body>`. `AdminMobile.html` ya no existe (solo creaba usuarios). Si `AdminSidebar.html` es una versión anterior (sin la marca `data-mobile-ready`), la página muestra un aviso en vez del sidebar sin inicio de sesión: pegar `Code.gs` y `AdminSidebar.html` juntos.
+- **Inicio de sesión:** `verifyAdminPin(pin, email)` → token en `localStorage.equitel_mobile_admin_session` (la misma llave del panel anterior).
+- **Una sola puerta:** en modo móvil, `gsRun()` del sidebar manda cada llamada a `mobileAdmin_run(email, token, fn, args)`, que valida la sesión (`_requireMobileAdminAuth_`) y solo ejecuta las funciones de `_adminMobileApi_` (las mismas que usa el sidebar; `tools/check-user-admin.cjs` compara las listas del navegador y del servidor con las llamadas del sidebar). En el sidebar de la hoja, `gsRun()` es `google.script.run`.
+- **Datos personales:** en el móvil `usuarios_listAll` llega sin `fechaNacimiento` ni `celular`; el formulario los pide al abrir a una persona (`usuarios_getUserDetail` en `_adminMobileApi_`, que llama a la privada `_usuariosGetUserDetail_`: no se puede pedir por fuera de `mobileAdmin_run`).
+- **Responsables de cada unidad** (pestaña «Unidades»): `usuarios_getResponsables` / `usuarios_setResponsables` en el sidebar (quien cambia = `Session.getActiveUser()`, **sin** respaldo en `getEffectiveUser`, que en el web app es el dueño del script) y en el móvil el correo de la sesión. Cambiar: solo `OU_RESPONSABLES_EDIT_ALLOWED` (Yurani, David) y además administrador. Reescribe solo las dos columnas de la tabla en MISC y deja constancia en la hoja oculta `CAMBIOS RESPONSABLES`. Sugerencias: `_ouApprovalStats_` (votos `Sí_correo` de `APROBADO POR ÁREA? (AUTOMÁTICO)` de los últimos `OU_SUGGEST_DAYS` = 180 días, sin cambios de viaje ni viajes cargados desde otra unidad).
+- **Unidad de cada persona:** `usuarios_create` / `usuarios_update` aceptan `unidadNegocio` (clave presente = se toca; vacía = sin unidad; siempre la etiqueta de «CDS vs UDEN», `_usuarioUnitFromPayload_`), y `usuarios_bulkUpdate` la acción `unidadNegocio`.
+- Las funciones `mobileAdmin_getBootstrap` y `mobileAdmin_createUser` se quedan para una pestaña abierta con el panel anterior.
 ## 5. Triggers programados (4 triggers cada 2h)
 
 Estos se ejecutan automáticamente en horario laboral. Ya están configurados.

@@ -531,15 +531,10 @@ function doGet(e) {
     return processPolicyDecision(e);
   }
 
-  // 3c. Admin mobile module — página HTML standalone para crear usuarios
-  // desde el celular. Seguridad: la página exige login con PIN admin y usa
-  // un token de sesión validado en cada request hacia mobileAdmin_*.
-  if (action === 'admin') {
-    return HtmlService.createHtmlOutputFromFile('AdminMobile')
-      .setTitle('Equitel Viajes — Admin Móvil')
-      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT)
-      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-  }
+  // 3c. Panel móvil de usuarios (#A135): la misma página del sidebar «Gestión de Usuarios», en modo móvil
+  // (data-mode="mobile" en <body>): exige entrar con correo y PIN de administrador y cada llamada pasa por
+  // mobileAdmin_run, que valida la sesión. Antes era AdminMobile.html, que solo creaba usuarios.
+  if (action === 'admin') return _adminMobilePage_();
 
   // 3d. Dashboard de costos — página HTML standalone con login inline
   // (email + PIN), filtros, gráfico, exportación CSV/PDF. Seguridad:
@@ -14081,7 +14076,9 @@ function usuarios_listAll() {
   const idxPasaporteFile = headers.indexOf('Pasaporte File ID');
   const idxFechaNac = headers.map(_normalizeHeader_).indexOf(USUARIOS_BIRTHDATE_HEADER);
   const idxCelular = headers.map(_normalizeHeader_).indexOf(USUARIOS_PHONE_HEADER);
-  const maxCol = Math.max(10, idxPasaporteFecha + 1, idxPasaporteFile + 1, idxFechaNac + 1, idxCelular + 1, 1);
+  // #A135: la unidad de negocio de la persona (#A133), para verla y cambiarla desde el sidebar y el panel móvil.
+  const idxUnidad = headers.map(_normalizeHeader_).indexOf(OU_USER_UNIT_HEADER);
+  const maxCol = Math.max(10, idxPasaporteFecha + 1, idxPasaporteFile + 1, idxFechaNac + 1, idxCelular + 1, idxUnidad + 1, 1);
   const data = sheet.getRange(2, 1, lastRow - 1, maxCol).getValues();
   return data.filter(function(r) { return r[0]; }).map(function(r) {
     var passportDate = idxPasaporteFecha >= 0 ? String(r[idxPasaporteFecha] || '').trim() : '';
@@ -14107,7 +14104,9 @@ function usuarios_listAll() {
       fechaNacimiento: idxFechaNac >= 0 ? _birthdateCellToIso_(r[idxFechaNac]) : '',
       // Igual que la fecha (#A75). Texto tal cual: si alguien lo escribió mal a
       // mano, el sidebar lo muestra para corregirlo.
-      celular: idxCelular >= 0 ? _phoneCellToText_(r[idxCelular]) : ''
+      celular: idxCelular >= 0 ? _phoneCellToText_(r[idxCelular]) : '',
+      // Tal como está escrita: si no es una unidad de «CDS vs UDEN», el sidebar lo avisa para corregirla.
+      unidadNegocio: idxUnidad >= 0 ? String(r[idxUnidad] == null ? '' : r[idxUnidad]).replace(/\s+/g, ' ').trim() : ''
     };
   });
 }
@@ -14261,6 +14260,9 @@ function usuarios_create(data) {
     if (!phone.ok) throw new Error(phone.error);
     if (phone.value && _getUsuarioPhoneCol_(sheet) < 0) agregarColumnaCelular();
 
+    // Unidad de negocio (#A135): opcional; si viene, debe ser una unidad de «CDS vs UDEN». Se valida antes de escribir.
+    const unitNew = _usuarioUnitFromPayload_(data);
+
     // Pre-construir lookup con el nuevo usuario inyectado para que cols H/I
     // se resuelvan correctamente cuando es su propio aprobador (su cédula
     // aparece en cedulasAprobadores antes de existir en la hoja).
@@ -14282,6 +14284,7 @@ function usuarios_create(data) {
       fechaNacimiento: birth.value,
       celular: phone.value || undefined
     }, lookup);
+    if (unitNew) _writeUsuarioUnit_(sheet, newRow, unitNew);
     SpreadsheetApp.flush();
     return { success: true, cedula: cedula };
   } finally {
@@ -14341,6 +14344,10 @@ function usuarios_update(originalCedula, data) {
     }
   }
 
+  // Unidad de negocio (#A135): clave ausente = no tocar (un sidebar con la versión anterior); vacía = sin
+  // unidad; con valor = debe ser una unidad de «CDS vs UDEN». Se valida antes de escribir.
+  const unitUpdate = data.unidadNegocio !== undefined ? _usuarioUnitFromPayload_(data) : undefined;
+
   // Preservar el hash de PIN existente
   const existingPin = String(sheet.getRange(row, 10).getValue() || '').trim();
 
@@ -14369,6 +14376,7 @@ function usuarios_update(originalCedula, data) {
     fechaNacimiento: birthUpdate,
     celular: phoneUpdate
   }, lookup);
+  if (unitUpdate !== undefined) _writeUsuarioUnit_(sheet, row, unitUpdate);
   SpreadsheetApp.flush();
   return { success: true };
 }
@@ -14617,13 +14625,15 @@ function usuarios_bulkUpdate(payload) {
   if (!targetCedulas || !targetCedulas.length) throw new Error('No se seleccionaron usuarios.');
   if (!action) throw new Error('Acción no especificada.');
 
-  var validActions = ['setApprovers', 'addApprover', 'empresa', 'sede', 'centroCosto'];
+  var validActions = ['setApprovers', 'addApprover', 'empresa', 'sede', 'centroCosto', 'unidadNegocio'];
   if (validActions.indexOf(action) === -1) throw new Error('Acción inválida: ' + action);
 
   // Para acciones de propiedad simple, value no puede estar vacío
-  if (['empresa', 'sede', 'centroCosto'].indexOf(action) > -1 && !value) {
+  if (['empresa', 'sede', 'centroCosto', 'unidadNegocio'].indexOf(action) > -1 && !value) {
     throw new Error('El valor no puede estar vacío.');
   }
+  // Unidad de negocio (#A135): una unidad de «CDS vs UDEN», escrita como allí.
+  if (action === 'unidadNegocio') value = _usuarioUnitFromPayload_({ unidadNegocio: value });
 
   var lookup = _buildCedulaLookup_(sheet);
 
@@ -14649,6 +14659,7 @@ function usuarios_bulkUpdate(payload) {
   var COL_H = 8; // Correos Aprobadores (auto)
   var COL_I = 9; // Nombres Aprobadores (auto)
   var colMap = { empresa: 4, sede: 5, centroCosto: 6 };
+  if (action === 'unidadNegocio') colMap.unidadNegocio = _ouEnsureUserUnitCol_(sheet);
 
   var affected = 0;
 
@@ -14681,7 +14692,8 @@ function usuarios_bulkUpdate(payload) {
       }
       case 'empresa':
       case 'sede':
-      case 'centroCosto': {
+      case 'centroCosto':
+      case 'unidadNegocio': {
         sheet.getRange(rowNumber, colMap[action]).setValue(value);
         break;
       }
@@ -14689,6 +14701,7 @@ function usuarios_bulkUpdate(payload) {
     affected++;
   });
 
+  if (action === 'unidadNegocio') _OU_USER_UNITS_CACHE = null;
   SpreadsheetApp.flush();
   return { affected: affected };
 }
@@ -23427,4 +23440,334 @@ function menuResponsablesUnidad() {
     console.error('menuResponsablesUnidad: ' + (e && e.stack ? e.stack : e));
     ui.alert('Error', String(e && e.message ? e.message : e), ui.ButtonSet.OK);
   }
+}
+
+// =====================================================================
+// USUARIOS: UNIDAD DE NEGOCIO, RESPONSABLES DE CADA UNIDAD Y PANEL MÓVIL COMPLETO (#A135)
+// =====================================================================
+// David, 25-nov-2026: «que se pueda cambiar el responsable de cada unidad de negocio… que el sistema muestre
+// fácilmente quién es el responsable en este momento… y sugiera a las personas que más han aprobado viajes en
+// esa unidad»; cambiar la unidad de una persona; y que el panel móvil haga todo lo que hace el sidebar, con
+// crear usuarios como función principal.
+//   - La unidad de cada persona se ve y se cambia en el formulario del usuario (sidebar y móvil) y en la
+//     edición masiva. Siempre una unidad de «CDS vs UDEN», escrita como allí.
+//   - Los responsables de cada unidad (tabla de MISC, #A133) se ven en la pestaña «Unidades», con las
+//     personas que más aprobaron (como aprobador de área) los viajes cargados a esa unidad en los últimos
+//     OU_SUGGEST_DAYS días. Cambiarlos da poder de aprobación: solo OU_RESPONSABLES_EDIT_ALLOWED (lista fija,
+//     como saltar la aprobación, #A77) y además administrador. Cada cambio queda en la hoja oculta
+//     CAMBIOS RESPONSABLES (cuándo, quién, antes y ahora).
+//   - El panel móvil (?action=admin) es la misma página del sidebar en modo móvil: entra con correo y PIN de
+//     administrador, y cada llamada pasa por mobileAdmin_run, que valida la sesión y solo deja las funciones
+//     del sidebar. Las fechas de nacimiento y los celulares no viajan en la lista: se piden al abrir a una
+//     persona (usuarios_getUserDetail → _usuariosGetUserDetail_, que no se puede llamar por fuera de esa puerta).
+// =====================================================================
+var OU_RESPONSABLES_EDIT_ALLOWED = [
+  { email: 'yprieto@equitel.com.co', name: 'Yurani Prieto' },
+  { email: 'dsanchez@equitel.com.co', name: 'David Sánchez' }
+];
+var OU_RESP_MAX = 5;
+var OU_SUGGEST_DAYS = 180;
+var OU_RESP_LOG_SHEET = 'CAMBIOS RESPONSABLES';
+/** Marca que pone la versión del sidebar que sabe funcionar como panel móvil (con su propio inicio de sesión). */
+var ADMIN_MOBILE_MARK = 'data-mobile-ready';
+
+/** La unidad que manda un formulario: '' si viene vacía; la etiqueta de «CDS vs UDEN»; o un error para la persona. */
+function _usuarioUnitFromPayload_(data) {
+  var raw = String(data && data.unidadNegocio != null ? data.unidadNegocio : '').replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+  var canon = _ouCanonicalUnit_(raw);
+  if (!canon) throw new Error('La unidad de negocio «' + raw + '» no está en la hoja «CDS vs UDEN». Elíjala de la lista.');
+  return canon;
+}
+
+/** Escribe la unidad de una fila de USUARIOS (vacía = sin unidad). La columna se crea solo si hay algo que escribir. */
+function _writeUsuarioUnit_(sheet, row, unit) {
+  var col = unit ? _ouEnsureUserUnitCol_(sheet) : _ouUserUnitCol_(sheet);
+  if (col > 0) sheet.getRange(row, col).setValue(unit || '');
+  _OU_USER_UNITS_CACHE = null;
+}
+
+/** Las unidades de «CDS vs UDEN» (sin NA), en orden alfabético: la lista de los formularios. */
+function usuarios_getUnidades() {
+  var all = _ouCostCenters_().units;
+  return Object.keys(all).map(function (k) { return all[k]; }).sort(function (a, b) { return a.localeCompare(b, 'es'); });
+}
+
+function _canEditUnitResponsables_(email) {
+  var e = String(email || '').toLowerCase().trim();
+  if (!e) return false;
+  var listed = OU_RESPONSABLES_EDIT_ALLOWED.some(function (p) { return p.email === e; });
+  return listed && isUserAnalyst(e);
+}
+
+function _ouEditDeniedMsg_() {
+  return 'Cambiar quién responde por una unidad está reservado a ' +
+    OU_RESPONSABLES_EDIT_ALLOWED.map(function (p) { return p.name; }).join(' y ') + '.';
+}
+
+/**
+ * Quién aprobó, como aprobador de área, los viajes cargados a cada unidad en los últimos `days` días:
+ * { byUnit: { norm: { correo: n } }, trips: { norm: n } }. No cuenta los cambios de viaje (serían el mismo viaje
+ * dos veces) ni los viajes cargados desde otra unidad (#A133: esos los aprueba el jefe del viajero, que no
+ * responde por esta). Una fila sin fecha legible cuenta.
+ */
+function _ouApprovalStats_(days) {
+  var out = { byUnit: {}, trips: {} };
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2) return out;
+  var iUnit = H('UNIDAD DE NEGOCIO'), iDate = H('FECHA SOLICITUD'), iVote = H('APROBADO POR ÁREA? (AUTOMÁTICO)');
+  var iTrav = H(OU_TRAVELER_UNIT_HEADER), iType = H('TIPO DE SOLICITUD');
+  if (iUnit < 0 || iVote < 0) return out;
+  var since = Date.now() - days * 86400000;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  rows.forEach(function (r) {
+    if (!r[0]) return;
+    if (iType >= 0 && String(r[iType] || '').toUpperCase() === 'MODIFICACION') return;
+    if (iDate >= 0 && r[iDate]) {
+      var d = r[iDate], t = Object.prototype.toString.call(d) === '[object Date]' ? d.getTime() : new Date(d).getTime();
+      if (!isNaN(t) && t < since) return;
+    }
+    var unit = _ouCanonicalUnit_(r[iUnit]);
+    if (!unit) return;
+    var norm = _csNormalize_(unit);
+    if (iTrav >= 0) {
+      var trav = _ouCanonicalUnit_(r[iTrav]);
+      if (trav && _csNormalize_(trav) !== norm) return;
+    }
+    out.trips[norm] = (out.trips[norm] || 0) + 1;
+    var m = /^S[ií]_([^\s@]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/i.exec(String(r[iVote] || '').trim());
+    if (!m) return;
+    var email = m[1].toLowerCase();
+    var by = out.byUnit[norm] || (out.byUnit[norm] = {});
+    by[email] = (by[email] || 0) + 1;
+  });
+  return out;
+}
+
+/** El último cambio de responsables de cada unidad (hoja CAMBIOS RESPONSABLES): { norm: 'd/M/aaaa H:mm · Nombre' }. */
+function _ouRespLastChanges_(names) {
+  var out = {};
+  try {
+    var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OU_RESP_LOG_SHEET);
+    if (!sh || sh.getLastRow() < 2) return out;
+    sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues().forEach(function (r) {
+      var norm = _csNormalize_(r[2]);
+      if (!norm) return;
+      var who = String(r[1] || '').toLowerCase().trim();
+      out[norm] = _approvalTimeText_(r[0]) + ' · ' + (names[who] || who);
+    });
+  } catch (e) {
+    console.error('Responsables (#A135): no se pudo leer ' + OU_RESP_LOG_SHEET + ': ' + e);
+  }
+  return out;
+}
+
+/** Deja constancia de un cambio de responsables. Si falla, el cambio ya está hecho: solo se registra el error. */
+function _ouLogRespChange_(who, unit, before, after) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sh = ss.getSheetByName(OU_RESP_LOG_SHEET);
+    if (!sh) {
+      sh = ss.insertSheet(OU_RESP_LOG_SHEET);
+      sh.appendRow(['FECHA', 'QUIÉN', 'UNIDAD', 'ANTES', 'AHORA']);
+      sh.setFrozenRows(1);
+      try { sh.hideSheet(); } catch (e) { /* la hoja queda visible */ }
+    }
+    sh.appendRow([new Date(), who, unit, before.join(', '), after.join(', ')]);
+  } catch (e) {
+    console.error('Responsables (#A135): no se pudo dejar constancia del cambio de ' + unit + ': ' + e);
+  }
+}
+
+/**
+ * Lo que muestra la pestaña «Unidades»: cada unidad de «CDS vs UDEN» con sus responsables, las personas que más
+ * aprobaron sus viajes (sugerencias, solo de USUARIOS), cuántos viajes hubo en la ventana y el último cambio.
+ * canEdit dice si quien consulta puede cambiarlos.
+ */
+function _ouResponsablesOverview_(callerEmail) {
+  _OU_TABLE_CACHE = null;
+  var t = _ouReadTable_();
+  var names = _approvalNamesMap_();
+  var users = _getRequesterCedulaMap_(); // correo → cédula
+  var stats = _ouApprovalStats_(OU_SUGGEST_DAYS);
+  var by = t.found ? _ouApproversByUnit_() : {};
+  var last = _ouRespLastChanges_(names);
+  var all = _ouCostCenters_().units;
+  var person = function (e) { return { email: e, name: names[e] || '', inUsers: !!users[e] }; };
+  var warnings = [];
+  t.rows.forEach(function (r) {
+    if (!r.unit) warnings.push('Fila ' + r.row + ': «' + (r.unitRaw || '(vacía)') + '» no es una unidad de «CDS vs UDEN»; no cuenta.');
+    else if (_ouList_(r.email).length !== 1) warnings.push('Fila ' + r.row + ': el correo «' + r.email + '» no es válido; no cuenta.');
+  });
+  var units = Object.keys(all).sort(function (a, b) { return all[a].localeCompare(all[b], 'es'); }).map(function (k) {
+    var current = by[k] ? by[k].emails : [];
+    var counts = stats.byUnit[k] || {};
+    var suggestions = Object.keys(counts).filter(function (e) { return !!users[e]; })
+      .sort(function (a, b) { return counts[b] - counts[a] || String(names[a] || a).localeCompare(String(names[b] || b), 'es'); })
+      .slice(0, 5)
+      .map(function (e) { var p = person(e); p.count = counts[e]; p.current = current.indexOf(e) !== -1; return p; });
+    return { unit: all[k], responsables: current.map(person), suggestions: suggestions, trips: stats.trips[k] || 0, lastChange: last[k] || '' };
+  });
+  return {
+    found: t.found,
+    canEdit: _canEditUnitResponsables_(callerEmail),
+    editors: OU_RESPONSABLES_EDIT_ALLOWED.map(function (p) { return p.name; }).join(' y '),
+    days: OU_SUGGEST_DAYS,
+    max: OU_RESP_MAX,
+    units: units,
+    warnings: warnings
+  };
+}
+
+/**
+ * Cambia los responsables de una unidad: reescribe sus filas en la tabla de MISC (solo las dos columnas de la
+ * tabla; las demás filas quedan en su orden) y deja constancia. emails = lista de correos de USUARIOS (vacía =
+ * la unidad deja de recibir viajes de otras). Devuelve la vista de la pestaña ya actualizada.
+ */
+function _ouSetResponsables_(unitRaw, emailsRaw, callerEmail) {
+  if (!_canEditUnitResponsables_(callerEmail)) throw new Error(_ouEditDeniedMsg_());
+  var unit = _ouCanonicalUnit_(unitRaw);
+  if (!unit) throw new Error('«' + String(unitRaw || '') + '» no es una unidad de «CDS vs UDEN».');
+  var list = Array.isArray(emailsRaw) ? emailsRaw : String(emailsRaw || '').split(/[,;\s]+/);
+  var emails = [];
+  list.forEach(function (e) {
+    e = String(e == null ? '' : e).toLowerCase().trim();
+    if (e && emails.indexOf(e) === -1) emails.push(e);
+  });
+  if (emails.length > OU_RESP_MAX) throw new Error('Máximo ' + OU_RESP_MAX + ' responsables por unidad.');
+  var users = _getRequesterCedulaMap_();
+  emails.forEach(function (e) {
+    if (_ouList_(e).length !== 1) throw new Error('«' + e + '» no es un correo válido.');
+    if (!users[e]) throw new Error(e + ' no está en USUARIOS. Créelo primero: el responsable entra a la plataforma con ese correo.');
+  });
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(LOCK_WAIT_MS)) throw new Error('Sistema ocupado. Intente de nuevo en unos segundos.');
+  var before = [];
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(OU_TABLE_SHEET);
+    if (!sheet) throw new Error('No existe la hoja "' + OU_TABLE_SHEET + '".');
+    _OU_TABLE_CACHE = null;
+    var t = _ouReadTable_();
+    if (!t.found) {
+      prepararTablaResponsablesUnidad();
+      _OU_TABLE_CACHE = null;
+      t = _ouReadTable_();
+    }
+    if (!t.found) throw new Error('No se encontró la tabla de responsables en ' + OU_TABLE_SHEET + ' (menú 18).');
+    var norm = _csNormalize_(unit);
+    var rows = [], at = -1;
+    t.rows.forEach(function (r) {
+      if (r.unit && _csNormalize_(r.unit) === norm) {
+        if (at < 0) at = rows.length;
+        if (before.indexOf(r.email) === -1) before.push(r.email);
+        return;
+      }
+      rows.push([r.unitRaw, r.email]);
+    });
+    if (at < 0) at = rows.length;
+    var next = rows.slice(0, at).concat(emails.map(function (e) { return [unit, e]; }), rows.slice(at));
+    var oldLast = t.rows.length ? t.rows[t.rows.length - 1].row : t.loc.headerRow;
+    var height = Math.max(oldLast - t.loc.headerRow, next.length);
+    if (height > 0) {
+      var colUnit = [], colEmail = [];
+      for (var i = 0; i < height; i++) {
+        colUnit.push([next[i] ? next[i][0] : '']);
+        colEmail.push([next[i] ? next[i][1] : '']);
+      }
+      sheet.getRange(t.loc.headerRow + 1, t.loc.unitCol, height, 1).setValues(colUnit);
+      sheet.getRange(t.loc.headerRow + 1, t.loc.emailCol, height, 1).setValues(colEmail);
+    }
+    _OU_TABLE_CACHE = null;
+    SpreadsheetApp.flush();
+  } finally {
+    try { lock.releaseLock(); } catch (e) { /* sin lock */ }
+  }
+  _ouLogRespChange_(String(callerEmail || '').toLowerCase().trim(), unit, before, emails);
+  return _ouResponsablesOverview_(callerEmail);
+}
+
+/** Correo de quien usa el sidebar. Sin respaldo con getEffectiveUser: en el web app ese es el dueño del script (P0). */
+function _sidebarCallerEmail_() {
+  try { return String(Session.getActiveUser().getEmail() || '').toLowerCase().trim(); } catch (e) { return ''; }
+}
+
+/** Pestaña «Unidades» del sidebar. */
+function usuarios_getResponsables() {
+  return _ouResponsablesOverview_(_sidebarCallerEmail_());
+}
+
+/** Cambiar los responsables de una unidad desde el sidebar (solo OU_RESPONSABLES_EDIT_ALLOWED). */
+function usuarios_setResponsables(unit, emails) {
+  return _ouSetResponsables_(unit, emails, _sidebarCallerEmail_());
+}
+
+/**
+ * La fecha de nacimiento y el celular de una persona: el panel móvil los pide al abrirla, no en la lista. Privada (termina
+ * en _): solo se llega por mobileAdmin_run, con la sesión validada; ningún camino nuevo expone estos datos (P0, 10-sep).
+ */
+function _usuariosGetUserDetail_(cedula) {
+  var ced = String(cedula == null ? '' : cedula).trim();
+  var u = ced ? usuarios_listAll().filter(function (x) { return x.cedula === ced; })[0] : null;
+  if (!u) throw new Error('Usuario no encontrado.');
+  return { cedula: u.cedula, fechaNacimiento: u.fechaNacimiento, celular: u.celular };
+}
+
+/** La página del panel móvil: el sidebar en modo móvil. Si AdminSidebar.html es una versión anterior, un aviso. */
+function _adminMobilePage_() {
+  var html = HtmlService.createHtmlOutputFromFile('AdminSidebar').getContent();
+  if (html.indexOf(ADMIN_MOBILE_MARK) === -1 || html.indexOf('<body>') === -1) {
+    return HtmlService.createHtmlOutput('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:sans-serif;padding:24px;color:#1f2937">' +
+      '<h3>El panel móvil se está actualizando</h3><p>Falta pegar la versión nueva de AdminSidebar.html en Apps Script. ' +
+      'Mientras tanto, use «Gestión de Usuarios» desde la hoja.</p></body></html>')
+      .setTitle('Equitel Viajes — Usuarios');
+  }
+  return HtmlService.createHtmlOutput(html.replace('<body>', '<body data-mode="mobile">'))
+    .setTitle('Equitel Viajes — Usuarios')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
+}
+
+/**
+ * Las funciones del sidebar que puede usar el panel móvil, ya con la sesión validada. La lista y el correo de
+ * quien entró los pone el servidor: nunca el navegador.
+ */
+function _adminMobileApi_(who) {
+  return {
+    usuarios_listAll: function () {
+      return usuarios_listAll().map(function (u) {
+        var copy = {};
+        Object.keys(u).forEach(function (k) { if (k !== 'fechaNacimiento' && k !== 'celular') copy[k] = u[k]; });
+        return copy;
+      });
+    },
+    usuarios_getUserDetail: _usuariosGetUserDetail_,
+    usuarios_getCatalogoOrg: usuarios_getCatalogoOrg,
+    usuarios_getSedes: usuarios_getSedes,
+    usuarios_getEmpresas: usuarios_getEmpresas,
+    usuarios_getUnidades: usuarios_getUnidades,
+    usuarios_create: usuarios_create,
+    usuarios_update: usuarios_update,
+    usuarios_delete: usuarios_delete,
+    usuarios_deleteByRow: usuarios_deleteByRow,
+    usuarios_clearPin: usuarios_clearPin,
+    usuarios_clearPassport: usuarios_clearPassport,
+    usuarios_getAnomalias: usuarios_getAnomalias,
+    usuarios_findDuplicates: usuarios_findDuplicates,
+    usuarios_findUsersWithApprover: usuarios_findUsersWithApprover,
+    usuarios_replaceApprover: usuarios_replaceApprover,
+    usuarios_bulkUpdate: usuarios_bulkUpdate,
+    reevaluarAprobadoresPendientes: reevaluarAprobadoresPendientes,
+    usuarios_getResponsables: function () { return _ouResponsablesOverview_(who); },
+    usuarios_setResponsables: function (unit, emails) { return _ouSetResponsables_(unit, emails, who); }
+  };
+}
+
+/** Puerta única del panel móvil: valida la sesión de administrador y llama la función del sidebar. */
+function mobileAdmin_run(email, token, fn, args) {
+  _requireMobileAdminAuth_(email, token);
+  var who = String(email || '').toLowerCase().trim();
+  var api = _adminMobileApi_(who);
+  var name = String(fn || '');
+  if (!Object.prototype.hasOwnProperty.call(api, name)) throw new Error('Esa acción no está disponible en el panel móvil: ' + name);
+  return api[name].apply(null, Array.isArray(args) ? args : []);
 }

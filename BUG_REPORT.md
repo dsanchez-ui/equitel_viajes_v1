@@ -4283,3 +4283,63 @@ rastreo de ese viaje busca el regreso al origen).
 aceptar y cotizar. Sigue el flujo de un cambio sin comprar: opciones nuevas, selección, costos y aprobación (Simón y, si POTENCIA sigue por
 encima del presupuesto, Alejandro); al aprobarse, la SOL-000801 se anula sola.
 
+
+## **#A135 — Responsables de cada unidad y unidad de cada persona desde la gestión de usuarios; el panel móvil hace todo lo del sidebar**
+**Fecha:** 2026-11-25 · **Pedido por:** David (*«que se pueda cambiar el responsable de cada unidad de negocio… que el sistema muestre
+fácilmente quién es el responsable en este momento y que se pueda cambiar desde ahí… que sugiera a las personas que más han aprobado viajes en
+esa unidad»*; *«que también permita editar… su unidad de negocio»*; *«quisiera que esa aplicación móvil tuviera la capacidad de modificar todo
+lo que ya se puede modificar en la sidebar… la función principal fuera crear usuarios»*). Ese día Yurani pidió a Diana Hernández como
+responsable de POTENCIA y quitar a Ana Ochoa (se pensiona); David lo cambió a mano en MISC. · **Estado:** Implementado, pendiente de pegar
+`Code.gs` y `AdminSidebar.html` y crear la versión nueva del web app.
+
+**Síntoma:**
+- La tabla de responsables de cada unidad (#A133) solo se cambiaba escribiendo en MISC: había que saber la fila, la columna y el correo exacto, y
+  no se veía quién aprueba de verdad los viajes de cada unidad.
+- La unidad de una persona (columna `Unidad de negocio` de USUARIOS) solo se corregía a mano en la hoja.
+- El panel móvil (`AdminMobile.html`) solo creaba usuarios: editar, borrar un PIN, reemplazar un aprobador o revisar duplicados exigía el
+  computador.
+
+**Causa raíz:** #A133 dejó la tabla y la columna para que las administrara el menú 18 y el menú 17; el sidebar y el panel móvil no las conocían.
+El panel móvil era una página aparte, con su propia copia del formulario de crear.
+
+**Fix:**
+- **Unidad de cada persona:** campo «Unidad de negocio» en el formulario de usuario (lista de «CDS vs UDEN»; al editar solo se guarda si se
+  cambió; si la escrita no es una unidad, se avisa en rojo), la unidad debajo de cada persona en la lista y en la búsqueda, y en Ed. Masiva el
+  filtro «Sin unidad» y la acción «Cambiar unidad de negocio». El servidor solo escribe la etiqueta de «CDS vs UDEN»
+  (`_usuarioUnitFromPayload_`; clave presente = se toca, como la fecha de nacimiento y el celular).
+- **Pestaña «Unidades»** (sidebar y móvil): cada unidad con sus responsables (o «Sin responsable: no recibe viajes de otras unidades»), los viajes
+  de los últimos 6 meses, quién más los aprobó y el último cambio. «Cambiar» abre la unidad: quitar, agregar de las sugeridas (las personas de
+  USUARIOS que más aprobaron sus viajes como aprobador de área, sin cambios de viaje ni viajes cargados desde otra unidad) o buscar a cualquiera;
+  hasta 5. Guardar pide confirmación y reescribe solo las dos columnas de la tabla en MISC (las demás filas en su orden; lo demás de MISC no se
+  toca) y deja constancia en la hoja oculta `CAMBIOS RESPONSABLES` (fecha, quién, unidad, antes, ahora).
+- **Quién puede cambiar responsables:** da poder de aprobar, así que va en una lista fija (`OU_RESPONSABLES_EDIT_ALLOWED`: Yurani y David, como
+  saltar la aprobación, #A77) y además administrador. Los demás administradores ven la pestaña sin «Cambiar». En el sidebar el servidor usa
+  `Session.getActiveUser()`, nunca `getEffectiveUser()` (en el web app es el dueño del script: P0 de la reunión del 10-sep).
+- **Panel móvil = el sidebar:** `?action=admin` sirve `AdminSidebar.html` con `data-mode="mobile"`: inicio de sesión con correo y PIN de
+  administrador, barra con «Cerrar sesión», letra y campos para el celular, y al entrar el formulario «Nuevo usuario». Cada llamada va por
+  `gsRun()` → `mobileAdmin_run`, que valida la sesión y solo deja las funciones del sidebar (`_adminMobileApi_`). La lista llega sin fechas de
+  nacimiento ni celulares; los de cada persona se piden al abrirla (`_usuariosGetUserDetail_`, privada: solo por `mobileAdmin_run`). Se borró `AdminMobile.html`; si alguien abre el
+  enlace con un `AdminSidebar.html` anterior, sale un aviso, nunca el sidebar sin inicio de sesión.
+- De paso: las listas de sede y empresa del sidebar repetían sus opciones en cada recarga; ahora se llenan una sola vez.
+
+**Verificado:**
+- `tools/check-user-admin.cjs` (nuevo, en `npm run verify`):
+  - la unidad al crear, editar y en masa (no se escribe una que no existe; sin la clave no se toca);
+  - las sugerencias (ventana, cambios, otra unidad, externos, denegadas);
+  - quién puede cambiar (lista fija + administrador, sidebar sin respaldo en el dueño del script, móvil con el correo de la sesión);
+  - la tabla reescrita sin tocar tarjetas, sedes ni accesos, y la constancia;
+  - el panel móvil (página, aviso con el HTML anterior, sesión, funciones no permitidas, lista sin datos personales);
+  - que toda llamada del sidebar existe también en el móvil.
+- `npm run verify` en verde.
+- Entorno local con la exportación del 24-nov y Chrome a 390 px:
+  - David entra con PIN, crea una persona con unidad y abre a Diana Hernández (llegan su fecha y su celular);
+  - en «Unidades», POTENCIA sugiere a Diana (28 viajes), Francisco Amézquita (20) y Simón (15); cambiarlos pide confirmación y deja «Último cambio»;
+  - Ed. Masiva «Sin unidad» lista 117 personas y cambia una;
+  - Laura (compras) ve la pestaña sin «Cambiar»;
+  - un token vencido vuelve al ingreso y un correo que no es administrador no entra.
+- A 300 px (sidebar de Sheets), la misma página sin el ingreso ni la barra.
+
+**Despliegue:** pegar `Code.gs` y `AdminSidebar.html` → Guardar → **versión nueva del web app** (el panel móvil es el web app). Borrar
+`AdminMobile.html` del proyecto de Apps Script (ya no se usa; si se queda, no pasa nada). Sin cambios en el frontend.
+- **`Code.gs` nuevo + `AdminSidebar.html` anterior:** el sidebar de la hoja sigue como antes; el panel móvil muestra «se está actualizando».
+- **`AdminSidebar.html` nuevo + `Code.gs` anterior:** el sidebar abre, pero la unidad y la pestaña «Unidades» fallan: pegar los dos juntos.
