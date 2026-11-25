@@ -869,15 +869,17 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-25)
 
-- **#A135 listo, pendiente de desplegar (25-nov):** responsables de cada unidad (pestaña «Unidades», con sugerencias; solo Yurani y David los
-  cambian), unidad de cada persona en el formulario y en Ed. Masiva, y el panel móvil con todo el sidebar. Para David, en este orden: pegar
-  `Code.gs` y `AdminSidebar.html` → Guardar → versión nueva del web app → probar el panel móvil → borrar `AdminMobile.html` del proyecto de Apps
-  Script (opcional; ya no se usa). Sin cambios en el frontend. El 25-nov David cambió a mano en MISC lo que pidió Yurani: Diana Hernández en
-  POTENCIA, Ana Ochoa fuera (se pensiona) y responsables propios para 7 unidades administrativas; falta lo que Yurani diga del resto de la lista.
-  Ana Ochoa también está en los accesos al dashboard de costos y es aprobadora de área de algunas personas: pendiente de David.
-- **Retomar en el Mac (24-nov, tarde):** todo está en `main` y desplegado hasta #A134 (frontend `6570c9b` en producción; David pegó `Code.gs`
-  y publicó la versión nueva). En el Mac: `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la exportación
-  de la hoja (la del PC se queda allá: datos personales); el entorno ya corre solo lo de los menús 17 y 18.
+- **Retomar en el Mac (25-nov, noche):** todo está en `main` hasta #A135. El frontend en producción es el de #A134 (#A135 no cambia la app,
+  solo los manuales del botón «Ayuda»). En el Mac: `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la
+  exportación de la hoja (la del PC se queda allá: datos personales); el entorno corre lo de los menús 17 y 18 y tiene el enlace al panel móvil.
+- **#A135 en `main`, pendiente de pegar en Apps Script (25-nov):** responsables de cada unidad (pestaña «Unidades», con sugerencias; solo Yurani y
+  David los cambian), unidad de cada persona en el formulario y en Ed. Masiva, y el panel móvil con todo el sidebar. Para David, en este orden:
+  pegar `Code.gs` y `AdminSidebar.html` → Guardar → versión nueva del web app → probar el panel móvil → borrar `AdminMobile.html` del proyecto de
+  Apps Script (opcional; ya no se usa, y solo después de pegar el `Code.gs` nuevo). Pegar los dos juntos: con solo `Code.gs` el panel móvil dice «se
+  está actualizando»; con solo el sidebar, la unidad y la pestaña «Unidades» fallan.
+- **Responsables (25-nov):** lo que pidió Yurani (Diana Hernández en POTENCIA, Ana Ochoa fuera porque se pensiona y responsables propios para 7
+  unidades administrativas) lo cambia David en MISC, o desde la pestaña «Unidades» cuando #A135 esté pegado. Falta lo que Yurani diga del resto de
+  la lista. Ana Ochoa sigue en los accesos al dashboard de costos y es aprobadora de área de algunas personas: pendiente de David.
 - **#A134 desplegado (24-nov)** («Cambiar mi viaje» → regreso a otra ciudad). Si `Rastreo.gs` no se pegó en el proyecto aparte, el comparador busca
   el regreso al origen en esos viajes (no afecta nada más). **SOL-000801 (Simón, Medellín → Bogotá, regreso a Pereira):** Laura guardó la reserva
   por partes antes del cambio, así que es un cambio de tiquete comprado (#A109): primero «Confirmar lo que se compró» en «Revisar Cambio» (lo
