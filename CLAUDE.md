@@ -892,20 +892,28 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-28)
 
-- **#A136 y #A137 en `main`, pendientes de pegar en Apps Script (28-nov):** con OT válida, la política de anticipación ya no detiene la
-  solicitud (#A136) y al CFO no se le pide **nada** —tampoco la tarifa superior ni el cambio después del plazo— (#A137). **Se pega junto con #A135** (`Code.gs` + `AdminSidebar.html` → Guardar → versión nueva del web app); no hay menú que correr
-  ni columnas nuevas. El frontend ya salió con el push. Mientras no se pegue, todo sigue como hoy (el formulario dice «necesita» porque
-  el servidor no manda `workOrderExempt`). Al pegarlo, en la siguiente pasada del activador (cada 2 h) se sueltan solas las que estén
-  esperando y tengan OT; con el **menú 14** se ve cuántas son antes y después. Pendiente sin código: avisarle a Yurani que quedó, y que
-  Alejandro deje de recibirlas en su resumen.
-- **Retomar en el Mac (25-nov, noche):** todo está en `main` hasta #A135. El frontend en producción es el de #A134 (#A135 no cambia la app,
-  solo los manuales del botón «Ayuda»). En el Mac: `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la
-  exportación de la hoja (la del PC se queda allá: datos personales); el entorno corre lo de los menús 17 y 18 y tiene el enlace al panel móvil.
-- **#A135 en `main`, pendiente de pegar en Apps Script (25-nov):** responsables de cada unidad (pestaña «Unidades», con sugerencias; solo Yurani y
-  David los cambian), unidad de cada persona en el formulario y en Ed. Masiva, y el panel móvil con todo el sidebar. Para David, en este orden:
-  pegar `Code.gs` y `AdminSidebar.html` → Guardar → versión nueva del web app → probar el panel móvil → borrar `AdminMobile.html` del proyecto de
-  Apps Script (opcional; ya no se usa, y solo después de pegar el `Code.gs` nuevo). Pegar los dos juntos: con solo `Code.gs` el panel móvil dice «se
-  está actualizando»; con solo el sidebar, la unidad y la pestaña «Unidades» fallan.
+- **Retomar en el PC Linux (28-nov, noche):** todo está en `main` hasta #A137 y **no queda nada por pegar en Apps Script**. En el PC:
+  `git pull`, `npm ci` y `npm run verify`. El frontend en producción es `a169477` (build `0a251a42`, que es el de #A137: el commit de
+  cierre solo lleva prueba y documentación). Para `npm run prueba:local`, la exportación de la hoja del PC sigue allá (la del Mac no
+  viaja: datos personales). Pendiente del PC desde el 22-oct: `sudo apt update && sudo apt upgrade` (26 paquetes).
+- **#A135, #A136 y #A137 desplegados (28-nov):** David pegó `Code.gs` y `AdminSidebar.html` y publicó la versión nueva del web app.
+  - **#A135:** responsables de cada unidad (pestaña «Unidades», con sugerencias; solo Yurani y David los cambian), unidad de cada
+    persona en el formulario y en Ed. Masiva, y el panel móvil con todo el sidebar. Queda opcional borrar `AdminMobile.html` del
+    proyecto de Apps Script (ya no se usa; si se queda, no pasa nada) y probar el panel móvil.
+  - **#A136 y #A137 (órdenes de trabajo):** con OT válida la solicitud no espera la preaprobación y **al CFO no se le pide nada** (ni
+    presupuesto, ni tarifa superior, ni cambio después del plazo). **Lo primero que hay que revisar al retomar:** con el **menú 14**,
+    que la pasada del activador ya corrió y no quedan solicitudes con OT esperando; y en *Métricas → Aprobaciones*, que no quede
+    ninguna con OT esperando solo el voto de Alejandro (si quedara, `_policyUnblockWorkOrders_` la destraba en la siguiente pasada).
+  - Pendiente sin código: avisarle a Yurani (el mensaje quedó escrito el 28-nov) y confirmar con ella y con Laura que a compras le
+    empezaron a llegar directo las de OT fuera de plazo.
+- **Ideas que quedaron sobre la mesa el 28-nov (nadie las pidió todavía, preguntar antes de construir):**
+  - **El segundo par de ojos del cambio tarde.** El voto del CFO en un cambio pedido después del plazo también protegía el caso en que
+    el aprobador de área es quien pide (Mateo, #A129). Con OT ya no está. La vuelta corta sería pedir el voto solo cuando quien pide es
+    su propio aprobador, con OT o sin ella. David lo sabe y decidió seguir así.
+  - **Separar lo de OT en el informe mensual** (#A101): hoy un viaje con OT pedido fuera de plazo cuenta igual que cualquier otro, y
+    Alejandro ya no lo aprueba. Mostrar la parte de OT aparte le cuadraría el informe con lo que ve.
+  - **La OT no se puede validar contra nada:** no hay hoja maestra, solo formato (`OT-CUBTA-110256`). Quien quiera saltarse el plazo
+    puede inventarse un número bien formado; el rastro queda en «Cargado a OT» del dashboard, con el número.
 - **Responsables (25-nov):** lo que pidió Yurani (Diana Hernández en POTENCIA, Ana Ochoa fuera porque se pensiona y responsables propios para 7
   unidades administrativas) lo cambia David en MISC, o desde la pestaña «Unidades» cuando #A135 esté pegado. Falta lo que Yurani diga del resto de
   la lista. Ana Ochoa sigue en los accesos al dashboard de costos y es aprobadora de área de algunas personas: pendiente de David.

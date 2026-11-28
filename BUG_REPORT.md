@@ -4289,8 +4289,8 @@ encima del presupuesto, Alejandro); al aprobarse, la SOL-000801 se anula sola.
 fácilmente quién es el responsable en este momento y que se pueda cambiar desde ahí… que sugiera a las personas que más han aprobado viajes en
 esa unidad»*; *«que también permita editar… su unidad de negocio»*; *«quisiera que esa aplicación móvil tuviera la capacidad de modificar todo
 lo que ya se puede modificar en la sidebar… la función principal fuera crear usuarios»*). Ese día Yurani pidió a Diana Hernández como
-responsable de POTENCIA y quitar a Ana Ochoa (se pensiona); David lo cambió a mano en MISC. · **Estado:** Implementado, pendiente de pegar
-`Code.gs` y `AdminSidebar.html` y crear la versión nueva del web app.
+responsable de POTENCIA y quitar a Ana Ochoa (se pensiona); David lo cambió a mano en MISC. · **Estado:** **Desplegado el 2026-11-28**
+(David pegó `Code.gs` y `AdminSidebar.html` y publicó la versión nueva del web app, junto con #A136 y #A137).
 
 **Síntoma:**
 - La tabla de responsables de cada unidad (#A133) solo se cambiaba escribiendo en MISC: había que saber la fila, la columna y el correo exacto, y
@@ -4350,7 +4350,8 @@ El panel móvil era una página aparte, con su propia copia del formulario de cr
 **Fecha:** 2026-11-28 · **Pedido por:** Yurani Prieto por Alejandro Gómez (*«Alejandro ya se cansó de aprobar los viajes fuera de los
 8 días, entonces por fa para que todos los que tengan OT (que es lo que los clientes van a pagar) que los deje avanzar sin problema,
 sin aprobado»*) · Diseño de David el 28-nov ·
-**Estado:** En `main`, **pendiente de pegar `Code.gs`** en Apps Script (va junto con el de #A135, que también está pendiente).
+**Estado:** **Desplegado el 2026-11-28** (frontend `2688d2c`, build `a6311d89`; David pegó `Code.gs` con #A135 y #A137 y publicó la
+versión nueva del web app).
 
 **Síntoma:**
 Desde #A100 (14-oct) toda solicitud pedida con menos de 8 días (30 internacional) queda en `PENDIENTE_APROBACION_POLITICA` hasta que
@@ -4423,7 +4424,7 @@ menú que correr y no se crean columnas. El frontend sale con el push.
 **Fecha:** 2026-11-28 · **Pedido por:** David, el mismo día de #A136, al revisarlo (*«cuando tiene OT una solicitud, no debe pedir que
 Alejandro apruebe nada. Porque si hay sobrecostos, se le van a cargar a la OT y eso lo paga el cliente. Y si hay cambios fuera de plazo,
 también va a tener sobrecostos y eso también lo aprueba el cliente»*) ·
-**Estado:** En `main`, **pendiente de pegar `Code.gs`** (va con #A135 y #A136).
+**Estado:** **Desplegado el 2026-11-28** (frontend `bb3b4b5`, build `0a251a42`; mismo pegue de `Code.gs` que #A135 y #A136).
 
 **Síntoma:**
 #A136 sacó la anticipación, pero al CFO le seguían llegando dos cosas de viajes con OT: la **tarifa superior a la del manual** (#A95) y
