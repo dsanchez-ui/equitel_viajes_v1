@@ -113,7 +113,27 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 | `sendPendingSelectionReminders` | Recordatorio al usuario que no ha descrito su selección. Mismo asunto = mismo hilo en Gmail. |
 | `processAdminReminders` | Resumen diario/periódico al admin de pendientes (cotizar, confirmar costos, reservar, cambios). |
 | `sendPendingConsultReminders` | Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio). |
-| `procesarAprobacionesPolitica` | (#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (`isWorkingHour`). El primer día hábil de cada mes envía además el informe mensual de cumplimiento (#A101). Se crea **a mano** en Activadores (Según tiempo, cada 2 horas), con la misma cuenta de los demás activadores. El **menú 13** muestra los pasos. |
+| `procesarAprobacionesPolitica` | (#A100) Suelta las que esperan y tienen OT (#A136), deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (`isWorkingHour`). El primer día hábil de cada mes envía además el informe mensual de cumplimiento (#A101). Se crea **a mano** en Activadores (Según tiempo, cada 2 horas), con la misma cuenta de los demás activadores. El **menú 13** muestra los pasos. |
+
+### 5.1 Órdenes de trabajo y la política de anticipación (#A136) — **no va en las guías publicadas**
+
+**Esto no se escribe en ninguna guía que abra un viajero.** Está aquí porque esta guía es la única que no se publica en `public/manuales/` (ver #A130).
+
+**La regla (28-nov-2026, pedido de Yurani por Alejandro Gómez):** una solicitud nueva **con OT válida no espera** la aprobación de la excepción por anticipación. El viaje lo paga el cliente, no el presupuesto de la unidad — la misma razón por la que una OT ya exime del voto del responsable de presupuesto (`_esOTValida_`, acuerdo con Yurani del 21-may). Yurani: *«todos los que tengan OT (que es lo que los clientes van a pagar), que los deje avanzar sin problema, sin aprobado»*.
+
+**Lo que NO cambia, a propósito** (David, 28-nov: *«no quiero que la gente sienta que poniendo órdenes de trabajo pueden pedir los viajes cuando quieran, porque creamos espacio para fraude»*):
+
+- La solicitud queda **marcada fuera de política** (`VIOLACION POLITICA = SI`) y **cuenta igual en el informe mensual** de cumplimiento (#A101).
+- El formulario **sigue pidiendo la justificación** obligatoria y la guarda en `JUSTIFICACION ANTICIPACION`.
+- El aviso ámbar del formulario **se ve igual**; lo único distinto es que dice *«puede necesitar la aprobación de…»* en vez de *«necesita»*. En las guías publicadas y en la infografía la anticipación quedó redactada igual de hedgeada: *«puede quedar en espera»*. **Nunca escribir allí que la OT exime.**
+- La OT tiene que estar **bien escrita** (compuerta estricta de #A66, `OT-<EE><CCC>-<NÚMERO>`): un texto que empiece por «OT» no exime y además no deja crear la solicitud.
+- El voto del CFO por **tarifa superior** (#A95/#A100) y por un **cambio pedido después del plazo** (#A129) no cambian: ahí sí se le pide, y por eso el «puede» del aviso es cierto.
+
+**Dónde está:** `POLICY_WORK_ORDER_EXEMPT` y `_policyWorkOrderExempt_` en `Code.gs`. Para apagar la regla, ponerlo en `false` y pegar `Code.gs`: el formulario se entera solo (lo recibe en `policyApproval.workOrderExempt`) y vuelve a decir *«necesita»*.
+
+**Las que ya estaban esperando:** `_policyReleaseExempt_` corre en cada pasada del activador, **antes** de denegar las vencidas, y suelta a `PENDIENTE_OPCIONES` las que esperan y tienen OT (si el viaje ya pasó, no: esa vence como siempre). La columna `APROBACION CFO ANTICIPACION` **queda vacía a propósito** — «vacía = no necesitó aprobación»; escribir algo allí la haría contar como una decisión que nadie tomó en el informe mensual, el semáforo y «Mis aprobaciones». La constancia va en `EVENTOS_JSON`: `policyOtExempt`, `policyApproved` y `policyDecision: {decision: 'exempt'}`. En el semáforo esa etapa se llama **«No requirió la excepción»**, sin nombre de aprobador.
+
+**Cómo ver cuántas esperan y si la regla está encendida:** menú **14**.
 
 **Trigger de mantenimiento (ya configurado):**
 - `cleanupExpiredSessions` (diario, 1–2 AM) — limpia sesiones `SESSION_*` expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en `cleanupExpiredPropsWeekly`, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.
@@ -271,4 +291,4 @@ Recuperación: si algo sale MUY mal, abres la copia respaldada, la descargas com
 
 ---
 
-*Última actualización: 2026-11-20*
+*Última actualización: 2026-11-28*

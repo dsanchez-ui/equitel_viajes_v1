@@ -492,6 +492,18 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
   - **Aviso a los solicitantes, sin fecha de fin** (David, 15-oct): la ventana sale al entrar hasta que cada persona toca «Entendido»;
     constancia en la hoja `CONSTANCIA AVISOS`. Si la constancia no se guarda, la ventana lo dice y deja reintentar (o seguir, y vuelve
     a salir en el próximo ingreso). Nunca volver a ponerle fecha de fin: nadie debe poder decir que no fue informado.
+  - **Con OT válida la anticipación no detiene la solicitud** (#A136, Yurani por Alejandro, 28-nov: *«los que tengan OT, que es lo que
+    los clientes van a pagar, que los deje avanzar sin problema»*). El viaje lo paga el cliente: la misma OT que ya exime del
+    presupuesto (`_esOTValida_`) exime de la espera. Al crear se mira la OT **normalizada** (compuerta estricta de #A66): un texto que
+    empiece por «OT» no exime. Interruptor `POLICY_WORK_ORDER_EXEMPT`. **Lo que no cambia, a propósito** (David: *«no quiero que la
+    gente sienta que poniendo órdenes de trabajo pueden pedir los viajes cuando quieran… creamos espacio para fraude»*): queda marcada
+    fuera de política, cuenta en el informe mensual, el formulario sigue pidiendo la justificación y el recuadro ámbar se ve igual —
+    solo dice *«puede necesitar»* en vez de *«necesita»*. **En ninguna guía ni infografía publicada se dice que la OT exime**: allí la
+    anticipación es *«puede quedar en espera»*; la regla completa va en [docs/guia-administrador.md §5.1](docs/guia-administrador.md),
+    la única que no se publica. Las que ya esperaban con OT las suelta `_policyReleaseExempt_` en la pasada de cada 2 h, antes de
+    denegar las vencidas; `APROBACION CFO ANTICIPACION` queda **vacía** (escribir ahí la haría contar como una decisión que nadie tomó)
+    y la constancia va en `EVENTOS_JSON` (`policyOtExempt`, `policyDecision: exempt`). En el semáforo: **«No requirió la excepción»**,
+    sin nombre de aprobador.
 - **Informe mensual de cumplimiento de la política** (#A101; Alejandro, 13-oct: *«se publicará cada mes»*; decisiones de David
   del 14-oct). Sale solo el **primer día hábil del mes** (festivos de Colombia; el de octubre, el martes 3-nov), en horario laboral,
   con la pasada de `procesarAprobacionesPolitica` (sin activador aparte), para quien aprueba (`budgetApproverEmail`) con copia a
@@ -867,8 +879,14 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ## Trabajo pendiente conocido
 
-### Para retomar (estado al 2026-11-25)
+### Para retomar (estado al 2026-11-28)
 
+- **#A136 en `main`, pendiente de pegar en Apps Script (28-nov):** con OT válida, la política de anticipación ya no detiene la
+  solicitud. **Se pega junto con #A135** (`Code.gs` + `AdminSidebar.html` → Guardar → versión nueva del web app); no hay menú que correr
+  ni columnas nuevas. El frontend ya salió con el push. Mientras no se pegue, todo sigue como hoy (el formulario dice «necesita» porque
+  el servidor no manda `workOrderExempt`). Al pegarlo, en la siguiente pasada del activador (cada 2 h) se sueltan solas las que estén
+  esperando y tengan OT; con el **menú 14** se ve cuántas son antes y después. Pendiente sin código: avisarle a Yurani que quedó, y que
+  Alejandro deje de recibirlas en su resumen.
 - **Retomar en el Mac (25-nov, noche):** todo está en `main` hasta #A135. El frontend en producción es el de #A134 (#A135 no cambia la app,
   solo los manuales del botón «Ayuda»). En el Mac: `git pull`, `npm ci` y `npm run verify`. Para `npm run prueba:local`, descargar de nuevo la
   exportación de la hoja (la del PC se queda allá: datos personales); el entorno corre lo de los menús 17 y 18 y tiene el enlace al panel móvil.

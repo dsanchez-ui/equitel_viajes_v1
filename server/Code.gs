@@ -3229,11 +3229,15 @@ function _stageInfo_(row, req, events, names) {
     var pv = _approvalVoteParse_(policyCell, '');
     var decision = pd && pd.decision ? String(pd.decision) : (pv && ['approved', 'denied', 'expired'].indexOf(pv.decision) !== -1 ? pv.decision : '');
     var decidedBy = pd && pd.email ? pd.email : (pv && pv.email !== 'sistema' ? pv.email : '');
+    // #A136: 'exempt' = esperaba y se soltó sin que nadie decidiera (tiene OT). Se
+    // resuelve como la aprobada (la hora sale de policyApproved), pero sin nombre:
+    // no la aprobó una persona.
+    var resolved = decision === 'approved' || decision === 'exempt';
     out.policy = {
       decision: decision,
-      at: decision === 'approved' ? (_stageIso_(events.policyApproved) || _stageIso_(pd && pd.at) || (pv ? _stageIso_(pv.at) : ''))
+      at: resolved ? (_stageIso_(events.policyApproved) || _stageIso_(pd && pd.at) || (pv ? _stageIso_(pv.at) : ''))
         : decision ? (_stageIso_(pd && pd.at) || (pv ? _stageIso_(pv.at) : '')) : '',
-      who: decision === 'expired' ? '' : (who(decidedBy) || _policyApprovalConfig_().name || '')
+      who: (decision === 'expired' || decision === 'exempt') ? '' : (who(decidedBy) || _policyApprovalConfig_().name || '')
     };
   }
 
@@ -7334,6 +7338,10 @@ function createNewRequest(data, emailHtml, policy) {
   // #A100: en espera del CFO. Los tiempos del flujo empiezan cuando la apruebe
   // (evento policyApproved), no aquí.
   if (policy && policy.hold) _recordEvent_(id, 'policyHold');
+  // #A136: fuera de plazo pero con OT válida: no esperó. Queda la constancia del
+  // momento en que el sistema lo decidió (el número de la OT, la marca de política y
+  // la justificación ya están en su fila).
+  else if (policy && policy.otExempt) _recordEvent_(id, 'policyOtExempt');
 
   // Completar en USUARIOS la fecha de nacimiento de pasajeros registrados que no
   // la tenían. La solicitud ya quedó guardada: un fallo aquí no la afecta.
@@ -20411,6 +20419,20 @@ var POLICY_HOLD_STATUS = 'PENDIENTE_APROBACION_POLITICA';
 var POLICY_MIN_DAYS_NATIONAL = 8;
 var POLICY_MIN_DAYS_INTERNATIONAL = 30;
 var POLICY_HOLD_EXPIRY_DAYS = 7;
+// #A136 (28-nov). Pedido de Yurani por Alejandro: «todos los que tengan OT (que es
+// lo que los clientes van a pagar), que los deje avanzar sin problema, sin aprobado».
+// Una solicitud con OT válida NO espera: su costo lo paga el cliente y no el
+// presupuesto de la unidad, que es lo mismo que ya la exime del voto del responsable
+// de presupuesto (_esOTValida_, acuerdo con Yurani del 21-may).
+// Lo que NO cambia: sigue marcada fuera de política (VIOLACION POLITICA = SI), el
+// formulario sigue pidiendo la justificación y la escribe en la hoja, y sigue
+// contando en el informe mensual de cumplimiento (#A101). Al solicitante el aviso se
+// le muestra igual; solo dice que «puede requerir» la aprobación en vez de que la
+// requiere (David, 28-nov: «no quiero que la gente sienta que poniendo órdenes de
+// trabajo pueden pedir los viajes cuando quieran»).
+// Para apagarlo: ponerlo en false y pegar Code.gs — el formulario lo sigue solo
+// (lo recibe en policyApproval.workOrderExempt).
+var POLICY_WORK_ORDER_EXEMPT = true;
 var POLICY_JUSTIFICATION_MIN = 10;
 var POLICY_JUSTIFICATION_MAX = 500;
 var POLICY_DIGEST_HANDLER = 'procesarAprobacionesPolitica';
@@ -20455,6 +20477,9 @@ function _policyApprovalPublicInfo_(currentUserEmail) {
   return {
     enabled: cfg.enabled,
     appliesToUser: cfg.enabled && !isUserAnalyst(currentUserEmail),
+    // #A136: con OT válida el aviso cambia de «necesita» a «puede necesitar». Si el
+    // servidor no manda esta clave (Code.gs anterior), el formulario se comporta como antes.
+    workOrderExempt: cfg.enabled && POLICY_WORK_ORDER_EXEMPT,
     approverName: cfg.enabled ? cfg.name : '',
     minDaysNational: POLICY_MIN_DAYS_NATIONAL,
     minDaysInternational: POLICY_MIN_DAYS_INTERNATIONAL,
@@ -20481,6 +20506,24 @@ function _policyLeadCheck_(departureDate, isInternational) {
   var min = isInternational ? POLICY_MIN_DAYS_INTERNATIONAL : POLICY_MIN_DAYS_NATIONAL;
   var days = _policyDaysBetweenKeys_(_todayBogotaIso_(), _psDateKey_(departureDate));
   return { known: days !== null, days: days, min: min, violates: days !== null && days < min };
+}
+
+/**
+ * #A136: ¿esta OT exime de esperar la aprobación de la excepción?
+ *
+ * Es exactamente la misma OT que ya exime del presupuesto de la unidad
+ * (`_esOTValida_`: empieza por OT y trae un dígito). Al CREAR hay que pasarle la OT
+ * ya normalizada (`_normalizeWorkOrder_`), que es la compuerta estricta de #A66
+ * (OT-<EE><CCC>-<NÚMERO>): así lo que exime es una OT bien escrita y no un texto que
+ * empiece por «OT». Sobre una fila ya guardada se usa el valor tal cual, como en el
+ * presupuesto, para no reinterpretar el histórico.
+ *
+ * Gemelo en el frontend: `RequestForm.tsx` usa `validateWorkOrder` (utils/workOrder.ts),
+ * que es la misma compuerta estricta, y solo cambia el texto del aviso.
+ */
+function _policyWorkOrderExempt_(workOrder) {
+  if (!POLICY_WORK_ORDER_EXEMPT) return false;
+  return _esOTValida_(workOrder);
 }
 
 /** Justificación de la solicitud fuera de plazo: 10 a 500 caracteres, espacios colapsados. */
@@ -20526,13 +20569,14 @@ function _policyGroupHasHeld_(groupKey) {
  * confía en el `policyViolation` del navegador: lo recalcula con la fecha de ida.
  * La justificación se valida solo si la clave viene (formulario nuevo); una
  * pestaña con la app anterior crea igual, sin justificación.
- * @return {{hold: boolean, violates: (boolean|null), lead: Object, justification: string, approverName: string}}
+ * #A136: con OT válida no espera, pero sí queda marcada y con su justificación.
+ * @return {{hold: boolean, otExempt: boolean, violates: (boolean|null), lead: Object, justification: string, approverName: string}}
  */
 function _planPolicyHold_(data, currentUserEmail) {
   var lead = _policyLeadCheck_(data.departureDate, !!data.isInternational);
   var groupKey = _policyGroupKey_(data.multiGroupKey);
   var out = {
-    hold: false, violates: lead.known ? lead.violates : null, lead: lead, justification: '', approverName: '',
+    hold: false, otExempt: false, violates: lead.known ? lead.violates : null, lead: lead, justification: '', approverName: '',
     groupKey: groupKey, groupIndex: Number(data.multiGroupIndex) || 0, groupTotal: Number(data.multiGroupTotal) || 0, byGroup: false
   };
   var hasKey = data.policyJustification !== undefined && data.policyJustification !== null;
@@ -20545,7 +20589,15 @@ function _planPolicyHold_(data, currentUserEmail) {
   var groupHold = !!groupKey && (data.policyGroupHold === true || _policyGroupHasHeld_(groupKey));
   if (!(lead.known && lead.violates) && !groupHold) return out;
   if (!(lead.known && lead.violates)) out.byGroup = true;
-  if (cfg.enabled && !isAdmin) {
+  // #A136: con OT válida no espera. Se mira la OT ya normalizada (compuerta estricta
+  // de #A66): si está mal escrita, `_normalizeWorkOrder_` devuelve '' y la solicitud
+  // espera como siempre — además, enseguida `validateRequestInput_` la rechaza y no
+  // se crea ninguna fila. En multidestino la OT es la misma en todos los tramos (el
+  // formulario tiene un solo campo), así que o se eximen todos o espera todo el viaje.
+  // `otExempt` solo si fue la OT la que evitó la espera: lo que crea un administrador,
+  // o con las reglas apagadas, nunca esperaba.
+  out.otExempt = cfg.enabled && !isAdmin && _policyWorkOrderExempt_(_normalizeWorkOrder_(data.workOrder));
+  if (cfg.enabled && !isAdmin && !out.otExempt) {
     out.hold = true;
     out.approverName = cfg.name;
     if (hasKey) {
@@ -20554,7 +20606,9 @@ function _planPolicyHold_(data, currentUserEmail) {
       out.justification = j.text;
     }
   } else if (hasKey && String(data.policyJustification).trim()) {
-    // Administrador (trazabilidad) o reglas apagadas: se guarda si la escribió.
+    // Administrador (trazabilidad), OT válida (#A136) o reglas apagadas: no espera,
+    // pero la justificación que escribió se guarda igual. No se rechaza por corta:
+    // la solicitud no depende de ella, y el formulario ya la exige.
     out.justification = String(data.policyJustification).replace(/\s+/g, ' ').trim().substring(0, POLICY_JUSTIFICATION_MAX);
   }
   return out;
@@ -20881,6 +20935,83 @@ function _policyDeny_(sheet, rowNumber, id, actorLabel, reason, comment, expired
 }
 
 /**
+ * #A136: suelta la solicitud que esperaba y tiene OT válida. La columna de la
+ * decisión del CFO queda VACÍA a propósito («vacía = no necesitó aprobación»):
+ * escribir algo ahí la haría contar como una decisión que nadie tomó, en el informe
+ * mensual, en el semáforo y en «Mis aprobaciones». La constancia va en EVENTOS_JSON.
+ */
+function _policyRelease_(sheet, rowNumber, id) {
+  var stamp = Utilities.formatDate(new Date(), 'America/Bogota', 'd/M/yyyy H:mm');
+  sheet.getRange(rowNumber, H('STATUS') + 1).setValue('PENDIENTE_OPCIONES');
+  _policyAppendObs_(sheet, rowNumber, '[POLÍTICA]: No requirió la aprobación de la excepción (' + stamp + '): sigue el proceso normal.');
+  _recordEvent_(id, 'policyOtExempt');
+  // Los tiempos del área de compras cuentan desde aquí, no desde que se pidió: antes
+  // de este momento no la podía ver (igual que con la aprobación del CFO).
+  _recordEvent_(id, 'policyApproved');
+  _recordEvent_(id, 'policyDecision', { decision: 'exempt', email: '' });
+  SpreadsheetApp.flush();
+  _dashInvalidate_();
+  try {
+    var req = mapRowToRequest(_policyReadRow_(sheet, rowNumber));
+    var isHotelOnly = req.requestMode === 'HOTEL_ONLY';
+    var content = '<div style="background-color:#ecfdf5; border:1px solid #a7f3d0; border-left:4px solid #059669; border-radius:6px; padding:14px 16px; margin-bottom:18px; font-size:13px; color:#065f46; line-height:1.55;">' +
+      '<strong>✅ Ya se puede gestionar.</strong> Esta solicitud se pidió con menos anticipación de la que pide la política y ' +
+      '<strong>no requirió la aprobación de la excepción</strong>. Desde ahora sigue el proceso normal: el área de compras cargará las opciones.</div>' +
+      '<div style="text-align:center; margin-bottom:24px;"><a href="' + PLATFORM_URL + '" style="background-color:#111827; color:white; padding:10px 20px; text-decoration:none; border-radius:4px; font-weight:bold; display:inline-block;">INGRESAR A LA PLATAFORMA</a></div>' +
+      '<hr style="border:0; border-top:1px solid #e5e7eb; margin:24px 0;">' + HtmlTemplates._getFullSummary(req);
+    var html = HtmlTemplates.layout(id, content, '#059669', isHotelOnly ? 'NUEVA SOLICITUD DE HOSPEDAJE' : 'NUEVA SOLICITUD DE VIAJE');
+    var cc = [req.requesterEmail, getCCList(req)].filter(function(e) { return e; }).join(',');
+    sendEmailRich(ADMIN_EMAIL, getStandardSubject(req) + ' [EN GESTIÓN]', html, cc);
+  } catch (e) {
+    console.error('_policyRelease_: no se pudo avisar de ' + id + ': ' + e);
+  }
+}
+
+/**
+ * #A136: suelta las que están esperando y tienen OT válida (las que quedaron de
+ * antes de la regla; de aquí en adelante ninguna con OT llega a esperar). Corre
+ * ANTES de denegar las vencidas, así una con OT que ya cumplió los 7 días se suelta
+ * en vez de denegarse por una regla que ya no la cubre.
+ *
+ * No se suelta la que ya pasó su fecha de viaje: esa vence como siempre (meterle al
+ * área de compras un viaje que ya ocurrió no le sirve a nadie). En multidestino se
+ * sueltan los tramos juntos y solo si TODOS tienen OT.
+ *
+ * @return {Array<string>} IDs soltados.
+ */
+function _policyReleaseExempt_() {
+  if (!POLICY_WORK_ORDER_EXEMPT) return [];
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var otIdx = H('# ORDEN TRABAJO');
+  if (otIdx < 0) return [];
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var stIdx = H('STATUS'), idIdx = H('ID RESPUESTA'), depIdx = H('FECHA IDA');
+  var today = _todayBogotaIso_();
+  var released = [], seen = {};
+  data.forEach(function(row, i) {
+    var id = String(row[idIdx] || '').trim();
+    if (!id || seen[id]) return;
+    if (String(row[stIdx] || '').trim() !== POLICY_HOLD_STATUS) return;
+    if (!_policyWorkOrderExempt_(row[otIdx])) return;
+    var dep = _psDateKey_(row[depIdx]);
+    if (dep && today > dep) return;
+    var rowNumber = i + 2;
+    // Releer el estado justo antes de escribir: pudo cambiar en esta misma pasada.
+    if (String(sheet.getRange(rowNumber, stIdx + 1).getValue() || '').trim() !== POLICY_HOLD_STATUS) return;
+    var mates = _policyHeldMates_(sheet, rowNumber);
+    var allOt = mates.every(function(m) { return _policyWorkOrderExempt_(sheet.getRange(m.rowNumber, otIdx + 1).getValue()); });
+    mates.forEach(function(m) { seen[m.id] = true; });
+    if (!allOt) return;
+    mates.forEach(function(m) {
+      _policyRelease_(sheet, m.rowNumber, m.id);
+      released.push(m.id);
+    });
+  });
+  return released;
+}
+
+/**
  * Deniega las solicitudes en espera que vencieron: 7 días desde que se pidieron,
  * o ya pasó el día del viaje. Devuelve los IDs denegados.
  */
@@ -20921,7 +21052,11 @@ function procesarAprobacionesPolitica() {
   _resetPerExecutionCaches_();
   var expired = [];
   var lock = LockService.getScriptLock();
+  var released = [];
   if (lock.tryLock(LOCK_WAIT_MS)) {
+    // #A136: primero las que ya no necesitan esperar (OT), después las vencidas.
+    try { released = _policyReleaseExempt_(); }
+    catch (e) { console.error('procesarAprobacionesPolitica: error soltando las que tienen OT: ' + e); }
     try { expired = _policyExpireHeld_(); }
     catch (e) { console.error('procesarAprobacionesPolitica: error denegando vencidas: ' + e); }
     finally { lock.releaseLock(); }
@@ -20935,7 +21070,7 @@ function procesarAprobacionesPolitica() {
   var monthly = '';
   try { monthly = _mrMaybeSendMonthly_(); }
   catch (e) { console.error('procesarAprobacionesPolitica: error enviando el informe mensual: ' + e); }
-  return { expired: expired, listed: listed, monthly: monthly };
+  return { released: released, expired: expired, listed: listed, monthly: monthly };
 }
 
 /**
@@ -21280,6 +21415,7 @@ function menuVerAprobacionesPolitica() {
     });
     ui.alert('Aprobaciones por política (#A100)',
       'Reglas: ' + (cfg.enabled ? 'encendidas' : 'APAGADAS (policyApprovalEnabled: false o falta budgetApproverEmail)') + '\n' +
+      'Órdenes de trabajo (#A136): ' + (POLICY_WORK_ORDER_EXEMPT ? 'una solicitud con OT válida NO espera (el cliente paga el viaje); queda marcada fuera de política y cuenta en el informe mensual' : 'también esperan') + '\n' +
       'Aprueba: ' + (cfg.name || '—') + (cfg.email ? ' (' + cfg.email + ')' : '') + ' — se cambia en la configuración del dashboard de costos (budgetApproverEmail / budgetApproverName).\n' +
       'Resumen cada ' + POLICY_DIGEST_EVERY_HOURS + ' h: ' + (trig === true ? 'activo' : trig === false ? 'NO ACTIVO (menú 13)' :
         'revíselo en Activadores del editor (debe estar ' + POLICY_DIGEST_HANDLER + ', cada ' + POLICY_DIGEST_EVERY_HOURS + ' horas; si no está, menú 13)') + '\n' +

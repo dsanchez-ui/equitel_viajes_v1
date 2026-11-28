@@ -114,10 +114,14 @@ export const buildTimeline = (s: StageInfo, status: string, nowMs: number): Time
 
   push('creada', 'Solicitud creada', '', 'Solicitante', s.requester, s.created);
   if (s.policy) {
-    push('politica', s.policy.decision === 'approved' ? 'Excepción aprobada' : 'Excepción a la política',
+    // #A136: 'exempt' = quedó esperando y se soltó sin que nadie la aprobara (el
+    // viaje lo paga el cliente). La etapa está resuelta, pero no la decidió nadie.
+    const pol = s.policy.decision;
+    const resolved = pol === 'approved' || pol === 'exempt';
+    push('politica', pol === 'approved' ? 'Excepción aprobada' : pol === 'exempt' ? 'No requirió la excepción' : 'Excepción a la política',
       'Espera que aprueben la excepción a la política de anticipación', 'CFO', s.policy.who,
-      s.policy.decision === 'approved' ? s.policy.at : '',
-      s.policy.decision === 'approved' && s.policy.comment ? `«${s.policy.comment}»` : '');
+      resolved ? s.policy.at : '',
+      pol === 'approved' && s.policy.comment ? `«${s.policy.comment}»` : '');
   }
   if (s.isChange) push('cambio', 'Cambio aceptado', 'El área de compras revisa el cambio', 'Área de compras', s.changeStudiedBy || '', s.changeStudied);
   push('opciones', 'Opciones cargadas', hotel ? 'El área de compras busca y carga las opciones de hospedaje' : 'El área de compras busca y carga las opciones',

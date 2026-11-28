@@ -583,10 +583,23 @@ export const RequestForm: React.FC<RequestFormProps> = ({
     return legs.map(l => computePolicyViolation(l.date, legIntl(l.origin, l.destination) === true));
   }, [multiDestino, formData.origin, formData.destination, formData.departureDate, extraTramos, cities]);
 
-  // #A100: ¿esta solicitud (o algún tramo) queda en espera de la aprobación del CFO?
+  // #A100: ¿esta solicitud (o algún tramo) se sale de la política de anticipación?
   // Solo si el servidor lo anuncia, no es un cambio y quien la crea no es del área de compras.
   const anyPolicyViolation = multiDestino ? legPolicyViolations.some(Boolean) : policyViolation;
-  const policyHoldApplies = !!policyApproval?.appliesToUser && !isModification && anyPolicyViolation;
+  // #A136: con una OT bien escrita el viaje lo paga el cliente y no espera (lo decide
+  // el servidor; aquí solo cambia el texto del aviso, de «necesita» a «puede
+  // necesitar»). Misma compuerta que valida el campo: utils/workOrder.ts.
+  // Si el servidor no manda `workOrderExempt` (Code.gs anterior), esto queda en false
+  // y el formulario se comporta exactamente como antes.
+  const workOrderExempts = useMemo(() => {
+    if (!policyApproval?.workOrderExempt) return false;
+    const c = validateWorkOrder(formData.workOrder);
+    return c.ok && !!c.value;
+  }, [policyApproval?.workOrderExempt, formData.workOrder]);
+  // El recuadro ámbar y la justificación obligatoria salen igual en los dos casos:
+  // lo único que cambia es si la solicitud queda o no en espera.
+  const policyWarns = !!policyApproval?.appliesToUser && !isModification && anyPolicyViolation;
+  const policyHoldApplies = policyWarns && !workOrderExempts;
   const policyApproverLabel = policyApproval?.approverName || 'el CFO';
   const policyHoldNotice = (ids: string[]) =>
     (ids.length > 1
@@ -1041,7 +1054,9 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         }
       }
       // Éxito total
-      const heldIds = items.map((it, i) => (it.payload.policyJustification !== undefined ? created[i] : '')).filter(Boolean);
+      // #A136: la justificación viaja también cuando la solicitud NO espera (tiene OT),
+      // así que el aviso de espera se decide por `policyGroupHold`, no por su presencia.
+      const heldIds = items.map((it, i) => (it.payload.policyGroupHold === true ? created[i] : '')).filter(Boolean);
       pendingSubmissionRef.current = null;
       setCreatedLegIds({});
       invalidateBudgetCache();
@@ -1302,8 +1317,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
       return;
     }
 
-    // #A100: fuera de plazo → queda en espera del CFO y la justificación es obligatoria.
-    if (policyHoldApplies) {
+    // #A100: fuera de plazo → la justificación es obligatoria (espere o no, #A136).
+    if (policyWarns) {
       const j = policyJustification.replace(/\s+/g, ' ').trim();
       const min = policyApproval?.justificationMin || 10;
       const max = policyApproval?.justificationMax || 500;
@@ -1348,7 +1363,7 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             policyViolation: legPolicyViolations[i] === true,
             // #A100: si un tramo no cumple, TODO el viaje espera al CFO (una sola decisión):
             // todos los tramos llevan la justificación y la marca del grupo.
-            policyJustification: policyHoldApplies ? groupJustification : undefined,
+            policyJustification: policyWarns ? groupJustification : undefined,
             multiGroupKey: groupKey,
             multiGroupIndex: i + 1,
             multiGroupTotal: legs.length,
@@ -1399,7 +1414,8 @@ export const RequestForm: React.FC<RequestFormProps> = ({
         isInternational,
         policyViolation,
         // #A100: que la clave venga le dice al servidor que el formulario ya pide la justificación.
-        policyJustification: policyHoldApplies ? policyJustification.replace(/\s+/g, ' ').trim() : undefined,
+        // #A136: también viaja cuando la solicitud no espera (tiene OT): se guarda igual.
+        policyJustification: policyWarns ? policyJustification.replace(/\s+/g, ' ').trim() : undefined,
         costCenterName,
         approverName,
         approverEmail,
@@ -2256,21 +2272,29 @@ export const RequestForm: React.FC<RequestFormProps> = ({
             </div>
           )}
 
-          {/* #A100: fuera de plazo → espera la aprobación del CFO; justificación obligatoria */}
-          {policyHoldApplies && (
+          {/* #A100: fuera de plazo → aprobación de la excepción; justificación obligatoria.
+              #A136: el mismo recuadro cuando el viaje lo paga el cliente, con «puede
+              necesitar» en vez de «necesita»: esas no esperan, pero se piden igual y
+              quedan marcadas fuera de política. */}
+          {policyWarns && (
             <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-md space-y-2">
-              <p className="text-sm text-amber-900 font-bold">⏳ Esta solicitud necesita la aprobación de {policyApproverLabel}</p>
+              <p className="text-sm text-amber-900 font-bold">
+                ⏳ Esta solicitud {policyHoldApplies ? 'necesita' : 'puede necesitar'} la aprobación de {policyApproverLabel}
+              </p>
               <p className="text-xs text-amber-900 leading-relaxed">
                 {multiDestino
                   ? <>Tramos fuera de plazo: <strong>{legPolicyViolations.map((v, i) => v ? `Tramo ${i + 1}` : null).filter(Boolean).join(', ')}</strong>.{' '}
-                      <strong>Todo el viaje ({extraTramos.length + 1} tramos) queda en espera</strong>: si un tramo no se puede hacer, los demás tampoco,
-                      así que una sola aprobación cubre todos los tramos (y si se rechaza o vence, se deniegan todos). </>
+                      <strong>Todo el viaje ({extraTramos.length + 1} tramos) {policyHoldApplies ? 'queda en espera' : 'va junto'}</strong>: si un tramo no se puede hacer, los demás tampoco,
+                      así que una sola aprobación cubre todos los tramos{policyHoldApplies ? ' (y si se rechaza o vence, se deniegan todos)' : ''}. </>
                   : null}
                 La política de viajes pide al menos <strong>{policyApproval?.minDaysNational || 8} días</strong> de anticipación para viajes nacionales
-                y <strong>{policyApproval?.minDaysInternational || 30}</strong> para internacionales. La solicitud se va a crear, pero
-                el área de compras <strong>no la gestiona hasta que {policyApproverLabel} la apruebe</strong>. Le llegará un correo con la decisión;
-                si nadie la aprueba en {policyApproval?.expiryDays || 7} días o antes de la fecha del viaje, queda denegada.
-                Las aprobaciones se revisan en horario laboral.
+                y <strong>{policyApproval?.minDaysInternational || 30}</strong> para internacionales.{' '}
+                {policyHoldApplies
+                  ? <>La solicitud se va a crear, pero el área de compras <strong>no la gestiona hasta que {policyApproverLabel} la apruebe</strong>. Le llegará un correo con la decisión;
+                      si nadie la aprueba en {policyApproval?.expiryDays || 7} días o antes de la fecha del viaje, queda denegada.
+                      Las aprobaciones se revisan en horario laboral.</>
+                  : <>La solicitud se va a crear y <strong>puede requerir la aprobación de {policyApproverLabel}</strong> antes de que se compre.
+                      En cualquier caso queda <strong>marcada fuera de política</strong> y cuenta en el informe mensual de cumplimiento.</>}
               </p>
               <label className="block text-xs font-bold text-amber-900" htmlFor="policyJustification">
                 ¿Por qué no se pudo pedir con más anticipación? <span className="text-red-600">*</span>
@@ -2285,12 +2309,15 @@ export const RequestForm: React.FC<RequestFormProps> = ({
                 className="w-full border border-amber-300 rounded-md p-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 bg-white"
               />
               <p className="text-[11px] text-amber-800">
-                La leerá {policyApproverLabel} antes de decidir · {policyJustification.replace(/\s+/g, ' ').trim().length}/{policyApproval?.justificationMax || 500} caracteres (mínimo {policyApproval?.justificationMin || 10}).
+                {policyHoldApplies
+                  ? <>La leerá {policyApproverLabel} antes de decidir</>
+                  : <>Queda guardada con la solicitud y la lee {policyApproverLabel} si la revisa</>}
+                {' · '}{policyJustification.replace(/\s+/g, ' ').trim().length}/{policyApproval?.justificationMax || 500} caracteres (mínimo {policyApproval?.justificationMin || 10}).
               </p>
             </div>
           )}
 
-          {!policyHoldApplies && (multiDestino ? legPolicyViolations.some(Boolean) : policyViolation) && (
+          {!policyWarns && (multiDestino ? legPolicyViolations.some(Boolean) : policyViolation) && (
             <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-md animate-pulse">
               <div className="flex">
                 <div className="flex-shrink-0">

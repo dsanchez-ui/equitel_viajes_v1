@@ -527,12 +527,109 @@ function main() {
     failures.push('aviso emergente: falta _policyNoticeFor_ en Code.gs');
   }
 
+  // 12. #A136 — Con orden de trabajo el viaje lo paga el cliente y no espera
+  const OT = 'OT-CUBTA-110256';
+  log.mails.length = 0;
+  r = create(base({ workOrder: OT, policyJustification: '  El cliente confirmó   la visita ayer.  ' }));
+  const OT1 = r.data;
+  eq('con OT fuera de plazo: sigue el flujo normal, no espera', cell(OT1, 'STATUS'), 'PENDIENTE_OPCIONES');
+  eq('con OT: igual queda marcada y con su justificación, y guarda la OT canónica',
+    [cell(OT1, 'VIOLACION POLITICA'), cell(OT1, 'JUSTIFICACION ANTICIPACION'), cell(OT1, '# ORDEN TRABAJO')],
+    ['SI', 'El cliente confirmó la visita ayer.', OT]);
+  eq('con OT: la columna de la decisión del CFO queda vacía (nadie decidió)', String(cell(OT1, 'APROBACION CFO ANTICIPACION') || ''), '');
+  ok('con OT: le llega al área de compras como cualquier solicitud nueva', log.mails.some((m) => /compras\.equitel/.test(m.to)));
+  ok('con OT: al solicitante no se le avisa de ninguna espera', !mailsTo('ana@p.co').some((m) => /EN ESPERA DE APROBACIÓN/.test(m.subject)));
+  const evOT = JSON.parse(cell(OT1, 'EVENTOS_JSON') || '{}');
+  ok('con OT: queda la constancia policyOtExempt y no policyHold', !!evOT.policyOtExempt && !evOT.policyHold);
+
+  // La OT tiene que estar bien escrita (compuerta de #A66): con basura no se cuela nadie
+  const filasAntes = req.length;
+  r = create(base({ workOrder: 'OT 1234', policyJustification: 'El cliente confirmó la visita ayer.' }));
+  ok('OT incompleta: no crea nada y lo explica', !r.success && /Orden de Trabajo/.test(r.error) && req.length === filasAntes);
+  r = create(base({ workOrder: 'OTROS GASTOS 5', policyJustification: 'El cliente confirmó la visita ayer.' }));
+  ok('un texto que empieza por OT no es una OT: no crea nada', !r.success && req.length === filasAntes);
+  eq('la regla de la OT es la estricta, no la del presupuesto',
+    [ctx._policyWorkOrderExempt_(ctx._normalizeWorkOrder_('OTROS GASTOS 5')), ctx._policyWorkOrderExempt_(ctx._normalizeWorkOrder_('ot-cubta 110256')), ctx._policyWorkOrderExempt_('')],
+    [false, true, false]);
+
+  // Internacional con OT: tampoco espera (Yurani: «todos los que tengan OT»)
+  r = create(base({ isInternational: true, destination: 'MIAMI, ESTADOS UNIDOS', departureDate: day(20), returnDate: day(25), workOrder: OT, policyJustification: 'Feria del sector confirmada.' }));
+  eq('internacional con OT: tampoco espera', cell(r.data, 'STATUS'), 'PENDIENTE_OPCIONES');
+
+  // Multidestino con OT: ningún tramo espera, aunque el navegador pida esperar
+  const GOT = [create(leg('MD-viajeot005', 1, 2, 3, { workOrder: OT })).data,
+    create(leg('MD-viajeot005', 2, 2, 9, { workOrder: OT, origin: 'MEDELLIN, COLOMBIA', destination: 'CALI, COLOMBIA' })).data];
+  eq('multidestino con OT: ningún tramo espera (ni con policyGroupHold del navegador)',
+    GOT.map((id) => cell(id, 'STATUS')), ['PENDIENTE_OPCIONES', 'PENDIENTE_OPCIONES']);
+
+  // Administradores: su solicitud nunca esperaba, así que la OT no cambia nada
+  r = create(base({ requesterEmail: 'admin@p.co', workOrder: OT, policyJustification: 'Viaje ya comprado por fuera.' }), 'admin@p.co');
+  ok('creada por un administrador con OT: flujo normal y sin constancia de exención',
+    cell(r.data, 'STATUS') === 'PENDIENTE_OPCIONES' && !JSON.parse(cell(r.data, 'EVENTOS_JSON') || '{}').policyOtExempt);
+
+  eq('formulario: el servidor le anuncia la regla de la OT', ctx._policyApprovalPublicInfo_('ana@p.co').workOrderExempt, true);
+
+  // Las que YA estaban esperando con OT: la pasada de cada 2 horas las suelta
+  const WAIT = create(base({ departureDate: day(5), returnDate: day(6), policyJustification: 'El cliente confirmó la visita ayer.' })).data;
+  eq('sin OT: espera como siempre', cell(WAIT, 'STATUS'), 'PENDIENTE_APROBACION_POLITICA');
+  setCell(WAIT, '# ORDEN TRABAJO', OT);
+  const STILL = create(base({ departureDate: day(6), returnDate: day(7), policyJustification: 'Otra visita confirmada ayer.' })).data;
+  log.mails.length = 0;
+  reset();
+  const run3 = ctx.procesarAprobacionesPolitica();
+  eq('la que esperaba y tiene OT se suelta sola', [run3.released, cell(WAIT, 'STATUS')], [[WAIT], 'PENDIENTE_OPCIONES']);
+  eq('la que no tiene OT sigue esperando', cell(STILL, 'STATUS'), 'PENDIENTE_APROBACION_POLITICA');
+  eq('soltada: la columna de la decisión del CFO sigue vacía', String(cell(WAIT, 'APROBACION CFO ANTICIPACION') || ''), '');
+  ok('soltada: le llega al área de compras, con copia al solicitante',
+    log.mails.some((m) => /compras\.equitel/.test(m.to) && /EN GESTIÓN/.test(m.subject) && /ana@p\.co/.test(String(m.cc))));
+  const evW = JSON.parse(cell(WAIT, 'EVENTOS_JSON') || '{}');
+  ok('soltada: constancia, y los tiempos del área de compras cuentan desde ahí',
+    !!evW.policyOtExempt && !!evW.policyApproved && evW.policyDecision && evW.policyDecision.decision === 'exempt');
+  ok('soltada: la observación no dice por qué (la regla no se anuncia)',
+    /No requirió la aprobación de la excepción/.test(String(cell(WAIT, 'OBSERVACIONES'))) && !/OT-/.test(String(cell(WAIT, 'OBSERVACIONES'))));
+  reset();
+  const stW = ctx.dispatch('getRequestById', { userEmail: 'ana@p.co', sessionToken: 't', requestId: WAIT });
+  ok('soltada: el semáforo la da por resuelta y no inventa quién la aprobó',
+    stW.success && stW.data.stages && stW.data.stages.policy && stW.data.stages.policy.decision === 'exempt' &&
+    !!stW.data.stages.policy.at && stW.data.stages.policy.who === '');
+  reset();
+  ok('soltada: ahora sí la ve el área de compras', ctx.getAllRequestsLite().some((x) => x.requestId === WAIT));
+
+  // Con OT pero con el viaje ya pasado: no se suelta, vence como siempre
+  const GONE = create(base({ departureDate: day(2), returnDate: day(3), policyJustification: 'El cliente confirmó la visita ayer.' })).data;
+  setCell(GONE, '# ORDEN TRABAJO', OT);
+  setCell(GONE, 'FECHA IDA', '13-10-2026');
+  reset();
+  const run4 = ctx.procesarAprobacionesPolitica();
+  ok('con OT pero con la fecha del viaje ya pasada: no se suelta, se deniega',
+    run4.released.indexOf(GONE) === -1 && cell(GONE, 'STATUS') === 'DENEGADO');
+
+  // Interruptor de la regla
+  ctx.POLICY_WORK_ORDER_EXEMPT = false;
+  reset();
+  r = create(base({ workOrder: OT, policyJustification: 'El cliente confirmó la visita ayer.' }));
+  eq('interruptor de la OT apagado: vuelve a esperar y el formulario se entera',
+    [cell(r.data, 'STATUS'), ctx._policyApprovalPublicInfo_('ana@p.co').workOrderExempt], ['PENDIENTE_APROBACION_POLITICA', false]);
+  eq('interruptor apagado: tampoco suelta las que esperan', ctx._policyReleaseExempt_(), []);
+  ctx.POLICY_WORK_ORDER_EXEMPT = true;
+
+  // El formulario: misma regla, solo cambia el texto (gemelo de utils/workOrder.ts)
+  const FORM = fs.readFileSync(path.join(ROOT, 'components', 'RequestForm.tsx'), 'utf8');
+  ok('formulario: el texto de la OT solo sale si el servidor anuncia la regla', /policyApproval\?\.workOrderExempt/.test(FORM));
+  ok('formulario: usa la misma compuerta estricta de la OT', /const workOrderExempts[\s\S]{0,300}validateWorkOrder\(formData\.workOrder\)/.test(FORM));
+  ok('formulario: el recuadro y la justificación obligatoria salen en los dos casos',
+    /\{policyWarns && \(/.test(FORM) && /if \(policyWarns\) \{/.test(FORM) && /policyJustification: policyWarns \?/.test(FORM));
+  ok('formulario: con OT el aviso dice «puede necesitar», no «necesita»', /policyHoldApplies \? 'necesita' : 'puede necesitar'/.test(FORM));
+  ok('formulario: la marca del grupo solo viaja si de verdad espera', /policyGroupHold: policyHoldApplies/.test(FORM));
+  ok('formulario: el aviso de espera del multidestino se decide por esa marca', /it\.payload\.policyGroupHold === true/.test(FORM));
+
   if (failures.length) {
     console.error('✗ Aprobación del CFO por la política (#A100): ' + failures.length + ' falla(s):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
-  console.log('Aprobación del CFO por la política (#A100): anticipación en el servidor, espera oculta al área de compras, resumen con enlaces firmados, aprobar/rechazar/vencer, métricas desde la aprobación, resumen solo en horario laboral, multidestino con una sola decisión, lista de solo lectura del área de compras, tarifa superior con voto del CFO, interruptor y aviso con constancia. OK');
+  console.log('Aprobación del CFO por la política (#A100): anticipación en el servidor, espera oculta al área de compras, resumen con enlaces firmados, aprobar/rechazar/vencer, métricas desde la aprobación, resumen solo en horario laboral, multidestino con una sola decisión, lista de solo lectura del área de compras, tarifa superior con voto del CFO, interruptor y aviso con constancia. ' +
+    'Órdenes de trabajo (#A136): con OT válida no espera pero queda marcada y con su justificación, la OT mal escrita no exime, las que ya esperaban se sueltan sin inventar un aprobador y el formulario dice «puede necesitar». OK');
 }
 
 main();

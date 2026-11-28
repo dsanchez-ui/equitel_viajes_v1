@@ -79,7 +79,8 @@ export interface StageInfo {
   isChange: boolean;
   hotelOnly: boolean;
   created: string;
-  policy: { decision: '' | 'approved' | 'denied' | 'expired'; at: string; who: string; comment?: string } | null;
+  /** #A136: 'exempt' = esperaba y se soltó sin que nadie decidiera (el viaje lo paga el cliente). */
+  policy: { decision: '' | 'approved' | 'denied' | 'expired' | 'exempt'; at: string; who: string; comment?: string } | null;
   changeStudied: string;
   options: string;
   selection: string;
@@ -198,6 +199,12 @@ export interface PolicyApprovalInfo {
   enabled: boolean;
   /** false para administradores: lo que ellos crean no queda en espera. */
   appliesToUser: boolean;
+  /**
+   * #A136: una OT bien escrita exime de la espera (el viaje lo paga el cliente).
+   * La decide el servidor; en el formulario solo cambia el texto del aviso.
+   * Si no viene (Code.gs anterior), el formulario se comporta como antes.
+   */
+  workOrderExempt?: boolean;
   approverName: string;
   minDaysNational: number;
   minDaysInternational: number;

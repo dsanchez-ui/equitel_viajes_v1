@@ -156,7 +156,7 @@ respaldos, despliegue). Eso está en la <em>Guía técnica del administrador</em
 </ul>
 <p><strong>Estado especial de la política de anticipación (#A100, octubre de 2026):</strong></p>
 <ul>
-<li><code>PENDIENTE_APROBACION_POLITICA</code> — la pidió un solicitante con menos anticipación de la que pide la política (8 días nacional, 30 internacional; también solo hospedaje). Ver <a href="#515-solicitudes-fuera-de-plazo-y-tarifas-superiores-aprobaci%C3%B3n-del-cfo">§3.15</a>.</li>
+<li><code>PENDIENTE_APROBACION_POLITICA</code> — la pidió un solicitante con menos anticipación de la que pide la política (8 días nacional, 30 internacional; también solo hospedaje). <strong>No todas las que se piden fuera de plazo llegan a este estado</strong>: algunas siguen el proceso normal desde el principio, marcadas fuera de política. Ver <a href="#515-solicitudes-fuera-de-plazo-y-tarifas-superiores-aprobaci%C3%B3n-del-cfo">§3.15</a>.</li>
 </ul>
 <p><strong>Aprobadores requeridos según el tipo de solicitud:</strong></p>
 <table>
@@ -359,7 +359,7 @@ respaldos, despliegue). Eso está en la <em>Guía técnica del administrador</em
 <p>Relacionado: si el login del admin falla por un error de red (no por PIN incorrecto), el mensaje ahora lo dice explícitamente y <strong>no</strong> consume un intento del rate-limit.</p>
 <h3>3.15 Solicitudes fuera de plazo y tarifas superiores: aprobación del CFO (#A100)</h3>
 <p>Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), <strong>toda desviación de la política la aprueba el CFO antes de la compra</strong>. Quién aprueba es el mismo responsable del <strong>presupuesto excedido</strong>: <code>budgetApproverEmail</code> y <code>budgetApproverName</code> en la <strong>configuración del dashboard de costos</strong> (⚙️, solo superadmin). Si se cambia allí, cambia para las dos reglas, y los enlaces que ya tenía el anterior dejan de servir.</p>
-<p><strong>1. Anticipación.</strong> Una solicitud nueva que no cumple 8 días (nacional) o 30 (internacional) queda en <code>PENDIENTE_APROBACION_POLITICA</code>:</p>
+<p><strong>1. Anticipación.</strong> Una solicitud nueva que no cumple 8 días (nacional) o 30 (internacional) <strong>puede quedar</strong> en <code>PENDIENTE_APROBACION_POLITICA</code>. Las que no quedan en ese estado te llegan como cualquier solicitud nueva, <strong>marcadas fuera de política</strong> (⚠️ en el detalle y en <em>Confirmar costos</em>) y contando igual en el informe mensual: gestiónalas con normalidad. Cuando sí queda en espera:</p>
 <ul>
 <li><strong>El área de compras no la gestiona</strong>: no aparece en la lista principal del panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. Para verlas hay un botón aparte, <strong>«⏳ En espera de preaprobación (N)»</strong>, arriba de la lista: muestra, solo para leer, quién la pidió, quién viaja, el viaje, la anticipación, la justificación y cuándo vence, con el aviso de que <strong>no cumplen la política de anticipación y no se gestionan</strong>.</li>
 <li>El solicitante escribe por qué (obligatorio) y recibe un correo <strong>[EN ESPERA DE APROBACIÓN]</strong>.</li>
@@ -729,7 +729,7 @@ principal. Cuando el CFO decide, pasan a esta pestaña (y las denegadas, al filt
 <li><a href="./guia-hoja-calculo.md">Guía del Google Sheets</a> — qué se puede tocar a mano en la hoja y qué no.</li>
 </ul>
 <hr>
-<p><em>Última actualización: 2026-11-20</em></p>
+<p><em>Última actualización: 2026-11-28</em></p>
 
   </div>
 </body>

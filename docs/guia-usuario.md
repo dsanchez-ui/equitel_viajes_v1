@@ -4,7 +4,7 @@
 >
 > **¿Qué cubre?** Todo el ciclo de una solicitud, paso a paso, con ejemplos concretos y los errores típicos que la gente encuentra. Mantén este documento a la mano la primera vez que hagas una solicitud; después seguramente no lo vas a necesitar.
 
-> **Novedad de octubre de 2026 — lee esto primero.** Las solicitudes que se piden con menos anticipación de la que pide la política (8 días nacional, 30 internacional) **quedan en espera** hasta que las apruebe Alejandro Gómez de Greiff (o quien defina la organización). Mientras esperan, el área de compras no cotiza ni compra. También necesita su aprobación una tarifa superior a la del manual. Detalle en [§2.4](#24-fechas-y-horario) y [§9.5](#95-solicitud-urgente-fuera-de-política). Al entrar al portal verás una ventana con estas reglas: léela y toca **«Entendido»** (queda registrado que la leíste). Te seguirá saliendo cada vez que entres hasta que lo hagas.
+> **Novedad de octubre de 2026 — lee esto primero.** Las solicitudes que se piden con menos anticipación de la que pide la política (8 días nacional, 30 internacional) **pueden quedar en espera** hasta que las apruebe Alejandro Gómez de Greiff (o quien defina la organización). Mientras esperan, el área de compras no cotiza ni compra. También necesita su aprobación una tarifa superior a la del manual. Detalle en [§2.4](#24-fechas-y-horario) y [§9.5](#95-solicitud-urgente-fuera-de-política). Al entrar al portal verás una ventana con estas reglas: léela y toca **«Entendido»** (queda registrado que la leíste). Te seguirá saliendo cada vez que entres hasta que lo hagas.
 
 ---
 
@@ -109,9 +109,14 @@ Si el destino que necesitas no aparece en la lista, escribe al área de compras 
 - **Viajes internacionales:** mínimo **30 días** de anticipación.
 - Aplica también a las solicitudes de **solo hospedaje** (se cuenta hasta la fecha de entrada al hotel).
 
-**Si tu fecha no cumple** (desde octubre de 2026), el formulario te muestra un recuadro amarillo **«Esta solicitud necesita la aprobación de…»** y un campo obligatorio: **«¿Por qué no se pudo pedir con más anticipación?»** (mínimo 10 caracteres). Escribe la razón real; es lo que lee quien aprueba para decidir. Ejemplo: *«El cliente confirmó ayer la visita técnica para este jueves.»*
+**Si tu fecha no cumple** (desde octubre de 2026), el formulario te muestra un recuadro ámbar y un campo obligatorio: **«¿Por qué no se pudo pedir con más anticipación?»** (mínimo 10 caracteres). Escribe la razón real; es lo que lee quien aprueba para decidir. Ejemplo: *«El cliente confirmó ayer la visita técnica para este jueves.»*
 
-Al enviar:
+**Lee el título del recuadro: te dice cuál es tu caso.**
+
+- **«Esta solicitud necesita la aprobación de…»** — queda en espera. Es lo que se explica aquí abajo.
+- **«Esta solicitud puede necesitar la aprobación de…»** — sigue el proceso normal desde el principio, y su aprobación **se puede pedir más adelante, antes de que se compre**. Queda igual **marcada fuera de política** y cuenta en el informe mensual de cumplimiento, así que la justificación se pide lo mismo.
+
+Si queda en espera, al enviar:
 
 1. La solicitud **se crea, pero queda en espera** (etiqueta ámbar **EN ESPERA DE APROBACIÓN**). El área de compras **no la ve ni la gestiona** todavía: no se cotiza ni se compra nada.
 2. Te llega un correo **[EN ESPERA DE APROBACIÓN]** que explica por qué.
@@ -120,7 +125,7 @@ Al enviar:
 5. **Si la rechaza**, queda **DENEGADA** con el motivo *«No se aprobó la excepción por incumplimiento de la política de anticipación»* (más su comentario, si escribió uno).
 6. **Si nadie la aprueba en 7 días, o antes de la fecha del viaje, queda denegada sola.** Nunca se borra: queda el registro.
 
-**Viaje multidestino:** si **cualquier tramo** no cumple la anticipación, **todo el viaje queda en espera** (si un tramo no se puede hacer, los demás tampoco). Los tramos quedan enlazados y **una sola decisión aplica a todos**: si se aprueba, siguen todos; si se rechaza o vence, se deniegan todos. Te llega un solo correo por viaje.
+**Viaje multidestino:** si el viaje queda en espera porque **cualquier tramo** no cumple la anticipación, **esperan todos los tramos** (si un tramo no se puede hacer, los demás tampoco). Los tramos quedan enlazados y **una sola decisión aplica a todos**: si se aprueba, siguen todos; si se rechaza o vence, se deniegan todos. Te llega un solo correo por viaje.
 
 Si el viaje es urgente, comunícate directamente con quien aprueba. Los viajes que registra el área de compras (por ejemplo, uno ya comprado por fuera) no quedan en espera, pero sí quedan marcados fuera de política y cuentan en el informe de cumplimiento.
 
@@ -161,7 +166,7 @@ Revisa todo y haz click en el botón rojo **`Crear Solicitud`** al final del for
 
 Al enviar exitosamente, verás un mensaje de confirmación y un correo llegará a tu bandeja con el resumen de la solicitud. A partir de ese momento, empieza el flujo de aprobación.
 
-Si la solicitud se pidió con menos anticipación de la política, en vez de eso verás un aviso ámbar arriba de tus solicitudes: **quedó creada, pero en espera** de la aprobación de la excepción (ver [§2.4](#24-fechas-y-horario)).
+Si la solicitud quedó en espera de la aprobación de la excepción, en vez de eso verás un aviso ámbar arriba de tus solicitudes: **quedó creada, pero en espera** (ver [§2.4](#24-fechas-y-horario)).
 
 ---
 
@@ -172,7 +177,7 @@ El ciclo de una solicitud tiene varias etapas. Puedes consultar en qué etapa es
 ```
 CREACIÓN (tú)
    ↓
-[solo si se pidió fuera de plazo]
+[solo si quedó en espera — §2.4]
 EN ESPERA DE APROBACIÓN POR POLÍTICA (la aprueba o la rechaza
                          quien aprueba las excepciones; el área de
                          compras todavía no la gestiona — §2.4)
@@ -473,13 +478,14 @@ Puntos clave:
 
 ### 9.5 Solicitud urgente fuera de política
 
-A veces hay emergencias que no esperan 8 días. Puedes crear la solicitud igual, pero **queda en espera** hasta que la apruebe quien aprueba las excepciones (hoy Alejandro Gómez de Greiff). Ver [§2.4](#24-fechas-y-horario).
+A veces hay emergencias que no esperan 8 días. Puedes crear la solicitud igual, pero **puede quedar en espera** hasta que la apruebe quien aprueba las excepciones (hoy Alejandro Gómez de Greiff). El recuadro ámbar del formulario te dice si es tu caso. Ver [§2.4](#24-fechas-y-horario).
 
 Recomendaciones:
 
 - Escribe en **«¿Por qué no se pudo pedir con más anticipación?»** la razón real y concreta: es lo único que lee para decidir.
 - Si es muy urgente, comunícate con él directamente; el resumen le llega cada 2 horas en horario laboral.
-- Si se rechaza, o nadie la aprueba en 7 días o antes de la fecha del viaje, queda **DENEGADA**. El cumplimiento de la política se mide cada mes por persona y por unidad.
+- Si queda en espera y se rechaza, o nadie la aprueba en 7 días o antes de la fecha del viaje, queda **DENEGADA**.
+- **Espere o no, pedir fuera de plazo siempre queda registrado:** el cumplimiento de la política se mide cada mes por persona y por unidad.
 
 ### 9.6 El viaje ya lo pagó el área antes de que yo seleccionara
 
@@ -656,4 +662,4 @@ Listados en el **orden real** en que los verás pasar:
 
 ---
 
-*Última actualización: 2026-11-20*
+*Última actualización: 2026-11-28*

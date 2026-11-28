@@ -271,10 +271,24 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 </tr>
 <tr>
 <td><code>procesarAprobacionesPolitica</code></td>
-<td>(#A100) Deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (<code>isWorkingHour</code>). El primer día hábil de cada mes envía además el informe mensual de cumplimiento (#A101). Se crea <strong>a mano</strong> en Activadores (Según tiempo, cada 2 horas), con la misma cuenta de los demás activadores. El <strong>menú 13</strong> muestra los pasos.</td>
+<td>(#A100) Suelta las que esperan y tienen OT (#A136), deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (<code>isWorkingHour</code>). El primer día hábil de cada mes envía además el informe mensual de cumplimiento (#A101). Se crea <strong>a mano</strong> en Activadores (Según tiempo, cada 2 horas), con la misma cuenta de los demás activadores. El <strong>menú 13</strong> muestra los pasos.</td>
 </tr>
 </tbody>
 </table>
+<h3>5.1 Órdenes de trabajo y la política de anticipación (#A136) — <strong>no va en las guías publicadas</strong></h3>
+<p><strong>Esto no se escribe en ninguna guía que abra un viajero.</strong> Está aquí porque esta guía es la única que no se publica en <code>public/manuales/</code> (ver #A130).</p>
+<p><strong>La regla (28-nov-2026, pedido de Yurani por Alejandro Gómez):</strong> una solicitud nueva <strong>con OT válida no espera</strong> la aprobación de la excepción por anticipación. El viaje lo paga el cliente, no el presupuesto de la unidad — la misma razón por la que una OT ya exime del voto del responsable de presupuesto (<code>_esOTValida_</code>, acuerdo con Yurani del 21-may). Yurani: <em>«todos los que tengan OT (que es lo que los clientes van a pagar), que los deje avanzar sin problema, sin aprobado»</em>.</p>
+<p><strong>Lo que NO cambia, a propósito</strong> (David, 28-nov: <em>«no quiero que la gente sienta que poniendo órdenes de trabajo pueden pedir los viajes cuando quieran, porque creamos espacio para fraude»</em>):</p>
+<ul>
+<li>La solicitud queda <strong>marcada fuera de política</strong> (<code>VIOLACION POLITICA = SI</code>) y <strong>cuenta igual en el informe mensual</strong> de cumplimiento (#A101).</li>
+<li>El formulario <strong>sigue pidiendo la justificación</strong> obligatoria y la guarda en <code>JUSTIFICACION ANTICIPACION</code>.</li>
+<li>El aviso ámbar del formulario <strong>se ve igual</strong>; lo único distinto es que dice <em>«puede necesitar la aprobación de…»</em> en vez de <em>«necesita»</em>. En las guías publicadas y en la infografía la anticipación quedó redactada igual de hedgeada: <em>«puede quedar en espera»</em>. <strong>Nunca escribir allí que la OT exime.</strong></li>
+<li>La OT tiene que estar <strong>bien escrita</strong> (compuerta estricta de #A66, <code>OT-&lt;EE&gt;&lt;CCC&gt;-&lt;NÚMERO&gt;</code>): un texto que empiece por «OT» no exime y además no deja crear la solicitud.</li>
+<li>El voto del CFO por <strong>tarifa superior</strong> (#A95/#A100) y por un <strong>cambio pedido después del plazo</strong> (#A129) no cambian: ahí sí se le pide, y por eso el «puede» del aviso es cierto.</li>
+</ul>
+<p><strong>Dónde está:</strong> <code>POLICY_WORK_ORDER_EXEMPT</code> y <code>_policyWorkOrderExempt_</code> en <code>Code.gs</code>. Para apagar la regla, ponerlo en <code>false</code> y pegar <code>Code.gs</code>: el formulario se entera solo (lo recibe en <code>policyApproval.workOrderExempt</code>) y vuelve a decir <em>«necesita»</em>.</p>
+<p><strong>Las que ya estaban esperando:</strong> <code>_policyReleaseExempt_</code> corre en cada pasada del activador, <strong>antes</strong> de denegar las vencidas, y suelta a <code>PENDIENTE_OPCIONES</code> las que esperan y tienen OT (si el viaje ya pasó, no: esa vence como siempre). La columna <code>APROBACION CFO ANTICIPACION</code> <strong>queda vacía a propósito</strong> — «vacía = no necesitó aprobación»; escribir algo allí la haría contar como una decisión que nadie tomó en el informe mensual, el semáforo y «Mis aprobaciones». La constancia va en <code>EVENTOS_JSON</code>: <code>policyOtExempt</code>, <code>policyApproved</code> y <code>policyDecision: {decision: 'exempt'}</code>. En el semáforo esa etapa se llama <strong>«No requirió la excepción»</strong>, sin nombre de aprobador.</p>
+<p><strong>Cómo ver cuántas esperan y si la regla está encendida:</strong> menú <strong>14</strong>.</p>
 <p><strong>Trigger de mantenimiento (ya configurado):</strong></p>
 <ul>
 <li><code>cleanupExpiredSessions</code> (diario, 1–2 AM) — limpia sesiones <code>SESSION_*</code> expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en <code>cleanupExpiredPropsWeekly</code>, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.</li>
@@ -561,7 +575,7 @@ setScriptProperty('MAIL_TECH_SUPPORT_EMAIL', 'dsanchez@equitel.com.co');
 <li><a href="./README.md">README del repo</a> — arquitectura general y stack.</li>
 </ul>
 <hr>
-<p><em>Última actualización: 2026-11-20</em></p>
+<p><em>Última actualización: 2026-11-28</em></p>
 
   </div>
 </body>

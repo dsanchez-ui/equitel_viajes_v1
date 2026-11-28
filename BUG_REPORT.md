@@ -4343,3 +4343,76 @@ El panel móvil era una página aparte, con su propia copia del formulario de cr
 `AdminMobile.html` del proyecto de Apps Script (ya no se usa; si se queda, no pasa nada). Sin cambios en el frontend.
 - **`Code.gs` nuevo + `AdminSidebar.html` anterior:** el sidebar de la hoja sigue como antes; el panel móvil muestra «se está actualizando».
 - **`AdminSidebar.html` nuevo + `Code.gs` anterior:** el sidebar abre, pero la unidad y la pestaña «Unidades» fallan: pegar los dos juntos.
+
+---
+
+## **#A136 — Con orden de trabajo, la política de anticipación no detiene la solicitud**
+**Fecha:** 2026-11-28 · **Pedido por:** Yurani Prieto por Alejandro Gómez (*«Alejandro ya se cansó de aprobar los viajes fuera de los
+8 días, entonces por fa para que todos los que tengan OT (que es lo que los clientes van a pagar) que los deje avanzar sin problema,
+sin aprobado»*) · Diseño de David el 28-nov ·
+**Estado:** En `main`, **pendiente de pegar `Code.gs`** en Apps Script (va junto con el de #A135, que también está pendiente).
+
+**Síntoma:**
+Desde #A100 (14-oct) toda solicitud pedida con menos de 8 días (30 internacional) queda en `PENDIENTE_APROBACION_POLITICA` hasta que
+el CFO la apruebe. Los viajes que se cargan a una **orden de trabajo** los paga el cliente, no el presupuesto de la organización, y
+aun así paraban igual: Alejandro terminó aprobando, una por una, excepciones que no eran de su presupuesto.
+
+**Causa raíz:**
+La exención por OT ya existía, pero solo para el dinero: `_esOTValida_` saca la solicitud del presupuesto de la unidad y de pedirle el
+voto al responsable del presupuesto (`_requiresBudgetOverrun_`, acuerdo con Yurani del 21-may). La regla de anticipación (#A100) se
+escribió aparte y nunca miró la OT.
+
+**Fix:**
+- **Servidor** (`_planPolicyHold_`): con **OT válida** la solicitud nueva no espera. La OT se mira ya **normalizada** con la compuerta
+  estricta de #A66 (`OT-<EE><CCC>-<NÚMERO>`): un texto que empiece por «OT» no exime y, además, no deja crear la solicitud. En
+  multidestino la OT es la misma en todos los tramos (el formulario tiene un solo campo): o se eximen todos, o espera el viaje entero.
+  Lo que crea un administrador y las solicitudes de cambio siguen como estaban.
+  - Interruptor: `POLICY_WORK_ORDER_EXEMPT` (hoy `true`). En `false` y pegando `Code.gs`, todo vuelve a como estaba — el formulario se
+    entera solo, porque lo recibe en `policyApproval.workOrderExempt`.
+- **Lo que no cambia, a propósito** (David: *«no quiero que la gente sienta que poniendo órdenes de trabajo pueden pedir los viajes
+  cuando quieran, porque de pronto creamos espacio para fraude»*):
+  - queda **marcada fuera de política** (`VIOLACION POLITICA = SI`) y **cuenta igual en el informe mensual** de cumplimiento (#A101);
+  - el formulario **sigue pidiendo la justificación** obligatoria y la guarda en `JUSTIFICACION ANTICIPACION`;
+  - el recuadro ámbar se ve **igual**: lo único distinto es que dice *«Esta solicitud **puede** necesitar la aprobación de Alejandro
+    Gómez»* en vez de *«necesita»*, y al pie *«Queda guardada con la solicitud y la lee … si la revisa»*. El «puede» es cierto: el voto
+    del CFO por **tarifa superior** (#A95) y por un **cambio después del plazo** (#A129) sigue aplicando.
+  - **En ninguna guía ni infografía publicada se dice que la OT exime.** Allí la anticipación quedó redactada como *«puede quedar en
+    espera»* y el formulario explica cuál es el caso de cada quien. La regla completa está en
+    [docs/guia-administrador.md §5.1](docs/guia-administrador.md), que es la única guía que **no** se publica (#A130).
+- **Las que ya estaban esperando** (David eligió que se suelten solas): `_policyReleaseExempt_` corre en cada pasada de
+  `procesarAprobacionesPolitica`, **antes** de denegar las vencidas, así una con OT que ya cumplió los 7 días se suelta en vez de
+  denegarse por una regla que ya no la cubre. No se suelta la que ya pasó su fecha de viaje: esa vence como siempre. En multidestino se
+  sueltan juntos los tramos y solo si **todos** tienen OT.
+  - La columna `APROBACION CFO ANTICIPACION` **queda vacía a propósito** («vacía = no necesitó aprobación»): escribir algo allí la haría
+    contar como una decisión que nadie tomó, en el informe mensual, en el semáforo y en «Mis aprobaciones». La constancia va en
+    `EVENTOS_JSON` (`policyOtExempt`, `policyApproved` y `policyDecision: {decision: 'exempt'}`), y los tiempos del área de compras
+    cuentan desde que se soltó, igual que con una aprobación del CFO.
+  - Le llega al área de compras como solicitud nueva, con copia al solicitante, con el rótulo **[EN GESTIÓN]**: *«no requirió la
+    aprobación de la excepción»*, sin decir por qué.
+  - **Semáforo** (`_stageInfo_` + `utils/stageTimeline.ts`): la etapa se llama **«No requirió la excepción»**, resuelta y **sin nombre
+    de aprobador** — nunca se inventa quién la aprobó.
+- **Menú 14** dice si la regla está encendida y qué significa.
+
+**Verificado:**
+- `tools/check-policy-approval.cjs` (ampliado, en `npm run verify`), sobre la hoja sintética:
+  - con OT fuera de plazo no espera, pero queda marcada, con su justificación y con la OT canónica; la columna del CFO vacía; le llega
+    al área de compras y al solicitante no se le avisa de ninguna espera; evento `policyOtExempt` y no `policyHold`;
+  - `OT 1234` y `OTROS GASTOS 5` no eximen y no crean nada; `ot-cubta 110256` sí;
+  - internacional con OT y multidestino con OT (aunque el navegador mande `policyGroupHold`): ninguno espera;
+  - lo que crea un administrador no deja constancia de exención (nunca esperaba);
+  - la que ya esperaba y tiene OT se suelta en la pasada, la que no tiene OT sigue esperando, y la que tiene OT con el viaje ya pasado
+    se deniega como siempre;
+  - el semáforo la da por resuelta, con hora y sin aprobador;
+  - el interruptor en `false` la vuelve a dejar esperando y tampoco suelta nada;
+  - el formulario: usa la misma compuerta de la OT, solo muestra el texto si el servidor anuncia la regla, pide la justificación en los
+    dos casos y dice «puede necesitar».
+- Las tres comprobaciones nuevas se probaron **al revés** (apagando la regla, quitando la pasada que suelta y devolviendo el texto del
+  formulario): fallan 14, 6 y 1 comprobación respectivamente.
+- `npm run verify` en verde.
+
+**Despliegue:** pegar `Code.gs` → Guardar → **versión nueva del web app**. Va junto con #A135 (`Code.gs` + `AdminSidebar.html`). No hay
+menú que correr y no se crean columnas. El frontend sale con el push.
+- **Frontend nuevo + `Code.gs` anterior:** el servidor no manda `workOrderExempt`, el formulario dice «necesita» como siempre y las
+  solicitudes con OT siguen esperando. Nada se rompe.
+- **`Code.gs` nuevo + frontend anterior:** las solicitudes con OT dejan de esperar, pero el formulario dice «necesita»: el aviso promete
+  una espera que no ocurre. Es el único orden incómodo, y dura lo que tarde el push (el frontend se despliega solo al subir a `main`).

@@ -61,7 +61,7 @@ Una plataforma web donde los empleados piden viajes y hospedajes corporativos, s
 - `PENDIENTE_ANALISIS_CAMBIO` — una solicitud "hija" que reemplaza a otra. El admin decide pasarla a estudio (entra al flujo normal) o denegarla (y decidir qué hacer con la original).
 
 **Estado especial de la política de anticipación (#A100, octubre de 2026):**
-- `PENDIENTE_APROBACION_POLITICA` — la pidió un solicitante con menos anticipación de la que pide la política (8 días nacional, 30 internacional; también solo hospedaje). Ver [§3.15](#515-solicitudes-fuera-de-plazo-y-tarifas-superiores-aprobación-del-cfo).
+- `PENDIENTE_APROBACION_POLITICA` — la pidió un solicitante con menos anticipación de la que pide la política (8 días nacional, 30 internacional; también solo hospedaje). **No todas las que se piden fuera de plazo llegan a este estado**: algunas siguen el proceso normal desde el principio, marcadas fuera de política. Ver [§3.15](#515-solicitudes-fuera-de-plazo-y-tarifas-superiores-aprobación-del-cfo).
 
 **Aprobadores requeridos según el tipo de solicitud:**
 
@@ -246,7 +246,7 @@ Relacionado: si el login del admin falla por un error de red (no por PIN incorre
 
 Desde octubre de 2026 (pedido de Yurani y reglas de Alejandro Gómez), **toda desviación de la política la aprueba el CFO antes de la compra**. Quién aprueba es el mismo responsable del **presupuesto excedido**: `budgetApproverEmail` y `budgetApproverName` en la **configuración del dashboard de costos** (⚙️, solo superadmin). Si se cambia allí, cambia para las dos reglas, y los enlaces que ya tenía el anterior dejan de servir.
 
-**1. Anticipación.** Una solicitud nueva que no cumple 8 días (nacional) o 30 (internacional) queda en `PENDIENTE_APROBACION_POLITICA`:
+**1. Anticipación.** Una solicitud nueva que no cumple 8 días (nacional) o 30 (internacional) **puede quedar** en `PENDIENTE_APROBACION_POLITICA`. Las que no quedan en ese estado te llegan como cualquier solicitud nueva, **marcadas fuera de política** (⚠️ en el detalle y en *Confirmar costos*) y contando igual en el informe mensual: gestiónalas con normalidad. Cuando sí queda en espera:
 
 - **El área de compras no la gestiona**: no aparece en la lista principal del panel, ni en el resumen de pendientes, ni en métricas ni en el dashboard de costos. Para verlas hay un botón aparte, **«⏳ En espera de preaprobación (N)»**, arriba de la lista: muestra, solo para leer, quién la pidió, quién viaja, el viaje, la anticipación, la justificación y cuándo vence, con el aviso de que **no cumplen la política de anticipación y no se gestionan**.
 - El solicitante escribe por qué (obligatorio) y recibe un correo **[EN ESPERA DE APROBACIÓN]**.
@@ -561,4 +561,4 @@ Desde los últimos cambios, el login distingue claramente: si falla por red, el 
 
 ---
 
-*Última actualización: 2026-11-20*
+*Última actualización: 2026-11-28*
