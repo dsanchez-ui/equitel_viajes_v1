@@ -669,6 +669,21 @@ function main() {
   ok('con OT: el área de compras registra una tarifa más alta sin esperar al CFO (' + (spOt.error || '') + ')',
     spOt.success && cell(FOT, 'TIPO DE COMPRA DE TKT') === 'TIPO 3');
 
+  // La OT le quita a Alejandro el voto de CFO, NUNCA el de jefe directo
+  const BOSS = create(base({ departureDate: day(12), returnDate: day(13), workOrder: OT })).data;
+  setCell(BOSS, 'STATUS', 'PENDIENTE_APROBACION'); setCell(BOSS, 'COSTO COTIZADO PARA VIAJE', 600000);
+  setCell(BOSS, 'CORREO DE QUIEN APRUEBA (AUTOMÁTICO)', CFO); setCell(BOSS, 'REQUIERE APROB TARIFA', 'SI');
+  reset();
+  const askedBoss = ctx._approvalAskedFor_(ctx.mapRowToRequest(rowOf(BOSS)))
+    .map((a) => String(a.email).toLowerCase() + ':' + a.role).sort();
+  eq('con OT, al CFO se le sigue pidiendo su voto de JEFE DIRECTO (y solo ese)', askedBoss, [CFO + ':NORMAL']);
+  reset();
+  ok('con OT y el CFO de jefe: sin su voto no se destraba', ctx._policyUnblockWorkOrders_().indexOf(BOSS) === -1 && cell(BOSS, 'STATUS') === 'PENDIENTE_APROBACION');
+  const sgB = ctx._newApprovalLinkSig_('approve', BOSS, 'approved', 'NORMAL', CFO);
+  reset();
+  ctx.processApprovalFromEmail({ parameter: { id: BOSS, decision: 'approved', role: 'NORMAL', actor: CFO, t: sgB.t, sig: sgB.sig, confirm: 'true' } });
+  eq('con OT y el CFO de jefe: con su voto de área, aprobada', cell(BOSS, 'STATUS'), 'APROBADO');
+
   // Destrabar las que quedaron esperando SOLO el voto del CFO teniendo OT
   const stuck = (over, ot) => {
     const id = create(base(Object.assign({ departureDate: day(12), returnDate: day(13) }, ot ? { workOrder: OT } : {}))).data;

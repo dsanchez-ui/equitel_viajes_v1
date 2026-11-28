@@ -156,6 +156,8 @@ Dos efectos que hay que recordar:
 
 **Las que quedaron atascadas.** El motor de aprobación solo recalcula cuando alguien vota, así que una solicitud con OT que ya tenía el voto del jefe y esperaba únicamente al CFO se habría quedado quieta para siempre. `_policyUnblockWorkOrders_` corre en cada pasada del activador, dentro del mismo candado, y reevalúa esas filas con `reevaluarAprobacionPendiente` (la misma cuenta del motor). **Si falta cualquier otro voto, no hace nada.** Es idempotente y queda como red: después del despliegue no debería encontrar nada.
 
+**La OT le quita el sombrero de CFO, no el de jefe.** Si Alejandro es el aprobador de área de quien viaja, se le sigue pidiendo su voto como cualquier jefe (rol `NORMAL`), tenga OT o no: lo que la OT apaga es el rol `BUDGET_OVERRUN`. Probado en `check-policy-approval.cjs`.
+
 **Dónde queda el control, entonces:** en el informe mensual (la tarifa superior y el pedido fuera de plazo siguen contando), en el dashboard de costos (el viaje aparece en «Cargado a OT» **con el número de la OT**) y en el aprobador de área, que sigue votando siempre. **Lo que se perdió:** en un cambio después del plazo, el voto del CFO era la protección cuando el aprobador de área es la misma persona que pide (caso Mateo, #A129). Con OT ya no hay segundo par de ojos. Si eso llega a importar, la vuelta corta es volver a pedir el voto solo cuando quien pide es su propio aprobador.
 
 **Trigger de mantenimiento (ya configurado):**

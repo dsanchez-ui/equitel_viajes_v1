@@ -4476,6 +4476,8 @@ hay segundo par de ojos. Si algún día importa, la vuelta corta es volver a ped
   - el motor de aprobación: con OT y las dos marcas puestas, **el voto del jefe basta** y la solicitud queda APROBADO;
   - con OT, `setPurchaseInfo` registra una tarifa más alta que la aprobada sin bloquear (sin OT sigue bloqueando, sección 9);
   - el modal del cambio y el bloque de tarifa solo nombran al CFO si el servidor manda a quién;
+  - **la OT le quita a Alejandro el sombrero de CFO, nunca el de jefe directo:** con OT, si él es el aprobador de área de quien viaja,
+    se le sigue pidiendo su voto (y solo ese, `NORMAL`), sin su voto no se destraba nada y con su voto la solicitud queda APROBADO;
   - **destrabar:** con OT y el voto del jefe puesto se avanza sola a APROBADO en la pasada; sin OT sigue esperando; con OT y **sin** el
     voto del jefe no se mueve; la segunda pasada no vuelve a tocar nada y el interruptor apagado tampoco destraba.
 - Probado al revés: quitar la compuerta de `_requiresCfoVote_` rompe 3 comprobaciones; quitarla de `mapRowToRequest`, 2; quitar la
