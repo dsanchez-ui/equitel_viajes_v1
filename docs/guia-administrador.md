@@ -115,7 +115,7 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 | `sendPendingConsultReminders` | Recordatorio al usuario sobre consultas pendientes (continuar/anular tras denegación de cambio). |
 | `procesarAprobacionesPolitica` | (#A100) Suelta las que esperan y tienen OT (#A136), deniega las solicitudes fuera de plazo vencidas y le manda al CFO el resumen de las que esperan su aprobación, solo en horario laboral (`isWorkingHour`). El primer día hábil de cada mes envía además el informe mensual de cumplimiento (#A101). Se crea **a mano** en Activadores (Según tiempo, cada 2 horas), con la misma cuenta de los demás activadores. El **menú 13** muestra los pasos. |
 
-### 5.1 Órdenes de trabajo y la política de anticipación (#A136) — **no va en las guías publicadas**
+### 5.1 Órdenes de trabajo y el CFO (#A136, #A137) — **no va en las guías publicadas**
 
 **Esto no se escribe en ninguna guía que abra un viajero.** Está aquí porque esta guía es la única que no se publica en `public/manuales/` (ver #A130).
 
@@ -134,6 +134,29 @@ Estos se ejecutan automáticamente en horario laboral. Ya están configurados.
 **Las que ya estaban esperando:** `_policyReleaseExempt_` corre en cada pasada del activador, **antes** de denegar las vencidas, y suelta a `PENDIENTE_OPCIONES` las que esperan y tienen OT (si el viaje ya pasó, no: esa vence como siempre). La columna `APROBACION CFO ANTICIPACION` **queda vacía a propósito** — «vacía = no necesitó aprobación»; escribir algo allí la haría contar como una decisión que nadie tomó en el informe mensual, el semáforo y «Mis aprobaciones». La constancia va en `EVENTOS_JSON`: `policyOtExempt`, `policyApproved` y `policyDecision: {decision: 'exempt'}`. En el semáforo esa etapa se llama **«No requirió la excepción»**, sin nombre de aprobador.
 
 **Cómo ver cuántas esperan y si la regla está encendida:** menú **14**.
+
+#### Y lo mismo para todo lo demás que aprobaba el CFO (#A137, 28-nov)
+
+David, el mismo día: *«cuando tiene OT una solicitud, no debe pedir que Alejandro apruebe nada. Porque si hay sobrecostos, se le van a cargar a la OT y eso lo paga el cliente. Y si hay cambios fuera de plazo, también va a tener sobrecostos y eso también lo aprueba el cliente»*. Con OT válida, **ninguno** de los tres motivos le pide el voto:
+
+| Motivo | Antes | Ahora con OT |
+|---|---|---|
+| Presupuesto de la unidad excedido | exento desde #A66 | exento |
+| Tarifa superior a la del manual (#A95) | votaba el CFO | **no vota** |
+| Cambio pedido después del plazo (#A129) | votaba el CFO | **no vota** |
+
+Una sola compuerta: `_requiresCfoVote_` devuelve `false` si `_policyWorkOrderExempt_(workOrder)`. En `mapRowToRequest` se apagan además `requiresFareApproval`, `lateChangeNeedsCfo` y **`policyApproverName`** (que queda vacío): de ahí cuelgan todos los avisos de la app — el de la tarifa en *Confirmar costos* y *Registrar reserva* (`FareFields`), el «lo aprueba también…» del cambio (`TripChangeInfo`, `TripChangeModal`) y el correo de aprobación. Si alguna pantalla nueva necesita nombrar al CFO, que se gatee con `policyApproverName`, no con la configuración.
+
+Es **compute-on-read**, igual que el presupuesto: `REQUIERE APROB TARIFA` y `fueraDePlazo` se siguen escribiendo porque miden lo que pasó y alimentan el informe mensual (#A101). Lo único que la OT quita es el voto.
+
+Dos efectos que hay que recordar:
+
+- `_assertFareChangeAllowed_` (no subir la tarifa por encima de la aprobada antes de comprar) **no aplica con OT**: nadie aprobó una tarifa, así que bloquear dejaría al área de compras esperando algo que no va a llegar.
+- La nota de `[TARIFA]` en OBSERVACIONES, que lee el viajero, **no dice «Requiere la aprobación de …»** cuando hay OT: solo deja constancia de que la tarifa es superior a la del manual.
+
+**Las que quedaron atascadas.** El motor de aprobación solo recalcula cuando alguien vota, así que una solicitud con OT que ya tenía el voto del jefe y esperaba únicamente al CFO se habría quedado quieta para siempre. `_policyUnblockWorkOrders_` corre en cada pasada del activador, dentro del mismo candado, y reevalúa esas filas con `reevaluarAprobacionPendiente` (la misma cuenta del motor). **Si falta cualquier otro voto, no hace nada.** Es idempotente y queda como red: después del despliegue no debería encontrar nada.
+
+**Dónde queda el control, entonces:** en el informe mensual (la tarifa superior y el pedido fuera de plazo siguen contando), en el dashboard de costos (el viaje aparece en «Cargado a OT» **con el número de la OT**) y en el aprobador de área, que sigue votando siempre. **Lo que se perdió:** en un cambio después del plazo, el voto del CFO era la protección cuando el aprobador de área es la misma persona que pide (caso Mateo, #A129). Con OT ya no hay segundo par de ojos. Si eso llega a importar, la vuelta corta es volver a pedir el voto solo cuando quien pide es su propio aprobador.
 
 **Trigger de mantenimiento (ya configurado):**
 - `cleanupExpiredSessions` (diario, 1–2 AM) — limpia sesiones `SESSION_*` expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en `cleanupExpiredPropsWeekly`, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.

@@ -504,6 +504,17 @@ Terminales alternos: `DENEGADO`, `ANULADO`. Especial: `PENDIENTE_ANALISIS_CAMBIO
     denegar las vencidas; `APROBACION CFO ANTICIPACION` queda **vacía** (escribir ahí la haría contar como una decisión que nadie tomó)
     y la constancia va en `EVENTOS_JSON` (`policyOtExempt`, `policyDecision: exempt`). En el semáforo: **«No requirió la excepción»**,
     sin nombre de aprobador.
+  - **Con OT no se le pide NADA al CFO** (#A137, David, 28-nov: *«si hay sobrecostos, se le van a cargar a la OT y eso lo paga el
+    cliente»*): ni presupuesto (ya era así, #A66), ni **tarifa superior** (#A95), ni **cambio después del plazo** (#A129). Una sola
+    compuerta: `_requiresCfoVote_` devuelve `false` con OT válida. En `mapRowToRequest` se apagan `requiresFareApproval`,
+    `lateChangeNeedsCfo` y **`policyApproverName`** (queda vacío): de ese campo cuelgan todos los avisos de la app, así que una pantalla
+    nueva que nombre al CFO **se gatea con `policyApproverName`**, nunca con la configuración. Las marcas se siguen escribiendo
+    (compute-on-read, como el presupuesto): miden y alimentan el informe mensual; lo que la OT quita es el voto. Con OT tampoco aplica
+    `_assertFareChangeAllowed_` (bloquearía esperando una aprobación que nadie va a dar) y la nota `[TARIFA]` de OBSERVACIONES no
+    promete aprobación. Las que quedaron **esperando solo su voto** las destraba `_policyUnblockWorkOrders_` en la pasada de cada 2 h,
+    con `reevaluarAprobacionPendiente` (la misma cuenta del motor): si falta cualquier otro voto, no hace nada. **Lo que se perdió:**
+    en un cambio tarde el voto del CFO también era la protección cuando el aprobador de área es quien pide (caso Mateo); con OT no hay
+    segundo par de ojos (David lo sabe y decidió seguir, 28-nov).
 - **Informe mensual de cumplimiento de la política** (#A101; Alejandro, 13-oct: *«se publicará cada mes»*; decisiones de David
   del 14-oct). Sale solo el **primer día hábil del mes** (festivos de Colombia; el de octubre, el martes 3-nov), en horario laboral,
   con la pasada de `procesarAprobacionesPolitica` (sin activador aparte), para quien aprueba (`budgetApproverEmail`) con copia a
@@ -881,8 +892,8 @@ autorización) y verificar antes de crear una versión nueva del web app.
 
 ### Para retomar (estado al 2026-11-28)
 
-- **#A136 en `main`, pendiente de pegar en Apps Script (28-nov):** con OT válida, la política de anticipación ya no detiene la
-  solicitud. **Se pega junto con #A135** (`Code.gs` + `AdminSidebar.html` → Guardar → versión nueva del web app); no hay menú que correr
+- **#A136 y #A137 en `main`, pendientes de pegar en Apps Script (28-nov):** con OT válida, la política de anticipación ya no detiene la
+  solicitud (#A136) y al CFO no se le pide **nada** —tampoco la tarifa superior ni el cambio después del plazo— (#A137). **Se pega junto con #A135** (`Code.gs` + `AdminSidebar.html` → Guardar → versión nueva del web app); no hay menú que correr
   ni columnas nuevas. El frontend ya salió con el push. Mientras no se pegue, todo sigue como hoy (el formulario dice «necesita» porque
   el servidor no manda `workOrderExempt`). Al pegarlo, en la siguiente pasada del activador (cada 2 h) se sueltan solas las que estén
   esperando y tengan OT; con el **menú 14** se ve cuántas son antes y después. Pendiente sin código: avisarle a Yurani que quedó, y que

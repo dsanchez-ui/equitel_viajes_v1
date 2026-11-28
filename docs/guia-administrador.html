@@ -275,7 +275,7 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 </tr>
 </tbody>
 </table>
-<h3>5.1 Órdenes de trabajo y la política de anticipación (#A136) — <strong>no va en las guías publicadas</strong></h3>
+<h3>5.1 Órdenes de trabajo y el CFO (#A136, #A137) — <strong>no va en las guías publicadas</strong></h3>
 <p><strong>Esto no se escribe en ninguna guía que abra un viajero.</strong> Está aquí porque esta guía es la única que no se publica en <code>public/manuales/</code> (ver #A130).</p>
 <p><strong>La regla (28-nov-2026, pedido de Yurani por Alejandro Gómez):</strong> una solicitud nueva <strong>con OT válida no espera</strong> la aprobación de la excepción por anticipación. El viaje lo paga el cliente, no el presupuesto de la unidad — la misma razón por la que una OT ya exime del voto del responsable de presupuesto (<code>_esOTValida_</code>, acuerdo con Yurani del 21-may). Yurani: <em>«todos los que tengan OT (que es lo que los clientes van a pagar), que los deje avanzar sin problema, sin aprobado»</em>.</p>
 <p><strong>Lo que NO cambia, a propósito</strong> (David, 28-nov: <em>«no quiero que la gente sienta que poniendo órdenes de trabajo pueden pedir los viajes cuando quieran, porque creamos espacio para fraude»</em>):</p>
@@ -289,6 +289,43 @@ abre así desde el botón <em>Costos por Unidad</em>.</p>
 <p><strong>Dónde está:</strong> <code>POLICY_WORK_ORDER_EXEMPT</code> y <code>_policyWorkOrderExempt_</code> en <code>Code.gs</code>. Para apagar la regla, ponerlo en <code>false</code> y pegar <code>Code.gs</code>: el formulario se entera solo (lo recibe en <code>policyApproval.workOrderExempt</code>) y vuelve a decir <em>«necesita»</em>.</p>
 <p><strong>Las que ya estaban esperando:</strong> <code>_policyReleaseExempt_</code> corre en cada pasada del activador, <strong>antes</strong> de denegar las vencidas, y suelta a <code>PENDIENTE_OPCIONES</code> las que esperan y tienen OT (si el viaje ya pasó, no: esa vence como siempre). La columna <code>APROBACION CFO ANTICIPACION</code> <strong>queda vacía a propósito</strong> — «vacía = no necesitó aprobación»; escribir algo allí la haría contar como una decisión que nadie tomó en el informe mensual, el semáforo y «Mis aprobaciones». La constancia va en <code>EVENTOS_JSON</code>: <code>policyOtExempt</code>, <code>policyApproved</code> y <code>policyDecision: {decision: 'exempt'}</code>. En el semáforo esa etapa se llama <strong>«No requirió la excepción»</strong>, sin nombre de aprobador.</p>
 <p><strong>Cómo ver cuántas esperan y si la regla está encendida:</strong> menú <strong>14</strong>.</p>
+<h4>Y lo mismo para todo lo demás que aprobaba el CFO (#A137, 28-nov)</h4>
+<p>David, el mismo día: <em>«cuando tiene OT una solicitud, no debe pedir que Alejandro apruebe nada. Porque si hay sobrecostos, se le van a cargar a la OT y eso lo paga el cliente. Y si hay cambios fuera de plazo, también va a tener sobrecostos y eso también lo aprueba el cliente»</em>. Con OT válida, <strong>ninguno</strong> de los tres motivos le pide el voto:</p>
+<table>
+<thead>
+<tr>
+<th>Motivo</th>
+<th>Antes</th>
+<th>Ahora con OT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Presupuesto de la unidad excedido</td>
+<td>exento desde #A66</td>
+<td>exento</td>
+</tr>
+<tr>
+<td>Tarifa superior a la del manual (#A95)</td>
+<td>votaba el CFO</td>
+<td><strong>no vota</strong></td>
+</tr>
+<tr>
+<td>Cambio pedido después del plazo (#A129)</td>
+<td>votaba el CFO</td>
+<td><strong>no vota</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Una sola compuerta: <code>_requiresCfoVote_</code> devuelve <code>false</code> si <code>_policyWorkOrderExempt_(workOrder)</code>. En <code>mapRowToRequest</code> se apagan además <code>requiresFareApproval</code>, <code>lateChangeNeedsCfo</code> y <strong><code>policyApproverName</code></strong> (que queda vacío): de ahí cuelgan todos los avisos de la app — el de la tarifa en <em>Confirmar costos</em> y <em>Registrar reserva</em> (<code>FareFields</code>), el «lo aprueba también…» del cambio (<code>TripChangeInfo</code>, <code>TripChangeModal</code>) y el correo de aprobación. Si alguna pantalla nueva necesita nombrar al CFO, que se gatee con <code>policyApproverName</code>, no con la configuración.</p>
+<p>Es <strong>compute-on-read</strong>, igual que el presupuesto: <code>REQUIERE APROB TARIFA</code> y <code>fueraDePlazo</code> se siguen escribiendo porque miden lo que pasó y alimentan el informe mensual (#A101). Lo único que la OT quita es el voto.</p>
+<p>Dos efectos que hay que recordar:</p>
+<ul>
+<li><code>_assertFareChangeAllowed_</code> (no subir la tarifa por encima de la aprobada antes de comprar) <strong>no aplica con OT</strong>: nadie aprobó una tarifa, así que bloquear dejaría al área de compras esperando algo que no va a llegar.</li>
+<li>La nota de <code>[TARIFA]</code> en OBSERVACIONES, que lee el viajero, <strong>no dice «Requiere la aprobación de …»</strong> cuando hay OT: solo deja constancia de que la tarifa es superior a la del manual.</li>
+</ul>
+<p><strong>Las que quedaron atascadas.</strong> El motor de aprobación solo recalcula cuando alguien vota, así que una solicitud con OT que ya tenía el voto del jefe y esperaba únicamente al CFO se habría quedado quieta para siempre. <code>_policyUnblockWorkOrders_</code> corre en cada pasada del activador, dentro del mismo candado, y reevalúa esas filas con <code>reevaluarAprobacionPendiente</code> (la misma cuenta del motor). <strong>Si falta cualquier otro voto, no hace nada.</strong> Es idempotente y queda como red: después del despliegue no debería encontrar nada.</p>
+<p><strong>Dónde queda el control, entonces:</strong> en el informe mensual (la tarifa superior y el pedido fuera de plazo siguen contando), en el dashboard de costos (el viaje aparece en «Cargado a OT» <strong>con el número de la OT</strong>) y en el aprobador de área, que sigue votando siempre. <strong>Lo que se perdió:</strong> en un cambio después del plazo, el voto del CFO era la protección cuando el aprobador de área es la misma persona que pide (caso Mateo, #A129). Con OT ya no hay segundo par de ojos. Si eso llega a importar, la vuelta corta es volver a pedir el voto solo cuando quien pide es su propio aprobador.</p>
 <p><strong>Trigger de mantenimiento (ya configurado):</strong></p>
 <ul>
 <li><code>cleanupExpiredSessions</code> (diario, 1–2 AM) — limpia sesiones <code>SESSION_*</code> expiradas, lockouts de PIN vencidos, counters de rate-limit fuera de ventana (regen PIN, crear solicitud) y Script Properties JSON corruptas. Se apoya en <code>cleanupExpiredPropsWeekly</code>, que hace el trabajo real. Previene acumulación y mantiene las Script Properties bajo el límite de 500 KB.</li>

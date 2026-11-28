@@ -39,7 +39,8 @@ function headersFromSource() {
   // eslint-disable-next-line no-new-func
   const list = new Function('return ' + m[1])();
   ['EVENTOS_JSON', 'COMENTARIOS APROBADORES (JSON)', 'APROBADO PRESUPUESTO', 'REQUIERE APROB PPTO', 'TARIFA RECOMENDADA',
-    'TARIFA NOMBRE', 'TARIFA JUSTIFICACION', 'AEROLINEA', 'CANAL DE COMPRA'].forEach((h) => { if (!list.includes(h)) list.push(h); });
+    'TARIFA NOMBRE', 'TARIFA JUSTIFICACION', 'AEROLINEA', 'CANAL DE COMPRA',
+    'CAMBIO PEDIDO (JSON)'].forEach((h) => { if (!list.includes(h)) list.push(h); });
   return list;
 }
 
@@ -434,7 +435,8 @@ function main() {
   // 9. Tarifa superior a la del manual
   eq('tarifa superior: solo si sube y es excepción', [ctx._fareIsAboveManual_('TIPO 2', 'TIPO 1', 'Lleva herramienta'), ctx._fareIsAboveManual_('TIPO 3', 'TIPO 2', ''),
     ctx._fareIsAboveManual_('TIPO 1', 'TIPO 2', 'x'), ctx._fareIsAboveManual_('TIPO 2', '', 'x')], [true, false, false, false]);
-  eq('voto del CFO: presupuesto (sin OT) o tarifa', [ctx._requiresCfoVote_('SI', '', ''), ctx._requiresCfoVote_('SI', 'OT-CUBTA-110256', ''), ctx._requiresCfoVote_('', 'OT-CUBTA-110256', 'SI'), ctx._requiresCfoVote_('', '', '')], [true, false, true, false]);
+  // #A137: con OT no se le pide nada al CFO; sin OT, el presupuesto y la tarifa sí.
+  eq('voto del CFO: presupuesto o tarifa, y la OT lo quita', [ctx._requiresCfoVote_('SI', '', ''), ctx._requiresCfoVote_('SI', 'OT-CUBTA-110256', ''), ctx._requiresCfoVote_('', 'OT-CUBTA-110256', 'SI'), ctx._requiresCfoVote_('', '', 'SI'), ctx._requiresCfoVote_('', '', '')], [true, false, false, true, false]);
   const FARE = OK1;
   setCell(FARE, 'TIPO DE COMPRA DE TKT', 'TIPO 2'); setCell(FARE, 'TARIFA RECOMENDADA', 'TIPO 1'); setCell(FARE, 'TARIFA NOMBRE', 'Light'); setCell(FARE, 'TARIFA JUSTIFICACION', 'El técnico lleva herramienta.');
   reset();
@@ -623,13 +625,91 @@ function main() {
   ok('formulario: la marca del grupo solo viaja si de verdad espera', /policyGroupHold: policyHoldApplies/.test(FORM));
   ok('formulario: el aviso de espera del multidestino se decide por esa marca', /it\.payload\.policyGroupHold === true/.test(FORM));
 
+  // 13. #A137 — Con OT no se le pide NADA al CFO: ni presupuesto, ni tarifa, ni cambio tarde
+  const LATE_JSON = JSON.stringify({ v: 1, fueraDePlazo: { limite: '2026-11-18', hora: 17 } });
+  eq('voto del CFO: la OT lo quita por los tres motivos',
+    [ctx._requiresCfoVote_('SI', OT, ''), ctx._requiresCfoVote_('', OT, 'SI'), ctx._requiresCfoVote_('', OT, '', LATE_JSON),
+      ctx._requiresCfoVote_('', '', '', LATE_JSON)],
+    [false, false, false, true]);
+
+  const FOT = create(base({ departureDate: day(12), returnDate: day(13), workOrder: OT })).data;
+  setCell(FOT, 'TIPO DE COMPRA DE TKT', 'TIPO 2'); setCell(FOT, 'TARIFA RECOMENDADA', 'TIPO 1');
+  setCell(FOT, 'TARIFA NOMBRE', 'Light'); setCell(FOT, 'TARIFA JUSTIFICACION', 'El técnico lleva herramienta.');
+  reset();
+  const rnOt = () => req.indexOf(rowOf(FOT)) + 1;
+  eq('con OT: la tarifa superior se marca igual (mide, y va al informe mensual)',
+    [ctx._updateFareCfoFlag_(sh, rnOt()), cell(FOT, 'REQUIERE APROB TARIFA')], [true, 'SI']);
+  ok('con OT: la nota no promete una aprobación que nadie va a dar',
+    /\[TARIFA\]: TIPO 2 \(Light\) es superior a la del manual \(TIPO 1\)\./.test(String(cell(FOT, 'OBSERVACIONES'))) &&
+    !/Requiere la aprobación/.test(String(cell(FOT, 'OBSERVACIONES'))));
+  reset();
+  let mOt = ctx.mapRowToRequest(rowOf(FOT));
+  eq('con OT: el detalle no pide el voto del CFO por la tarifa, y no nombra a nadie',
+    [mOt.requiresFareApproval, mOt.requiresBudgetOverrunApproval, mOt.policyApproverName], [false, false, '']);
+
+  setCell(FOT, 'CAMBIO PEDIDO (JSON)', LATE_JSON);
+  reset();
+  mOt = ctx.mapRowToRequest(rowOf(FOT));
+  eq('con OT: el cambio pedido después del plazo se registra, pero tampoco lo vota el CFO',
+    [mOt.lateChange, mOt.lateChangeNeedsCfo, mOt.requiresBudgetOverrunApproval], [true, false, false]);
+  setCell(FOT, 'CAMBIO PEDIDO (JSON)', '');
+
+  // El motor de aprobación: con OT, el voto del jefe basta aunque todo esté marcado
+  setCell(FOT, 'STATUS', 'PENDIENTE_APROBACION'); setCell(FOT, 'COSTO COTIZADO PARA VIAJE', 600000);
+  setCell(FOT, 'CORREO DE QUIEN APRUEBA (AUTOMÁTICO)', 'jefe@p.co'); setCell(FOT, 'REQUIERE APROB PPTO', 'SI');
+  const sgOt = ctx._newApprovalLinkSig_('approve', FOT, 'approved', 'NORMAL', 'jefe@p.co');
+  reset();
+  ctx.processApprovalFromEmail({ parameter: { id: FOT, decision: 'approved', role: 'NORMAL', actor: 'jefe@p.co', t: sgOt.t, sig: sgOt.sig, confirm: 'true' } });
+  eq('con OT, presupuesto y tarifa marcados: el voto del jefe basta', cell(FOT, 'STATUS'), 'APROBADO');
+
+  // Antes de comprar: con OT se puede registrar una tarifa más alta (nadie la va a aprobar)
+  reset();
+  const spOt = ctx.dispatch('setPurchaseInfo', { userEmail: 'admin@p.co', sessionToken: 't', requestId: FOT,
+    airline: 'LATAM', channel: 'Aviatur', fareOption: '3', fareJustification: 'El técnico lleva herramienta y maleta.' });
+  ok('con OT: el área de compras registra una tarifa más alta sin esperar al CFO (' + (spOt.error || '') + ')',
+    spOt.success && cell(FOT, 'TIPO DE COMPRA DE TKT') === 'TIPO 3');
+
+  // Destrabar las que quedaron esperando SOLO el voto del CFO teniendo OT
+  const stuck = (over, ot) => {
+    const id = create(base(Object.assign({ departureDate: day(12), returnDate: day(13) }, ot ? { workOrder: OT } : {}))).data;
+    setCell(id, 'STATUS', 'PENDIENTE_APROBACION'); setCell(id, 'COSTO COTIZADO PARA VIAJE', 600000);
+    setCell(id, 'CORREO DE QUIEN APRUEBA (AUTOMÁTICO)', 'jefe@p.co');
+    setCell(id, 'REQUIERE APROB TARIFA', 'SI');
+    Object.keys(over || {}).forEach((h) => setCell(id, h, over[h]));
+    return id;
+  };
+  const AREA_OK = 'Sí_jefe@p.co_14/10/2026 9:00';
+  const STUCK_OT = stuck({ 'APROBADO POR ÁREA? (AUTOMÁTICO)': AREA_OK }, true);
+  const STUCK_NO_OT = stuck({ 'APROBADO POR ÁREA? (AUTOMÁTICO)': AREA_OK }, false);
+  const STUCK_SIN_JEFE = stuck({}, true);
+  log.mails.length = 0;
+  reset();
+  const run5 = ctx.procesarAprobacionesPolitica();
+  eq('con OT y el jefe ya votado: se destraba sola, sin esperar al CFO',
+    [run5.unblocked.indexOf(STUCK_OT) !== -1, cell(STUCK_OT, 'STATUS')], [true, 'APROBADO']);
+  eq('sin OT: sigue esperando el voto del CFO', cell(STUCK_NO_OT, 'STATUS'), 'PENDIENTE_APROBACION');
+  eq('con OT pero sin el voto del jefe: no se le salta el turno a nadie', cell(STUCK_SIN_JEFE, 'STATUS'), 'PENDIENTE_APROBACION');
+  reset();
+  eq('destrabar es idempotente: a la segunda pasada no vuelve a tocar nada', ctx._policyUnblockWorkOrders_(), []);
+  ctx.POLICY_WORK_ORDER_EXEMPT = false;
+  reset();
+  eq('interruptor apagado: tampoco destraba', ctx._policyUnblockWorkOrders_(), []);
+  ctx.POLICY_WORK_ORDER_EXEMPT = true;
+
+  // El formulario del cambio no le promete al viajero un voto que no se va a pedir
+  const TCM = fs.readFileSync(path.join(ROOT, 'components', 'TripChangeModal.tsx'), 'utf8');
+  ok('el modal del cambio solo nombra al CFO si el servidor lo manda', !/quien aprueba las excepciones'\}/.test(TCM));
+  const FF = fs.readFileSync(path.join(ROOT, 'components', 'FareFields.tsx'), 'utf8');
+  ok('el aviso de la tarifa solo sale si el servidor manda a quién aprueba', /option > rec\.option && cfoApproverName &&/.test(FF));
+
   if (failures.length) {
     console.error('✗ Aprobación del CFO por la política (#A100): ' + failures.length + ' falla(s):');
     failures.forEach((f) => console.error('  - ' + f));
     process.exit(1);
   }
   console.log('Aprobación del CFO por la política (#A100): anticipación en el servidor, espera oculta al área de compras, resumen con enlaces firmados, aprobar/rechazar/vencer, métricas desde la aprobación, resumen solo en horario laboral, multidestino con una sola decisión, lista de solo lectura del área de compras, tarifa superior con voto del CFO, interruptor y aviso con constancia. ' +
-    'Órdenes de trabajo (#A136): con OT válida no espera pero queda marcada y con su justificación, la OT mal escrita no exime, las que ya esperaban se sueltan sin inventar un aprobador y el formulario dice «puede necesitar». OK');
+    'Órdenes de trabajo (#A136): con OT válida no espera pero queda marcada y con su justificación, la OT mal escrita no exime, las que ya esperaban se sueltan sin inventar un aprobador y el formulario dice «puede necesitar». ' +
+    '#A137: con OT no se le pide nada al CFO (presupuesto, tarifa superior ni cambio después del plazo), las marcas se siguen escribiendo, la app no nombra a nadie y las que esperaban solo su voto se destraban solas sin saltarle el turno a nadie. OK');
 }
 
 main();

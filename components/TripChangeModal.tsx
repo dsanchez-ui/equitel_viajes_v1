@@ -439,7 +439,7 @@ export const TripChangeModal: React.FC<TripChangeModalProps> = ({ requests, init
               {isAdmin && travelerWin && travelerWin.open && travelerWin.late && (
                 <div className="bg-amber-50 border border-amber-300 text-amber-950 rounded-md p-3 text-xs" data-change-traveler-late>
                   <strong>Ya pasó el plazo del viajero</strong> (venció el {fmtDayLong(travelerWin.deadlineKey)} a las {fmtHourLabel(travelerWin.deadlineHour)}). Él todavía puede pedir
-                  {' '}<strong>alargar el viaje</strong> (un regreso más tarde) con «Cambiar mi viaje», y así lo aprueba también {lateCfo || 'quien aprueba las excepciones'}.
+                  {' '}<strong>alargar el viaje</strong> (un regreso más tarde) con «Cambiar mi viaje»{lateCfo ? <>, y así lo aprueba también {lateCfo}</> : null}.
                   Si es eso, pídale que lo haga por la plataforma; regístrelo usted solo si es otro cambio y es urgente.
                 </div>
               )}

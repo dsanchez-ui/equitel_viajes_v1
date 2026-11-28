@@ -9764,11 +9764,15 @@ function mapRowToRequest(row, lite) {
   // OT-aware: una solicitud con OT válida NO requiere aprobación de presupuesto
   // aunque el flag "SI" esté persistido (su costo va a la OT, no al presupuesto).
   const budgetExceededRow = _requiresBudgetOverrun_(get("REQUIERE APROB PPTO"), get("# ORDEN TRABAJO"));
+  // #A137: con OT válida el viaje lo paga el cliente y no se le pide NADA al CFO:
+  // ni presupuesto, ni tarifa superior, ni cambio después del plazo. Las marcas
+  // siguen escritas en la hoja (miden lo que pasó); lo que se quita es el voto.
+  const _otExemptsCfo = _policyWorkOrderExempt_(get("# ORDEN TRABAJO"));
   // #A100: tarifa superior a la del manual → también pide el voto del CFO
   // (mismo rol y misma columna que el presupuesto excedido).
-  const fareNeedsCfoRow = _fareCfoFlagSet_(get(FARE_CFO_FLAG_HEADER));
+  const fareNeedsCfoRow = !_otExemptsCfo && _fareCfoFlagSet_(get(FARE_CFO_FLAG_HEADER));
   // #A129: cambio pedido después del plazo (solo alarga el viaje) → también vota el CFO.
-  const lateChangeNeedsCfoRow = _tripChangeLateNeedsCfo_(get(TRIP_CHANGE_HEADER));
+  const lateChangeNeedsCfoRow = !_otExemptsCfo && _tripChangeLateNeedsCfo_(get(TRIP_CHANGE_HEADER));
   const requiereApPpto = budgetExceededRow || fareNeedsCfoRow || lateChangeNeedsCfoRow;
   const aprobadoPptoVal = String(get("APROBADO PRESUPUESTO"));
   // El email del aprobador de presupuesto vive en la config del dashboard.
@@ -9832,7 +9836,11 @@ function mapRowToRequest(row, lite) {
   // #A100: solicitud fuera de plazo que esperó (o espera) la aprobación del CFO.
   result.policyJustification = String(get(POLICY_JUSTIFICATION_HEADER) || '');
   result.policyDecision = String(get(POLICY_DECISION_HEADER) || '');
-  result.policyApproverName = (_cfgBudget && _cfgBudget.policyApprovalEnabled !== false) ? String(_cfgBudget.budgetApproverName || _cfgBudget.budgetApproverEmail || '') : '';
+  // Quién aprueba las desviaciones de la política EN ESTA SOLICITUD. Vacío = nadie:
+  // o las reglas están apagadas, o el viaje lo paga el cliente (#A137). Los avisos
+  // de la app («lo aprueba también…», el de la tarifa en Confirmar costos y en
+  // Registrar reserva, el del cambio después del plazo) salen solo si viene con nombre.
+  result.policyApproverName = (_cfgBudget && _cfgBudget.policyApprovalEnabled !== false && !_otExemptsCfo) ? String(_cfgBudget.budgetApproverName || _cfgBudget.budgetApproverEmail || '') : '';
 
   // PROXY DETECTION: marca la solicitud como "a nombre de otro" cuando el
   // solicitante NO es ninguno de los pasajeros. Método primario por CÉDULA
@@ -21012,6 +21020,45 @@ function _policyReleaseExempt_() {
 }
 
 /**
+ * #A137: destraba las que están en PENDIENTE_APROBACION esperando **solo** el voto
+ * del CFO y tienen OT. Desde que la OT lo exime, ese voto ya no se le pide, y el
+ * motor de aprobación solo recalcula cuando alguien vota: sin esto se quedarían
+ * quietas para siempre esperando un clic que nadie va a dar.
+ *
+ * Reusa `reevaluarAprobacionPendiente`, que es la misma cuenta del motor
+ * (`mapRowToRequest` + `computeEffectiveApprovalStatus_`) y avanza a APROBADO con el
+ * aviso de siempre. Si todavía falta cualquier otro voto —el jefe, Gerencia General,
+ * Cadena de Suministro o el responsable de la otra unidad— no hace nada: **a nadie
+ * se le salta el turno**. Es idempotente y se queda como red: después del despliegue
+ * no debería encontrar nada, porque el voto del área ya completa la aprobación.
+ *
+ * @return {Array<string>} IDs que pasaron a APROBADO.
+ */
+function _policyUnblockWorkOrders_() {
+  if (!POLICY_WORK_ORDER_EXEMPT) return [];
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME_REQUESTS);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var otIdx = H('# ORDEN TRABAJO');
+  if (otIdx < 0) return [];
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  var stIdx = H('STATUS'), idIdx = H('ID RESPUESTA');
+  var out = [];
+  data.forEach(function(row) {
+    if (String(row[stIdx] || '').trim() !== 'PENDIENTE_APROBACION') return;
+    if (!_policyWorkOrderExempt_(row[otIdx])) return;
+    var id = String(row[idIdx] || '').trim();
+    if (!id) return;
+    try {
+      var r = reevaluarAprobacionPendiente(id);
+      if (r && r.ok) out.push(id);
+    } catch (e) {
+      console.error('_policyUnblockWorkOrders_: no se pudo reevaluar ' + id + ': ' + e);
+    }
+  });
+  return out;
+}
+
+/**
  * Deniega las solicitudes en espera que vencieron: 7 días desde que se pidieron,
  * o ya pasó el día del viaje. Devuelve los IDs denegados.
  */
@@ -21052,13 +21099,16 @@ function procesarAprobacionesPolitica() {
   _resetPerExecutionCaches_();
   var expired = [];
   var lock = LockService.getScriptLock();
-  var released = [];
+  var released = [], unblocked = [];
   if (lock.tryLock(LOCK_WAIT_MS)) {
     // #A136: primero las que ya no necesitan esperar (OT), después las vencidas.
     try { released = _policyReleaseExempt_(); }
     catch (e) { console.error('procesarAprobacionesPolitica: error soltando las que tienen OT: ' + e); }
     try { expired = _policyExpireHeld_(); }
     catch (e) { console.error('procesarAprobacionesPolitica: error denegando vencidas: ' + e); }
+    // #A137: y las que quedaron esperando solo el voto del CFO teniendo OT.
+    try { unblocked = _policyUnblockWorkOrders_(); }
+    catch (e) { console.error('procesarAprobacionesPolitica: error destrabando las que tienen OT: ' + e); }
     finally { lock.releaseLock(); }
   } else {
     console.warn('procesarAprobacionesPolitica: sistema ocupado; las vencidas se revisan en la próxima pasada.');
@@ -21070,7 +21120,7 @@ function procesarAprobacionesPolitica() {
   var monthly = '';
   try { monthly = _mrMaybeSendMonthly_(); }
   catch (e) { console.error('procesarAprobacionesPolitica: error enviando el informe mensual: ' + e); }
-  return { released: released, expired: expired, listed: listed, monthly: monthly };
+  return { released: released, unblocked: unblocked, expired: expired, listed: listed, monthly: monthly };
 }
 
 /**
@@ -21347,11 +21397,22 @@ function _fareCfoFlagSet_(flagRaw) {
 }
 
 /**
- * Voto del responsable de presupuesto/CFO: presupuesto excedido (sin OT válida)
- * o tarifa superior a la del manual. Un solo voto cubre los dos motivos.
+ * Voto del responsable de presupuesto/CFO: presupuesto excedido, tarifa superior a
+ * la del manual (#A100) o cambio pedido después del plazo (#A129). Un solo voto
+ * cubre todos los motivos.
+ *
+ * #A137: **con OT válida no se le pide nada al CFO.** El viaje lo paga el cliente,
+ * así que cualquier sobrecosto —el presupuesto que se excede, una tarifa más alta o
+ * lo que cueste alargar el viaje— se le carga a la orden de trabajo y lo autoriza el
+ * cliente, no la organización. Antes solo el presupuesto estaba exento (#A66); la
+ * tarifa y el cambio tarde seguían llegándole.
+ *
+ * Es compute-on-read, como el presupuesto: las marcas (`REQUIERE APROB TARIFA`,
+ * `fueraDePlazo`) se siguen escribiendo, porque miden lo que pasó y alimentan el
+ * informe mensual; lo que la OT quita es el voto.
  */
 function _requiresCfoVote_(budgetFlagRaw, workOrderRaw, fareFlagRaw, tripChangeRaw) {
-  // #A129: también un cambio pedido después del plazo.
+  if (_policyWorkOrderExempt_(workOrderRaw)) return false;
   return _requiresBudgetOverrun_(budgetFlagRaw, workOrderRaw) || _fareCfoFlagSet_(fareFlagRaw) || _tripChangeLateNeedsCfo_(tripChangeRaw);
 }
 
@@ -21371,8 +21432,12 @@ function _updateFareCfoFlag_(sheet, rowNumber) {
     sheet.getRange(rowNumber, col).setValue('SI');
     if (prev !== 'SI') {
       var opt = _fareOptionValue_(cell(FARE_TYPE_HEADER)), rec = _fareOptionValue_(cell(FARE_RECOMMENDED_HEADER));
+      // #A137: la marca se escribe igual (mide la tarifa y alimenta el informe mensual),
+      // pero si el viaje lo paga el cliente nadie va a aprobarla: no se promete una
+      // aprobación que no va a pasar. La nota la lee el viajero, así que no dice por qué.
+      var needsVote = !_policyWorkOrderExempt_(cell('# ORDEN TRABAJO'));
       _policyAppendObs_(sheet, rowNumber, '[TARIFA]: TIPO ' + opt + (cell(FARE_NAME_HEADER) ? ' (' + cell(FARE_NAME_HEADER) + ')' : '') +
-        ' es superior a la del manual (TIPO ' + rec + '). Requiere la aprobación de ' + cfg.name + '.');
+        ' es superior a la del manual (TIPO ' + rec + ').' + (needsVote ? ' Requiere la aprobación de ' + cfg.name + '.' : ''));
     }
     return true;
   }
@@ -21390,6 +21455,11 @@ function _assertFareChangeAllowed_(sheet, rowNumber, newFare, currentUserEmail) 
   if (!newFare || !newFare.exception || newFare.option <= newFare.recommended) return;
   var cfg = _policyApprovalConfig_();
   if (!cfg.enabled) return;
+  // #A137: si el viaje lo paga el cliente, el CFO no votó la tarifa y nunca lo va a
+  // hacer: bloquear aquí dejaría al área de compras esperando una aprobación que no
+  // existe. El sobrecosto se le carga a la OT.
+  var otIdx = H('# ORDEN TRABAJO');
+  if (otIdx >= 0 && _policyWorkOrderExempt_(sheet.getRange(rowNumber, otIdx + 1).getValue())) return;
   var stIdx = H('STATUS');
   if (String(sheet.getRange(rowNumber, stIdx + 1).getValue() || '').trim() !== 'APROBADO') return;
   var typeIdx = H(FARE_TYPE_HEADER);

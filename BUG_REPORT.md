@@ -4416,3 +4416,74 @@ menú que correr y no se crean columnas. El frontend sale con el push.
   solicitudes con OT siguen esperando. Nada se rompe.
 - **`Code.gs` nuevo + frontend anterior:** las solicitudes con OT dejan de esperar, pero el formulario dice «necesita»: el aviso promete
   una espera que no ocurre. Es el único orden incómodo, y dura lo que tarde el push (el frontend se despliega solo al subir a `main`).
+
+---
+
+## **#A137 — Con orden de trabajo no se le pide nada al CFO: tampoco la tarifa superior ni el cambio después del plazo**
+**Fecha:** 2026-11-28 · **Pedido por:** David, el mismo día de #A136, al revisarlo (*«cuando tiene OT una solicitud, no debe pedir que
+Alejandro apruebe nada. Porque si hay sobrecostos, se le van a cargar a la OT y eso lo paga el cliente. Y si hay cambios fuera de plazo,
+también va a tener sobrecostos y eso también lo aprueba el cliente»*) ·
+**Estado:** En `main`, **pendiente de pegar `Code.gs`** (va con #A135 y #A136).
+
+**Síntoma:**
+#A136 sacó la anticipación, pero al CFO le seguían llegando dos cosas de viajes con OT: la **tarifa superior a la del manual** (#A95) y
+el **cambio pedido después del plazo** (#A129). Media solución: Alejandro seguía aprobando viajes que no son de su presupuesto.
+
+**Causa raíz:**
+La exención por OT se había escrito motivo por motivo. `_requiresCfoVote_` recibía la OT, pero solo se la pasaba a
+`_requiresBudgetOverrun_`; los otros dos sumandos (`_fareCfoFlagSet_`, `_tripChangeLateNeedsCfo_`) la ignoraban. Y `mapRowToRequest`
+repetía la cuenta por su lado, con el mismo hueco.
+
+**Fix:**
+- **Una sola compuerta:** `_requiresCfoVote_` devuelve `false` si la OT exime (`_policyWorkOrderExempt_`). Cubre el motor de aprobación
+  (`processApprovalFromEmail`), a quién se le pide el voto (`_approvalAskedFor_`), los recordatorios y «Mis aprobaciones».
+- **`mapRowToRequest`:** `requiresFareApproval` y `lateChangeNeedsCfo` quedan en `false`, y **`policyApproverName` queda vacío**. De ese
+  campo cuelgan todos los avisos de la app, así que se apagan solos: el de la tarifa en *Confirmar costos* y *Registrar reserva*
+  (`FareFields`), el «lo aprueba también…» del cambio (`TripChangeInfo`, `TripChangeModal`) y el del correo de aprobación. **Regla para
+  lo que venga:** una pantalla que nombre al CFO se gatea con `policyApproverName`, no con la configuración.
+- **Compute-on-read, como el presupuesto (#A66):** `REQUIERE APROB TARIFA` y `fueraDePlazo` se siguen escribiendo — miden lo que pasó y
+  alimentan el informe mensual (#A101). Lo único que la OT quita es el voto.
+- **Dos efectos que había que atender para no dejar a nadie esperando:**
+  - `_assertFareChangeAllowed_` (no subir la tarifa por encima de la aprobada antes de comprar) no aplica con OT: nadie aprobó una
+    tarifa, así que el bloqueo mandaba al área de compras a pedir una aprobación que no iba a llegar.
+  - La nota `[TARIFA]` de OBSERVACIONES, que lee el viajero, ya no dice «Requiere la aprobación de …» cuando hay OT; solo deja la
+    constancia de que la tarifa es superior a la del manual.
+- `TripChangeModal` dejó de decir «lo aprueba también quien aprueba las excepciones» cuando el servidor no manda a nadie.
+- En las guías publicadas y la infografía, la tarifa y el cambio tarde quedaron como *«lo puede aprobar el CFO»* / *«cuando hace
+  falta»*, y el detalle de la solicitud dice a quién se le pidió el voto. **Igual que en #A136, en nada publicado se dice que la OT
+  exime**: está solo en [docs/guia-administrador.md §5.1](docs/guia-administrador.md).
+
+- **Destrabar las que quedaron esperando solo su voto** (David, al revisar: *«todo lo que involucre a Alejo como aprobador por costos o
+  fechas e incluya OT debe quedar libre y destrabado»*). El motor de aprobación solo recalcula cuando alguien vota, así que una
+  solicitud con OT que ya tenía el voto del jefe y esperaba únicamente al CFO se habría quedado quieta para siempre.
+  `_policyUnblockWorkOrders_` corre en cada pasada de `procesarAprobacionesPolitica`, dentro del mismo candado, y reevalúa esas
+  solicitudes con `reevaluarAprobacionPendiente` — **la misma cuenta del motor**, que avanza a APROBADO con el aviso de siempre.
+  - **A nadie se le salta el turno:** si falta cualquier otro voto (el jefe, Gerencia General, Cadena de Suministro, el responsable de
+    la otra unidad), no hace nada.
+  - Es idempotente y se queda como red: después del despliegue no debería encontrar nada, porque el voto del área ya completa la
+    aprobación por sí solo.
+
+**Lo que hay que saber (David, dicho al entregar; él decidió seguir):** en un cambio pedido después del plazo, el voto del CFO era la
+**protección cuando el aprobador de área es la misma persona que pide** (caso Mateo, #A129), no solo un control de costo. Con OT ya no
+hay segundo par de ojos. Si algún día importa, la vuelta corta es volver a pedir el voto solo cuando quien pide es su propio aprobador.
+
+**Verificado:**
+- `tools/check-policy-approval.cjs` (ampliado):
+  - `_requiresCfoVote_`: la OT lo quita por los tres motivos, y sin OT la tarifa y el cambio tarde lo siguen pidiendo;
+  - con OT, la tarifa superior **se marca igual** (`REQUIERE APROB TARIFA = SI`) pero la nota no promete una aprobación, el detalle no
+    pide el voto y `policyApproverName` llega vacío;
+  - con OT, un cambio marcado `fueraDePlazo` se registra (`lateChange = true`) pero no pide el voto;
+  - el motor de aprobación: con OT y las dos marcas puestas, **el voto del jefe basta** y la solicitud queda APROBADO;
+  - con OT, `setPurchaseInfo` registra una tarifa más alta que la aprobada sin bloquear (sin OT sigue bloqueando, sección 9);
+  - el modal del cambio y el bloque de tarifa solo nombran al CFO si el servidor manda a quién;
+  - **destrabar:** con OT y el voto del jefe puesto se avanza sola a APROBADO en la pasada; sin OT sigue esperando; con OT y **sin** el
+    voto del jefe no se mueve; la segunda pasada no vuelve a tocar nada y el interruptor apagado tampoco destraba.
+- Probado al revés: quitar la compuerta de `_requiresCfoVote_` rompe 3 comprobaciones; quitarla de `mapRowToRequest`, 2; quitar la
+  pasada que destraba, 2; y destrabar sin mirar los demás votos rompe la que comprueba que no se le salta el turno a nadie.
+- `npm run verify` en verde.
+
+**Despliegue:** pegar `Code.gs` → versión nueva del web app, junto con #A135 (`AdminSidebar.html`) y #A136. El frontend sale con el push.
+- **Frontend nuevo + `Code.gs` anterior:** el servidor sigue mandando a quién aprueba, así que todo se ve y se comporta como hoy.
+- **`Code.gs` nuevo + frontend anterior:** los avisos ya no nombran a nadie (el campo llega vacío) y la aprobación no espera al CFO; el
+  único texto que quedaría raro es el del panel del área de compras al registrar un cambio tarde, que diría «quien aprueba las
+  excepciones» en vez del nombre. Dura lo que tarde el push.
